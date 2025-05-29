@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, state_id, name, version, hash, size, installed_at \n         FROM packages WHERE state_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Int64"
+      },
+      {
+        "name": "state_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "version",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "hash",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "size",
+        "ordinal": 5,
+        "type_info": "Int64"
+      },
+      {
+        "name": "installed_at",
+        "ordinal": 6,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "dc918a2f30da135190941fc0c510d2f816c69d69e537ec1f9d6199cdc32e1024"
+}

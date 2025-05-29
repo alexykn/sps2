@@ -1,0 +1,40 @@
+[package]
+name = "sps2"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Modern package manager for macOS ARM64"
+
+[[bin]]
+name = "sps2"
+path = "src/main.rs"
+
+[dependencies]
+spsv2-ops = { path = "../../crates/ops" }
+spsv2-events = { path = "../../crates/events" }
+spsv2-errors = { path = "../../crates/errors" }
+spsv2-types = { path = "../../crates/types" }
+spsv2-config = { path = "../../crates/config" }
+spsv2-net = { path = "../../crates/net" }
+spsv2-resolver = { path = "../../crates/resolver" }
+spsv2-state = { path = "../../crates/state" }
+spsv2-store = { path = "../../crates/store" }
+spsv2-index = { path = "../../crates/index" }
+spsv2-builder = { path = "../../crates/builder" }
+
+clap = { version = "4.4", features = ["derive", "color"] }
+tokio = { workspace = true, features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+serde_json = { workspace = true }
+comfy-table = "7.1"
+indicatif = "0.17"
+console = "0.15"
+chrono = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

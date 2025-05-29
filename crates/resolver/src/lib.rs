@@ -1,0 +1,95 @@
+#![deny(clippy::pedantic, unsafe_code)]
+#![allow(clippy::module_name_repetitions)]
+
+//! Dependency resolution for spsv2
+//!
+//! This crate provides deterministic, parallel dependency resolution
+//! for both installation and building operations. It implements a
+//! topological sort with concurrent execution.
+
+mod execution;
+mod graph;
+mod resolver;
+
+pub use execution::ExecutionPlan;
+pub use graph::{DepEdge, DepKind, NodeAction, PackageId, ResolvedNode};
+pub use resolver::Resolver;
+
+use spsv2_types::package::PackageSpec;
+use std::collections::HashMap;
+use std::path::PathBuf;
+
+/// Resolution context for packages
+#[derive(Clone, Debug)]
+pub struct ResolutionContext {
+    /// Runtime dependencies to resolve
+    pub runtime_deps: Vec<PackageSpec>,
+    /// Build dependencies to resolve (only for build operations)
+    pub build_deps: Vec<PackageSpec>,
+    /// Local package files to include
+    pub local_files: Vec<PathBuf>,
+}
+
+impl ResolutionContext {
+    /// Create new resolution context
+    pub fn new() -> Self {
+        Self {
+            runtime_deps: Vec::new(),
+            build_deps: Vec::new(),
+            local_files: Vec::new(),
+        }
+    }
+
+    /// Add runtime dependency
+    pub fn add_runtime_dep(mut self, spec: PackageSpec) -> Self {
+        self.runtime_deps.push(spec);
+        self
+    }
+
+    /// Add build dependency
+    pub fn add_build_dep(mut self, spec: PackageSpec) -> Self {
+        self.build_deps.push(spec);
+        self
+    }
+
+    /// Add local package file
+    pub fn add_local_file(mut self, path: PathBuf) -> Self {
+        self.local_files.push(path);
+        self
+    }
+}
+
+impl Default for ResolutionContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Result of dependency resolution
+#[derive(Clone, Debug)]
+pub struct ResolutionResult {
+    /// Resolved dependency graph
+    pub nodes: HashMap<PackageId, ResolvedNode>,
+    /// Execution plan with topological order
+    pub execution_plan: ExecutionPlan,
+}
+
+impl ResolutionResult {
+    /// Get all packages in topological order
+    pub fn packages_in_order(&self) -> Vec<&ResolvedNode> {
+        self.execution_plan
+            .batches()
+            .into_iter()
+            .flatten()
+            .filter_map(|id| self.nodes.get(id))
+            .collect()
+    }
+
+    /// Get packages by dependency kind
+    pub fn packages_by_kind(&self, kind: DepKind) -> Vec<&ResolvedNode> {
+        self.nodes
+            .values()
+            .filter(|node| node.deps.iter().any(|edge| edge.kind == kind))
+            .collect()
+    }
+}

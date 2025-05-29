@@ -1,0 +1,36 @@
+[package]
+name = "hello-world"
+version = "1.0.0"
+revision = 1
+description = "Simple hello world package for testing"
+license = "MIT"
+homepage = "https://example.com/hello-world"
+maintainer = "Test Maintainer <test@example.com>"
+
+[dependencies]
+# No dependencies for this simple package
+
+[build]
+build_dependencies = []
+
+[package.metadata]
+architecture = "aarch64-apple-darwin"
+checksum = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+size = 4096
+
+[package.files]
+bin = ["bin/hello"]
+docs = ["README.md"]
+
+[package.scripts]
+pre_install = """
+echo "Installing hello-world package..."
+"""
+
+post_install = """
+echo "hello-world installed successfully"
+"""
+
+pre_uninstall = """
+echo "Removing hello-world package..."
+"""

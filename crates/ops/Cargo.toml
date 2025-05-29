@@ -1,0 +1,29 @@
+[package]
+name = "spsv2-ops"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+spsv2-errors = { path = "../errors" }
+spsv2-types = { path = "../types" }
+spsv2-events = { path = "../events" }
+spsv2-net = { path = "../net" }
+spsv2-resolver = { path = "../resolver" }
+spsv2-state = { path = "../state" }
+spsv2-store = { path = "../store" }
+spsv2-install = { path = "../install" }
+spsv2-builder = { path = "../builder" }
+spsv2-index = { path = "../index" }
+spsv2-audit = { path = "../audit" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["fs"] }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

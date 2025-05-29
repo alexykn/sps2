@@ -1,6 +1,48 @@
 # Project Overview
 spsv2 is a modern package manager written in Rust, designed exclusively for macOS ARM64 (Apple Silicon). Built from the ground up with atomic operations, rollback capabilities, and a clean async architecture. This is a completely new package manager with its own package format, build system, and distribution infrastructure.
 
+## Installation
+
+### Prerequisites
+- macOS with Apple Silicon (M1/M2/M3)
+- Rust 1.86.0 or later
+- SQLite 3.x
+- sudo access for /opt/pm directory
+
+### Setup
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/spsv2.git
+cd spsv2
+
+# Build the project
+cargo build --release
+
+# Run setup script (requires sudo)
+sudo ./setup.sh
+
+# Add to PATH in your shell config
+echo 'export PATH="/opt/pm/live/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+
+# Verify installation
+sps2 --version
+```
+
+### SQLx Setup (for development)
+The state crate uses SQLx compile-time checked queries. For development:
+```bash
+# Install sqlx-cli
+cargo install sqlx-cli --no-default-features --features sqlite
+
+# Set database URL
+export DATABASE_URL="sqlite:///opt/pm/state.sqlite"
+
+# Prepare offline queries (run in crates/state/)
+cd crates/state
+cargo sqlx prepare
+```
+
 ## General Development Rules
 
 ### Rust Standards

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO store_refs (hash, ref_count, size, created_at) VALUES (?, 1, ?, ?)\n         ON CONFLICT(hash) DO UPDATE SET ref_count = ref_count + 1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "d04a77f2016988074571fe1bd0cfb25994648830f6bdc8f0dd44d1228d8989c7"
+}

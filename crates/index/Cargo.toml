@@ -1,0 +1,21 @@
+[package]
+name = "spsv2-index"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+spsv2-errors = { path = "../errors" }
+spsv2-types = { path = "../types" }
+spsv2-manifest = { path = "../manifest" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+semver = { workspace = true }
+tokio = { workspace = true, features = ["fs"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }

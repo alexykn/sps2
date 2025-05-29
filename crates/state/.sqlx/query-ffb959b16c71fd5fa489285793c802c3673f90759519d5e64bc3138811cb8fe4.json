@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO states (id, parent_id, created_at, operation, success) VALUES (?, ?, ?, ?, 1)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "ffb959b16c71fd5fa489285793c802c3673f90759519d5e64bc3138811cb8fe4"
+}

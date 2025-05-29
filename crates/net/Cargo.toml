@@ -1,0 +1,25 @@
+[package]
+name = "spsv2-net"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+spsv2-errors = { path = "../errors" }
+spsv2-types = { path = "../types" }
+spsv2-events = { path = "../events" }
+spsv2-hash = { path = "../hash" }
+blake3 = { workspace = true }
+tokio = { workspace = true, features = ["fs"] }
+reqwest = { workspace = true }
+futures = "0.3"
+bytes = "1.5"
+url = "2.5"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+httpmock = "0.7"
+tokio = { workspace = true, features = ["test-util", "macros"] }

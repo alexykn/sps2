@@ -1,0 +1,20 @@
+[package]
+name = "spsv2-events"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+spsv2-errors = { path = "../errors" }
+spsv2-types = { path = "../types" }
+tokio = { workspace = true, features = ["sync"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+semver = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }

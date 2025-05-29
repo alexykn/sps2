@@ -1,0 +1,158 @@
+{
+  "index_version": "1.0",
+  "generated": "2024-01-15T10:30:00Z",
+  "packages": {
+    "hello-world": {
+      "name": "hello-world",
+      "description": "Simple hello world package for testing",
+      "license": "MIT",
+      "homepage": "https://example.com/hello-world",
+      "versions": {
+        "1.0.0": {
+          "version": "1.0.0",
+          "revision": 1,
+          "published": "2024-01-15T10:00:00Z",
+          "maintainer": "Test Maintainer <test@example.com>",
+          "dependencies": {},
+          "build_dependencies": {},
+          "download_url": "https://repo.example.com/packages/hello-world-1.0.0-1.aarch64.sp",
+          "checksum": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size": 4096,
+          "signature": "trusted comment: signature from spsv2 key\nRWSGWHlw..."
+        }
+      }
+    },
+    "complex-app": {
+      "name": "complex-app",
+      "description": "A complex application with multiple dependencies",
+      "license": "Apache-2.0",
+      "homepage": "https://github.com/example/complex-app",
+      "versions": {
+        "2.0.0": {
+          "version": "2.0.0",
+          "revision": 1,
+          "published": "2024-01-10T10:00:00Z",
+          "maintainer": "Complex Team <team@example.com>",
+          "dependencies": {
+            "libssl": ">=1.1.0,<2.0",
+            "zlib": "~=1.2.11",
+            "sqlite": ">=3.35.0"
+          },
+          "build_dependencies": {
+            "cmake": ">=3.15",
+            "gcc": ">=8.0"
+          },
+          "download_url": "https://repo.example.com/packages/complex-app-2.0.0-1.aarch64.sp",
+          "checksum": "a665a45920422f9d417e4867efdc4fb8a04a1f3cbc663dda3c5c0c0c1b7e84c4",
+          "size": 45678901,
+          "signature": "trusted comment: signature from spsv2 key\nRWSGWHlw..."
+        },
+        "2.1.3": {
+          "version": "2.1.3",
+          "revision": 2,
+          "published": "2024-01-15T10:00:00Z",
+          "maintainer": "Complex Team <team@example.com>",
+          "dependencies": {
+            "libssl": ">=1.1.1,<2.0",
+            "zlib": "~=1.2.11",
+            "sqlite": ">=3.36.0",
+            "curl": ">=7.68.0,<8.0"
+          },
+          "build_dependencies": {
+            "cmake": ">=3.16",
+            "gcc": ">=9.0",
+            "pkg-config": ">=0.29"
+          },
+          "download_url": "https://repo.example.com/packages/complex-app-2.1.3-2.aarch64.sp",
+          "checksum": "a665a45920422f9d417e4867efdc4fb8a04a1f3cbc663dda3c5c0c0c1b7e84c5",
+          "size": 52428800,
+          "signature": "trusted comment: signature from spsv2 key\nRWSGWHlw..."
+        }
+      }
+    },
+    "libssl": {
+      "name": "libssl",
+      "description": "SSL/TLS cryptography library",
+      "license": "OpenSSL",
+      "homepage": "https://www.openssl.org/",
+      "versions": {
+        "1.1.1w": {
+          "version": "1.1.1w",
+          "revision": 1,
+          "published": "2024-01-12T10:00:00Z",
+          "maintainer": "OpenSSL Team <openssl@openssl.org>",
+          "dependencies": {},
+          "build_dependencies": {
+            "perl": ">=5.10"
+          },
+          "download_url": "https://repo.example.com/packages/libssl-1.1.1w-1.aarch64.sp",
+          "checksum": "b665a45920422f9d417e4867efdc4fb8a04a1f3cbc663dda3c5c0c0c1b7e84c5",
+          "size": 8388608,
+          "signature": "trusted comment: signature from spsv2 key\nRWSGWHlw..."
+        }
+      }
+    },
+    "zlib": {
+      "name": "zlib",
+      "description": "Compression library",
+      "license": "Zlib",
+      "homepage": "https://zlib.net/",
+      "versions": {
+        "1.2.11": {
+          "version": "1.2.11",
+          "revision": 1,
+          "published": "2024-01-12T10:00:00Z",
+          "maintainer": "Zlib Team <zlib@zlib.net>",
+          "dependencies": {},
+          "build_dependencies": {},
+          "download_url": "https://repo.example.com/packages/zlib-1.2.11-1.aarch64.sp",
+          "checksum": "c665a45920422f9d417e4867efdc4fb8a04a1f3cbc663dda3c5c0c0c1b7e84c5",
+          "size": 262144,
+          "signature": "trusted comment: signature from spsv2 key\nRWSGWHlw..."
+        }
+      }
+    },
+    "sqlite": {
+      "name": "sqlite",
+      "description": "SQL database engine",
+      "license": "Public Domain",
+      "homepage": "https://sqlite.org/",
+      "versions": {
+        "3.36.0": {
+          "version": "3.36.0",
+          "revision": 1,
+          "published": "2024-01-12T10:00:00Z",
+          "maintainer": "SQLite Team <sqlite@sqlite.org>",
+          "dependencies": {},
+          "build_dependencies": {},
+          "download_url": "https://repo.example.com/packages/sqlite-3.36.0-1.aarch64.sp",
+          "checksum": "d665a45920422f9d417e4867efdc4fb8a04a1f3cbc663dda3c5c0c0c1b7e84c5",
+          "size": 1048576,
+          "signature": "trusted comment: signature from spsv2 key\nRWSGWHlw..."
+        }
+      }
+    },
+    "curl": {
+      "name": "curl",
+      "description": "Command line tool for transferring data",
+      "license": "curl",
+      "homepage": "https://curl.se/",
+      "versions": {
+        "7.85.0": {
+          "version": "7.85.0",
+          "revision": 1,
+          "published": "2024-01-12T10:00:00Z",
+          "maintainer": "Curl Team <curl@curl.se>",
+          "dependencies": {
+            "libssl": ">=1.1.0"
+          },
+          "build_dependencies": {},
+          "download_url": "https://repo.example.com/packages/curl-7.85.0-1.aarch64.sp",
+          "checksum": "e665a45920422f9d417e4867efdc4fb8a04a1f3cbc663dda3c5c0c0c1b7e84c5",
+          "size": 524288,
+          "signature": "trusted comment: signature from spsv2 key\nRWSGWHlw..."
+        }
+      }
+    }
+  }
+}

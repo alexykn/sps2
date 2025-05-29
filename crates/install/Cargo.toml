@@ -1,0 +1,31 @@
+[package]
+name = "spsv2-install"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+spsv2-errors = { path = "../errors" }
+spsv2-types = { path = "../types" }
+spsv2-events = { path = "../events" }
+spsv2-net = { path = "../net" }
+spsv2-resolver = { path = "../resolver" }
+spsv2-root = { path = "../root" }
+spsv2-state = { path = "../state" }
+spsv2-store = { path = "../store" }
+spsv2-audit = { path = "../audit" }
+serde = { workspace = true }
+tokio = { workspace = true, features = ["fs", "process"] }
+uuid = { workspace = true }
+sqlx = { workspace = true }
+dashmap = { workspace = true }
+crossbeam = { workspace = true }
+chrono = { workspace = true }
+tempfile = { workspace = true }
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = { workspace = true }

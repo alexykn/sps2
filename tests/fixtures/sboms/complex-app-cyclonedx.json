@@ -1,0 +1,129 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:12345678-1234-1234-1234-123456789abc",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2024-01-15T10:30:00Z",
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "name": "spsv2-builder",
+          "version": "0.1.0"
+        }
+      ]
+    },
+    "component": {
+      "type": "application",
+      "name": "complex-app",
+      "version": "2.1.3",
+      "purl": "pkg:generic/complex-app@2.1.3"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "name": "openssl",
+      "version": "1.1.1w",
+      "purl": "pkg:generic/openssl@1.1.1w",
+      "licenses": [
+        {
+          "license": {
+            "id": "OpenSSL"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://www.openssl.org/"
+        },
+        {
+          "type": "cpe",
+          "url": "cpe:2.3:a:openssl:openssl:1.1.1w:*:*:*:*:*:*:*"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "zlib",
+      "version": "1.2.11",
+      "purl": "pkg:generic/zlib@1.2.11",
+      "licenses": [
+        {
+          "license": {
+            "id": "Zlib"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://zlib.net/"
+        },
+        {
+          "type": "cpe",
+          "url": "cpe:2.3:a:zlib:zlib:1.2.11:*:*:*:*:*:*:*"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "sqlite",
+      "version": "3.36.0",
+      "purl": "pkg:generic/sqlite@3.36.0",
+      "licenses": [
+        {
+          "license": {
+            "name": "Public Domain"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://sqlite.org/"
+        },
+        {
+          "type": "cpe",
+          "url": "cpe:2.3:a:sqlite:sqlite:3.36.0:*:*:*:*:*:*:*"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "curl",
+      "version": "7.85.0",
+      "purl": "pkg:generic/curl@7.85.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "curl"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "website",
+          "url": "https://curl.se/"
+        },
+        {
+          "type": "cpe",
+          "url": "cpe:2.3:a:haxx:curl:7.85.0:*:*:*:*:*:*:*"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "pkg:generic/complex-app@2.1.3",
+      "dependsOn": [
+        "pkg:generic/openssl@1.1.1w",
+        "pkg:generic/zlib@1.2.11",
+        "pkg:generic/sqlite@3.36.0",
+        "pkg:generic/curl@7.85.0"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT ref_count FROM store_refs WHERE hash = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "ref_count",
+        "ordinal": 0,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "5f23fba33f8182bea8d3786016f1e2f0f9069252a338b480e311b7d54428342f"
+}

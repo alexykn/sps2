@@ -1,0 +1,20 @@
+[package]
+name = "spsv2-config"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+spsv2-errors = { path = "../errors" }
+spsv2-types = { path = "../types" }
+serde = { workspace = true }
+toml = { workspace = true }
+tokio = { workspace = true, features = ["fs"] }
+dirs = "5.0"
+num_cpus = "1.16"
+
+[dev-dependencies]
+tempfile = { workspace = true }

@@ -1,0 +1,30 @@
+[package]
+name = "spsv2-state"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+build = "build.rs"
+
+[dependencies]
+spsv2-errors = { path = "../errors" }
+spsv2-types = { path = "../types" }
+spsv2-events = { path = "../events" }
+spsv2-hash = { path = "../hash" }
+spsv2-root = { path = "../root" }
+spsv2-resolver = { path = "../resolver" }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[features]
+default = ["runtime-queries"]
+runtime-queries = []

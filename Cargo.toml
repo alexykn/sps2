@@ -1,6 +1,70 @@
-[package]
-name = "spsv2"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+resolver = "3"
+members = [
+    "apps/sps2",
+    "crates/audit",
+    "crates/builder",
+    "crates/config",
+    "crates/errors",
+    "crates/events",
+    "crates/hash",
+    "crates/index",
+    "crates/install",
+    "crates/manifest",
+    "crates/net",
+    "crates/ops",
+    "crates/package",
+    "crates/resolver",
+    "crates/root",
+    "crates/state",
+    "crates/store",
+    "crates/types",
+    "tests",
+]
 
-[dependencies]
+[workspace.package]
+edition = "2021"
+rust-version = "1.86.0"
+authors = ["spsv2 Contributors"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/org/spsv2"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.36", features = ["full"] }
+
+# Database
+sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite", "macros", "migrate"] }
+
+# HTTP
+reqwest = { version = "0.11", features = ["json", "stream"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Error handling
+thiserror = "1.0"
+
+# Utilities
+uuid = { version = "1.6", features = ["v4", "serde"] }
+semver = { version = "1.0", features = ["serde"] }
+blake3 = "1.5"
+tracing = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+
+# Concurrent data structures
+dashmap = "5.5"
+crossbeam = "0.8"
+
+# Script engine
+rhai = { version = "1.16", features = ["serde"] }
+
+# CLI
+clap = { version = "4.4", features = ["derive", "env"] }
+
+# Testing
+tempfile = "3.9"
+proptest = "1.4"
+futures = "0.3"

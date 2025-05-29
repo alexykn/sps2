@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE store_refs SET ref_count = ref_count - 1 WHERE hash = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "0780bc846732438c1ee663c64e4afe28f9a4632790f70ed7625b0a0393bbc312"
+}

@@ -1,0 +1,304 @@
+//! Index data models
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use spsv2_errors::{Error, PackageError};
+use spsv2_types::Arch;
+use std::collections::HashMap;
+
+/// Repository index
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Index {
+    #[serde(flatten)]
+    pub metadata: IndexMetadata,
+    pub packages: HashMap<String, PackageEntry>,
+}
+
+/// Index metadata
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexMetadata {
+    pub version: u32,
+    pub minimum_client: String,
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Package entry in index
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PackageEntry {
+    pub versions: HashMap<String, VersionEntry>,
+}
+
+/// Version entry in index
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VersionEntry {
+    pub revision: u32,
+    pub arch: String,
+    pub sha256: String,
+    pub download_url: String,
+    pub minisig_url: String,
+    pub dependencies: DependencyInfo,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sbom: Option<SbomInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub homepage: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub license: Option<String>,
+}
+
+/// Dependency information
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DependencyInfo {
+    #[serde(default)]
+    pub runtime: Vec<String>,
+    #[serde(default)]
+    pub build: Vec<String>,
+}
+
+/// SBOM information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SbomInfo {
+    pub spdx: SbomEntry,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cyclonedx: Option<SbomEntry>,
+}
+
+/// SBOM entry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SbomEntry {
+    pub url: String,
+    pub sha256: String,
+}
+
+impl Index {
+    /// Create a new empty index
+    pub fn new() -> Self {
+        Self {
+            metadata: IndexMetadata {
+                version: crate::SUPPORTED_INDEX_VERSION,
+                minimum_client: "0.1.0".to_string(),
+                timestamp: Utc::now(),
+            },
+            packages: HashMap::new(),
+        }
+    }
+
+    /// Parse index from JSON
+    pub fn from_json(json: &str) -> Result<Self, Error> {
+        serde_json::from_str(json).map_err(|e| {
+            PackageError::InvalidFormat {
+                message: format!("invalid index JSON: {e}"),
+            }
+            .into()
+        })
+    }
+
+    /// Serialize index to JSON
+    pub fn to_json(&self) -> Result<String, Error> {
+        serde_json::to_string_pretty(self).map_err(|e| {
+            PackageError::InvalidFormat {
+                message: format!("failed to serialize index: {e}"),
+            }
+            .into()
+        })
+    }
+
+    /// Validate index format and version
+    pub fn validate(&self) -> Result<(), Error> {
+        // Check version compatibility
+        if self.metadata.version > crate::SUPPORTED_INDEX_VERSION {
+            return Err(PackageError::InvalidFormat {
+                message: format!(
+                    "index version {} is newer than supported version {}",
+                    self.metadata.version,
+                    crate::SUPPORTED_INDEX_VERSION
+                ),
+            }
+            .into());
+        }
+
+        // Validate entries
+        for (name, package) in &self.packages {
+            if name.is_empty() {
+                return Err(PackageError::InvalidFormat {
+                    message: "empty package name in index".to_string(),
+                }
+                .into());
+            }
+
+            for (version, entry) in &package.versions {
+                if version.is_empty() {
+                    return Err(PackageError::InvalidFormat {
+                        message: format!("empty version for package {name}"),
+                    }
+                    .into());
+                }
+
+                // Validate architecture
+                if entry.arch != "arm64" {
+                    return Err(PackageError::InvalidFormat {
+                        message: format!("unsupported architecture: {}", entry.arch),
+                    }
+                    .into());
+                }
+
+                // Validate URLs
+                if entry.download_url.is_empty() {
+                    return Err(PackageError::InvalidFormat {
+                        message: format!("missing download URL for {name}-{version}"),
+                    }
+                    .into());
+                }
+
+                if entry.sha256.is_empty() {
+                    return Err(PackageError::InvalidFormat {
+                        message: format!("missing SHA256 for {name}-{version}"),
+                    }
+                    .into());
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Add or update a package version
+    pub fn add_version(&mut self, name: String, version: String, entry: VersionEntry) {
+        self.packages
+            .entry(name)
+            .or_default()
+            .versions
+            .insert(version, entry);
+    }
+
+    /// Remove a package version
+    pub fn remove_version(&mut self, name: &str, version: &str) -> Option<VersionEntry> {
+        self.packages.get_mut(name)?.versions.remove(version)
+    }
+
+    /// Get total package count
+    pub fn package_count(&self) -> usize {
+        self.packages.len()
+    }
+
+    /// Get total version count
+    pub fn version_count(&self) -> usize {
+        self.packages.values().map(|p| p.versions.len()).sum()
+    }
+}
+
+impl VersionEntry {
+    /// Get the version string from the parent context
+    /// (In actual use, version is the HashMap key)
+    pub fn version(&self) -> String {
+        // This is a placeholder - in practice, the version
+        // is known from the HashMap key when accessing this entry
+        String::new()
+    }
+
+    /// Get architecture as enum
+    pub fn arch(&self) -> Result<Arch, Error> {
+        match self.arch.as_str() {
+            "arm64" => Ok(Arch::Arm64),
+            _ => Err(PackageError::InvalidFormat {
+                message: format!("unsupported architecture: {}", self.arch),
+            }
+            .into()),
+        }
+    }
+
+    /// Check if this version has SBOM data
+    pub fn has_sbom(&self) -> bool {
+        self.sbom.is_some()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_index_validation() {
+        let mut index = Index::new();
+
+        // Valid entry
+        let entry = VersionEntry {
+            revision: 1,
+            arch: "arm64".to_string(),
+            sha256: "abc123".to_string(),
+            download_url: "https://example.com/pkg.sp".to_string(),
+            minisig_url: "https://example.com/pkg.sp.minisig".to_string(),
+            dependencies: DependencyInfo::default(),
+            sbom: None,
+            description: None,
+            homepage: None,
+            license: None,
+        };
+
+        index.add_version("test-pkg".to_string(), "1.0.0".to_string(), entry);
+        assert!(index.validate().is_ok());
+
+        // Invalid architecture
+        let mut bad_entry = VersionEntry {
+            revision: 1,
+            arch: "x86_64".to_string(), // Not supported
+            sha256: "abc123".to_string(),
+            download_url: "https://example.com/pkg.sp".to_string(),
+            minisig_url: "https://example.com/pkg.sp.minisig".to_string(),
+            dependencies: DependencyInfo::default(),
+            sbom: None,
+            description: None,
+            homepage: None,
+            license: None,
+        };
+
+        index.add_version("bad-pkg".to_string(), "1.0.0".to_string(), bad_entry);
+        assert!(index.validate().is_err());
+    }
+
+    #[test]
+    fn test_index_serialization() {
+        let mut index = Index::new();
+
+        let entry = VersionEntry {
+            revision: 1,
+            arch: "arm64".to_string(),
+            sha256: "def456".to_string(),
+            download_url: "https://cdn.example.com/curl-8.5.0-1.arm64.sp".to_string(),
+            minisig_url: "https://cdn.example.com/curl-8.5.0-1.arm64.sp.minisig".to_string(),
+            dependencies: DependencyInfo {
+                runtime: vec!["openssl>=3.0.0".to_string()],
+                build: vec!["pkg-config>=0.29".to_string()],
+            },
+            sbom: Some(SbomInfo {
+                spdx: SbomEntry {
+                    url: "https://cdn.example.com/curl-8.5.0-1.arm64.sbom.spdx.json".to_string(),
+                    sha256: "789abc".to_string(),
+                },
+                cyclonedx: None,
+            }),
+            description: Some("Command line HTTP client".to_string()),
+            homepage: Some("https://curl.se".to_string()),
+            license: Some("MIT".to_string()),
+        };
+
+        index.add_version("curl".to_string(), "8.5.0".to_string(), entry);
+
+        // Serialize and deserialize
+        let json = index.to_json().unwrap();
+        let parsed = Index::from_json(&json).unwrap();
+
+        assert_eq!(parsed.packages.len(), 1);
+        assert!(parsed.packages.contains_key("curl"));
+
+        let curl_pkg = &parsed.packages["curl"];
+        assert!(curl_pkg.versions.contains_key("8.5.0"));
+
+        let version = &curl_pkg.versions["8.5.0"];
+        assert_eq!(version.arch, "arm64");
+        assert_eq!(version.dependencies.runtime.len(), 1);
+        assert_eq!(version.dependencies.build.len(), 1);
+        assert!(version.has_sbom());
+    }
+}
