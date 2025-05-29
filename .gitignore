@@ -19,6 +19,7 @@
 .idea/                  # JetBrains / CLion
 .vscode/                # VS Code settings
 *.code-workspace
+CLAUDE.md
 
 # Rust Analyzer incremental cache (kept outside target/)
 .ra_cache/
