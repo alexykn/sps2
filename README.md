@@ -1,6 +1,4 @@
-# CLAUDE.md - spsv2 Development Guidelines
-
-## Project Overview
+# Project Overview
 spsv2 is a modern package manager written in Rust, designed exclusively for macOS ARM64 (Apple Silicon). Built from the ground up with atomic operations, rollback capabilities, and a clean async architecture. This is a completely new package manager with its own package format, build system, and distribution infrastructure.
 
 ## General Development Rules
