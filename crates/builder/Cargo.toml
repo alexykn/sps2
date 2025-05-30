@@ -23,9 +23,9 @@ serde_json = { workspace = true }
 tokio = { workspace = true, features = ["fs", "process"] }
 # rhai = { workspace = true }  # Removed - handled via spsv2-package now
 tempfile = { workspace = true }
-num_cpus = "1.16"
+num_cpus = "1.17.0"
 toml = { workspace = true }
-minisign = "0.7"
+minisign = "0.7.9"
 
 [dev-dependencies]
 tempfile = { workspace = true }

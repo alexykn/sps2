@@ -11,7 +11,7 @@ repository.workspace = true
 spsv2-errors = { path = "../errors" }
 spsv2-types = { path = "../types" }
 tokio = { workspace = true, features = ["fs", "process"] }
-libc = "0.2"
+libc = "0.2.172"
 
 [dev-dependencies]
 tempfile = { workspace = true }

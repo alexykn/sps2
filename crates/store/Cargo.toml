@@ -14,9 +14,9 @@ spsv2-hash = { path = "../hash" }
 spsv2-root = { path = "../root" }
 spsv2-manifest = { path = "../manifest" }
 tokio = { workspace = true, features = ["fs", "io-util"] }
-tar = "0.4"
-async-compression = { version = "0.4", features = ["tokio", "zstd"] }
-tokio-util = { version = "0.7", features = ["compat", "io", "io-util"] }
+tar = "0.4.44"
+async-compression = { version = "0.4.23", features = ["tokio", "zstd"] }
+tokio-util = { version = "0.7.15", features = ["compat", "io", "io-util"] }
 tempfile = { workspace = true }
 
 [dev-dependencies]
