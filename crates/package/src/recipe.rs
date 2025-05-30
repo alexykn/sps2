@@ -14,14 +14,14 @@ impl Recipe {
     /// Parse recipe from content
     pub fn parse(content: &str) -> Result<Self, Error> {
         // Basic validation - check for required functions
-        if !content.contains("fn metadata") {
+        if !content.contains("def metadata") {
             return Err(BuildError::RecipeError {
                 message: "recipe missing required 'metadata' function".to_string(),
             }
             .into());
         }
 
-        if !content.contains("fn build") {
+        if !content.contains("def build") {
             return Err(BuildError::RecipeError {
                 message: "recipe missing required 'build' function".to_string(),
             }

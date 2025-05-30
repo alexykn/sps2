@@ -344,10 +344,10 @@ pub async fn build(
         .into());
     }
 
-    if !recipe_path.extension().map_or(false, |ext| ext == "rhai") {
+    if !recipe_path.extension().map_or(false, |ext| ext == "star") {
         return Err(OpsError::InvalidRecipe {
             path: recipe_path.display().to_string(),
-            reason: "recipe must have .rhai extension".to_string(),
+            reason: "recipe must have .star extension".to_string(),
         }
         .into());
     }
@@ -420,7 +420,7 @@ fn parse_install_requests(specs: &[String]) -> Result<Vec<InstallRequest>, Error
 /// Parse recipe metadata to get package name and version
 fn parse_recipe_metadata(recipe_path: &Path) -> Result<(String, Version), Error> {
     // This is a simplified implementation
-    // In practice, this would parse the Rhai recipe to extract metadata
+    // In practice, this would parse the Starlark recipe to extract metadata
 
     let recipe_name = recipe_path
         .file_stem()

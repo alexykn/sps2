@@ -1,18 +1,19 @@
-#![deny(clippy::pedantic, unsafe_code)]
+#![deny(clippy::pedantic)]
+#![allow(unsafe_code)] // Required for Starlark trait implementations
 #![allow(clippy::module_name_repetitions)]
 
-//! Rhai recipe handling for spsv2
+//! Starlark recipe handling for spsv2
 //!
-//! This crate provides the sandboxed Rhai environment for build recipes,
+//! This crate provides the sandboxed Starlark environment for build recipes,
 //! exposing a limited API for package metadata and build operations.
 
-mod api;
 mod recipe;
 mod sandbox;
+mod starlark_api;
 
-pub use api::{BuilderApi, MetadataApi};
 pub use recipe::{BuildStep, Recipe, RecipeMetadata};
 pub use sandbox::{RecipeEngine, RecipeResult};
+pub use starlark_api::BuildContext;
 
 use spsv2_errors::Error;
 use std::path::Path;

@@ -11,9 +11,13 @@ repository.workspace = true
 spsv2-errors = { path = "../errors" }
 spsv2-types = { path = "../types" }
 spsv2-hash = { path = "../hash" }
-rhai = { workspace = true }
+starlark = "0.12"
+starlark_derive = "0.12"
+allocative = "0.3"
 serde = { workspace = true }
 tokio = { workspace = true }
+num_cpus = "1.16"
+anyhow = "1.0"
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -59,7 +59,7 @@ dashmap = "5.5"
 crossbeam = "0.8"
 
 # Script engine
-rhai = { version = "1.16", features = ["serde"] }
+# rhai = { version = "1.16", features = ["serde"] }  # Removed in favor of Starlark
 
 # CLI
 clap = { version = "4.4", features = ["derive", "env"] }
