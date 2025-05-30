@@ -18,12 +18,22 @@ pub struct State {
 }
 
 impl State {
-    /// Convert to StateId
+    /// Convert to `StateId`
+    ///
+    /// # Panics
+    ///
+    /// Panics if the stored ID is not a valid UUID.
+    #[must_use]
     pub fn state_id(&self) -> StateId {
         uuid::Uuid::parse_str(&self.id).expect("valid UUID in database")
     }
 
     /// Get creation timestamp
+    ///
+    /// # Panics
+    ///
+    /// Panics if the stored timestamp is not valid.
+    #[must_use]
     pub fn timestamp(&self) -> DateTime<Utc> {
         DateTime::from_timestamp(self.created_at, 0).expect("valid timestamp in database")
     }
@@ -43,11 +53,21 @@ pub struct Package {
 
 impl Package {
     /// Parse the version
+    ///
+    /// # Panics
+    ///
+    /// Panics if the stored version string is not valid.
+    #[must_use]
     pub fn version(&self) -> Version {
         Version::parse(&self.version).expect("valid version in database")
     }
 
     /// Parse the hash
+    ///
+    /// # Panics
+    ///
+    /// Panics if the stored hash string is not valid.
+    #[must_use]
     pub fn hash(&self) -> Hash {
         Hash::from_hex(&self.hash).expect("valid hash in database")
     }
@@ -74,6 +94,11 @@ pub struct StoreRef {
 
 impl StoreRef {
     /// Parse the hash
+    ///
+    /// # Panics
+    ///
+    /// Panics if the stored hash string is not valid.
+    #[must_use]
     pub fn hash(&self) -> Hash {
         Hash::from_hex(&self.hash).expect("valid hash in database")
     }

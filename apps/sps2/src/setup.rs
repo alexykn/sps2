@@ -85,7 +85,10 @@ impl SystemSetup {
 
     /// Get builder
     pub fn builder(&self) -> Builder {
-        self.builder.as_ref().expect("builder not initialized").clone()
+        self.builder
+            .as_ref()
+            .expect("builder not initialized")
+            .clone()
     }
 
     /// Ensure required system directories exist
@@ -187,7 +190,7 @@ impl SystemSetup {
     /// Initialize network client
     async fn init_net(&mut self) -> Result<(), CliError> {
         debug!("Initializing network client");
-        
+
         // Create NetConfig from our configuration
         let net_config = spsv2_net::NetConfig {
             timeout: std::time::Duration::from_secs(self.config.network.timeout),
@@ -244,13 +247,13 @@ impl SystemSetup {
             let store = self.store.as_ref().unwrap();
             let cleaned_packages = store
                 .garbage_collect()
-                .await
                 .map_err(|e| CliError::Setup(format!("Startup GC failed: {}", e)))?;
 
             if !cleaned_states.is_empty() || cleaned_packages > 0 {
                 info!(
                     "Startup GC: cleaned {} states and {} packages",
-                    cleaned_states.len(), cleaned_packages
+                    cleaned_states.len(),
+                    cleaned_packages
                 );
             }
         }
@@ -262,7 +265,7 @@ impl SystemSetup {
     }
 
     /// Check if startup GC should run
-    async fn should_run_startup_gc(&self, state: &StateManager) -> Result<bool, CliError> {
+    async fn should_run_startup_gc(&self, _state: &StateManager) -> Result<bool, CliError> {
         // Check if last GC was >7 days ago
         // For now, just return false since we don't track GC timestamps yet
         // In a real implementation, this would check a timestamp file or database record
@@ -328,7 +331,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_directory_creation() {
-        let temp = tempdir().unwrap();
+        let _temp = tempdir().unwrap();
         let config = Config::default();
 
         // This test would need to mock the /opt/pm path for proper testing

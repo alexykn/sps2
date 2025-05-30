@@ -6,6 +6,10 @@ use spsv2_types::StateId;
 use sqlx::{query, Row, Sqlite, Transaction};
 
 /// Get the current active state
+///
+/// # Errors
+///
+/// Returns an error if the database query fails or no active state is found.
 pub async fn get_active_state(tx: &mut Transaction<'_, Sqlite>) -> Result<StateId, Error> {
     let row = query("SELECT state_id FROM active_state WHERE id = 1")
         .fetch_optional(&mut **tx)
@@ -23,6 +27,10 @@ pub async fn get_active_state(tx: &mut Transaction<'_, Sqlite>) -> Result<StateI
 }
 
 /// Set the active state
+///
+/// # Errors
+///
+/// Returns an error if the database update fails.
 pub async fn set_active_state(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
@@ -40,6 +48,10 @@ pub async fn set_active_state(
 }
 
 /// Create a new state
+///
+/// # Errors
+///
+/// Returns an error if the database insert fails.
 pub async fn create_state(
     tx: &mut Transaction<'_, Sqlite>,
     id: &StateId,
@@ -47,12 +59,12 @@ pub async fn create_state(
     operation: &str,
 ) -> Result<(), Error> {
     let id_str = id.to_string();
-    let parent_str = parent.map(|p| p.to_string());
+    let parent_str = parent.map(ToString::to_string);
     let now = chrono::Utc::now().timestamp();
 
     query(
         "INSERT INTO states (id, parent_id, created_at, operation, success) 
-         VALUES (?1, ?2, ?3, ?4, 1)"
+         VALUES (?1, ?2, ?3, ?4, 1)",
     )
     .bind(id_str)
     .bind(parent_str)
@@ -65,6 +77,10 @@ pub async fn create_state(
 }
 
 /// Get packages in a state
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
 pub async fn get_state_packages(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
@@ -73,7 +89,7 @@ pub async fn get_state_packages(
 
     let rows = query(
         "SELECT id, state_id, name, version, hash, size, installed_at 
-         FROM packages WHERE state_id = ?1"
+         FROM packages WHERE state_id = ?1",
     )
     .bind(id_str)
     .fetch_all(&mut **tx)
@@ -96,6 +112,10 @@ pub async fn get_state_packages(
 }
 
 /// Add a package to a state
+///
+/// # Errors
+///
+/// Returns an error if the database insert fails.
 pub async fn add_package(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
@@ -109,7 +129,7 @@ pub async fn add_package(
 
     let result = query(
         "INSERT INTO packages (state_id, name, version, hash, size, installed_at) 
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
     )
     .bind(id_str)
     .bind(name)
@@ -124,6 +144,10 @@ pub async fn add_package(
 }
 
 /// Remove a package from a state
+///
+/// # Errors
+///
+/// Returns an error if the database delete fails.
 pub async fn remove_package(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
@@ -141,6 +165,10 @@ pub async fn remove_package(
 }
 
 /// Get or create a store reference
+///
+/// # Errors
+///
+/// Returns an error if the database insert fails.
 pub async fn get_or_create_store_ref(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &str,
@@ -150,7 +178,7 @@ pub async fn get_or_create_store_ref(
 
     query(
         "INSERT OR IGNORE INTO store_refs (hash, ref_count, size, created_at) 
-         VALUES (?1, 0, ?2, ?3)"
+         VALUES (?1, 0, ?2, ?3)",
     )
     .bind(hash)
     .bind(size)
@@ -162,7 +190,14 @@ pub async fn get_or_create_store_ref(
 }
 
 /// Increment store reference count
-pub async fn increment_store_ref(tx: &mut Transaction<'_, Sqlite>, hash: &str) -> Result<(), Error> {
+///
+/// # Errors
+///
+/// Returns an error if the database update fails.
+pub async fn increment_store_ref(
+    tx: &mut Transaction<'_, Sqlite>,
+    hash: &str,
+) -> Result<(), Error> {
     query("UPDATE store_refs SET ref_count = ref_count + 1 WHERE hash = ?1")
         .bind(hash)
         .execute(&mut **tx)
@@ -172,7 +207,14 @@ pub async fn increment_store_ref(tx: &mut Transaction<'_, Sqlite>, hash: &str) -
 }
 
 /// Decrement store reference count
-pub async fn decrement_store_ref(tx: &mut Transaction<'_, Sqlite>, hash: &str) -> Result<(), Error> {
+///
+/// # Errors
+///
+/// Returns an error if the database update fails.
+pub async fn decrement_store_ref(
+    tx: &mut Transaction<'_, Sqlite>,
+    hash: &str,
+) -> Result<(), Error> {
     query("UPDATE store_refs SET ref_count = ref_count - 1 WHERE hash = ?1")
         .bind(hash)
         .execute(&mut **tx)
@@ -182,12 +224,17 @@ pub async fn decrement_store_ref(tx: &mut Transaction<'_, Sqlite>, hash: &str) -
 }
 
 /// Get unreferenced store items
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
 pub async fn get_unreferenced_items(
     tx: &mut Transaction<'_, Sqlite>,
 ) -> Result<Vec<StoreRef>, Error> {
-    let rows = query("SELECT hash, ref_count, size, created_at FROM store_refs WHERE ref_count <= 0")
-        .fetch_all(&mut **tx)
-        .await?;
+    let rows =
+        query("SELECT hash, ref_count, size, created_at FROM store_refs WHERE ref_count <= 0")
+            .fetch_all(&mut **tx)
+            .await?;
 
     let items = rows
         .into_iter()
@@ -203,7 +250,14 @@ pub async fn get_unreferenced_items(
 }
 
 /// Check if state exists
-pub async fn state_exists(tx: &mut Transaction<'_, Sqlite>, state_id: &StateId) -> Result<bool, Error> {
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
+pub async fn state_exists(
+    tx: &mut Transaction<'_, Sqlite>,
+    state_id: &StateId,
+) -> Result<bool, Error> {
     let id_str = state_id.to_string();
     let row = query("SELECT 1 FROM states WHERE id = ?1")
         .bind(id_str)
@@ -213,6 +267,10 @@ pub async fn state_exists(tx: &mut Transaction<'_, Sqlite>, state_id: &StateId) 
 }
 
 /// List all states
+///
+/// # Errors
+///
+/// Returns an error if the database query fails or state IDs are invalid.
 pub async fn list_states(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<StateId>, Error> {
     let rows = query("SELECT id FROM states ORDER BY created_at DESC")
         .fetch_all(&mut **tx)
@@ -229,7 +287,14 @@ pub async fn list_states(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<StateId
 }
 
 /// Get package names in a state
-pub async fn get_state_package_names(tx: &mut Transaction<'_, Sqlite>, state_id: &StateId) -> Result<Vec<String>, Error> {
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
+pub async fn get_state_package_names(
+    tx: &mut Transaction<'_, Sqlite>,
+    state_id: &StateId,
+) -> Result<Vec<String>, Error> {
     let id_str = state_id.to_string();
     let rows = query("SELECT name FROM packages WHERE state_id = ?1")
         .bind(id_str)
@@ -241,11 +306,15 @@ pub async fn get_state_package_names(tx: &mut Transaction<'_, Sqlite>, state_id:
 }
 
 /// Get all states
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
 pub async fn get_all_states(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<State>, Error> {
     let rows = query(
-        r#"SELECT id, parent_id, created_at, operation, 
+        r"SELECT id, parent_id, created_at, operation, 
            success, rollback_of 
-           FROM states ORDER BY created_at DESC"#
+           FROM states ORDER BY created_at DESC",
     )
     .fetch_all(&mut **tx)
     .await?;
@@ -266,13 +335,17 @@ pub async fn get_all_states(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<Stat
 }
 
 /// Get states for cleanup
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
 pub async fn get_states_for_cleanup(
     tx: &mut Transaction<'_, Sqlite>,
     keep_count: usize,
     cutoff_time: i64,
 ) -> Result<Vec<String>, Error> {
     let rows = query(
-        r#"
+        r"
         SELECT id FROM states 
         WHERE id NOT IN (
             SELECT state_id FROM active_state
@@ -282,9 +355,12 @@ pub async fn get_states_for_cleanup(
         AND created_at < ?2
         AND success = 1
         ORDER BY created_at ASC
-        "#
+        ",
     )
-    .bind(keep_count as i64)
+    .bind(
+        i64::try_from(keep_count)
+            .map_err(|e| Error::internal(format!("keep_count too large: {e}")))?,
+    )
     .bind(cutoff_time)
     .fetch_all(&mut **tx)
     .await?;
@@ -293,6 +369,10 @@ pub async fn get_states_for_cleanup(
 }
 
 /// Delete a state
+///
+/// # Errors
+///
+/// Returns an error if the database delete fails.
 pub async fn delete_state(tx: &mut Transaction<'_, Sqlite>, state_id: &str) -> Result<(), Error> {
     query("DELETE FROM states WHERE id = ?1")
         .bind(state_id)
@@ -302,7 +382,11 @@ pub async fn delete_state(tx: &mut Transaction<'_, Sqlite>, state_id: &str) -> R
     Ok(())
 }
 
-/// Get states to cleanup (alias for get_states_for_cleanup)
+/// Get states to cleanup (alias for `get_states_for_cleanup`)
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
 pub async fn get_states_to_cleanup(
     tx: &mut Transaction<'_, Sqlite>,
     keep_count: usize,
@@ -312,6 +396,10 @@ pub async fn get_states_to_cleanup(
 }
 
 /// Get unreferenced store items (alias)
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
 pub async fn get_unreferenced_store_items(
     tx: &mut Transaction<'_, Sqlite>,
 ) -> Result<Vec<StoreRef>, Error> {
@@ -319,6 +407,10 @@ pub async fn get_unreferenced_store_items(
 }
 
 /// Delete unreferenced store items
+///
+/// # Errors
+///
+/// Returns an error if the database delete fails.
 pub async fn delete_unreferenced_store_items(
     tx: &mut Transaction<'_, Sqlite>,
     hashes: &[String],
@@ -333,17 +425,21 @@ pub async fn delete_unreferenced_store_items(
 }
 
 /// Get packages that depend on the given package
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
 pub async fn get_package_dependents(
     tx: &mut Transaction<'_, Sqlite>,
     package_name: &str,
 ) -> Result<Vec<String>, Error> {
     let rows = query(
-        r#"
+        r"
         SELECT DISTINCT p.name
         FROM packages p
         JOIN dependencies d ON p.id = d.package_id
         WHERE d.dep_name = ?1
-        "#
+        ",
     )
     .bind(package_name)
     .fetch_all(&mut **tx)
@@ -353,6 +449,10 @@ pub async fn get_package_dependents(
 }
 
 /// List all states with details
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
 pub async fn list_states_detailed(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<State>, Error> {
     get_all_states(tx).await
 }

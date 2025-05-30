@@ -10,7 +10,7 @@ fn main() {
             PathBuf::from(".sqlx"),
             env::current_dir().unwrap().join(".sqlx"),
         ];
-        
+
         for dir in possible_dirs {
             if dir.exists() {
                 println!("cargo:rustc-env=SQLX_OFFLINE_DIR={}", dir.display());
@@ -18,7 +18,7 @@ fn main() {
             }
         }
     }
-    
+
     // Force offline mode in production builds
     if env::var("SQLX_OFFLINE").is_err() {
         println!("cargo:rustc-env=SQLX_OFFLINE=true");

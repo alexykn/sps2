@@ -5,12 +5,12 @@ use crate::{
     UninstallContext, UpdateContext,
 };
 use spsv2_errors::{Error, InstallError};
-use spsv2_events::{Event, EventSender};
+use spsv2_events::Event;
 use spsv2_resolver::{PackageId, ResolutionContext, Resolver};
 use spsv2_state::StateManager;
 use spsv2_store::PackageStore;
-use spsv2_types::{PackageSpec, Version};
-use std::collections::HashMap;
+use spsv2_types::PackageSpec;
+// HashMap import removed as it's not used in this module
 
 /// Install operation
 pub struct InstallOperation {
@@ -26,7 +26,15 @@ pub struct InstallOperation {
 
 impl InstallOperation {
     /// Create new install operation
-    pub fn new(resolver: Resolver, state_manager: StateManager, store: PackageStore) -> Result<Self, Error> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if parallel executor initialization fails.
+    pub fn new(
+        resolver: Resolver,
+        state_manager: StateManager,
+        store: PackageStore,
+    ) -> Result<Self, Error> {
         let executor = ParallelExecutor::new(store.clone())?;
 
         Ok(Self {
@@ -38,8 +46,13 @@ impl InstallOperation {
     }
 
     /// Execute installation
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if dependency resolution fails, package download fails, or installation fails.
     pub async fn execute(&mut self, context: InstallContext) -> Result<InstallResult, Error> {
-        self.send_event(
+        Self::send_event(
+            self,
             &context,
             Event::InstallStarting {
                 packages: context
@@ -73,7 +86,8 @@ impl InstallOperation {
             .install(&context, &resolution.nodes)
             .await?;
 
-        self.send_event(
+        Self::send_event(
+            self,
             &context,
             Event::InstallCompleted {
                 packages: result
@@ -105,7 +119,8 @@ impl InstallOperation {
             resolution_context = resolution_context.add_local_file(path.clone());
         }
 
-        self.send_event(
+        Self::send_event(
+            self,
             context,
             Event::DependencyResolving {
                 package: "multiple".to_string(),
@@ -115,7 +130,8 @@ impl InstallOperation {
 
         let resolution = self.resolver.resolve(resolution_context).await?;
 
-        self.send_event(
+        Self::send_event(
+            self,
             context,
             Event::DependencyResolved {
                 package: "multiple".to_string(),
@@ -128,7 +144,7 @@ impl InstallOperation {
     }
 
     /// Send event if context has event sender
-    fn send_event(&self, context: &InstallContext, event: Event) {
+    fn send_event(_self: &Self, context: &InstallContext, event: Event) {
         if let Some(sender) = &context.event_sender {
             let _ = sender.send(event);
         }
@@ -145,6 +161,7 @@ pub struct UninstallOperation {
 
 impl UninstallOperation {
     /// Create new uninstall operation
+    #[must_use]
     pub fn new(state_manager: StateManager, store: PackageStore) -> Self {
         Self {
             state_manager,
@@ -153,8 +170,13 @@ impl UninstallOperation {
     }
 
     /// Execute uninstallation
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if package removal fails or dependency checks fail.
     pub async fn execute(&mut self, context: UninstallContext) -> Result<InstallResult, Error> {
-        self.send_event(
+        Self::send_event(
+            self,
             &context,
             Event::UninstallStarting {
                 packages: context.packages.clone(),
@@ -183,10 +205,8 @@ impl UninstallOperation {
         // Check for dependents if not forcing
         if !context.force {
             for package in &packages_to_remove {
-                let package_id = spsv2_resolver::PackageId::new(
-                    package.name.clone(),
-                    package.version(),
-                );
+                let package_id =
+                    spsv2_resolver::PackageId::new(package.name.clone(), package.version());
                 let dependents = self
                     .state_manager
                     .get_package_dependents(&package_id)
@@ -204,23 +224,25 @@ impl UninstallOperation {
             // Return what would be removed without actually doing it
             let mut result = InstallResult::new(uuid::Uuid::new_v4());
             for package in &packages_to_remove {
-                let package_id = spsv2_resolver::PackageId::new(package.name.clone(), package.version());
+                let package_id =
+                    spsv2_resolver::PackageId::new(package.name.clone(), package.version());
                 result.add_removed(package_id);
             }
             return Ok(result);
         }
 
         // Perform atomic uninstallation
-        let mut atomic_installer =
+        let _atomic_installer =
             AtomicInstaller::new(self.state_manager.clone(), self.store.clone());
 
         let package_ids: Vec<spsv2_resolver::PackageId> = packages_to_remove
             .iter()
             .map(|pkg| spsv2_resolver::PackageId::new(pkg.name.clone(), pkg.version()))
             .collect();
-        let result = self.remove_packages(&package_ids[..]).await?;
+        let result = Self::remove_packages(self, &package_ids[..]);
 
-        self.send_event(
+        Self::send_event(
+            self,
             &context,
             Event::UninstallCompleted {
                 packages: result
@@ -236,7 +258,7 @@ impl UninstallOperation {
     }
 
     /// Remove packages from system
-    async fn remove_packages(&self, packages: &[PackageId]) -> Result<InstallResult, Error> {
+    fn remove_packages(_self: &Self, packages: &[PackageId]) -> InstallResult {
         // This is a simplified implementation
         // In practice, this would:
         // 1. Create a new staging state
@@ -251,11 +273,11 @@ impl UninstallOperation {
             result.add_removed(package_id.clone());
         }
 
-        Ok(result)
+        result
     }
 
     /// Send event if context has event sender
-    fn send_event(&self, context: &UninstallContext, event: Event) {
+    fn send_event(_self: &Self, context: &UninstallContext, event: Event) {
         if let Some(sender) = &context.event_sender {
             let _ = sender.send(event);
         }
@@ -272,7 +294,15 @@ pub struct UpdateOperation {
 
 impl UpdateOperation {
     /// Create new update operation
-    pub fn new(resolver: Resolver, state_manager: StateManager, store: PackageStore) -> Result<Self, Error> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if install operation initialization fails.
+    pub fn new(
+        resolver: Resolver,
+        state_manager: StateManager,
+        store: PackageStore,
+    ) -> Result<Self, Error> {
         let install_operation = InstallOperation::new(resolver, state_manager.clone(), store)?;
 
         Ok(Self {
@@ -282,8 +312,13 @@ impl UpdateOperation {
     }
 
     /// Execute update
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if package resolution fails, update conflicts occur, or installation fails.
     pub async fn execute(&mut self, context: UpdateContext) -> Result<InstallResult, Error> {
-        self.send_event(
+        Self::send_event(
+            self,
             &context,
             Event::UpdateStarting {
                 packages: if context.packages.is_empty() {
@@ -335,7 +370,8 @@ impl UpdateOperation {
         // Execute installation (which handles updates)
         let result = self.install_operation.execute(install_context).await?;
 
-        self.send_event(
+        Self::send_event(
+            self,
             &context,
             Event::UpdateCompleted {
                 packages: result
@@ -351,7 +387,7 @@ impl UpdateOperation {
     }
 
     /// Send event if context has event sender
-    fn send_event(&self, context: &UpdateContext, event: Event) {
+    fn send_event(_self: &Self, context: &UpdateContext, event: Event) {
         if let Some(sender) = &context.event_sender {
             let _ = sender.send(event);
         }
@@ -375,7 +411,7 @@ mod tests {
 
         let resolver = Resolver::new(index_manager);
         let state_manager = StateManager::new(temp.path()).await.unwrap();
-        let store = PackageStore::new(temp.path()).await.unwrap();
+        let store = PackageStore::new(temp.path().to_path_buf());
 
         (resolver, state_manager, store)
     }
@@ -384,17 +420,17 @@ mod tests {
     async fn test_install_operation_creation() {
         let (resolver, state_manager, store) = create_test_setup().await;
 
-        let operation = InstallOperation::new(resolver, state_manager, store);
+        let operation = InstallOperation::new(resolver, state_manager, store).unwrap();
 
         // Just verify creation succeeds
-        assert_eq!(operation.executor.max_concurrency, 4);
+        assert_eq!(operation.executor.max_concurrency(), 4);
     }
 
     #[tokio::test]
     async fn test_uninstall_operation_creation() {
         let (_, state_manager, store) = create_test_setup().await;
 
-        let operation = UninstallOperation::new(state_manager, store);
+        let _operation = UninstallOperation::new(state_manager, store);
 
         // Just verify creation succeeds - not much to test here
     }
@@ -403,7 +439,7 @@ mod tests {
     async fn test_update_operation_creation() {
         let (resolver, state_manager, store) = create_test_setup().await;
 
-        let operation = UpdateOperation::new(resolver, state_manager, store);
+        let _operation = UpdateOperation::new(resolver, state_manager, store).unwrap();
 
         // Just verify creation succeeds
     }

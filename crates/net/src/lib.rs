@@ -9,7 +9,7 @@
 mod client;
 mod download;
 
-pub use client::{NetClient, NetConfig, DownloadProgress};
+pub use client::{DownloadProgress, NetClient, NetConfig};
 pub use download::{Download, DownloadResult};
 
 use spsv2_errors::{Error, NetworkError};
@@ -19,6 +19,11 @@ use std::path::Path;
 use url::Url;
 
 /// Download a file with progress reporting
+///
+/// # Errors
+///
+/// Returns an error if the URL is invalid, the download fails, or there are
+/// I/O errors while writing the file.
 pub async fn download_file(
     client: &NetClient,
     url: &str,
@@ -31,6 +36,11 @@ pub async fn download_file(
 }
 
 /// Fetch text content from a URL
+///
+/// # Errors
+///
+/// Returns an error if the HTTP request fails, the server returns an error status,
+/// or the response body cannot be decoded as text.
 pub async fn fetch_text(client: &NetClient, url: &str, tx: &EventSender) -> Result<String, Error> {
     tx.emit(Event::DebugLog {
         message: format!("Fetching text from {url}"),
@@ -54,6 +64,11 @@ pub async fn fetch_text(client: &NetClient, url: &str, tx: &EventSender) -> Resu
 }
 
 /// Fetch binary content from a URL
+///
+/// # Errors
+///
+/// Returns an error if the HTTP request fails, the server returns an error status,
+/// or the response body cannot be read as bytes.
 pub async fn fetch_bytes(
     client: &NetClient,
     url: &str,
@@ -82,6 +97,11 @@ pub async fn fetch_bytes(
 }
 
 /// Check if a URL is accessible
+///
+/// # Errors
+///
+/// Returns an error if there are network issues preventing the HEAD request.
+/// Note: This function returns `Ok(false)` for inaccessible URLs rather than errors.
 pub async fn check_url(client: &NetClient, url: &str) -> Result<bool, Error> {
     match client.head(url).await {
         Ok(response) => Ok(response.status().is_success()),
@@ -90,6 +110,10 @@ pub async fn check_url(client: &NetClient, url: &str) -> Result<bool, Error> {
 }
 
 /// Parse and validate a URL
+///
+/// # Errors
+///
+/// Returns an error if the URL string is malformed or invalid according to RFC 3986.
 pub fn parse_url(url: &str) -> Result<Url, Error> {
     Url::parse(url).map_err(|e| NetworkError::InvalidUrl(e.to_string()).into())
 }
@@ -101,6 +125,6 @@ mod tests {
     #[test]
     fn test_parse_url() {
         assert!(parse_url("https://example.com").is_ok());
-        assert!(parse_url("invalid://url").is_err());
+        assert!(parse_url("not a url").is_err());
     }
 }

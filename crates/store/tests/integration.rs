@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests {
     use spsv2_hash::Hash;
-    use spsv2_manifest::{Manifest, ManifestBuilder};
+    use spsv2_manifest::ManifestBuilder;
     use spsv2_store::*;
     use spsv2_types::{Arch, Version};
     use tempfile::tempdir;
@@ -13,8 +13,8 @@ mod tests {
         // Create manifest
         let manifest = ManifestBuilder::new(
             "test-pkg".to_string(),
-            Version::parse("1.0.0")?,
-            Arch::Arm64,
+            &Version::parse("1.0.0")?,
+            &Arch::Arm64,
         )
         .description("Test package".to_string())
         .depends_on("libtest>=1.0")
@@ -73,7 +73,7 @@ mod tests {
         let sp_file = temp.path().join("test.sp");
 
         // Create store
-        let store = Store::new(store_dir.clone());
+        let store = PackageStore::new(store_dir.clone());
 
         // Create and archive test package
         create_test_package(&pkg_dir).await.unwrap();
@@ -100,12 +100,12 @@ mod tests {
         let dest_dir = temp.path().join("dest");
 
         // Create store and package
-        let store = Store::new(store_dir.clone());
+        let store = PackageStore::new(store_dir.clone());
         create_test_package(&pkg_dir).await.unwrap();
         create_package(&pkg_dir, &sp_file).await.unwrap();
 
         // Add to store
-        let stored = store.add_package(&sp_file).await.unwrap();
+        let _stored = store.add_package(&sp_file).await.unwrap();
         let hash = Hash::hash_file(&sp_file).await.unwrap();
 
         // Link to destination

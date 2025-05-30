@@ -235,7 +235,7 @@ pub enum Event {
         packages: Vec<String>,
         state_id: uuid::Uuid,
     },
-    
+
     // Package download events
     PackageDownloaded {
         name: String,
@@ -246,13 +246,13 @@ pub enum Event {
         version: Version,
         path: String,
     },
-    
+
     // Dependency resolution
     DependencyResolving {
         package: String,
         count: usize,
     },
-    
+
     // Uninstall operations
     UninstallStarting {
         packages: Vec<String>,
@@ -261,8 +261,8 @@ pub enum Event {
         packages: Vec<String>,
         state_id: uuid::Uuid,
     },
-    
-    // Update operations  
+
+    // Update operations
     UpdateStarting {
         packages: Vec<String>,
     },
@@ -270,7 +270,7 @@ pub enum Event {
         packages: Vec<String>,
         state_id: uuid::Uuid,
     },
-    
+
     // Upgrade operations
     UpgradeStarting {
         packages: Vec<String>,
@@ -279,7 +279,7 @@ pub enum Event {
         packages: Vec<String>,
         state_id: uuid::Uuid,
     },
-    
+
     // Rollback operations
     RollbackStarting {
         target_state: uuid::Uuid,

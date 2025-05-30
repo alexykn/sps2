@@ -1,19 +1,18 @@
 //! Main dependency resolver implementation
 
-use crate::{
-    DepEdge, DepKind, ExecutionPlan, PackageId, ResolutionContext,
-    ResolutionResult, ResolvedNode,
-};
 use crate::graph::DependencyGraph;
+use crate::{
+    DepEdge, DepKind, ExecutionPlan, PackageId, ResolutionContext, ResolutionResult, ResolvedNode,
+};
+use semver::Version;
 use spsv2_errors::{Error, PackageError};
 use spsv2_index::{IndexManager, VersionEntry};
 use spsv2_manifest::Manifest;
 use spsv2_types::package::PackageSpec;
 use spsv2_types::version::VersionSpec;
-use semver::Version;
-use std::str::FromStr;
 use std::collections::HashSet;
 use std::path::Path;
+use std::str::FromStr;
 
 /// Dependency resolver
 #[derive(Clone)]
@@ -24,30 +23,39 @@ pub struct Resolver {
 
 impl Resolver {
     /// Create new resolver with index manager
+    #[must_use]
     pub fn new(index: IndexManager) -> Self {
         Self { index }
     }
 
     /// Resolve dependencies for the given context
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - A package is not found in the index
+    /// - There are dependency cycles in the resolution graph
+    /// - Version parsing fails
+    /// - Package specifications are invalid
     pub async fn resolve(&self, context: ResolutionContext) -> Result<ResolutionResult, Error> {
         let mut graph = DependencyGraph::new();
         let mut visited = HashSet::new();
 
         // Process runtime dependencies
         for spec in &context.runtime_deps {
-            self.resolve_package(&spec, DepKind::Runtime, &mut graph, &mut visited)
+            self.resolve_package(spec, DepKind::Runtime, &mut graph, &mut visited)
                 .await?;
         }
 
         // Process build dependencies
         for spec in &context.build_deps {
-            self.resolve_package(&spec, DepKind::Build, &mut graph, &mut visited)
+            self.resolve_package(spec, DepKind::Build, &mut graph, &mut visited)
                 .await?;
         }
 
         // Process local files
         for path in &context.local_files {
-            self.resolve_local_file(path, &mut graph).await?;
+            Self::resolve_local_file(path, &mut graph)?;
         }
 
         // Check for cycles
@@ -60,7 +68,7 @@ impl Resolver {
 
         // Create execution plan
         let sorted = graph.topological_sort()?;
-        let execution_plan = ExecutionPlan::from_sorted_packages(sorted, &graph);
+        let execution_plan = ExecutionPlan::from_sorted_packages(&sorted, &graph);
 
         Ok(ResolutionResult {
             nodes: graph.nodes,
@@ -77,14 +85,14 @@ impl Resolver {
         visited: &mut HashSet<PackageId>,
     ) -> Result<(), Error> {
         // Find best version matching the spec
-        let version_entry =
-            self.index
-                .find_best_version(spec)
-                .ok_or_else(|| PackageError::NotFound {
-                    name: spec.name.clone(),
-                })?;
+        let (version_str, version_entry) = self
+            .index
+            .find_best_version_with_string(spec)
+            .ok_or_else(|| PackageError::NotFound {
+                name: spec.name.clone(),
+            })?;
 
-        let version = Version::parse(&version_entry.version())?;
+        let version = Version::parse(version_str)?;
         let package_id = PackageId::new(spec.name.clone(), version.clone());
 
         // Skip if already processed
@@ -137,46 +145,45 @@ impl Resolver {
                 version_spec: edge.spec.clone(),
             };
 
-            Box::pin(self.resolve_package(&dep_spec, edge.kind.clone(), graph, visited))
-                .await?;
+            Box::pin(self.resolve_package(&dep_spec, edge.kind, graph, visited)).await?;
 
             // Add edge to graph
-            let dep_version =
-                self.index
-                    .find_best_version(&dep_spec)
-                    .ok_or_else(|| PackageError::NotFound {
-                        name: dep_spec.name.clone(),
-                    })?;
+            let (dep_version_str, _dep_version) = self
+                .index
+                .find_best_version_with_string(&dep_spec)
+                .ok_or_else(|| PackageError::NotFound {
+                    name: dep_spec.name.clone(),
+                })?;
 
-            let dep_version_parsed = Version::parse(&dep_version.version())?;
+            let dep_version_parsed = Version::parse(dep_version_str)?;
             let dep_id = PackageId::new(edge.name.clone(), dep_version_parsed);
 
-            graph.add_edge(&package_id, &dep_id);
+            graph.add_edge(&dep_id, &package_id);
         }
 
         Ok(())
     }
 
     /// Resolve a local package file
-    async fn resolve_local_file(
-        &self,
-        path: &Path,
-        graph: &mut DependencyGraph,
-    ) -> Result<(), Error> {
+    fn resolve_local_file(path: &Path, graph: &mut DependencyGraph) -> Result<(), Error> {
         // Load manifest from local .sp file
-        let manifest = self.load_local_manifest(path).await?;
+        let manifest = Self::load_local_manifest(path)?;
 
         let version = Version::parse(&manifest.package.version)?;
-        let package_id = PackageId::new(manifest.package.name.clone(), version.clone());
+        let _package_id = PackageId::new(manifest.package.name.clone(), version.clone());
 
         // Create dependency edges from manifest
         let mut deps = Vec::new();
 
         for dep in &manifest.dependencies.runtime {
-            let spec = VersionSpec::from_str(dep)?;
+            let _spec = VersionSpec::from_str(dep)?;
             // Parse dependency spec
             let dep_spec = PackageSpec::parse(dep)?;
-            let edge = DepEdge::new(dep_spec.name.clone(), dep_spec.version_spec, DepKind::Runtime);
+            let edge = DepEdge::new(
+                dep_spec.name.clone(),
+                dep_spec.version_spec,
+                DepKind::Runtime,
+            );
             deps.push(edge);
         }
 
@@ -189,7 +196,7 @@ impl Resolver {
     }
 
     /// Load manifest from local .sp file
-    async fn load_local_manifest(&self, path: &Path) -> Result<Manifest, Error> {
+    fn load_local_manifest(path: &Path) -> Result<Manifest, Error> {
         // For now, just return an error - this would need integration with store crate
         // to extract and read the manifest from the .sp archive
         Err(PackageError::InvalidFormat {
@@ -202,21 +209,25 @@ impl Resolver {
     }
 
     /// Get available versions for a package
+    #[must_use]
     pub fn get_package_versions(&self, name: &str) -> Option<Vec<&VersionEntry>> {
         self.index.get_package_versions(name)
     }
 
     /// Search for packages
+    #[must_use]
     pub fn search_packages(&self, query: &str) -> Vec<&str> {
         self.index.search(query)
     }
 
     /// Check if a package exists
+    #[must_use]
     pub fn package_exists(&self, name: &str) -> bool {
         self.index.get_package_versions(name).is_some()
     }
 
     /// Find best version for a package spec
+    #[must_use]
     pub fn find_best_version(&self, spec: &PackageSpec) -> Option<&VersionEntry> {
         self.index.find_best_version(spec)
     }
@@ -224,6 +235,7 @@ impl Resolver {
 
 /// Resolution constraints for builds vs installs
 #[derive(Clone, Debug)]
+#[allow(dead_code)] // Designed for future use when build/install logic is enhanced
 pub struct ResolutionConstraints {
     /// Include build dependencies
     pub include_build_deps: bool,
@@ -245,6 +257,7 @@ impl Default for ResolutionConstraints {
 
 impl ResolutionConstraints {
     /// Create constraints for installation (runtime deps only)
+    #[allow(dead_code)] // Will be used when installer distinguishes build vs runtime deps
     pub fn for_install() -> Self {
         Self {
             include_build_deps: false,
@@ -253,6 +266,7 @@ impl ResolutionConstraints {
     }
 
     /// Create constraints for building (include build deps)
+    #[allow(dead_code)] // Will be used when builder needs to resolve build dependencies
     pub fn for_build() -> Self {
         Self {
             include_build_deps: true,

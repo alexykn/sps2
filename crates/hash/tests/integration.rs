@@ -5,7 +5,6 @@ mod tests {
     use spsv2_hash::*;
     use tempfile::tempdir;
     use tokio::fs;
-    use tokio::io::AsyncWriteExt;
 
     #[tokio::test]
     async fn test_verify_file() {
@@ -15,10 +14,10 @@ mod tests {
         let data = b"verify this content";
         fs::write(&file_path, data).await.unwrap();
 
-        let hash = Hash::hash(data);
+        let hash = Hash::from_data(data);
         assert!(verify_file(&file_path, &hash).await.unwrap());
 
-        let wrong_hash = Hash::hash(b"different content");
+        let wrong_hash = Hash::from_data(b"different content");
         assert!(!verify_file(&file_path, &wrong_hash).await.unwrap());
     }
 

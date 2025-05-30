@@ -17,7 +17,7 @@ pub use models::{
 
 use chrono::Utc;
 use spsv2_errors::Error;
-use spsv2_types::{Version, package::PackageSpec};
+use spsv2_types::{package::PackageSpec, Version};
 // HashMap removed - not used
 use std::path::Path;
 
@@ -41,6 +41,11 @@ impl IndexManager {
     }
 
     /// Load index from cache or JSON content
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the JSON content is invalid, cache cannot be read,
+    /// or the index fails validation.
     pub async fn load(&mut self, content: Option<&str>) -> Result<(), Error> {
         let index = if let Some(json) = content {
             // Parse provided content
@@ -58,6 +63,10 @@ impl IndexManager {
     }
 
     /// Save current index to cache
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the cache cannot be written to disk.
     pub async fn save_to_cache(&self) -> Result<(), Error> {
         if let Some(index) = &self.index {
             self.cache.save(index).await?;
@@ -66,6 +75,7 @@ impl IndexManager {
     }
 
     /// Get the loaded index
+    #[must_use]
     pub fn index(&self) -> Option<&Index> {
         self.index.as_ref()
     }
@@ -89,36 +99,63 @@ impl IndexManager {
     }
 
     /// Get all versions of a package
+    #[must_use]
     pub fn get_package_versions(&self, name: &str) -> Option<Vec<&VersionEntry>> {
         let index = self.index.as_ref()?;
         let package = index.packages.get(name)?;
 
-        let mut versions: Vec<&VersionEntry> = package.versions.values().collect();
+        let mut versions: Vec<(&String, &VersionEntry)> = package.versions.iter().collect();
         versions.sort_by(|a, b| {
             // Sort by version descending (newest first)
-            Version::parse(&b.version())
+            Version::parse(b.0)
                 .unwrap_or_else(|_| Version::new(0, 0, 0))
-                .cmp(&Version::parse(&a.version()).unwrap_or_else(|_| Version::new(0, 0, 0)))
+                .cmp(&Version::parse(a.0).unwrap_or_else(|_| Version::new(0, 0, 0)))
         });
 
-        Some(versions)
+        Some(versions.into_iter().map(|(_, entry)| entry).collect())
     }
 
     /// Find the best version matching a spec
+    #[must_use]
     pub fn find_best_version(&self, spec: &PackageSpec) -> Option<&VersionEntry> {
-        let versions = self.get_package_versions(&spec.name)?;
+        self.find_best_version_with_string(spec)
+            .map(|(_, entry)| entry)
+    }
+
+    /// Find the best version matching a spec, returning both version string and entry
+    #[must_use]
+    pub fn find_best_version_with_string(
+        &self,
+        spec: &PackageSpec,
+    ) -> Option<(&str, &VersionEntry)> {
+        let index = self.index.as_ref()?;
+        let package = index.packages.get(&spec.name)?;
+
+        // Collect versions with their version strings, sort by version descending
+        let mut versions: Vec<(&String, &VersionEntry)> = package.versions.iter().collect();
+        versions.sort_by(|a, b| {
+            // Sort by version descending (newest first)
+            Version::parse(b.0)
+                .unwrap_or_else(|_| Version::new(0, 0, 0))
+                .cmp(&Version::parse(a.0).unwrap_or_else(|_| Version::new(0, 0, 0)))
+        });
 
         // Find highest version that satisfies the spec
-        versions.into_iter().find(|v| {
-            if let Ok(version) = Version::parse(&v.version()) {
-                spec.version_spec.matches(&version)
+        versions.into_iter().find_map(|(version_str, entry)| {
+            if let Ok(version) = Version::parse(version_str) {
+                if spec.version_spec.matches(&version) {
+                    Some((version_str.as_str(), entry))
+                } else {
+                    None
+                }
             } else {
-                false
+                None
             }
         })
     }
 
     /// Get a specific version entry
+    #[must_use]
     pub fn get_version(&self, name: &str, version: &str) -> Option<&VersionEntry> {
         self.index
             .as_ref()?
@@ -128,7 +165,8 @@ impl IndexManager {
             .get(version)
     }
 
-    /// Check if index is stale (older than max_age_days)
+    /// Check if index is stale (older than `max_age_days`)
+    #[must_use]
     pub fn is_stale(&self, max_age_days: u32) -> bool {
         let Some(index) = &self.index else {
             return true;
@@ -141,8 +179,17 @@ impl IndexManager {
     }
 
     /// Get index metadata
+    #[must_use]
     pub fn metadata(&self) -> Option<&IndexMetadata> {
         self.index.as_ref().map(|i| &i.metadata)
+    }
+
+    /// Set index directly (primarily for testing)
+    ///
+    /// This method bypasses validation and should only be used in tests.
+    #[doc(hidden)]
+    pub fn set_index(&mut self, index: Index) {
+        self.index = Some(index);
     }
 }
 

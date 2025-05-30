@@ -62,4 +62,7 @@ pub enum BuildError {
 
     #[error("invalid URL: {url}")]
     InvalidUrl { url: String },
+
+    #[error("signing error: {message}")]
+    SigningError { message: String },
 }

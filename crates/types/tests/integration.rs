@@ -5,6 +5,7 @@ mod tests {
     use spsv2_types::package::*;
     use spsv2_types::version::*;
     use spsv2_types::*;
+    use std::str::FromStr;
 
     #[test]
     fn test_version_spec_complex() {

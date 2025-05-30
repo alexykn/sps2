@@ -244,14 +244,14 @@ pub async fn list_states(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<StateId
     let rows = query!("SELECT id FROM states ORDER BY created_at DESC")
         .fetch_all(&mut **tx)
         .await?;
-    
+
     let mut states = Vec::new();
     for row in rows {
         let id = uuid::Uuid::parse_str(&row.id)
             .map_err(|e| Error::internal(format!("invalid state ID: {e}")))?;
         states.push(id);
     }
-    
+
     Ok(states)
 }
 
@@ -266,10 +266,10 @@ pub async fn get_state_package_names(
     state_id: &StateId,
 ) -> Result<Vec<String>, Error> {
     let id_str = state_id.to_string();
-    
+
     let rows = query!("SELECT name FROM packages WHERE state_id = ?", id_str)
         .fetch_all(&mut **tx)
         .await?;
-    
+
     Ok(rows.into_iter().map(|r| r.name).collect())
 }

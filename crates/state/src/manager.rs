@@ -1,13 +1,16 @@
 //! State manager implementation
 
-use crate::{models::*, queries};
+use crate::{
+    models::{Package, PackageRef, State, StoreRef},
+    queries,
+};
 use spsv2_errors::{Error, StateError};
 use spsv2_events::{Event, EventSender, EventSenderExt};
 use spsv2_hash::Hash;
 use spsv2_root;
-use spsv2_types::{StateId, Version};
+use spsv2_types::StateId;
 use sqlx::{Pool, Sqlite};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use uuid::Uuid;
 
 /// State manager for atomic updates
@@ -21,18 +24,22 @@ pub struct StateManager {
 
 impl StateManager {
     /// Create a new state manager with database setup
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database setup, migrations, or directory creation fails.
     pub async fn new(base_path: &std::path::Path) -> Result<Self, Error> {
         let db_path = base_path.join("state.sqlite");
         let state_path = base_path.join("states");
         let live_path = base_path.join("live");
-        
+
         // Create database pool and run migrations
         let pool = crate::create_pool(&db_path).await?;
         crate::run_migrations(&pool).await?;
-        
+
         // Create event channel (events will be ignored for now)
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-        
+
         Ok(Self {
             pool,
             state_path,
@@ -42,6 +49,7 @@ impl StateManager {
     }
 
     /// Create a new state manager with existing pool and event sender
+    #[must_use]
     pub fn with_pool(
         pool: Pool<Sqlite>,
         state_path: PathBuf,
@@ -57,6 +65,10 @@ impl StateManager {
     }
 
     /// Get the current active state
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails or no active state exists.
     pub async fn get_active_state(&self) -> Result<StateId, Error> {
         let mut tx = self.pool.begin().await?;
         let state_id = queries::get_active_state(&mut tx).await?;
@@ -65,6 +77,10 @@ impl StateManager {
     }
 
     /// Get all installed packages in current state
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
     pub async fn get_installed_packages(&self) -> Result<Vec<Package>, Error> {
         let mut tx = self.pool.begin().await?;
         let state_id = queries::get_active_state(&mut tx).await?;
@@ -74,6 +90,10 @@ impl StateManager {
     }
 
     /// Begin a state transition
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database queries fail or filesystem operations fail.
     pub async fn begin_transition(&self, operation: &str) -> Result<StateTransition, Error> {
         // Get current state
         let mut tx = self.pool.begin().await?;
@@ -100,6 +120,10 @@ impl StateManager {
     }
 
     /// Commit a state transition
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database transaction or filesystem operations fail.
     pub async fn commit_transition(
         &self,
         transition: StateTransition,
@@ -125,9 +149,11 @@ impl StateManager {
 
         // Add existing packages (minus removed ones)
         for pkg in parent_packages {
-            let removed = packages_removed.iter().any(|r| r.package_id.name == pkg.name);
+            let removed = packages_removed
+                .iter()
+                .any(|r| r.package_id.name == pkg.name);
             if !removed {
-                let id = queries::add_package(
+                let _id = queries::add_package(
                     &mut tx,
                     &transition.to,
                     &pkg.name,
@@ -142,13 +168,13 @@ impl StateManager {
 
         // Add new packages
         for pkg in &packages_added {
-            let id = queries::add_package(
+            let _id = queries::add_package(
                 &mut tx,
                 &transition.to,
                 &pkg.package_id.name,
                 &pkg.package_id.version.to_string(),
                 "placeholder_hash", // TODO: Get actual hash from package store
-                0i64, // TODO: Get actual size from package store
+                0i64,               // TODO: Get actual size from package store
             )
             .await?;
             new_packages.push(("placeholder_hash".to_string(), 0i64));
@@ -191,6 +217,10 @@ impl StateManager {
     }
 
     /// Rollback to a previous state
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations or filesystem operations fail.
     pub async fn rollback(&self, target_state: Option<StateId>) -> Result<(), Error> {
         let mut tx = self.pool.begin().await?;
 
@@ -259,6 +289,10 @@ impl StateManager {
     }
 
     /// Get state history
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
     pub async fn get_history(&self) -> Result<Vec<State>, Error> {
         let mut tx = self.pool.begin().await?;
         let states = queries::get_all_states(&mut tx).await?;
@@ -267,6 +301,10 @@ impl StateManager {
     }
 
     /// Clean up old states
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations or filesystem cleanup fails.
     pub async fn cleanup(
         &self,
         retention_count: usize,
@@ -277,10 +315,9 @@ impl StateManager {
         let mut tx = self.pool.begin().await?;
 
         // Find states to remove
-        let cutoff_time = chrono::Utc::now().timestamp() - (retention_days as i64 * 86400);
+        let cutoff_time = chrono::Utc::now().timestamp() - (i64::from(retention_days) * 86400);
         let states_to_remove =
-            queries::get_states_to_cleanup(&mut tx, retention_count, cutoff_time)
-                .await?;
+            queries::get_states_to_cleanup(&mut tx, retention_count, cutoff_time).await?;
 
         let mut space_freed = 0u64;
 
@@ -311,7 +348,7 @@ impl StateManager {
         self.tx.emit(Event::CleanupCompleted {
             states_removed: states_to_remove.len(),
             packages_removed: 0, // No packages removed in state cleanup
-            duration_ms: 0, // TODO: Add proper timing
+            duration_ms: 0,      // TODO: Add proper timing
         });
 
         Ok(CleanupResult {
@@ -321,7 +358,14 @@ impl StateManager {
     }
 
     /// Get package dependents
-    pub async fn get_package_dependents(&self, package_id: &spsv2_resolver::PackageId) -> Result<Vec<String>, Error> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    pub async fn get_package_dependents(
+        &self,
+        package_id: &spsv2_resolver::PackageId,
+    ) -> Result<Vec<String>, Error> {
         let mut tx = self.pool.begin().await?;
         let dependents = queries::get_package_dependents(&mut tx, &package_id.name).await?;
         tx.commit().await?;
@@ -329,11 +373,15 @@ impl StateManager {
     }
 
     /// Garbage collect unreferenced store items
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations fail.
     pub async fn gc_store(&self) -> Result<Vec<Hash>, Error> {
         let mut tx = self.pool.begin().await?;
 
         let unreferenced = queries::get_unreferenced_store_items(&mut tx).await?;
-        let hashes: Vec<Hash> = unreferenced.iter().map(|item| item.hash()).collect();
+        let hashes: Vec<Hash> = unreferenced.iter().map(StoreRef::hash).collect();
         let hash_strings: Vec<String> = unreferenced.iter().map(|item| item.hash.clone()).collect();
 
         queries::delete_unreferenced_store_items(&mut tx, &hash_strings).await?;
@@ -344,17 +392,32 @@ impl StateManager {
     }
 
     /// Add package reference (placeholder implementation)
-    pub async fn add_package_ref(&self, _package_ref: &PackageRef) -> Result<(), Error> {
+    ///
+    /// # Errors
+    ///
+    /// Currently returns `Ok(())` as this is a placeholder implementation.
+    pub fn add_package_ref(&self, _package_ref: &PackageRef) -> Result<(), Error> {
         // Placeholder implementation
         Ok(())
     }
 
     /// Get state path for a state ID
-    pub async fn get_state_path(&self, state_id: spsv2_types::StateId) -> Result<std::path::PathBuf, Error> {
+    ///
+    /// # Errors
+    ///
+    /// Currently does not fail, but returns `Result` for API consistency.
+    pub fn get_state_path(
+        &self,
+        state_id: spsv2_types::StateId,
+    ) -> Result<std::path::PathBuf, Error> {
         Ok(self.state_path.join(state_id.to_string()))
     }
 
     /// Set active state
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database update fails.
     pub async fn set_active_state(&self, state_id: spsv2_types::StateId) -> Result<(), Error> {
         let mut tx = self.pool.begin().await?;
         queries::set_active_state(&mut tx, &state_id).await?;
@@ -363,6 +426,10 @@ impl StateManager {
     }
 
     /// Set active state with transaction
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database update fails.
     pub async fn set_active_state_with_tx(
         &self,
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
@@ -373,6 +440,10 @@ impl StateManager {
     }
 
     /// Check if state exists
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
     pub async fn state_exists(&self, state_id: &spsv2_types::StateId) -> Result<bool, Error> {
         let mut tx = self.pool.begin().await?;
         let exists = queries::state_exists(&mut tx, state_id).await?;
@@ -381,6 +452,10 @@ impl StateManager {
     }
 
     /// List all states
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
     pub async fn list_states(&self) -> Result<Vec<spsv2_types::StateId>, Error> {
         let mut tx = self.pool.begin().await?;
         let states = queries::list_states(&mut tx).await?;
@@ -389,6 +464,10 @@ impl StateManager {
     }
 
     /// List all states with full details
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
     pub async fn list_states_detailed(&self) -> Result<Vec<State>, Error> {
         let mut tx = self.pool.begin().await?;
         let states = queries::list_states_detailed(&mut tx).await?;
@@ -397,7 +476,14 @@ impl StateManager {
     }
 
     /// Get packages in a state
-    pub async fn get_state_packages(&self, state_id: &spsv2_types::StateId) -> Result<Vec<String>, Error> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    pub async fn get_state_packages(
+        &self,
+        state_id: &spsv2_types::StateId,
+    ) -> Result<Vec<String>, Error> {
         let mut tx = self.pool.begin().await?;
         let packages = queries::get_state_package_names(&mut tx, state_id).await?;
         tx.commit().await?;
@@ -405,31 +491,51 @@ impl StateManager {
     }
 
     /// Clean up old states
-    pub async fn cleanup_old_states(&self, keep_count: usize) -> Result<Vec<spsv2_types::StateId>, Error> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations fail.
+    pub async fn cleanup_old_states(
+        &self,
+        keep_count: usize,
+    ) -> Result<Vec<spsv2_types::StateId>, Error> {
         let mut tx = self.pool.begin().await?;
         let cutoff_time = chrono::Utc::now().timestamp() - (30 * 24 * 60 * 60); // 30 days ago
         let states = queries::get_states_for_cleanup(&mut tx, keep_count, cutoff_time).await?;
         tx.commit().await?;
-        
+
         // Convert strings to StateIds
-        let state_ids = states.into_iter()
+        let state_ids = states
+            .into_iter()
             .filter_map(|s| uuid::Uuid::parse_str(&s).ok())
             .collect();
         Ok(state_ids)
     }
 
     /// Get current state ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
     pub async fn get_current_state_id(&self) -> Result<spsv2_types::StateId, Error> {
         self.get_active_state().await
     }
 
     /// Begin transaction (placeholder implementation)  
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database transaction cannot be started.
     pub async fn begin_transaction(&self) -> Result<sqlx::Transaction<'_, sqlx::Sqlite>, Error> {
         Ok(self.pool.begin().await?)
     }
 
     /// Create state with transaction (placeholder implementation)
-    pub async fn create_state_with_tx(
+    ///
+    /// # Errors
+    ///
+    /// Currently returns `Ok(())` as this is a placeholder implementation.
+    pub fn create_state_with_tx(
         &self,
         _tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         _state_id: &spsv2_types::StateId,
@@ -441,14 +547,25 @@ impl StateManager {
     }
 
     /// Get parent state ID
-    pub async fn get_parent_state_id(&self, state_id: &spsv2_types::StateId) -> Result<Option<spsv2_types::StateId>, Error> {
-        let mut tx = self.pool.begin().await?;
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations fail.
+    pub async fn get_parent_state_id(
+        &self,
+        _state_id: &spsv2_types::StateId,
+    ) -> Result<Option<spsv2_types::StateId>, Error> {
+        let tx = self.pool.begin().await?;
         // For now, return None as we need to implement proper state parent tracking
         tx.commit().await?;
         Ok(None)
     }
 
     /// Verify database consistency
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database verification fails.
     pub async fn verify_consistency(&self) -> Result<(), Error> {
         let mut tx = self.pool.begin().await?;
         // Basic verification - check if we can query the database

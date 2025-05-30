@@ -1,6 +1,5 @@
 # Build recipe for hello - a simple test program
 def metadata():
-    # For now, return a simple dict - our parser will handle this
     return {
         "name": "hello",
         "version": "1.0.0", 
@@ -10,6 +9,15 @@ def metadata():
     }
 
 def build(ctx):
-    # Note: Our current simplified API doesn't have the full context methods yet
-    # This will be enhanced in the next iteration
+    # Build the hello program using the provided context
+    # For this simple test, we'll use the local source files
+    
+    # Access context attributes
+    # ctx.NAME - package name
+    # ctx.VERSION - package version
+    # ctx.PREFIX - installation prefix
+    # ctx.JOBS - number of parallel jobs
+    
+    # TODO: Methods (fetch, make, install) are not yet callable from Starlark
+    # The build system will need to handle the actual compilation for now
     pass

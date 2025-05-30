@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod tests {
     use spsv2_config::*;
+    use spsv2_types::{ColorChoice, OutputFormat};
     use std::io::Write;
     use tempfile::NamedTempFile;
 

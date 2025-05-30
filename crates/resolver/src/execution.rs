@@ -55,8 +55,9 @@ pub struct ExecutionPlan {
 
 impl ExecutionPlan {
     /// Create execution plan from topologically sorted packages
+    #[must_use]
     pub fn from_sorted_packages(
-        sorted: Vec<PackageId>,
+        sorted: &[PackageId],
         graph: &crate::graph::DependencyGraph,
     ) -> Self {
         let mut metadata = HashMap::new();
@@ -64,9 +65,14 @@ impl ExecutionPlan {
         let mut remaining: std::collections::HashSet<PackageId> = sorted.iter().cloned().collect();
 
         // Initialize metadata
-        for package_id in &sorted {
+        for package_id in sorted {
             if let Some(node) = graph.nodes.get(package_id) {
-                let in_degree = graph.edges.get(package_id).map_or(0, |deps| deps.len());
+                // Calculate in-degree: count how many packages point to this package
+                let in_degree = graph
+                    .edges
+                    .iter()
+                    .filter(|(_, to_ids)| to_ids.contains(package_id))
+                    .count();
 
                 let meta = Arc::new(NodeMeta::new(node.action.clone(), in_degree));
                 metadata.insert(package_id.clone(), meta);
@@ -74,11 +80,13 @@ impl ExecutionPlan {
         }
 
         // Build parent relationships
-        for (package_id, dependencies) in &graph.edges {
-            if let Some(meta) = metadata.get_mut(package_id) {
-                for dep in dependencies {
-                    if let Some(meta) = Arc::get_mut(meta) {
-                        meta.add_parent(package_id.clone());
+        // For each edge from_id -> to_id, add to_id as a parent of from_id
+        // (i.e., to_id depends on from_id, so completing from_id might make to_id ready)
+        for (from_id, to_ids) in &graph.edges {
+            if let Some(from_meta) = metadata.get_mut(from_id) {
+                if let Some(meta) = Arc::get_mut(from_meta) {
+                    for to_id in to_ids {
+                        meta.add_parent(to_id.clone());
                     }
                 }
             }
@@ -90,9 +98,16 @@ impl ExecutionPlan {
 
             // Find packages with no unresolved dependencies
             for package_id in &remaining {
-                let deps_count = graph.edges.get(package_id).map_or(0, |deps| {
-                    deps.iter().filter(|dep| remaining.contains(dep)).count()
-                });
+                // Count how many remaining packages this package depends on
+                // With corrected edge direction: if A depends on B, edge is B->A
+                // So we need to count incoming edges from packages still in remaining
+                let deps_count = graph
+                    .edges
+                    .iter()
+                    .filter(|(from_id, to_ids)| {
+                        remaining.contains(from_id) && to_ids.contains(package_id)
+                    })
+                    .count();
 
                 if deps_count == 0 {
                     batch.push(package_id.clone());
@@ -116,16 +131,19 @@ impl ExecutionPlan {
     }
 
     /// Get execution batches
+    #[must_use]
     pub fn batches(&self) -> &[Vec<PackageId>] {
         &self.batches
     }
 
     /// Get metadata for a package
+    #[must_use]
     pub fn metadata(&self, package_id: &PackageId) -> Option<&Arc<NodeMeta>> {
         self.metadata.get(package_id)
     }
 
     /// Get packages that are ready to execute (no dependencies)
+    #[must_use]
     pub fn ready_packages(&self) -> Vec<PackageId> {
         self.metadata
             .iter()
@@ -140,6 +158,7 @@ impl ExecutionPlan {
     }
 
     /// Mark package as completed and get newly ready packages
+    #[must_use]
     pub fn complete_package(&self, package_id: &PackageId) -> Vec<PackageId> {
         let Some(meta) = self.metadata.get(package_id) else {
             return Vec::new();
@@ -160,11 +179,13 @@ impl ExecutionPlan {
     }
 
     /// Get total number of packages
+    #[must_use]
     pub fn package_count(&self) -> usize {
         self.metadata.len()
     }
 
     /// Check if all packages are completed
+    #[must_use]
     pub fn is_complete(&self) -> bool {
         self.metadata.values().all(|meta| meta.in_degree() == 0)
     }
@@ -172,6 +193,7 @@ impl ExecutionPlan {
 
 /// Execution statistics
 #[derive(Debug, Default)]
+#[allow(dead_code)] // Designed for future monitoring and reporting features
 pub struct ExecutionStats {
     /// Total packages processed
     pub total_packages: usize,
@@ -187,6 +209,7 @@ pub struct ExecutionStats {
 
 impl ExecutionStats {
     /// Calculate stats from execution plan
+    #[allow(dead_code)] // Will be used for installation progress reporting
     pub fn from_plan(plan: &ExecutionPlan, graph: &crate::graph::DependencyGraph) -> Self {
         let mut stats = Self {
             total_packages: plan.package_count(),
@@ -260,11 +283,12 @@ mod tests {
         graph.add_node(node_c);
 
         // a depends on b, b depends on c
-        graph.add_edge(&id_a, &id_b);
-        graph.add_edge(&id_b, &id_c);
+        // For topological sort: dependencies come first, so b->a and c->b
+        graph.add_edge(&id_b, &id_a);
+        graph.add_edge(&id_c, &id_b);
 
         let sorted = graph.topological_sort().unwrap();
-        let plan = ExecutionPlan::from_sorted_packages(sorted, &graph);
+        let plan = ExecutionPlan::from_sorted_packages(&sorted, &graph);
 
         // Should have 3 batches: [c], [b], [a]
         assert_eq!(plan.batches().len(), 3);
@@ -274,7 +298,7 @@ mod tests {
 
         // Initially only c should be ready
         let ready = plan.ready_packages();
-        assert_eq!(ready, vec![id_c]);
+        assert_eq!(ready, vec![id_c.clone()]);
 
         // After completing c, b should be ready
         let newly_ready = plan.complete_package(&id_c);
@@ -302,7 +326,7 @@ mod tests {
         graph.add_node(node_b);
 
         let sorted = graph.topological_sort().unwrap();
-        let plan = ExecutionPlan::from_sorted_packages(sorted, &graph);
+        let plan = ExecutionPlan::from_sorted_packages(&sorted, &graph);
         let stats = ExecutionStats::from_plan(&plan, &graph);
 
         assert_eq!(stats.total_packages, 2);

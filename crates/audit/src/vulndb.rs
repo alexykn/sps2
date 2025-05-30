@@ -94,7 +94,7 @@ impl VulnDbManager {
     async fn create_tables(&self, pool: &SqlitePool) -> Result<(), Error> {
         // Create vulnerabilities table
         sqlx::query(
-            r#"
+            r"
             CREATE TABLE IF NOT EXISTS vulnerabilities (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 cve_id TEXT UNIQUE NOT NULL,
@@ -105,7 +105,7 @@ impl VulnDbManager {
                 modified TEXT NOT NULL,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
-            "#,
+            ",
         )
         .execute(pool)
         .await
@@ -115,7 +115,7 @@ impl VulnDbManager {
 
         // Create affected packages table
         sqlx::query(
-            r#"
+            r"
             CREATE TABLE IF NOT EXISTS affected_packages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 vulnerability_id INTEGER NOT NULL,
@@ -127,7 +127,7 @@ impl VulnDbManager {
                 cpe TEXT,
                 FOREIGN KEY (vulnerability_id) REFERENCES vulnerabilities(id)
             )
-            "#,
+            ",
         )
         .execute(pool)
         .await
@@ -137,7 +137,7 @@ impl VulnDbManager {
 
         // Create references table
         sqlx::query(
-            r#"
+            r"
             CREATE TABLE IF NOT EXISTS vulnerability_references (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 vulnerability_id INTEGER NOT NULL,
@@ -145,7 +145,7 @@ impl VulnDbManager {
                 reference_type TEXT,
                 FOREIGN KEY (vulnerability_id) REFERENCES vulnerabilities(id)
             )
-            "#,
+            ",
         )
         .execute(pool)
         .await

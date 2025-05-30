@@ -14,9 +14,9 @@ mod types;
 
 pub use context::{OpsContextBuilder, OpsCtx};
 pub use types::{
-    BuildReport, ChangeType, ComponentHealth, HealthCheck, HealthIssue, HealthStatus, InstallReport, 
-    InstallRequest, IssueSeverity, OpChange, OpReport, PackageInfo, PackageStatus, SearchResult,
-    StateInfo,
+    BuildReport, ChangeType, ComponentHealth, HealthCheck, HealthIssue, HealthStatus,
+    InstallReport, InstallRequest, IssueSeverity, OpChange, OpReport, PackageInfo, PackageStatus,
+    SearchResult, StateInfo,
 };
 
 // Re-export operation functions
@@ -27,7 +27,6 @@ pub use small_ops::{
 };
 
 use spsv2_errors::Error;
-use spsv2_events::EventSender;
 
 /// Operation result that can be serialized for CLI output
 #[derive(Clone, Debug, serde::Serialize)]
@@ -57,6 +56,10 @@ pub enum OperationResult {
 
 impl OperationResult {
     /// Convert to JSON string
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if JSON serialization fails.
     pub fn to_json(&self) -> Result<String, Error> {
         serde_json::to_string_pretty(self).map_err(|e| {
             spsv2_errors::OpsError::SerializationError {
@@ -67,6 +70,7 @@ impl OperationResult {
     }
 
     /// Check if this is a success result
+    #[must_use]
     pub fn is_success(&self) -> bool {
         match self {
             OperationResult::Success(_)

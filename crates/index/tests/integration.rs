@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests {
     use spsv2_index::*;
-    use spsv2_types::{PackageSpec, Version};
+    use spsv2_types::PackageSpec;
     use tempfile::tempdir;
 
     fn create_test_index() -> Index {
@@ -121,7 +121,7 @@ mod tests {
         let mut manager = IndexManager::new(temp.path());
 
         let index = create_test_index();
-        manager.index = Some(index);
+        manager.set_index(index);
 
         // Save to cache
         manager.save_to_cache().await.unwrap();
@@ -143,7 +143,7 @@ mod tests {
         // Create index with old timestamp
         let mut index = Index::new();
         index.metadata.timestamp = chrono::Utc::now() - chrono::Duration::days(10);
-        manager.index = Some(index);
+        manager.set_index(index);
 
         // Should be stale with 7 day limit
         assert!(manager.is_stale(7));
@@ -158,7 +158,7 @@ mod tests {
         let mut manager = IndexManager::new(temp.path());
 
         let index = create_test_index();
-        manager.index = Some(index);
+        manager.set_index(index);
 
         // Test various constraints
         let test_cases = vec![
@@ -166,7 +166,7 @@ mod tests {
             ("jq<1.7.0", Some("def456")),  // 1.6.0
             ("jq~=1.6.0", Some("def456")), // 1.6.0 (compatible)
             ("jq>2.0.0", None),            // No match
-            ("nonexistent>=1.0", None),    // Package doesn't exist
+            ("nonexistent>=1.0.0", None),  // Package doesn't exist
         ];
 
         for (spec_str, expected_hash) in test_cases {

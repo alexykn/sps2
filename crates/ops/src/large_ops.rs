@@ -1,15 +1,23 @@
 //! Large operations that delegate to specialized crates
 
-use crate::{BuildReport, ChangeType, InstallReport, InstallRequest, OpChange, OpReport, OpsCtx};
-use spsv2_builder::{BuildConfig, BuildContext};
+use crate::{BuildReport, InstallReport, InstallRequest, OpsCtx};
+use spsv2_builder::BuildContext;
 use spsv2_errors::{Error, OpsError};
 use spsv2_events::Event;
 use spsv2_install::{InstallConfig, InstallContext, Installer, UninstallContext, UpdateContext};
+use spsv2_package::{execute_recipe, load_recipe};
 use spsv2_types::{PackageSpec, Version};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 /// Install packages (delegates to install crate)
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - No packages are specified
+/// - Package specifications cannot be parsed
+/// - Installation fails
 pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallReport, Error> {
     let start = Instant::now();
 
@@ -20,9 +28,11 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
     // Parse install requests
     let install_requests = parse_install_requests(package_specs)?;
 
-    ctx.tx.send(Event::InstallStarting {
-        packages: package_specs.iter().map(ToString::to_string).collect(),
-    });
+    ctx.tx
+        .send(Event::InstallStarting {
+            packages: package_specs.iter().map(ToString::to_string).collect(),
+        })
+        .ok();
 
     // Create installer with configuration
     let config = InstallConfig::default();
@@ -87,32 +97,43 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
             })
             .collect(),
         state_id: result.state_id,
-        duration_ms: start.elapsed().as_millis() as u64,
+        duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
     };
 
-    ctx.tx.send(Event::InstallCompleted {
-        packages: result
-            .installed_packages
-            .iter()
-            .map(|pkg| pkg.name.clone())
-            .collect(),
-        state_id: result.state_id,
-    });
+    ctx.tx
+        .send(Event::InstallCompleted {
+            packages: result
+                .installed_packages
+                .iter()
+                .map(|pkg| pkg.name.clone())
+                .collect(),
+            state_id: result.state_id,
+        })
+        .ok();
 
     Ok(report)
 }
 
 /// Update packages (delegates to install crate)
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - No packages are installed or specified
+/// - Update resolution fails
+/// - Installation of updates fails
 pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallReport, Error> {
     let start = Instant::now();
 
-    ctx.tx.send(Event::UpdateStarting {
-        packages: if package_names.is_empty() {
-            vec!["all".to_string()]
-        } else {
-            package_names.to_vec()
-        },
-    });
+    ctx.tx
+        .send(Event::UpdateStarting {
+            packages: if package_names.is_empty() {
+                vec!["all".to_string()]
+            } else {
+                package_names.to_vec()
+            },
+        })
+        .ok();
 
     // Create installer
     let config = InstallConfig::default();
@@ -170,32 +191,43 @@ pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRep
             })
             .collect(),
         state_id: result.state_id,
-        duration_ms: start.elapsed().as_millis() as u64,
+        duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
     };
 
-    ctx.tx.send(Event::UpdateCompleted {
-        packages: result
-            .updated_packages
-            .iter()
-            .map(|pkg| pkg.name.clone())
-            .collect(),
-        state_id: result.state_id,
-    });
+    ctx.tx
+        .send(Event::UpdateCompleted {
+            packages: result
+                .updated_packages
+                .iter()
+                .map(|pkg| pkg.name.clone())
+                .collect(),
+            state_id: result.state_id,
+        })
+        .ok();
 
     Ok(report)
 }
 
 /// Upgrade packages (delegates to install crate)
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - No packages are installed or specified
+/// - Upgrade resolution fails
+/// - Installation of upgrades fails
 pub async fn upgrade(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallReport, Error> {
     let start = Instant::now();
 
-    ctx.tx.send(Event::UpgradeStarting {
-        packages: if package_names.is_empty() {
-            vec!["all".to_string()]
-        } else {
-            package_names.to_vec()
-        },
-    });
+    ctx.tx
+        .send(Event::UpgradeStarting {
+            packages: if package_names.is_empty() {
+                vec!["all".to_string()]
+            } else {
+                package_names.to_vec()
+            },
+        })
+        .ok();
 
     // Create installer
     let config = InstallConfig::default();
@@ -253,22 +285,31 @@ pub async fn upgrade(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRe
             })
             .collect(),
         state_id: result.state_id,
-        duration_ms: start.elapsed().as_millis() as u64,
+        duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
     };
 
-    ctx.tx.send(Event::UpgradeCompleted {
-        packages: result
-            .updated_packages
-            .iter()
-            .map(|pkg| pkg.name.clone())
-            .collect(),
-        state_id: result.state_id,
-    });
+    ctx.tx
+        .send(Event::UpgradeCompleted {
+            packages: result
+                .updated_packages
+                .iter()
+                .map(|pkg| pkg.name.clone())
+                .collect(),
+            state_id: result.state_id,
+        })
+        .ok();
 
     Ok(report)
 }
 
 /// Uninstall packages (delegates to install crate)
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - No packages are specified
+/// - Package removal would break dependencies
+/// - Uninstallation fails
 pub async fn uninstall(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallReport, Error> {
     let start = Instant::now();
 
@@ -276,9 +317,11 @@ pub async fn uninstall(ctx: &OpsCtx, package_names: &[String]) -> Result<Install
         return Err(OpsError::NoPackagesSpecified.into());
     }
 
-    ctx.tx.send(Event::UninstallStarting {
-        packages: package_names.to_vec(),
-    });
+    ctx.tx
+        .send(Event::UninstallStarting {
+            packages: package_names.to_vec(),
+        })
+        .ok();
 
     // Create installer
     let config = InstallConfig::default();
@@ -314,22 +357,31 @@ pub async fn uninstall(ctx: &OpsCtx, package_names: &[String]) -> Result<Install
             })
             .collect(),
         state_id: result.state_id,
-        duration_ms: start.elapsed().as_millis() as u64,
+        duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
     };
 
-    ctx.tx.send(Event::UninstallCompleted {
-        packages: result
-            .removed_packages
-            .iter()
-            .map(|pkg| pkg.name.clone())
-            .collect(),
-        state_id: result.state_id,
-    });
+    ctx.tx
+        .send(Event::UninstallCompleted {
+            packages: result
+                .removed_packages
+                .iter()
+                .map(|pkg| pkg.name.clone())
+                .collect(),
+            state_id: result.state_id,
+        })
+        .ok();
 
     Ok(report)
 }
 
 /// Build package from recipe (delegates to builder crate)
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Recipe file doesn't exist or has invalid extension
+/// - Recipe cannot be loaded or executed
+/// - Build process fails
 pub async fn build(
     ctx: &OpsCtx,
     recipe_path: &Path,
@@ -344,7 +396,7 @@ pub async fn build(
         .into());
     }
 
-    if !recipe_path.extension().map_or(false, |ext| ext == "star") {
+    if recipe_path.extension().is_none_or(|ext| ext != "star") {
         return Err(OpsError::InvalidRecipe {
             path: recipe_path.display().to_string(),
             reason: "recipe must have .star extension".to_string(),
@@ -352,18 +404,33 @@ pub async fn build(
         .into());
     }
 
-    ctx.tx.send(Event::BuildStarting {
-        package: "unknown".to_string(), // Will be determined from recipe
-        version: Version::parse("0.0.0").unwrap_or_else(|_| Version::new(0, 0, 0)),
-    });
+    ctx.tx
+        .send(Event::BuildStarting {
+            package: "unknown".to_string(), // Will be determined from recipe
+            version: Version::parse("0.0.0").unwrap_or_else(|_| Version::new(0, 0, 0)),
+        })
+        .ok();
 
-    // Parse recipe to get package name and version
-    let (package_name, package_version) = parse_recipe_metadata(recipe_path)?;
+    // Load and execute recipe to get package metadata
+    let recipe = load_recipe(recipe_path).await?;
+    let recipe_result = execute_recipe(&recipe)?;
+
+    let package_name = recipe_result.metadata.name.clone();
+    let package_version = Version::parse(&recipe_result.metadata.version)?;
+
+    // Send updated build starting event with correct info
+    ctx.tx
+        .send(Event::BuildStarting {
+            package: package_name.clone(),
+            version: package_version.clone(),
+        })
+        .ok();
 
     // Create build context
-    let output_directory = output_dir
-        .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let output_directory = output_dir.map_or_else(
+        || std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+        PathBuf::from,
+    );
 
     let build_context = BuildContext::new(
         package_name.clone(),
@@ -373,28 +440,24 @@ pub async fn build(
     )
     .with_event_sender(ctx.tx.clone());
 
-    // Create builder with resolver and store
-    let config = BuildConfig::default();
-    let builder = spsv2_builder::Builder::with_config(config)
-        .with_resolver(ctx.resolver.clone())
-        .with_store(ctx.store.clone());
-
-    // Execute build
-    let result = builder.build(build_context).await?;
+    // Use the builder from context (already configured with resolver and store)
+    let result = ctx.builder.build(build_context).await?;
 
     let report = BuildReport {
         package: package_name,
         version: package_version,
         output_path: result.package_path,
-        duration_ms: start.elapsed().as_millis() as u64,
+        duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
         sbom_generated: !result.sbom_files.is_empty(),
     };
 
-    ctx.tx.send(Event::BuildCompleted {
-        package: report.package.clone(),
-        version: report.version.clone(),
-        path: report.output_path.clone(),
-    });
+    ctx.tx
+        .send(Event::BuildCompleted {
+            package: report.package.clone(),
+            version: report.version.clone(),
+            path: report.output_path.clone(),
+        })
+        .ok();
 
     Ok(report)
 }
@@ -404,7 +467,11 @@ fn parse_install_requests(specs: &[String]) -> Result<Vec<InstallRequest>, Error
     let mut requests = Vec::new();
 
     for spec in specs {
-        if spec.ends_with(".sp") && Path::new(spec).exists() {
+        if Path::new(spec)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("sp"))
+            && Path::new(spec).exists()
+        {
             // Local file
             requests.push(InstallRequest::LocalFile(PathBuf::from(spec)));
         } else {
@@ -415,23 +482,6 @@ fn parse_install_requests(specs: &[String]) -> Result<Vec<InstallRequest>, Error
     }
 
     Ok(requests)
-}
-
-/// Parse recipe metadata to get package name and version
-fn parse_recipe_metadata(recipe_path: &Path) -> Result<(String, Version), Error> {
-    // This is a simplified implementation
-    // In practice, this would parse the Starlark recipe to extract metadata
-
-    let recipe_name = recipe_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unknown");
-
-    // For now, just use the filename as package name and default version
-    Ok((
-        recipe_name.to_string(),
-        Version::parse("1.0.0").unwrap_or_else(|_| Version::new(1, 0, 0)),
-    ))
 }
 
 #[cfg(test)]
@@ -458,27 +508,20 @@ mod tests {
 
         match &requests[0] {
             InstallRequest::Remote(spec) => assert_eq!(spec.name, "curl"),
-            _ => panic!("Expected remote request"),
+            InstallRequest::LocalFile(_) => panic!("Expected remote request"),
         }
 
         match &requests[1] {
-            InstallRequest::LocalFile(path) => assert!(path.to_string().ends_with(".sp")),
-            _ => panic!("Expected local file request"),
+            InstallRequest::LocalFile(path) => {
+                assert!(path.display().to_string().to_lowercase().ends_with(".sp"))
+            }
+            InstallRequest::Remote(_) => panic!("Expected local file request"),
         }
 
         match &requests[2] {
             InstallRequest::Remote(spec) => assert_eq!(spec.name, "jq"),
-            _ => panic!("Expected remote request"),
+            InstallRequest::LocalFile(_) => panic!("Expected remote request"),
         }
-    }
-
-    #[test]
-    fn test_parse_recipe_metadata() {
-        let recipe_path = Path::new("/path/to/jq.rhai");
-        let (name, version) = parse_recipe_metadata(recipe_path).unwrap();
-
-        assert_eq!(name, "jq");
-        assert_eq!(version, Version::parse("1.0.0").unwrap());
     }
 
     #[test]

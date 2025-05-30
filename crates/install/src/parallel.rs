@@ -1,6 +1,6 @@
 //! Parallel package execution with dependency ordering
 
-use crate::InstallContext;
+// InstallContext import removed as it's not used in this module
 use crossbeam::queue::SegQueue;
 use dashmap::DashMap;
 use spsv2_errors::{Error, InstallError};
@@ -9,7 +9,7 @@ use spsv2_net::NetClient;
 use spsv2_resolver::{ExecutionPlan, NodeAction, PackageId, ResolvedNode};
 use spsv2_store::PackageStore;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tokio::task::JoinHandle;
@@ -29,9 +29,13 @@ pub struct ParallelExecutor {
 
 impl ParallelExecutor {
     /// Create new parallel executor
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if network client initialization fails.
     pub fn new(store: PackageStore) -> Result<Self, Error> {
         Ok(Self {
-            net_client: NetClient::default()?,
+            net_client: NetClient::with_defaults()?,
             store,
             max_concurrency: 4,                         // Default from spec
             download_timeout: Duration::from_secs(300), // 5 minutes
@@ -39,18 +43,38 @@ impl ParallelExecutor {
     }
 
     /// Set maximum concurrency
+    #[must_use]
     pub fn with_concurrency(mut self, max_concurrency: usize) -> Self {
         self.max_concurrency = max_concurrency;
         self
     }
 
     /// Set download timeout
+    #[must_use]
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.download_timeout = timeout;
         self
     }
 
+    /// Get maximum concurrency (for testing)
+    #[cfg(test)]
+    #[must_use]
+    pub fn max_concurrency(&self) -> usize {
+        self.max_concurrency
+    }
+
+    /// Get download timeout (for testing)
+    #[cfg(test)]
+    #[must_use]
+    pub fn download_timeout(&self) -> Duration {
+        self.download_timeout
+    }
+
     /// Execute packages in parallel according to execution plan
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if package processing fails, download fails, or concurrency limits are exceeded.
     pub async fn execute_parallel(
         &self,
         execution_plan: &ExecutionPlan,
@@ -60,7 +84,7 @@ impl ParallelExecutor {
         let semaphore = Arc::new(Semaphore::new(self.max_concurrency));
         let ready_queue = Arc::new(SegQueue::new());
         let inflight = Arc::new(DashMap::new());
-        let graph = self.build_execution_graph(execution_plan, resolved_packages);
+        let _graph = Self::build_execution_graph(self, execution_plan, resolved_packages);
 
         // Initialize ready queue with packages that have no dependencies
         for package_id in execution_plan.ready_packages() {
@@ -87,9 +111,12 @@ impl ParallelExecutor {
                     }
                 })?;
 
-                let handle = self
-                    .spawn_package_task(package_id.clone(), node.clone(), context.clone(), permit)
-                    .await?;
+                let handle = self.spawn_package_task(
+                    package_id.clone(),
+                    node.clone(),
+                    context.clone(),
+                    permit,
+                );
 
                 inflight.insert(package_id, handle);
             }
@@ -114,7 +141,7 @@ impl ParallelExecutor {
 
     /// Build execution graph for tracking
     fn build_execution_graph(
-        &self,
+        _self: &Self,
         execution_plan: &ExecutionPlan,
         resolved_packages: &HashMap<PackageId, ResolvedNode>,
     ) -> HashMap<PackageId, ExecutionNode> {
@@ -135,18 +162,18 @@ impl ParallelExecutor {
     }
 
     /// Spawn task for processing a single package
-    async fn spawn_package_task(
+    fn spawn_package_task(
         &self,
         package_id: PackageId,
         node: ResolvedNode,
         context: ExecutionContext,
         _permit: tokio::sync::OwnedSemaphorePermit,
-    ) -> Result<JoinHandle<Result<PackageId, Error>>, Error> {
+    ) -> JoinHandle<Result<PackageId, Error>> {
         let net_client = self.net_client.clone();
         let store = self.store.clone();
         let timeout_duration = self.download_timeout;
 
-        let handle = tokio::spawn(async move {
+        tokio::spawn(async move {
             Self::process_package(
                 package_id,
                 node,
@@ -156,9 +183,7 @@ impl ParallelExecutor {
                 timeout_duration,
             )
             .await
-        });
-
-        Ok(handle)
+        })
     }
 
     /// Process a single package (download/local)
@@ -273,7 +298,7 @@ impl ParallelExecutor {
             // Check for completed tasks
             let mut completed = None;
 
-            for entry in inflight.iter() {
+            for entry in inflight {
                 let package_id = entry.key();
                 let handle = entry.value();
 
@@ -313,11 +338,13 @@ pub struct ExecutionContext {
 
 impl ExecutionContext {
     /// Create new execution context
+    #[must_use]
     pub fn new() -> Self {
         Self { event_sender: None }
     }
 
     /// Set event sender
+    #[must_use]
     pub fn with_event_sender(mut self, event_sender: EventSender) -> Self {
         self.event_sender = Some(event_sender);
         self
@@ -338,6 +365,7 @@ impl Default for ExecutionContext {
 }
 
 /// Execution node for tracking dependencies
+#[allow(dead_code)] // Fields planned for future parallel execution optimization
 struct ExecutionNode {
     /// Action to perform
     action: NodeAction,
@@ -348,6 +376,7 @@ struct ExecutionNode {
 }
 
 /// Download progress information
+#[allow(dead_code)] // Struct intended for future parallel download progress tracking
 pub struct DownloadProgress {
     /// Bytes downloaded
     pub downloaded: u64,
@@ -357,11 +386,15 @@ pub struct DownloadProgress {
 
 impl DownloadProgress {
     /// Calculate progress percentage
+    #[allow(dead_code)] // Method for future use in parallel download progress
     pub fn percentage(&self) -> f64 {
         if self.total == 0 {
             0.0
         } else {
-            (self.downloaded as f64 / self.total as f64) * 100.0
+            #[allow(clippy::cast_precision_loss)]
+            {
+                (self.downloaded as f64 / self.total as f64) * 100.0
+            }
         }
     }
 }
@@ -369,7 +402,7 @@ impl DownloadProgress {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use spsv2_types::Version;
+    // Remove unused import
     use tempfile::tempdir;
 
     #[test]
@@ -380,7 +413,7 @@ mod tests {
         // Test event sending (should not panic)
         context.send_event(Event::PackageDownloaded {
             name: "test".to_string(),
-            version: Version::parse("1.0.0").unwrap(),
+            version: spsv2_types::Version::parse("1.0.0").unwrap(),
         });
     }
 
@@ -391,26 +424,27 @@ mod tests {
             total: 100,
         };
 
-        assert_eq!(progress.percentage(), 50.0);
+        assert!((progress.percentage() - 50.0).abs() < f64::EPSILON);
 
         let zero_total = DownloadProgress {
             downloaded: 10,
             total: 0,
         };
 
-        assert_eq!(zero_total.percentage(), 0.0);
+        assert!((zero_total.percentage() - 0.0).abs() < f64::EPSILON);
     }
 
     #[tokio::test]
     async fn test_parallel_executor_creation() {
         let temp = tempdir().unwrap();
-        let store = PackageStore::new(temp.path()).await.unwrap();
+        let store = PackageStore::new(temp.path().to_path_buf());
 
         let executor = ParallelExecutor::new(store)
+            .unwrap()
             .with_concurrency(8)
             .with_timeout(Duration::from_secs(600));
 
-        assert_eq!(executor.max_concurrency, 8);
-        assert_eq!(executor.download_timeout, Duration::from_secs(600));
+        assert_eq!(executor.max_concurrency(), 8);
+        assert_eq!(executor.download_timeout(), Duration::from_secs(600));
     }
 }

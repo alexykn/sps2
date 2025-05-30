@@ -12,6 +12,11 @@ pub struct Recipe {
 
 impl Recipe {
     /// Parse recipe from content
+    ///
+    /// # Errors
+    ///
+    /// Returns a `BuildError::RecipeError` if the recipe content is missing
+    /// required `metadata` or `build` functions.
     pub fn parse(content: &str) -> Result<Self, Error> {
         // Basic validation - check for required functions
         if !content.contains("def metadata") {
@@ -35,13 +40,14 @@ impl Recipe {
     }
 
     /// Set the recipe path (for error reporting)
+    #[must_use]
     pub fn with_path(mut self, path: String) -> Self {
         self.path = Some(path);
         self
     }
 }
 
-/// Recipe metadata collected from metadata() function
+/// Recipe metadata collected from `metadata()` function
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RecipeMetadata {
     pub name: String,
@@ -53,7 +59,7 @@ pub struct RecipeMetadata {
     pub build_deps: Vec<String>,
 }
 
-/// A build step from the build() function
+/// A build step from the `build()` function
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BuildStep {
     Fetch { url: String, sha256: String },

@@ -26,12 +26,22 @@ pub struct DownloadResult {
 
 impl Download {
     /// Create a new download
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the provided URL is invalid or cannot be parsed.
     pub fn new(url: &str) -> Result<Self, Error> {
         let url = Url::parse(url).map_err(|e| NetworkError::InvalidUrl(e.to_string()))?;
         Ok(Self { url })
     }
 
     /// Execute the download
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the HTTP request fails, the server returns an error status,
+    /// the file cannot be created or written to, the hash verification fails (if expected),
+    /// or there are I/O errors during the download process.
     pub async fn execute(
         self,
         client: &NetClient,
@@ -133,6 +143,9 @@ impl Download {
 }
 
 /// Download multiple files concurrently
+///
+/// This function is kept for future use when parallel package downloads are implemented
+#[allow(dead_code)]
 pub async fn download_batch(
     client: &NetClient,
     downloads: Vec<(String, String, Option<Hash>)>, // (url, path, hash)

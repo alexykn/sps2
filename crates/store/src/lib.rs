@@ -15,7 +15,7 @@ pub use package::StoredPackage;
 
 use spsv2_errors::{Error, StorageError};
 use spsv2_hash::{content_path, Hash};
-use spsv2_root;
+use spsv2_root::{create_dir_all, exists, remove_dir_all, set_compression, size};
 use std::path::{Path, PathBuf};
 
 /// Store manager for content-addressed packages
@@ -26,11 +26,13 @@ pub struct PackageStore {
 
 impl PackageStore {
     /// Create a new store instance
+    #[must_use]
     pub fn new(base_path: PathBuf) -> Self {
         Self { base_path }
     }
 
     /// Get the path for a package hash
+    #[must_use]
     pub fn package_path(&self, hash: &Hash) -> PathBuf {
         let content = content_path(hash);
         self.base_path.join(content)
@@ -39,23 +41,31 @@ impl PackageStore {
     /// Check if a package exists in the store
     pub async fn has_package(&self, hash: &Hash) -> bool {
         let path = self.package_path(hash);
-        spsv2_root::exists(&path).await
+        exists(&path).await
     }
 
     /// Add a package to the store from a .sp file
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - File I/O operations fail
+    /// - Package extraction fails
+    /// - Package hash computation fails
+    /// - Directory creation fails
     pub async fn add_package(&self, sp_file: &Path) -> Result<StoredPackage, Error> {
         // Compute hash of the .sp file
         let hash = Hash::hash_file(sp_file).await?;
 
         // Check if already exists
         let dest_path = self.package_path(&hash);
-        if spsv2_root::exists(&dest_path).await {
+        if exists(&dest_path).await {
             return StoredPackage::load(&dest_path).await;
         }
 
         // Create parent directory
         if let Some(parent) = dest_path.parent() {
-            spsv2_root::create_dir_all(parent).await?;
+            create_dir_all(parent).await?;
         }
 
         // Extract to temporary directory
@@ -73,37 +83,56 @@ impl PackageStore {
             })?;
 
         // Set compression on macOS
-        spsv2_root::set_compression(&dest_path).await?;
+        set_compression(&dest_path)?;
 
         StoredPackage::load(&dest_path).await
     }
 
     /// Remove a package from the store
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if directory removal fails
     pub async fn remove_package(&self, hash: &Hash) -> Result<(), Error> {
         let path = self.package_path(hash);
-        if spsv2_root::exists(&path).await {
-            spsv2_root::remove_dir_all(&path).await?;
+        if exists(&path).await {
+            remove_dir_all(&path).await?;
         }
         Ok(())
     }
 
     /// Get the size of a stored package
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the package path doesn't exist or size calculation fails
     pub async fn package_size(&self, hash: &Hash) -> Result<u64, Error> {
         let path = self.package_path(hash);
-        spsv2_root::size(&path).await
+        size(&path).await
     }
 
     /// Link package contents into a destination
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Package loading fails
+    /// - Linking operation fails
     pub async fn link_package(&self, hash: &Hash, dest_root: &Path) -> Result<(), Error> {
         let pkg = StoredPackage::load(&self.package_path(hash)).await?;
         pkg.link_to(dest_root).await
     }
 
     /// Get SBOM data for a package
-    pub async fn get_package_sbom(
+    ///
+    /// # Errors
+    ///
+    /// Currently returns empty data, but may return errors in future implementations
+    /// when package lookup is implemented
+    pub fn get_package_sbom(
         &self,
-        package_name: &str,
-        package_version: &spsv2_types::Version,
+        _package_name: &str,
+        _package_version: &spsv2_types::Version,
     ) -> Result<Vec<u8>, Error> {
         // This is a placeholder implementation
         // In reality, we would need to find the package by name/version
@@ -112,6 +141,11 @@ impl PackageStore {
     }
 
     /// Get package path by name and version
+    ///
+    /// # Errors
+    ///
+    /// Currently returns a dummy implementation, but may return errors in future
+    /// when actual package lookup is implemented
     pub fn get_package_path(
         &self,
         package_name: &str,
@@ -120,18 +154,29 @@ impl PackageStore {
         // This is a simplified implementation - in reality we'd need to
         // look up the package hash from name/version
         // For now, create a dummy hash from name and version
-        let dummy_content = format!("{}-{}", package_name, package_version);
-        let hash = spsv2_hash::Hash::hash(dummy_content.as_bytes());
+        let dummy_content = format!("{package_name}-{package_version}");
+        let hash = spsv2_hash::Hash::from_data(dummy_content.as_bytes());
         Ok(self.package_path(&hash))
     }
 
     /// Add a local package file to the store
-    pub async fn add_local_package(&self, local_path: &std::path::Path) -> Result<std::path::PathBuf, Error> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if package addition fails
+    pub async fn add_local_package(
+        &self,
+        local_path: &std::path::Path,
+    ) -> Result<std::path::PathBuf, Error> {
         let stored_package = self.add_package(local_path).await?;
         Ok(stored_package.path().to_path_buf())
     }
 
     /// List all packages in the store
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if directory traversal fails or I/O operations fail
     pub async fn list_packages(&self) -> Result<Vec<Hash>, Error> {
         let mut packages = Vec::new();
 
@@ -169,6 +214,10 @@ impl PackageStore {
     }
 
     /// Clean up the store (remove empty directories)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if directory cleanup operations fail
     pub async fn cleanup(&self) -> Result<(), Error> {
         // Walk the store and remove empty directories
         self.cleanup_dir(&self.base_path).await?;
@@ -183,11 +232,11 @@ impl PackageStore {
             let path = entry.path();
 
             if entry.file_type().await?.is_dir() {
-                if !Box::pin(self.cleanup_dir(&path)).await? {
-                    is_empty = false;
-                } else {
+                if Box::pin(self.cleanup_dir(&path)).await? {
                     // Remove empty directory
                     let _ = tokio::fs::remove_dir(&path).await;
+                } else {
+                    is_empty = false;
                 }
             } else {
                 is_empty = false;
@@ -198,6 +247,10 @@ impl PackageStore {
     }
 
     /// Verify store integrity
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if package listing fails or verification operations fail
     pub async fn verify(&self) -> Result<Vec<(Hash, String)>, Error> {
         let mut errors = Vec::new();
 
@@ -206,9 +259,8 @@ impl PackageStore {
 
             // Check manifest exists
             let manifest_path = path.join("manifest.toml");
-            if !spsv2_root::exists(&manifest_path).await {
+            if !exists(&manifest_path).await {
                 errors.push((hash, "missing manifest.toml".to_string()));
-                continue;
             }
 
             // Could add more verification here (file checksums, etc.)
@@ -218,31 +270,54 @@ impl PackageStore {
     }
 
     /// Garbage collect unreferenced packages
-    pub async fn garbage_collect(&self) -> Result<usize, Error> {
+    ///
+    /// # Errors
+    ///
+    /// Currently returns success, but may return errors in future implementations
+    /// when state manager integration is added
+    pub fn garbage_collect(&self) -> Result<usize, Error> {
         // This would need to integrate with state manager to find unreferenced packages
         // For now, return 0 packages removed
         Ok(0)
     }
 
     /// Verify store integrity
-    pub async fn verify_integrity(&self) -> Result<(), Error> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the base path doesn't exist or is not accessible
+    pub fn verify_integrity(&self) -> Result<(), Error> {
         // Basic verification - check if base path exists and is accessible
         if !self.base_path.exists() {
             return Err(spsv2_errors::StorageError::DirectoryNotFound {
                 path: self.base_path.clone(),
-            }.into());
+            }
+            .into());
         }
         Ok(())
     }
 
     /// Get package size by name and version
-    pub async fn get_package_size(&self, _package_name: &str, _package_version: &spsv2_types::Version) -> Result<u64, Error> {
+    ///
+    /// # Errors
+    ///
+    /// Currently returns success, but may return errors in future implementations
+    /// when package lookup is implemented
+    pub fn get_package_size(
+        &self,
+        _package_name: &str,
+        _package_version: &spsv2_types::Version,
+    ) -> Result<u64, Error> {
         // TODO: Implement lookup by package name/version
         // For now, return 0 as placeholder
         Ok(0)
     }
 
     /// Add package from file with specific name and version
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if package addition fails
     pub async fn add_package_from_file(
         &self,
         file_path: &std::path::Path,
@@ -265,7 +340,7 @@ mod tests {
         let store = PackageStore::new(temp.path().to_path_buf());
 
         // Test with a dummy hash
-        let hash = Hash::hash(b"test package");
+        let hash = Hash::from_data(b"test package");
 
         // Initially shouldn't exist
         assert!(!store.has_package(&hash).await);
@@ -282,13 +357,13 @@ mod tests {
         let store = PackageStore::new(temp.path().to_path_buf());
 
         // Create some fake package directories
-        let hash1 = Hash::hash(b"package1");
+        let hash1 = Hash::from_data(b"package1");
         let path1 = store.package_path(&hash1);
-        spsv2_root::create_dir_all(&path1).await.unwrap();
+        create_dir_all(&path1).await.unwrap();
 
-        let hash2 = Hash::hash(b"package2");
+        let hash2 = Hash::from_data(b"package2");
         let path2 = store.package_path(&hash2);
-        spsv2_root::create_dir_all(&path2).await.unwrap();
+        create_dir_all(&path2).await.unwrap();
 
         // List should find both
         let packages = store.list_packages().await.unwrap();

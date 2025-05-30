@@ -5,7 +5,6 @@ use spsv2_audit::{
     VulnerabilityDatabase,
 };
 use tempfile::TempDir;
-use tokio::fs;
 
 #[tokio::test]
 async fn test_sbom_parser_integration() -> Result<(), Box<dyn std::error::Error>> {
@@ -139,7 +138,7 @@ async fn test_audit_system_creation() -> Result<(), Box<dyn std::error::Error>> 
     let temp_dir = TempDir::new()?;
     let vulndb_path = temp_dir.path().join("audit_vulndb.sqlite");
 
-    let audit_system = AuditSystem::new(&vulndb_path)?;
+    let _audit_system = AuditSystem::new(&vulndb_path)?;
 
     // Should create successfully (placeholder implementation)
     // In the future, this would test actual functionality

@@ -20,15 +20,17 @@ mod tests {
         // Ensure empty should remove content
         ensure_empty_dir(&test_dir).await.unwrap();
         assert!(test_dir.exists());
-        assert_eq!(
-            fs::read_dir(&test_dir)
-                .await
-                .unwrap()
-                .next_entry()
-                .await
-                .unwrap(),
-            None
-        );
+
+        // Check that directory is empty by counting entries
+        let mut entries = fs::read_dir(&test_dir).await.unwrap();
+        let entry_count = {
+            let mut count = 0;
+            while entries.next_entry().await.unwrap().is_some() {
+                count += 1;
+            }
+            count
+        };
+        assert_eq!(entry_count, 0);
     }
 
     #[cfg(target_os = "macos")]

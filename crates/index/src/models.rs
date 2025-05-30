@@ -71,8 +71,15 @@ pub struct SbomEntry {
     pub sha256: String,
 }
 
+impl Default for Index {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Index {
     /// Create a new empty index
+    #[must_use]
     pub fn new() -> Self {
         Self {
             metadata: IndexMetadata {
@@ -85,6 +92,10 @@ impl Index {
     }
 
     /// Parse index from JSON
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the JSON is malformed or cannot be parsed.
     pub fn from_json(json: &str) -> Result<Self, Error> {
         serde_json::from_str(json).map_err(|e| {
             PackageError::InvalidFormat {
@@ -95,6 +106,10 @@ impl Index {
     }
 
     /// Serialize index to JSON
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the index cannot be serialized to JSON.
     pub fn to_json(&self) -> Result<String, Error> {
         serde_json::to_string_pretty(self).map_err(|e| {
             PackageError::InvalidFormat {
@@ -105,6 +120,11 @@ impl Index {
     }
 
     /// Validate index format and version
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the index version is unsupported, package names are empty,
+    /// versions are missing, architectures are unsupported, or required fields are missing.
     pub fn validate(&self) -> Result<(), Error> {
         // Check version compatibility
         if self.metadata.version > crate::SUPPORTED_INDEX_VERSION {
@@ -178,11 +198,13 @@ impl Index {
     }
 
     /// Get total package count
+    #[must_use]
     pub fn package_count(&self) -> usize {
         self.packages.len()
     }
 
     /// Get total version count
+    #[must_use]
     pub fn version_count(&self) -> usize {
         self.packages.values().map(|p| p.versions.len()).sum()
     }
@@ -190,7 +212,8 @@ impl Index {
 
 impl VersionEntry {
     /// Get the version string from the parent context
-    /// (In actual use, version is the HashMap key)
+    /// (In actual use, version is the `HashMap` key)
+    #[must_use]
     pub fn version(&self) -> String {
         // This is a placeholder - in practice, the version
         // is known from the HashMap key when accessing this entry
@@ -198,6 +221,10 @@ impl VersionEntry {
     }
 
     /// Get architecture as enum
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the architecture string is not supported.
     pub fn arch(&self) -> Result<Arch, Error> {
         match self.arch.as_str() {
             "arm64" => Ok(Arch::Arm64),
@@ -209,6 +236,7 @@ impl VersionEntry {
     }
 
     /// Check if this version has SBOM data
+    #[must_use]
     pub fn has_sbom(&self) -> bool {
         self.sbom.is_some()
     }
@@ -240,7 +268,7 @@ mod tests {
         assert!(index.validate().is_ok());
 
         // Invalid architecture
-        let mut bad_entry = VersionEntry {
+        let bad_entry = VersionEntry {
             revision: 1,
             arch: "x86_64".to_string(), // Not supported
             sha256: "abc123".to_string(),

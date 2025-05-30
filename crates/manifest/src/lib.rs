@@ -9,7 +9,7 @@
 use serde::{Deserialize, Serialize};
 use spsv2_errors::{Error, PackageError};
 use spsv2_hash::Hash;
-use spsv2_types::{Arch, Version, package::PackageSpec};
+use spsv2_types::{package::PackageSpec, Arch, Version};
 use std::path::Path;
 
 /// Package manifest (manifest.toml contents)
@@ -55,7 +55,8 @@ pub struct SbomInfo {
 
 impl Manifest {
     /// Create a new manifest
-    pub fn new(name: String, version: Version, revision: u32, arch: Arch) -> Self {
+    #[must_use]
+    pub fn new(name: String, version: &Version, revision: u32, arch: &Arch) -> Self {
         Self {
             package: PackageInfo {
                 name,
@@ -72,6 +73,10 @@ impl Manifest {
     }
 
     /// Parse the package version
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the version string is not a valid semantic version.
     pub fn version(&self) -> Result<Version, Error> {
         Version::parse(&self.package.version).map_err(|_e| {
             spsv2_errors::VersionError::InvalidVersion {
@@ -82,6 +87,10 @@ impl Manifest {
     }
 
     /// Parse the architecture
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the architecture string is not supported (currently only "arm64" is supported).
     pub fn arch(&self) -> Result<Arch, Error> {
         match self.package.arch.as_str() {
             "arm64" => Ok(Arch::Arm64),
@@ -92,7 +101,11 @@ impl Manifest {
         }
     }
 
-    /// Get runtime dependencies as PackageSpec
+    /// Get runtime dependencies as `PackageSpec`
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any dependency specification string is invalid or cannot be parsed.
     pub fn runtime_deps(&self) -> Result<Vec<PackageSpec>, Error> {
         self.dependencies
             .runtime
@@ -102,7 +115,11 @@ impl Manifest {
             .map_err(Into::into)
     }
 
-    /// Get build dependencies as PackageSpec
+    /// Get build dependencies as `PackageSpec`
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any dependency specification string is invalid or cannot be parsed.
     pub fn build_deps(&self) -> Result<Vec<PackageSpec>, Error> {
         self.dependencies
             .build
@@ -123,14 +140,18 @@ impl Manifest {
     }
 
     /// Set SBOM hashes
-    pub fn set_sbom(&mut self, spdx_hash: Hash, cyclonedx_hash: Option<Hash>) {
+    pub fn set_sbom(&mut self, spdx_hash: &Hash, cyclonedx_hash: Option<&Hash>) {
         self.sbom = Some(SbomInfo {
             spdx: spdx_hash.to_hex(),
-            cyclonedx: cyclonedx_hash.map(|h| h.to_hex()),
+            cyclonedx: cyclonedx_hash.map(spsv2_hash::Hash::to_hex),
         });
     }
 
     /// Load manifest from TOML string
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the TOML content is malformed or contains invalid manifest data.
     pub fn from_toml(content: &str) -> Result<Self, Error> {
         toml::from_str(content).map_err(|e| {
             PackageError::InvalidManifest {
@@ -141,6 +162,10 @@ impl Manifest {
     }
 
     /// Load manifest from file
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be read or if the TOML content is malformed.
     pub async fn from_file(path: &Path) -> Result<Self, Error> {
         let content =
             tokio::fs::read_to_string(path)
@@ -152,6 +177,10 @@ impl Manifest {
     }
 
     /// Serialize to TOML string
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the manifest cannot be serialized to TOML format.
     pub fn to_toml(&self) -> Result<String, Error> {
         toml::to_string_pretty(self).map_err(|e| {
             PackageError::InvalidManifest {
@@ -162,6 +191,10 @@ impl Manifest {
     }
 
     /// Write manifest to file
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the manifest cannot be serialized or if the file cannot be written.
     pub async fn write_to_file(&self, path: &Path) -> Result<(), Error> {
         let content = self.to_toml()?;
         tokio::fs::write(path, content).await.map_err(|e| {
@@ -173,6 +206,10 @@ impl Manifest {
     }
 
     /// Validate manifest fields
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any required field is empty, invalid, or if dependency specifications are malformed.
     pub fn validate(&self) -> Result<(), Error> {
         // Validate name
         if self.package.name.is_empty() {
@@ -196,6 +233,7 @@ impl Manifest {
     }
 
     /// Get package filename
+    #[must_use]
     pub fn filename(&self) -> String {
         format!(
             "{}-{}-{}.{}.sp",
@@ -211,49 +249,60 @@ pub struct ManifestBuilder {
 
 impl ManifestBuilder {
     /// Create a new builder
-    pub fn new(name: String, version: Version, arch: Arch) -> Self {
+    #[must_use]
+    pub fn new(name: String, version: &Version, arch: &Arch) -> Self {
         Self {
             manifest: Manifest::new(name, version, 1, arch),
         }
     }
 
     /// Set revision
+    #[must_use]
     pub fn revision(mut self, revision: u32) -> Self {
         self.manifest.package.revision = revision;
         self
     }
 
     /// Set description
+    #[must_use]
     pub fn description(mut self, desc: String) -> Self {
         self.manifest.package.description = Some(desc);
         self
     }
 
     /// Set homepage
+    #[must_use]
     pub fn homepage(mut self, url: String) -> Self {
         self.manifest.package.homepage = Some(url);
         self
     }
 
     /// Set license
+    #[must_use]
     pub fn license(mut self, license: String) -> Self {
         self.manifest.package.license = Some(license);
         self
     }
 
     /// Add runtime dependency
+    #[must_use]
     pub fn depends_on(mut self, spec: &str) -> Self {
         self.manifest.add_runtime_dep(spec);
         self
     }
 
     /// Add build dependency
+    #[must_use]
     pub fn build_depends_on(mut self, spec: &str) -> Self {
         self.manifest.add_build_dep(spec);
         self
     }
 
     /// Build the manifest
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the manifest validation fails.
     pub fn build(self) -> Result<Manifest, Error> {
         self.manifest.validate()?;
         Ok(self.manifest)
@@ -268,9 +317,9 @@ mod tests {
     fn test_manifest_creation() {
         let manifest = Manifest::new(
             "test-pkg".to_string(),
-            Version::parse("1.2.3").unwrap(),
+            &Version::parse("1.2.3").unwrap(),
             1,
-            Arch::Arm64,
+            &Arch::Arm64,
         );
 
         assert_eq!(manifest.package.name, "test-pkg");
@@ -283,9 +332,9 @@ mod tests {
     fn test_manifest_toml_roundtrip() {
         let mut manifest = Manifest::new(
             "jq".to_string(),
-            Version::parse("1.7.0").unwrap(),
+            &Version::parse("1.7.0").unwrap(),
             1,
-            Arch::Arm64,
+            &Arch::Arm64,
         );
 
         manifest.add_runtime_dep("oniguruma==6.9.8");
@@ -303,15 +352,15 @@ mod tests {
     fn test_manifest_builder() {
         let manifest = ManifestBuilder::new(
             "curl".to_string(),
-            Version::parse("8.0.0").unwrap(),
-            Arch::Arm64,
+            &Version::parse("8.0.0").unwrap(),
+            &Arch::Arm64,
         )
         .description("Command line HTTP client".to_string())
         .homepage("https://curl.se".to_string())
         .license("MIT".to_string())
         .depends_on("openssl>=3.0.0")
         .depends_on("zlib~=1.2.0")
-        .build_depends_on("pkg-config>=0.29")
+        .build_depends_on("pkg-config>=0.29.0")
         .build()
         .unwrap();
 
@@ -346,9 +395,9 @@ mod tests {
     fn test_filename_generation() {
         let manifest = Manifest::new(
             "vim".to_string(),
-            Version::parse("9.0.0").unwrap(),
+            &Version::parse("9.0.0").unwrap(),
             2,
-            Arch::Arm64,
+            &Arch::Arm64,
         );
 
         assert_eq!(manifest.filename(), "vim-9.0.0-2.arm64.sp");

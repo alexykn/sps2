@@ -3,10 +3,10 @@ use std::path::PathBuf;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Testing hello.rhai recipe...");
+    println!("Testing hello.star recipe...");
     
     // Load the recipe
-    let recipe_path = PathBuf::from("hello.rhai");
+    let recipe_path = PathBuf::from("hello.star");
     let recipe = load_recipe(&recipe_path).await?;
     
     // Execute the recipe to get metadata and build steps

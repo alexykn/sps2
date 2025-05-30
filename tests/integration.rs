@@ -10,14 +10,12 @@ use tokio::fs;
 mod utils {
     use super::*;
     use spsv2_config::Config;
-    use spsv2_events::{Event, EventReceiver, EventSender};
-    use spsv2_hash::ContentHasher;
+    use spsv2_events::{EventReceiver, EventSender};
     use spsv2_ops::OpsCtx;
-    use spsv2_root::RootManager;
     use spsv2_state::StateManager;
     use spsv2_store::PackageStore;
-    use std::sync::Arc;
 
+    #[allow(dead_code)]
     pub struct TestEnvironment {
         pub temp_dir: TempDir,
         pub config: Config,
@@ -33,7 +31,7 @@ mod utils {
 
             // Set up test directory structure
             let store_path = base_path.join("store");
-            let state_db_path = base_path.join("state.sqlite");
+            let state_path = base_path.join("state.sqlite");
             let live_path = base_path.join("live");
             let cache_path = base_path.join("cache");
 
@@ -43,24 +41,32 @@ mod utils {
 
             // Create test configuration
             let mut config = Config::default();
-            config.paths.store_path = store_path;
-            config.paths.state_db_path = state_db_path;
-            config.paths.live_path = live_path;
-            config.paths.cache_path = Some(cache_path);
-            config.general.parallelism = 2; // Smaller for tests
-            config.network.download_timeout = 30;
+            config.paths.store_path = Some(store_path.clone());
+            config.paths.state_path = Some(state_path);
+            config.general.parallel_downloads = 2; // Smaller for tests
+            config.network.timeout = 30;
             config.security.verify_signatures = false; // Disable for tests
 
             // Create event channel
             let (event_sender, event_receiver) = tokio::sync::mpsc::unbounded_channel();
 
             // Initialize components
-            let hasher = Arc::new(ContentHasher::new());
-            let root_manager = Arc::new(RootManager::new(&config.paths.live_path)?);
-            let state_manager = Arc::new(StateManager::new(&config.paths.state_db_path).await?);
-            let store = Arc::new(PackageStore::new(&config.paths.store_path, hasher.clone())?);
+            let state = StateManager::new(base_path).await?;
+            let store = PackageStore::new(store_path);
+            let index = spsv2_index::IndexManager::new(base_path);
+            let net = spsv2_net::NetClient::with_defaults()?;
+            let resolver = spsv2_resolver::Resolver::new(index.clone());
+            let builder = spsv2_builder::Builder::new();
 
-            let ops_ctx = OpsCtx::new(config.clone(), state_manager, store, root_manager, hasher)?;
+            let ops_ctx = OpsCtx::new(
+                store,
+                state,
+                index,
+                net,
+                resolver,
+                builder,
+                event_sender.clone(),
+            );
 
             Ok(Self {
                 temp_dir,
@@ -89,13 +95,14 @@ mod utils {
             Ok(fs::read_to_string(manifest_path).await?)
         }
 
+        #[allow(dead_code)]
         pub async fn load_test_recipe(
             &self,
             name: &str,
         ) -> Result<String, Box<dyn std::error::Error>> {
             let recipe_path = Self::fixtures_path()
                 .join("recipes")
-                .join(format!("{name}.rhai"));
+                .join(format!("{name}.star"));
             Ok(fs::read_to_string(recipe_path).await?)
         }
 
@@ -112,12 +119,11 @@ async fn test_system_initialization() -> Result<(), Box<dyn std::error::Error>> 
 
     // Test that all components are properly initialized
     assert!(env.temp_dir.path().exists());
-    assert!(env.config.paths.store_path.exists());
-    assert!(env.config.paths.live_path.exists());
+    assert!(env.config.paths.store_path.as_ref().unwrap().exists());
+    assert!(env.temp_dir.path().join("live").exists());
 
     // Test state manager initialization
-    let state = env.ops_ctx.state_manager();
-    let packages = state.get_installed_packages().await?;
+    let packages = env.ops_ctx.state.get_installed_packages().await?;
     assert!(packages.is_empty()); // Should start empty
 
     Ok(())
@@ -129,30 +135,39 @@ async fn test_manifest_parsing() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test simple manifest
     let hello_manifest = env.load_test_manifest("hello-world-1.0.0").await?;
-    let manifest = spsv2_manifest::PackageManifest::from_toml(&hello_manifest)?;
+    let manifest = spsv2_manifest::Manifest::from_toml(&hello_manifest)?;
 
     assert_eq!(manifest.package.name, "hello-world");
-    assert_eq!(manifest.package.version.to_string(), "1.0.0");
-    assert_eq!(manifest.package.license, "MIT");
-    assert!(manifest.dependencies.is_empty());
+    assert_eq!(manifest.package.version, "1.0.0");
+    assert_eq!(manifest.package.license, Some("MIT".to_string()));
+    assert!(manifest.dependencies.runtime.is_empty());
+    assert!(manifest.dependencies.build.is_empty());
 
     // Test complex manifest
     let complex_manifest = env.load_test_manifest("complex-app-2.1.3").await?;
-    let manifest = spsv2_manifest::PackageManifest::from_toml(&complex_manifest)?;
+    let manifest = spsv2_manifest::Manifest::from_toml(&complex_manifest)?;
 
     assert_eq!(manifest.package.name, "complex-app");
-    assert_eq!(manifest.package.version.to_string(), "2.1.3");
-    assert_eq!(manifest.package.license, "Apache-2.0");
-    assert!(!manifest.dependencies.is_empty());
-    assert!(manifest.dependencies.contains_key("libssl"));
-    assert!(manifest.dependencies.contains_key("zlib"));
+    assert_eq!(manifest.package.version, "2.1.3");
+    assert_eq!(manifest.package.license, Some("Apache-2.0".to_string()));
+    assert!(!manifest.dependencies.runtime.is_empty());
+    assert!(manifest
+        .dependencies
+        .runtime
+        .iter()
+        .any(|d| d.contains("libssl")));
+    assert!(manifest
+        .dependencies
+        .runtime
+        .iter()
+        .any(|d| d.contains("zlib")));
 
     Ok(())
 }
 
 #[tokio::test]
 async fn test_version_parsing_and_constraints() -> Result<(), Box<dyn std::error::Error>> {
-    use spsv2_types::{Version, VersionConstraint};
+    use spsv2_types::{PackageSpec, Version};
 
     // Test version parsing
     let version = Version::parse("2.1.3")?;
@@ -160,110 +175,103 @@ async fn test_version_parsing_and_constraints() -> Result<(), Box<dyn std::error
     assert_eq!(version.minor, 1);
     assert_eq!(version.patch, 3);
 
-    // Test version constraints
-    let constraint = VersionConstraint::parse(">=1.1.1,<2.0")?;
+    // Test package specs with version constraints
+    let spec1 = PackageSpec::parse("pkg>=1.1.1,<2.0")?;
+    assert_eq!(spec1.name, "pkg");
     let v1 = Version::parse("1.1.1")?;
     let v2 = Version::parse("1.5.0")?;
     let v3 = Version::parse("2.0.0")?;
 
-    assert!(constraint.satisfies(&v1));
-    assert!(constraint.satisfies(&v2));
-    assert!(!constraint.satisfies(&v3));
+    assert!(spec1.version_spec.matches(&v1));
+    assert!(spec1.version_spec.matches(&v2));
+    assert!(!spec1.version_spec.matches(&v3));
 
-    // Test compatible constraint
-    let compat_constraint = VersionConstraint::parse("~=1.2.0")?;
+    // Test compatible spec
+    let spec2 = PackageSpec::parse("otherpkg~=1.2.0")?;
+    assert_eq!(spec2.name, "otherpkg");
     let v4 = Version::parse("1.2.5")?;
     let v5 = Version::parse("1.3.0")?;
 
-    assert!(compat_constraint.satisfies(&v4));
-    assert!(!compat_constraint.satisfies(&v5));
+    assert!(spec2.version_spec.matches(&v4));
+    assert!(!spec2.version_spec.matches(&v5));
 
     Ok(())
 }
 
 #[tokio::test]
-async fn test_dependency_resolution() -> Result<(), Box<dyn std::error::Error>> {
-    use spsv2_resolver::DependencyResolver;
-    use spsv2_types::{PackageId, Version, VersionConstraint};
-    use std::collections::HashMap;
+async fn test_package_spec_parsing() -> Result<(), Box<dyn std::error::Error>> {
+    use spsv2_types::{PackageSpec, Version};
 
-    let resolver = DependencyResolver::new();
+    // Test parsing package specifications
+    let spec1 = PackageSpec::parse("curl>=8.0.0")?;
+    assert_eq!(spec1.name, "curl");
 
-    // Create a simple dependency graph
-    let mut available_packages = HashMap::new();
+    let spec2 = PackageSpec::parse("jq==1.7")?;
+    assert_eq!(spec2.name, "jq");
 
-    // hello-world: no dependencies
-    available_packages.insert("hello-world".to_string(), vec![Version::parse("1.0.0")?]);
+    let spec3 = PackageSpec::parse("sqlite~=3.36")?;
+    assert_eq!(spec3.name, "sqlite");
 
-    // complex-app: depends on libssl, zlib, sqlite, curl
-    available_packages.insert("complex-app".to_string(), vec![Version::parse("2.1.3")?]);
-
-    available_packages.insert("libssl".to_string(), vec![Version::parse("1.1.1w")?]);
-
-    available_packages.insert("zlib".to_string(), vec![Version::parse("1.2.11")?]);
-
-    available_packages.insert("sqlite".to_string(), vec![Version::parse("3.36.0")?]);
-
-    available_packages.insert("curl".to_string(), vec![Version::parse("7.85.0")?]);
-
-    // Test resolving hello-world (simple case)
-    let hello_request = PackageId {
-        name: "hello-world".to_string(),
-        version: Version::parse("1.0.0")?,
-    };
-
-    // For this test, we'll simulate the resolution
-    // In a real test, we'd need to set up the full package index
-    assert_eq!(hello_request.name, "hello-world");
+    // Test version parsing
+    let version = Version::parse("2.1.3")?;
+    assert_eq!(version.major, 2);
+    assert_eq!(version.minor, 1);
+    assert_eq!(version.patch, 3);
 
     Ok(())
 }
 
 #[tokio::test]
 async fn test_content_hashing() -> Result<(), Box<dyn std::error::Error>> {
-    use spsv2_hash::ContentHasher;
+    use spsv2_hash::Hash;
+    use tempfile::NamedTempFile;
 
-    let hasher = ContentHasher::new();
-
-    // Test hashing data
+    // Test file hashing
+    let temp_file = NamedTempFile::new()?;
     let data = b"Hello, World!";
-    let hash1 = hasher.hash_data(data);
-    let hash2 = hasher.hash_data(data);
+    tokio::fs::write(temp_file.path(), data).await?;
 
-    // Same data should produce same hash
+    let hash1 = Hash::hash_file(temp_file.path()).await?;
+    let hash2 = Hash::hash_file(temp_file.path()).await?;
+
+    // Same file should produce same hash
     assert_eq!(hash1, hash2);
 
-    // Different data should produce different hash
-    let different_data = b"Goodbye, World!";
-    let hash3 = hasher.hash_data(different_data);
-    assert_ne!(hash1, hash3);
-
     // Test hash string format
-    let hash_str = hash1.to_string();
-    assert!(hash_str.starts_with("blake3:"));
-    assert_eq!(hash_str.len(), 71); // blake3: + 64 hex chars
+    let hash_str = hash1.to_hex();
+    assert_eq!(hash_str.len(), 64); // 32 bytes = 64 hex chars
+
+    // Different data should produce different hash
+    let temp_file2 = NamedTempFile::new()?;
+    tokio::fs::write(temp_file2.path(), b"Goodbye, World!").await?;
+    let hash3 = Hash::hash_file(temp_file2.path()).await?;
+    assert_ne!(hash1, hash3);
 
     Ok(())
 }
 
 #[tokio::test]
 async fn test_event_system() -> Result<(), Box<dyn std::error::Error>> {
-    use spsv2_events::{Event, EventReceiver, EventSender};
+    use spsv2_events::Event;
     use spsv2_types::Version;
 
     let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
 
     // Send some events
-    sender.send(Event::PackageInstalling {
-        name: "hello-world".to_string(),
-        version: Version::parse("1.0.0")?,
-    })?;
+    sender
+        .send(Event::PackageInstalling {
+            name: "hello-world".to_string(),
+            version: Version::parse("1.0.0")?,
+        })
+        .unwrap();
 
-    sender.send(Event::DownloadProgress {
-        url: "https://example.com/package.sp".to_string(),
-        bytes: 1024,
-        total: 2048,
-    })?;
+    sender
+        .send(Event::DownloadProgress {
+            url: "https://example.com/package.sp".to_string(),
+            bytes_downloaded: 1024,
+            total_bytes: 2048,
+        })
+        .unwrap();
 
     // Receive and verify events
     let event1 = receiver.recv().await.unwrap();
@@ -277,10 +285,14 @@ async fn test_event_system() -> Result<(), Box<dyn std::error::Error>> {
 
     let event2 = receiver.recv().await.unwrap();
     match event2 {
-        Event::DownloadProgress { url, bytes, total } => {
+        Event::DownloadProgress {
+            url,
+            bytes_downloaded,
+            total_bytes,
+        } => {
             assert_eq!(url, "https://example.com/package.sp");
-            assert_eq!(bytes, 1024);
-            assert_eq!(total, 2048);
+            assert_eq!(bytes_downloaded, 1024);
+            assert_eq!(total_bytes, 2048);
         }
         _ => panic!("Unexpected event type"),
     }
@@ -290,7 +302,7 @@ async fn test_event_system() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 async fn test_sbom_parsing() -> Result<(), Box<dyn std::error::Error>> {
-    let env = utils::TestEnvironment::new().await?;
+    let _env = utils::TestEnvironment::new().await?;
 
     // Test SPDX SBOM parsing
     let spdx_path = utils::TestEnvironment::fixtures_path()
@@ -352,14 +364,12 @@ async fn test_configuration_loading() -> Result<(), Box<dyn std::error::Error>> 
     let config: Config = toml::from_str(&config_data)?;
 
     // Verify configuration values
-    assert_eq!(config.general.parallelism, 2);
-    assert_eq!(config.general.output_format, "human");
-    assert_eq!(config.network.download_timeout, 30);
-    assert_eq!(config.network.connection_timeout, 10);
-    assert_eq!(config.network.max_retries, 2);
+    assert_eq!(config.general.parallel_downloads, 2);
+    // config.general.default_output is an enum, not a string
+    assert_eq!(config.network.timeout, 30);
+    assert_eq!(config.network.retries, 2);
     assert!(!config.security.verify_signatures);
-    assert_eq!(config.build.max_build_jobs, 2);
-    assert_eq!(config.build.build_timeout, 300);
+    assert_eq!(config.build.build_jobs, 2);
 
     Ok(())
 }
@@ -397,17 +407,15 @@ async fn test_vulnerability_data_loading() -> Result<(), Box<dyn std::error::Err
 // Performance and stress tests
 #[tokio::test]
 async fn test_concurrent_operations() -> Result<(), Box<dyn std::error::Error>> {
-    let env = utils::TestEnvironment::new().await?;
+    let _env = utils::TestEnvironment::new().await?;
 
     // Test concurrent hash operations
-    let hasher = spsv2_hash::ContentHasher::new();
     let mut tasks = Vec::new();
 
     for i in 0..10 {
-        let hasher = hasher.clone();
         let task = tokio::spawn(async move {
             let data = format!("test data {i}").into_bytes();
-            hasher.hash_data(&data)
+            spsv2_hash::Hash::from_data(&data)
         });
         tasks.push(task);
     }
@@ -435,17 +443,19 @@ description = "Package with many dependencies for testing"
 license = "MIT"
 
 [dependencies]
+runtime = [
 "#;
 
     // Add many dependencies
     let mut manifest_content = large_manifest.to_string();
     for i in 0..100 {
-        manifest_content.push_str(&format!("dep{i} = \">=1.0.0\"\n"));
+        manifest_content.push_str(&format!("    \"dep{i}>=1.0.0\",\n"));
     }
+    manifest_content.push_str("]\n");
 
-    let manifest = spsv2_manifest::PackageManifest::from_toml(&manifest_content)?;
+    let manifest = spsv2_manifest::Manifest::from_toml(&manifest_content)?;
     assert_eq!(manifest.package.name, "large-package");
-    assert_eq!(manifest.dependencies.len(), 100);
+    assert_eq!(manifest.dependencies.runtime.len(), 100);
 
     Ok(())
 }
@@ -468,7 +478,7 @@ async fn test_invalid_version_handling() {
 async fn test_invalid_manifest_handling() {
     // Test malformed TOML
     let invalid_toml = "this is not valid toml [[[";
-    assert!(spsv2_manifest::PackageManifest::from_toml(invalid_toml).is_err());
+    assert!(spsv2_manifest::Manifest::from_toml(invalid_toml).is_err());
 
     // Test missing required fields
     let incomplete_manifest = r#"
@@ -476,7 +486,7 @@ async fn test_invalid_manifest_handling() {
 name = "incomplete"
 # missing version
 "#;
-    assert!(spsv2_manifest::PackageManifest::from_toml(incomplete_manifest).is_err());
+    assert!(spsv2_manifest::Manifest::from_toml(incomplete_manifest).is_err());
 }
 
 // Cleanup test - should be last

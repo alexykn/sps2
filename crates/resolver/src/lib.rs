@@ -32,6 +32,7 @@ pub struct ResolutionContext {
 
 impl ResolutionContext {
     /// Create new resolution context
+    #[must_use]
     pub fn new() -> Self {
         Self {
             runtime_deps: Vec::new(),
@@ -41,18 +42,21 @@ impl ResolutionContext {
     }
 
     /// Add runtime dependency
+    #[must_use]
     pub fn add_runtime_dep(mut self, spec: PackageSpec) -> Self {
         self.runtime_deps.push(spec);
         self
     }
 
     /// Add build dependency
+    #[must_use]
     pub fn add_build_dep(mut self, spec: PackageSpec) -> Self {
         self.build_deps.push(spec);
         self
     }
 
     /// Add local package file
+    #[must_use]
     pub fn add_local_file(mut self, path: PathBuf) -> Self {
         self.local_files.push(path);
         self
@@ -76,20 +80,22 @@ pub struct ResolutionResult {
 
 impl ResolutionResult {
     /// Get all packages in topological order
+    #[must_use]
     pub fn packages_in_order(&self) -> Vec<&ResolvedNode> {
         self.execution_plan
             .batches()
-            .into_iter()
+            .iter()
             .flatten()
             .filter_map(|id| self.nodes.get(id))
             .collect()
     }
 
     /// Get packages by dependency kind
-    pub fn packages_by_kind(&self, kind: DepKind) -> Vec<&ResolvedNode> {
+    #[must_use]
+    pub fn packages_by_kind(&self, kind: &DepKind) -> Vec<&ResolvedNode> {
         self.nodes
             .values()
-            .filter(|node| node.deps.iter().any(|edge| edge.kind == kind))
+            .filter(|node| node.deps.iter().any(|edge| &edge.kind == kind))
             .collect()
     }
 }

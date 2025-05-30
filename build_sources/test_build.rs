@@ -10,7 +10,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let context = BuildContext::new(
         "hello".to_string(),
         Version::parse("1.0.0")?,
-        PathBuf::from("hello.rhai"),
+        PathBuf::from("hello.star"),
         PathBuf::from("."),
     );
     

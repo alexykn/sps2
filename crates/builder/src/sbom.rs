@@ -3,7 +3,6 @@
 use spsv2_errors::{BuildError, Error};
 use spsv2_hash::Hash;
 use std::path::{Path, PathBuf};
-use tokio::fs;
 use tokio::process::Command;
 
 /// SBOM generator using Syft
@@ -19,7 +18,7 @@ pub struct SbomGenerator {
 pub struct SbomConfig {
     /// Generate SPDX format
     pub generate_spdx: bool,
-    /// Generate CycloneDX format
+    /// Generate `CycloneDX` format
     pub generate_cyclonedx: bool,
     /// File exclusion patterns
     pub exclude_patterns: Vec<String>,
@@ -44,7 +43,8 @@ impl Default for SbomConfig {
 }
 
 impl SbomConfig {
-    /// Create config with both SPDX and CycloneDX
+    /// Create config with both SPDX and `CycloneDX`
+    #[must_use]
     pub fn with_both_formats() -> Self {
         Self {
             generate_cyclonedx: true,
@@ -53,12 +53,14 @@ impl SbomConfig {
     }
 
     /// Add exclusion pattern
+    #[must_use]
     pub fn exclude(mut self, pattern: String) -> Self {
         self.exclude_patterns.push(pattern);
         self
     }
 
     /// Set dependency inclusion
+    #[must_use]
     pub fn include_dependencies(mut self, include: bool) -> Self {
         self.include_dependencies = include;
         self
@@ -72,14 +74,15 @@ pub struct SbomFiles {
     pub spdx_path: Option<PathBuf>,
     /// SPDX file hash
     pub spdx_hash: Option<String>,
-    /// CycloneDX JSON file path
+    /// `CycloneDX` JSON file path
     pub cyclonedx_path: Option<PathBuf>,
-    /// CycloneDX file hash
+    /// `CycloneDX` file hash
     pub cyclonedx_hash: Option<String>,
 }
 
 impl SbomFiles {
     /// Create empty SBOM files
+    #[must_use]
     pub fn new() -> Self {
         Self {
             spdx_path: None,
@@ -90,6 +93,7 @@ impl SbomFiles {
     }
 
     /// Check if any SBOM files were generated
+    #[must_use]
     pub fn has_files(&self) -> bool {
         self.spdx_path.is_some() || self.cyclonedx_path.is_some()
     }
@@ -103,6 +107,7 @@ impl Default for SbomFiles {
 
 impl SbomGenerator {
     /// Create new SBOM generator
+    #[must_use]
     pub fn new() -> Self {
         Self {
             syft_path: "syft".to_string(),
@@ -111,6 +116,7 @@ impl SbomGenerator {
     }
 
     /// Create with custom Syft path
+    #[must_use]
     pub fn with_syft_path(syft_path: String) -> Self {
         Self {
             syft_path,
@@ -119,12 +125,17 @@ impl SbomGenerator {
     }
 
     /// Set configuration
+    #[must_use]
     pub fn with_config(mut self, config: SbomConfig) -> Self {
         self.config = config;
         self
     }
 
     /// Check if Syft is available
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Syft cannot be executed.
     pub async fn check_syft_available(&self) -> Result<bool, Error> {
         let output = Command::new(&self.syft_path)
             .arg("--version")
@@ -138,6 +149,10 @@ impl SbomGenerator {
     }
 
     /// Generate SBOM files for a directory
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Syft is not available, SBOM generation fails, or deterministic verification fails.
     pub async fn generate_sbom(
         &self,
         source_dir: &Path,
@@ -179,6 +194,10 @@ impl SbomGenerator {
     }
 
     /// Generate SPDX format SBOM
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Syft execution fails or returns a non-zero exit code.
     async fn generate_spdx(&self, source_dir: &Path, output_path: &Path) -> Result<(), Error> {
         let mut args = vec![
             "scan".to_string(),
@@ -211,7 +230,11 @@ impl SbomGenerator {
         Ok(())
     }
 
-    /// Generate CycloneDX format SBOM
+    /// Generate `CycloneDX` format SBOM
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Syft execution fails or returns a non-zero exit code.
     async fn generate_cyclonedx(&self, source_dir: &Path, output_path: &Path) -> Result<(), Error> {
         let mut args = vec![
             "scan".to_string(),
@@ -245,6 +268,10 @@ impl SbomGenerator {
     }
 
     /// Verify SBOM generation is deterministic
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if temp directory creation fails or SBOM generation is not deterministic.
     async fn verify_deterministic(
         &self,
         sbom_files: &SbomFiles,
@@ -256,7 +283,7 @@ impl SbomGenerator {
         })?;
 
         // Regenerate SPDX and compare
-        if let (Some(spdx_path), Some(expected_hash)) =
+        if let (Some(_spdx_path), Some(expected_hash)) =
             (&sbom_files.spdx_path, &sbom_files.spdx_hash)
         {
             let verify_path = temp_dir.path().join("verify.spdx.json");
@@ -272,7 +299,7 @@ impl SbomGenerator {
         }
 
         // Regenerate CycloneDX and compare
-        if let (Some(cdx_path), Some(expected_hash)) =
+        if let (Some(_cdx_path), Some(expected_hash)) =
             (&sbom_files.cyclonedx_path, &sbom_files.cyclonedx_hash)
         {
             let verify_path = temp_dir.path().join("verify.cdx.json");
@@ -300,7 +327,6 @@ impl Default for SbomGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
 
     #[test]
     fn test_sbom_config() {

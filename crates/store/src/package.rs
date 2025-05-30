@@ -2,7 +2,7 @@
 
 use spsv2_errors::{Error, PackageError};
 use spsv2_manifest::Manifest;
-use spsv2_root;
+use spsv2_root::{create_dir_all, exists, hard_link, size};
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
@@ -14,6 +14,12 @@ pub struct StoredPackage {
 
 impl StoredPackage {
     /// Load a stored package
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The manifest file cannot be found or read
+    /// - The manifest file is invalid
     pub async fn load(path: &Path) -> Result<Self, Error> {
         let manifest_path = path.join("manifest.toml");
         let manifest = Manifest::from_file(&manifest_path).await?;
@@ -25,30 +31,41 @@ impl StoredPackage {
     }
 
     /// Get the package manifest
+    #[must_use]
     pub fn manifest(&self) -> &Manifest {
         &self.manifest
     }
 
     /// Get the package path
+    #[must_use]
     pub fn path(&self) -> &Path {
         &self.path
     }
 
     /// Get the files directory
+    #[must_use]
     pub fn files_path(&self) -> PathBuf {
         self.path.join("files")
     }
 
     /// Get the blobs directory
+    #[must_use]
     pub fn blobs_path(&self) -> PathBuf {
         self.path.join("blobs")
     }
 
     /// Link package contents to a destination
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The files directory is missing or corrupted
+    /// - File linking operations fail
+    /// - Directory creation fails
     pub async fn link_to(&self, dest_root: &Path) -> Result<(), Error> {
         let files_dir = self.files_path();
 
-        if !spsv2_root::exists(&files_dir).await {
+        if !exists(&files_dir).await {
             return Err(PackageError::Corrupted {
                 message: "missing files directory".to_string(),
             }
@@ -61,7 +78,7 @@ impl StoredPackage {
 
     async fn link_dir(&self, src: &Path, dest: &Path) -> Result<(), Error> {
         // Create destination directory
-        spsv2_root::create_dir_all(dest).await?;
+        create_dir_all(dest).await?;
 
         let mut entries = fs::read_dir(src).await?;
         while let Some(entry) = entries.next_entry().await? {
@@ -76,16 +93,16 @@ impl StoredPackage {
                 Box::pin(self.link_dir(&src_path, &dest_path)).await?;
             } else if metadata.is_file() {
                 // Hard link the file
-                if spsv2_root::exists(&dest_path).await {
+                if exists(&dest_path).await {
                     // Remove existing file/link
                     fs::remove_file(&dest_path).await?;
                 }
-                spsv2_root::hard_link(&src_path, &dest_path).await?;
+                hard_link(&src_path, &dest_path).await?;
             } else if metadata.is_symlink() {
                 // Copy symlinks
                 let target = fs::read_link(&src_path).await?;
 
-                if spsv2_root::exists(&dest_path).await {
+                if exists(&dest_path).await {
                     fs::remove_file(&dest_path).await?;
                 }
 
@@ -101,14 +118,22 @@ impl StoredPackage {
     }
 
     /// Calculate total size of the package
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if size calculation fails due to I/O issues
     pub async fn size(&self) -> Result<u64, Error> {
-        spsv2_root::size(&self.path).await
+        size(&self.path).await
     }
 
     /// List all files in the package
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if directory traversal fails or I/O operations fail
     pub async fn list_files(&self) -> Result<Vec<PathBuf>, Error> {
         let files_dir = self.files_path();
-        if !spsv2_root::exists(&files_dir).await {
+        if !exists(&files_dir).await {
             return Ok(Vec::new());
         }
 
@@ -144,9 +169,16 @@ impl StoredPackage {
     }
 
     /// Verify package integrity
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Required directories are missing
+    /// - Manifest validation fails
+    /// - Package structure is corrupted
     pub async fn verify(&self) -> Result<(), Error> {
         // Check required directories exist
-        if !spsv2_root::exists(&self.files_path()).await {
+        if !exists(&self.files_path()).await {
             return Err(PackageError::Corrupted {
                 message: "missing files directory".to_string(),
             }

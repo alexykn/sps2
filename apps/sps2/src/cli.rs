@@ -1,6 +1,6 @@
 //! Command line interface definition
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 use spsv2_types::ColorChoice;
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -70,9 +70,9 @@ pub enum Commands {
         packages: Vec<String>,
     },
 
-    /// Build package from Rhai recipe
+    /// Build package from Starlark recipe
     Build {
-        /// Path to recipe file (.rhai)
+        /// Path to recipe file (.star)
         recipe: PathBuf,
 
         /// Output directory for .sp file
@@ -128,6 +128,7 @@ pub enum Commands {
 
 impl Commands {
     /// Get command name for logging
+    #[allow(dead_code)]
     pub fn name(&self) -> &'static str {
         match self {
             Commands::Install { .. } => "install",
@@ -147,6 +148,7 @@ impl Commands {
     }
 
     /// Check if command requires package arguments
+    #[allow(dead_code)]
     pub fn requires_packages(&self) -> bool {
         matches!(self,
             Commands::Install { packages } |
@@ -155,6 +157,7 @@ impl Commands {
     }
 
     /// Validate command arguments
+    #[allow(dead_code)]
     pub fn validate(&self) -> Result<(), String> {
         match self {
             Commands::Install { packages } if packages.is_empty() => {
@@ -166,8 +169,8 @@ impl Commands {
             Commands::Build { recipe, .. } => {
                 if !recipe.exists() {
                     Err(format!("Recipe file not found: {}", recipe.display()))
-                } else if !recipe.extension().map_or(false, |ext| ext == "rhai") {
-                    Err("Recipe file must have .rhai extension".to_string())
+                } else if recipe.extension().is_none_or(|ext| ext != "star") {
+                    Err("Recipe file must have .star extension".to_string())
                 } else {
                     Ok(())
                 }
@@ -191,11 +194,11 @@ mod tests {
     #[test]
     fn test_cli_parsing() {
         // Test basic install command
-        let cli = Cli::parse_from(&["sps2", "install", "curl"]);
+        let cli = Cli::parse_from(["sps2", "install", "curl"]);
         assert!(matches!(cli.command, Commands::Install { .. }));
 
         // Test install with version constraints
-        let cli = Cli::parse_from(&["sps2", "install", "curl>=8.0.0"]);
+        let cli = Cli::parse_from(["sps2", "install", "curl>=8.0.0"]);
         if let Commands::Install { packages } = cli.command {
             assert_eq!(packages, vec!["curl>=8.0.0"]);
         } else {
@@ -203,7 +206,7 @@ mod tests {
         }
 
         // Test global flags
-        let cli = Cli::parse_from(&["sps2", "--json", "--debug", "list"]);
+        let cli = Cli::parse_from(["sps2", "--json", "--debug", "list"]);
         assert!(cli.global.json);
         assert!(cli.global.debug);
         assert!(matches!(cli.command, Commands::List));
@@ -212,15 +215,15 @@ mod tests {
     #[test]
     fn test_command_aliases() {
         // Test install alias
-        let cli = Cli::parse_from(&["sps2", "i", "curl"]);
+        let cli = Cli::parse_from(["sps2", "i", "curl"]);
         assert!(matches!(cli.command, Commands::Install { .. }));
 
         // Test update alias
-        let cli = Cli::parse_from(&["sps2", "up"]);
+        let cli = Cli::parse_from(["sps2", "up"]);
         assert!(matches!(cli.command, Commands::Update { .. }));
 
         // Test list alias
-        let cli = Cli::parse_from(&["sps2", "ls"]);
+        let cli = Cli::parse_from(["sps2", "ls"]);
         assert!(matches!(cli.command, Commands::List));
     }
 

@@ -147,7 +147,7 @@ install/                # Installation operations
 manifest/               # Repository manifest handling
 net/                    # Network operations (downloads)
 ops/                    # High-level operations orchestration
-package/                # Package definition (Rhai) handling
+package/                # Package definition (Starlark) handling
 resolver/               # Dependency resolution for install and build
 root/                   # Filesystem root/prefix management
 state/                  # State management and transitions
@@ -384,7 +384,7 @@ tests/
 **Core Services:**
 - `net` - Network operations (depends on: errors, types, events)
 - `manifest` - Package manifests (depends on: errors, types, config, hash)
-- `package` - Rhai package definitions (depends on: errors, types, hash)
+- `package` - Starlark package definitions (depends on: errors, types, hash)
 - `root` - Filesystem operations (depends on: errors, types)
 - `index` - Package index (depends on: errors, types, manifest)
 - `store` - Content-addressed storage (depends on: errors, types, hash, root)
@@ -409,7 +409,7 @@ tests/
 
 **Example crate dependencies:**
 - `install` needs: `state` (transitions), `store` (storage), `resolver` (deps), `net` (downloads)
-- `builder` needs: `package` (Rhai), `manifest` (metadata), `hash` (checksums), `resolver` (build deps), SBOM generation
+- `builder` needs: `package` (Starlark), `manifest` (metadata), `hash` (checksums), `resolver` (build deps), SBOM generation
 - `state` needs: `store` (linking), `root` (filesystem ops)
 - `resolver` needs: `index` (available packages), `manifest` (dependencies)
 
@@ -859,7 +859,7 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<OpReport>
 8. CLI receives events and updates display accordingly
 9. Final success/error event sent back to CLI
 
-**Note**: Install is for binary packages only. To build from source, use `sps2 build recipe.rhai` which produces a .sp file.
+**Note**: Install is for binary packages only. To build from source, use `sps2 build recipe.star` which produces a .sp file.
 
 ### CLI Display Responsibilities
 - Progress bars for downloads
@@ -876,8 +876,8 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<OpReport>
 - `sps2 install "jq==1.7"` - Install exact version from repository
 - `sps2 install "jq>=1.6,<2.0"` - Install with constraints from repository
 - `sps2 install ./jq-1.7-1.arm64.sp` - Install from local .sp file
-- `sps2 build jq.rhai` - Build package from recipe (produces .sp file)
-- `sps2 build --network jq.rhai` - Build with network access enabled
+- `sps2 build jq.star` - Build package from recipe (produces .sp file)
+- `sps2 build --network jq.star` - Build with network access enabled
 - `sps2 update` - Update all packages respecting constraints
 - `sps2 upgrade jq` - Upgrade to latest, ignoring upper bounds
 - `sps2 rollback` - Revert to previous state
@@ -1128,8 +1128,8 @@ sqlx::query("UPDATE active_state SET id = ?")
 #### Build Architecture
 
 **Build pipeline flow:**
-1. `sps2 build recipe.rhai` command invoked
-2. Sandboxed Rhai VM loads and validates recipe
+1. `sps2 build recipe.star` command invoked
+2. Sandboxed Starlark VM loads and validates recipe
 3. Recipe calls Builder API methods (fetch, autotools, etc.)
 4. Builder crate executes build in isolated environment
 5. Package created and saved as .sp file:
@@ -1142,33 +1142,45 @@ sqlx::query("UPDATE active_state SET id = ?")
 
 **Important**: `sps2 build` only produces packages, it does NOT install them. This follows Unix package manager conventions where building and installing are separate operations.
 
-**Sandboxing:** Rhai VM provides limited API - no filesystem access, no network except fetch(), no exec()
+**Sandboxing:** Starlark VM provides limited API - no filesystem access, no network except fetch(), no exec()
 
-#### Rhai Recipe Format
-Build recipes are written in Rhai with a sandboxed, deterministic API:
+#### Starlark Recipe Format
+Build recipes are written in Starlark (Python-like) with a sandboxed, deterministic API:
 
-```rhai
-// jq.rhai - Example showing network override
-fn metadata(m) {
-    m.name("nodejs")
-     .version("20.11.0")
-     .description("JavaScript runtime");
+```python
+# nodejs.star - Example showing recipe structure
+def metadata():
+    """Return package metadata as a dictionary."""
+    return {
+        "name": "nodejs",
+        "version": "20.11.0",
+        "description": "JavaScript runtime",
+        "homepage": "https://nodejs.org",
+        "license": "MIT",
+        # Dependencies will be added when builder is complete
+        # "depends": ["libc++~=16.0.0"],
+        # "build_depends": ["python3>=3.8"]
+    }
 
-    m.depends_on("libc++~=16.0.0");
-    m.build_depends_on("python3>=3.8");
-}
-
-fn build(b) {
-    // Enable network for npm modules during build
-    b.allow_network(true)
-     .fetch(
-        "https://nodejs.org/dist/v20.11.0/node-v20.11.0.tar.gz",
-        "abc123...sha256..."
-     )
-     .configure(["--prefix=$PREFIX"])
-     .make(["-j$JOBS"])
-     .install();
-}
+def build(ctx):
+    """Build the package using the provided context.
+    
+    Args:
+        ctx: Build context with attributes:
+            - ctx.NAME: package name from metadata
+            - ctx.VERSION: package version from metadata
+            - ctx.PREFIX: installation prefix (e.g. /opt/pm/live)
+            - ctx.JOBS: number of parallel build jobs
+    """
+    # TODO: Once builder implementation is complete:
+    # ctx.fetch(
+    #     "https://nodejs.org/dist/v20.11.0/node-v20.11.0.tar.gz",
+    #     "abc123...sha256..."
+    # )
+    # ctx.configure(["--prefix=" + ctx.PREFIX])
+    # ctx.make(["-j" + str(ctx.JOBS)])
+    # ctx.install()
+    pass
 ```
 
 **Version specifiers (Python-style):**
@@ -1435,7 +1447,7 @@ msrv:
 ```
 
 **Entitlements justification:**
-- `allow-unsigned-executable-memory`: Future-proofing for WASM/JIT plugins (Rhai currently uses bytecode)
+- `allow-unsigned-executable-memory`: Future-proofing for WASM/JIT plugins (Starlark uses bytecode interpreter)
 - `disable-library-validation`: Needed to load packages that contain dylibs from `/opt/pm/live/lib`
 - These are standard for package managers and development tools
 - Alternative would break core functionality (no future JIT support, no dynamic libraries)
@@ -1572,7 +1584,7 @@ async fn update_skips_major_versions() {
 - Build artifacts cached by source hash
 - Build dependencies cached and reused across builds
 - Runtime dependencies cached in package store
-- Rhai recipes byte-compiled and cached
+- Starlark recipes parsed and cached
 
 #### Concurrency Limits
 - Download pool: 4 concurrent connections (configurable)

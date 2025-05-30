@@ -6,26 +6,31 @@ use crate::{
 };
 use spsv2_errors::{Error, OpsError};
 use spsv2_events::Event;
-use spsv2_types::PackageSpec;
 use std::collections::HashMap;
 use std::time::Instant;
 use uuid::Uuid;
 
 /// Sync repository index
+///
+/// # Errors
+///
+/// Returns an error if index synchronization fails.
 pub async fn reposync(ctx: &OpsCtx) -> Result<String, Error> {
     let start = Instant::now();
 
-    ctx.tx.send(Event::RepoSyncStarting);
+    ctx.tx.send(Event::RepoSyncStarting).ok();
 
     // Check if index is stale (older than 7 days)
     let stale = ctx.index.is_stale(7);
 
     if !stale {
         let message = "Repository index is up to date".to_string();
-        ctx.tx.send(Event::RepoSyncCompleted {
-            packages_updated: 0,
-            duration_ms: start.elapsed().as_millis() as u64,
-        });
+        ctx.tx
+            .send(Event::RepoSyncCompleted {
+                packages_updated: 0,
+                duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+            })
+            .ok();
         return Ok(message);
     }
 
@@ -41,17 +46,23 @@ pub async fn reposync(ctx: &OpsCtx) -> Result<String, Error> {
     let packages_updated = 42; // Simulated count
     let message = format!("Updated {packages_updated} packages from repository");
 
-    ctx.tx.send(Event::RepoSyncCompleted {
-        packages_updated,
-        duration_ms: start.elapsed().as_millis() as u64,
-    });
+    ctx.tx
+        .send(Event::RepoSyncCompleted {
+            packages_updated,
+            duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+        })
+        .ok();
 
     Ok(message)
 }
 
 /// List installed packages
+///
+/// # Errors
+///
+/// Returns an error if package listing fails.
 pub async fn list_packages(ctx: &OpsCtx) -> Result<Vec<PackageInfo>, Error> {
-    ctx.tx.send(Event::ListStarting);
+    ctx.tx.send(Event::ListStarting).ok();
 
     // Get installed packages from state
     let installed_packages = ctx.state.get_installed_packages().await?;
@@ -77,14 +88,14 @@ pub async fn list_packages(ctx: &OpsCtx) -> Result<Vec<PackageInfo>, Error> {
         };
 
         // Check if there's an available update
-        let available_version = ctx
-            .index
-            .get_package_versions(&package.name)
-            .and_then(|versions| {
-                versions.first().and_then(|entry| {
-                    spsv2_types::Version::parse(&entry.version()).ok()
-                })
-            });
+        let available_version =
+            ctx.index
+                .get_package_versions(&package.name)
+                .and_then(|versions| {
+                    versions
+                        .first()
+                        .and_then(|entry| spsv2_types::Version::parse(&entry.version()).ok())
+                });
 
         let status = match &available_version {
             Some(avail) if avail > &package_version => PackageStatus::Outdated,
@@ -95,7 +106,6 @@ pub async fn list_packages(ctx: &OpsCtx) -> Result<Vec<PackageInfo>, Error> {
         let size = ctx
             .store
             .get_package_size(&package.name, &package_version)
-            .await
             .ok();
 
         let package_info = PackageInfo {
@@ -116,21 +126,27 @@ pub async fn list_packages(ctx: &OpsCtx) -> Result<Vec<PackageInfo>, Error> {
     // Sort by name
     package_infos.sort_by(|a, b| a.name.cmp(&b.name));
 
-    ctx.tx.send(Event::ListCompleted {
-        count: package_infos.len(),
-    });
+    ctx.tx
+        .send(Event::ListCompleted {
+            count: package_infos.len(),
+        })
+        .ok();
 
     Ok(package_infos)
 }
 
 /// Get information about a specific package
+///
+/// # Errors
+///
+/// Returns an error if package information retrieval fails.
 pub async fn package_info(ctx: &OpsCtx, package_name: &str) -> Result<PackageInfo, Error> {
     // Check if package is installed
     let installed_packages = ctx.state.get_installed_packages().await?;
     let installed_version = installed_packages
         .iter()
         .find(|pkg| pkg.name == package_name)
-        .map(|pkg| pkg.version());
+        .map(spsv2_state::Package::version);
 
     // Get available versions from index
     let versions = ctx
@@ -148,12 +164,10 @@ pub async fn package_info(ctx: &OpsCtx, package_name: &str) -> Result<PackageInf
 
     let status = match &installed_version {
         Some(installed) => {
-            if installed == &available_version {
-                PackageStatus::Installed
-            } else if installed < &available_version {
-                PackageStatus::Outdated
-            } else {
-                PackageStatus::Local // Newer than available
+            match installed.cmp(&available_version) {
+                std::cmp::Ordering::Equal => PackageStatus::Installed,
+                std::cmp::Ordering::Less => PackageStatus::Outdated,
+                std::cmp::Ordering::Greater => PackageStatus::Local, // Newer than available
             }
         }
         None => PackageStatus::Available,
@@ -161,7 +175,7 @@ pub async fn package_info(ctx: &OpsCtx, package_name: &str) -> Result<PackageInf
 
     // Get package size if installed
     let size = if let Some(version) = &installed_version {
-        ctx.store.get_package_size(package_name, version).await.ok()
+        ctx.store.get_package_size(package_name, version).ok()
     } else {
         None
     };
@@ -182,10 +196,16 @@ pub async fn package_info(ctx: &OpsCtx, package_name: &str) -> Result<PackageInf
 }
 
 /// Search for packages
+///
+/// # Errors
+///
+/// Returns an error if package search fails.
 pub async fn search_packages(ctx: &OpsCtx, query: &str) -> Result<Vec<SearchResult>, Error> {
-    ctx.tx.send(Event::SearchStarting {
-        query: query.to_string(),
-    });
+    ctx.tx
+        .send(Event::SearchStarting {
+            query: query.to_string(),
+        })
+        .ok();
 
     // Search package names in index
     let package_names = ctx.index.search(query);
@@ -212,64 +232,77 @@ pub async fn search_packages(ctx: &OpsCtx, query: &str) -> Result<Vec<SearchResu
         }
     }
 
-    ctx.tx.send(Event::SearchCompleted {
-        query: query.to_string(),
-        count: results.len(),
-    });
+    ctx.tx
+        .send(Event::SearchCompleted {
+            query: query.to_string(),
+            count: results.len(),
+        })
+        .ok();
 
     Ok(results)
 }
 
 /// Clean up orphaned packages and old states
+///
+/// # Errors
+///
+/// Returns an error if cleanup operation fails.
 pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
     let start = Instant::now();
 
-    ctx.tx.send(Event::CleanupStarting);
+    ctx.tx.send(Event::CleanupStarting).ok();
 
     // Clean up old states (keep last 10)
     let cleaned_states = ctx.state.cleanup_old_states(10).await?;
 
     // Run garbage collection on store
-    let cleaned_packages = ctx.store.garbage_collect().await?;
+    let cleaned_packages = ctx.store.garbage_collect()?;
 
-    let duration = start.elapsed().as_millis() as u64;
+    let duration = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
     let message = format!(
         "Cleaned up {} old states and {} orphaned packages",
-        cleaned_states.len(), cleaned_packages
+        cleaned_states.len(),
+        cleaned_packages
     );
 
-    ctx.tx.send(Event::CleanupCompleted {
-        states_removed: cleaned_states.len(),
-        packages_removed: cleaned_packages,
-        duration_ms: duration,
-    });
+    ctx.tx
+        .send(Event::CleanupCompleted {
+            states_removed: cleaned_states.len(),
+            packages_removed: cleaned_packages,
+            duration_ms: duration,
+        })
+        .ok();
 
     Ok(message)
 }
 
 /// Rollback to a previous state
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - No previous state exists
+/// - Rollback operation fails
 pub async fn rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<StateInfo, Error> {
     let start = Instant::now();
 
     // If no target specified, rollback to previous state
-    let target_id = match target_state {
-        Some(id) => id,
-        None => {
-            let current_id = ctx
-                .state
-                .get_current_state_id()
-                .await?;
+    let target_id = if let Some(id) = target_state {
+        id
+    } else {
+        let current_id = ctx.state.get_current_state_id().await?;
 
-            ctx.state
-                .get_parent_state_id(&current_id)
-                .await?
-                .ok_or_else(|| OpsError::NoPreviousState)?
-        }
+        ctx.state
+            .get_parent_state_id(&current_id)
+            .await?
+            .ok_or(OpsError::NoPreviousState)?
     };
 
-    ctx.tx.send(Event::RollbackStarting {
-        target_state: target_id,
-    });
+    ctx.tx
+        .send(Event::RollbackStarting {
+            target_state: target_id,
+        })
+        .ok();
 
     // Verify target state exists
     if !ctx.state.state_exists(&target_id).await? {
@@ -288,15 +321,21 @@ pub async fn rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<StateI
     // Get state information
     let state_info = get_state_info(ctx, target_id).await?;
 
-    ctx.tx.send(Event::RollbackCompleted {
-        target_state: target_id,
-        duration_ms: start.elapsed().as_millis() as u64,
-    });
+    ctx.tx
+        .send(Event::RollbackCompleted {
+            target_state: target_id,
+            duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+        })
+        .ok();
 
     Ok(state_info)
 }
 
 /// Get history of states
+///
+/// # Errors
+///
+/// Returns an error if state history retrieval fails.
 pub async fn history(ctx: &OpsCtx) -> Result<Vec<StateInfo>, Error> {
     let states = ctx.state.list_states_detailed().await?;
     let current_id = ctx.state.get_current_state_id().await?;
@@ -305,9 +344,11 @@ pub async fn history(ctx: &OpsCtx) -> Result<Vec<StateInfo>, Error> {
 
     for state in states {
         let state_id = state.state_id();
-        let parent_id = state.parent_id.as_ref()
+        let parent_id = state
+            .parent_id
+            .as_ref()
             .and_then(|p| uuid::Uuid::parse_str(p).ok());
-        
+
         let state_info = StateInfo {
             id: state_id,
             timestamp: state.timestamp(),
@@ -327,10 +368,14 @@ pub async fn history(ctx: &OpsCtx) -> Result<Vec<StateInfo>, Error> {
 }
 
 /// Check system health
+///
+/// # Errors
+///
+/// Returns an error if health check fails.
 pub async fn check_health(ctx: &OpsCtx) -> Result<HealthCheck, Error> {
-    let start = Instant::now();
+    let _start = Instant::now();
 
-    ctx.tx.send(Event::HealthCheckStarting);
+    ctx.tx.send(Event::HealthCheckStarting).ok();
 
     let mut components = HashMap::new();
     let mut issues = Vec::new();
@@ -338,14 +383,14 @@ pub async fn check_health(ctx: &OpsCtx) -> Result<HealthCheck, Error> {
 
     // Check store health
     let store_start = Instant::now();
-    let store_health = check_store_health(ctx, &mut issues).await;
+    let store_health = check_store_health(ctx, &mut issues);
     components.insert(
         "store".to_string(),
         ComponentHealth {
             name: "Store".to_string(),
             status: store_health,
             message: "Package store integrity check".to_string(),
-            check_duration_ms: store_start.elapsed().as_millis() as u64,
+            check_duration_ms: u64::try_from(store_start.elapsed().as_millis()).unwrap_or(u64::MAX),
         },
     );
 
@@ -362,7 +407,7 @@ pub async fn check_health(ctx: &OpsCtx) -> Result<HealthCheck, Error> {
             name: "State Database".to_string(),
             status: state_health,
             message: "State database consistency check".to_string(),
-            check_duration_ms: state_start.elapsed().as_millis() as u64,
+            check_duration_ms: u64::try_from(state_start.elapsed().as_millis()).unwrap_or(u64::MAX),
         },
     );
 
@@ -372,14 +417,14 @@ pub async fn check_health(ctx: &OpsCtx) -> Result<HealthCheck, Error> {
 
     // Check index health
     let index_start = Instant::now();
-    let index_health = check_index_health(ctx, &mut issues).await;
+    let index_health = check_index_health(ctx, &mut issues);
     components.insert(
         "index".to_string(),
         ComponentHealth {
             name: "Package Index".to_string(),
             status: index_health,
             message: "Package index freshness check".to_string(),
-            check_duration_ms: index_start.elapsed().as_millis() as u64,
+            check_duration_ms: u64::try_from(index_start.elapsed().as_millis()).unwrap_or(u64::MAX),
         },
     );
 
@@ -393,52 +438,56 @@ pub async fn check_health(ctx: &OpsCtx) -> Result<HealthCheck, Error> {
         issues,
     };
 
-    ctx.tx.send(Event::HealthCheckCompleted {
-        healthy: overall_healthy,
-        issues: health_check.issues.iter().map(|i| i.description.clone()).collect(),
-    });
+    ctx.tx
+        .send(Event::HealthCheckCompleted {
+            healthy: overall_healthy,
+            issues: health_check
+                .issues
+                .iter()
+                .map(|i| i.description.clone())
+                .collect(),
+        })
+        .ok();
 
     Ok(health_check)
 }
 
 /// Check store health
-async fn check_store_health(ctx: &OpsCtx, issues: &mut Vec<HealthIssue>) -> HealthStatus {
+fn check_store_health(ctx: &OpsCtx, issues: &mut Vec<HealthIssue>) -> HealthStatus {
     // Check if store directory exists and is accessible
-    match ctx.store.verify_integrity().await {
-        Ok(()) => HealthStatus::Healthy,
-        Err(_) => {
-            issues.push(HealthIssue {
-                component: "store".to_string(),
-                severity: IssueSeverity::High,
-                description: "Package store integrity check failed".to_string(),
-                suggestion: Some("Run 'sps2 cleanup' to fix corrupted store entries".to_string()),
-            });
-            HealthStatus::Error
-        }
+    if ctx.store.verify_integrity().is_ok() {
+        HealthStatus::Healthy
+    } else {
+        issues.push(HealthIssue {
+            component: "store".to_string(),
+            severity: IssueSeverity::High,
+            description: "Package store integrity check failed".to_string(),
+            suggestion: Some("Run 'sps2 cleanup' to fix corrupted store entries".to_string()),
+        });
+        HealthStatus::Error
     }
 }
 
 /// Check state database health
 async fn check_state_health(ctx: &OpsCtx, issues: &mut Vec<HealthIssue>) -> HealthStatus {
     // Check database consistency
-    match ctx.state.verify_consistency().await {
-        Ok(()) => HealthStatus::Healthy,
-        Err(_) => {
-            issues.push(HealthIssue {
-                component: "state".to_string(),
-                severity: IssueSeverity::Critical,
-                description: "State database consistency check failed".to_string(),
-                suggestion: Some(
-                    "Database may be corrupted, consider restoring from backup".to_string(),
-                ),
-            });
-            HealthStatus::Error
-        }
+    if ctx.state.verify_consistency().await.is_ok() {
+        HealthStatus::Healthy
+    } else {
+        issues.push(HealthIssue {
+            component: "state".to_string(),
+            severity: IssueSeverity::Critical,
+            description: "State database consistency check failed".to_string(),
+            suggestion: Some(
+                "Database may be corrupted, consider restoring from backup".to_string(),
+            ),
+        });
+        HealthStatus::Error
     }
 }
 
 /// Check index health
-async fn check_index_health(ctx: &OpsCtx, issues: &mut Vec<HealthIssue>) -> HealthStatus {
+fn check_index_health(ctx: &OpsCtx, issues: &mut Vec<HealthIssue>) -> HealthStatus {
     // Check if index is stale
     if ctx.index.is_stale(7) {
         issues.push(HealthIssue {
@@ -461,9 +510,11 @@ async fn get_state_info(ctx: &OpsCtx, state_id: Uuid) -> Result<StateInfo, Error
     let state = states
         .iter()
         .find(|s| s.state_id() == state_id)
-        .ok_or_else(|| OpsError::StateNotFound { state_id })?;
+        .ok_or(OpsError::StateNotFound { state_id })?;
 
-    let parent_id = state.parent_id.as_ref()
+    let parent_id = state
+        .parent_id
+        .as_ref()
         .and_then(|p| uuid::Uuid::parse_str(p).ok());
 
     Ok(StateInfo {
@@ -486,14 +537,14 @@ mod tests {
         let temp = tempdir().unwrap();
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
 
-        let store = spsv2_store::PackageStore::new(temp.path()).await.unwrap();
+        let store = spsv2_store::PackageStore::new(temp.path().to_path_buf());
         let state = spsv2_state::StateManager::new(temp.path()).await.unwrap();
         let mut index = spsv2_index::IndexManager::new(temp.path());
         let empty_index = Index::new();
         let json = empty_index.to_json().unwrap();
         index.load(Some(&json)).await.unwrap();
 
-        let net = spsv2_net::NetClient::new();
+        let net = spsv2_net::NetClient::with_defaults().unwrap();
         let resolver = spsv2_resolver::Resolver::new(index.clone());
         let builder = spsv2_builder::Builder::new();
 

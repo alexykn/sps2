@@ -117,10 +117,10 @@ mod tests {
         let package_names: std::collections::HashSet<_> =
             result.nodes.keys().map(|id| &id.name).collect();
 
-        assert!(package_names.contains("git"));
-        assert!(package_names.contains("curl"));
-        assert!(package_names.contains("openssl"));
-        assert!(package_names.contains("zlib"));
+        assert!(package_names.iter().any(|name| name.as_str() == "git"));
+        assert!(package_names.iter().any(|name| name.as_str() == "curl"));
+        assert!(package_names.iter().any(|name| name.as_str() == "openssl"));
+        assert!(package_names.iter().any(|name| name.as_str() == "zlib"));
 
         // Check execution order
         let packages = result.packages_in_order();
@@ -160,11 +160,13 @@ mod tests {
         let package_names: std::collections::HashSet<_> =
             result.nodes.keys().map(|id| &id.name).collect();
 
-        assert!(package_names.contains("jq"));
-        assert!(package_names.contains("oniguruma"));
-        assert!(package_names.contains("curl"));
-        assert!(package_names.contains("openssl"));
-        assert!(package_names.contains("zlib"));
+        assert!(package_names.iter().any(|name| name.as_str() == "jq"));
+        assert!(package_names
+            .iter()
+            .any(|name| name.as_str() == "oniguruma"));
+        assert!(package_names.iter().any(|name| name.as_str() == "curl"));
+        assert!(package_names.iter().any(|name| name.as_str() == "openssl"));
+        assert!(package_names.iter().any(|name| name.as_str() == "zlib"));
     }
 
     #[tokio::test]
@@ -190,9 +192,11 @@ mod tests {
         let package_names: std::collections::HashSet<_> =
             result.nodes.keys().map(|id| &id.name).collect();
 
-        assert!(package_names.contains("jq"));
-        assert!(package_names.contains("oniguruma"));
-        assert!(package_names.contains("autoconf"));
+        assert!(package_names.iter().any(|name| name.as_str() == "jq"));
+        assert!(package_names
+            .iter()
+            .any(|name| name.as_str() == "oniguruma"));
+        assert!(package_names.iter().any(|name| name.as_str() == "autoconf"));
     }
 
     #[tokio::test]
@@ -221,8 +225,10 @@ mod tests {
             .map(|node| &node.name)
             .collect();
 
-        assert!(first_batch_names.contains("openssl"));
-        assert!(first_batch_names.contains("zlib"));
+        assert!(first_batch_names
+            .iter()
+            .any(|name| name.as_str() == "openssl"));
+        assert!(first_batch_names.iter().any(|name| name.as_str() == "zlib"));
 
         // Last batch should contain root package (git)
         let last_batch = &batches[batches.len() - 1];
@@ -232,7 +238,7 @@ mod tests {
             .map(|node| &node.name)
             .collect();
 
-        assert!(last_batch_names.contains("git"));
+        assert!(last_batch_names.iter().any(|name| name.as_str() == "git"));
     }
 
     #[tokio::test]

@@ -23,6 +23,7 @@ pub struct OpReport {
 
 impl OpReport {
     /// Create success report
+    #[must_use]
     pub fn success(
         operation: String,
         summary: String,
@@ -39,6 +40,7 @@ impl OpReport {
     }
 
     /// Create failure report
+    #[must_use]
     pub fn failure(operation: String, summary: String, duration_ms: u64) -> Self {
         Self {
             operation,
@@ -157,6 +159,7 @@ pub struct HealthCheck {
 
 impl HealthCheck {
     /// Check if system is healthy
+    #[must_use]
     pub fn is_healthy(&self) -> bool {
         self.healthy
     }
@@ -302,7 +305,7 @@ mod tests {
             license: Some("MIT".to_string()),
             status: PackageStatus::Outdated,
             dependencies: vec!["openssl>=3.0.0".to_string()],
-            size: Some(1024000),
+            size: Some(1_024_000),
         };
 
         assert_eq!(info.name, "curl");
@@ -341,12 +344,14 @@ mod tests {
 
         match remote {
             InstallRequest::Remote(spec) => assert_eq!(spec.name, "curl"),
-            _ => panic!("Expected remote request"),
+            InstallRequest::LocalFile(_) => panic!("Expected remote request"),
         }
 
         match local {
-            InstallRequest::LocalFile(path) => assert!(path.to_string().ends_with("package.sp")),
-            _ => panic!("Expected local file request"),
+            InstallRequest::LocalFile(path) => {
+                assert!(path.display().to_string().ends_with("package.sp"))
+            }
+            InstallRequest::Remote(_) => panic!("Expected local file request"),
         }
     }
 }

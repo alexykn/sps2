@@ -17,6 +17,7 @@ spsv2-state = { path = "../state" }
 spsv2-store = { path = "../store" }
 spsv2-install = { path = "../install" }
 spsv2-builder = { path = "../builder" }
+spsv2-package = { path = "../package" }
 spsv2-index = { path = "../index" }
 spsv2-audit = { path = "../audit" }
 serde = { workspace = true }

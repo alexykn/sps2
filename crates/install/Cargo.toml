@@ -29,3 +29,4 @@ libc = "0.2"
 
 [dev-dependencies]
 tempfile = { workspace = true }
+spsv2-index = { path = "../index" }

@@ -55,7 +55,7 @@ fn test_install_no_packages() {
 #[test]
 fn test_json_output() {
     let output = Command::new(env!("CARGO_BIN_EXE_sps2"))
-        .args(&["--json", "list"])
+        .args(["--json", "list"])
         .output()
         .expect("Failed to execute sps2");
 

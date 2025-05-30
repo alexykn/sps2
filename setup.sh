@@ -17,6 +17,8 @@ LIVE_DIR="$PM_ROOT/live"
 STORE_DIR="$PM_ROOT/store"
 STATES_DIR="$PM_ROOT/states"
 LOGS_DIR="$PM_ROOT/logs"
+BUILD_DIR="$PM_ROOT/build"
+KEYS_DIR="$PM_ROOT/keys"
 
 echo "=== spsv2 Package Manager Setup ==="
 echo
@@ -43,6 +45,8 @@ mkdir -p "$LIVE_DIR/share"
 mkdir -p "$STORE_DIR"
 mkdir -p "$STATES_DIR"
 mkdir -p "$LOGS_DIR"
+mkdir -p "$BUILD_DIR"
+mkdir -p "$KEYS_DIR"
 
 # Set permissions
 chmod 755 "$PM_ROOT"
@@ -50,6 +54,8 @@ chmod 755 "$LIVE_DIR"
 chmod 755 "$STORE_DIR"
 chmod 755 "$STATES_DIR"
 chmod 755 "$LOGS_DIR"
+chmod 755 "$BUILD_DIR"
+chmod 755 "$KEYS_DIR"
 
 # Initialize SQLite database
 echo "Initializing database..."

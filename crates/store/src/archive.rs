@@ -1,17 +1,25 @@
 //! Package archive handling (.sp files)
 
 use spsv2_errors::{Error, PackageError, StorageError};
+use spsv2_root::{create_dir_all, exists};
 use std::path::Path;
 use tar::Archive;
 
 /// Extract a .sp package file to a directory
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Tar extraction fails
+/// - The extracted package is missing manifest.toml
+/// - I/O operations fail
 pub async fn extract_package(sp_file: &Path, dest: &Path) -> Result<(), Error> {
     // For now, use simple tar extraction (can add zstd later)
     extract_tar_file(sp_file, dest).await?;
 
     // Verify manifest exists
     let manifest_path = dest.join("manifest.toml");
-    if !spsv2_root::exists(&manifest_path).await {
+    if !exists(&manifest_path).await {
         return Err(PackageError::InvalidFormat {
             message: "missing manifest.toml in package".to_string(),
         }
@@ -22,10 +30,18 @@ pub async fn extract_package(sp_file: &Path, dest: &Path) -> Result<(), Error> {
 }
 
 /// Create a .sp package file from a directory
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Source directory is missing manifest.toml
+/// - Archive creation fails
+/// - I/O operations fail
+/// - Directory creation fails
 pub async fn create_package(src: &Path, sp_file: &Path) -> Result<(), Error> {
     // Verify source has required structure
     let manifest_path = src.join("manifest.toml");
-    if !spsv2_root::exists(&manifest_path).await {
+    if !exists(&manifest_path).await {
         return Err(PackageError::InvalidFormat {
             message: "source directory missing manifest.toml".to_string(),
         }
@@ -34,31 +50,31 @@ pub async fn create_package(src: &Path, sp_file: &Path) -> Result<(), Error> {
 
     // Create parent directory if needed
     if let Some(parent) = sp_file.parent() {
-        spsv2_root::create_dir_all(parent).await?;
+        create_dir_all(parent).await?;
     }
 
     // Create archive using blocking operations
     let src = src.to_path_buf();
     let sp_file = sp_file.to_path_buf();
-    
+
     tokio::task::spawn_blocking(move || {
         use std::fs::File;
         use std::io::BufWriter;
-        
+
         let file = File::create(&sp_file)?;
         let buf_writer = BufWriter::new(file);
         let mut builder = tar::Builder::new(buf_writer);
-        
+
         // Set options for deterministic output
         builder.mode(tar::HeaderMode::Deterministic);
         builder.follow_symlinks(false);
-        
+
         // Add all files from the source directory
         add_dir_to_tar(&mut builder, &src, Path::new(""))?;
-        
+
         // Finish the archive
         builder.finish()?;
-        
+
         Ok::<(), Error>(())
     })
     .await
@@ -70,14 +86,14 @@ pub async fn create_package(src: &Path, sp_file: &Path) -> Result<(), Error> {
 /// Extract a tar archive from a file
 async fn extract_tar_file(file_path: &Path, dest: &Path) -> Result<(), Error> {
     // Create destination directory
-    spsv2_root::create_dir_all(dest).await?;
+    create_dir_all(dest).await?;
 
     let file_path = file_path.to_path_buf();
     let dest = dest.to_path_buf();
 
     tokio::task::spawn_blocking(move || {
         use std::fs::File;
-        
+
         let file = File::open(&file_path)?;
         let mut archive = Archive::new(file);
 

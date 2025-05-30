@@ -2,12 +2,12 @@
 
 use comfy_table::{presets::UTF8_FULL, Attribute, Cell, Color, ContentArrangement, Table};
 use console::{Style, Term};
-use spsv2_types::ColorChoice;
 use spsv2_ops::{
     BuildReport, HealthCheck, HealthStatus, InstallReport, IssueSeverity, OperationResult,
     PackageInfo, PackageStatus, SearchResult, StateInfo,
 };
-use std::io::{self, Write};
+use spsv2_types::ColorChoice;
+use std::io;
 
 /// Output renderer for CLI results
 #[derive(Clone)]
@@ -388,7 +388,7 @@ impl OutputRenderer {
             Cell::new("Message").add_attribute(Attribute::Bold),
         ]);
 
-        for (_, component) in &health.components {
+        for component in health.components.values() {
             let status_cell = match component.status {
                 HealthStatus::Healthy => Cell::new("Healthy").fg(Color::Green),
                 HealthStatus::Warning => Cell::new("Warning").fg(Color::Yellow),

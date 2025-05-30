@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use tokio::fs;
 
 /// Main configuration structure
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
     pub general: GeneralConfig,
@@ -46,7 +46,7 @@ pub struct GeneralConfig {
 }
 
 /// Build configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BuildConfig {
     pub build_jobs: usize, // 0 = auto-detect
     pub network_access: bool,
@@ -68,7 +68,7 @@ pub struct StateConfig {
 }
 
 /// Path configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PathConfig {
     pub store_path: Option<PathBuf>,
     pub state_path: Option<PathBuf>,
@@ -78,24 +78,12 @@ pub struct PathConfig {
 /// Network configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkConfig {
-    pub timeout: u64,         // seconds
+    pub timeout: u64, // seconds
     pub retries: u32,
-    pub retry_delay: u64,     // seconds
+    pub retry_delay: u64, // seconds
 }
 
 // Default implementations
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            general: GeneralConfig::default(),
-            build: BuildConfig::default(),
-            security: SecurityConfig::default(),
-            state: StateConfig::default(),
-            paths: PathConfig::default(),
-            network: NetworkConfig::default(),
-        }
-    }
-}
 
 impl Default for GeneralConfig {
     fn default() -> Self {
@@ -103,15 +91,6 @@ impl Default for GeneralConfig {
             default_output: OutputFormat::Tty,
             color: ColorChoice::Auto,
             parallel_downloads: 4,
-        }
-    }
-}
-
-impl Default for BuildConfig {
-    fn default() -> Self {
-        Self {
-            build_jobs: 0, // 0 = auto-detect from CPU count
-            network_access: false,
         }
     }
 }
@@ -135,28 +114,22 @@ impl Default for StateConfig {
     }
 }
 
-impl Default for PathConfig {
-    fn default() -> Self {
-        Self {
-            store_path: None,
-            state_path: None,
-            build_path: None,
-        }
-    }
-}
-
 impl Default for NetworkConfig {
     fn default() -> Self {
         Self {
-            timeout: 300,      // 5 minutes
+            timeout: 300, // 5 minutes
             retries: 3,
-            retry_delay: 1,    // 1 second
+            retry_delay: 1, // 1 second
         }
     }
 }
 
 impl Config {
     /// Get the default config file path
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the system config directory cannot be determined.
     pub fn default_path() -> Result<PathBuf, Error> {
         let config_dir = dirs::config_dir().ok_or_else(|| ConfigError::NotFound {
             path: "config directory".to_string(),
@@ -165,6 +138,11 @@ impl Config {
     }
 
     /// Load configuration from file
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be read or if the file contents
+    /// contain invalid TOML syntax that cannot be parsed.
     pub async fn load_from_file(path: &Path) -> Result<Self, Error> {
         let contents = fs::read_to_string(path)
             .await

@@ -1,5 +1,6 @@
 //! HTTP client with connection pooling and retry logic
 
+use futures::StreamExt;
 use reqwest::{Client, Response, StatusCode};
 use spsv2_errors::{Error, NetworkError};
 use std::time::Duration;
@@ -46,6 +47,11 @@ pub struct NetClient {
 
 impl NetClient {
     /// Create a new network client
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the HTTP client cannot be created due to invalid configuration
+    /// or if the underlying reqwest client fails to initialize.
     pub fn new(config: NetConfig) -> Result<Self, Error> {
         let client = Client::builder()
             .timeout(config.timeout)
@@ -60,21 +66,40 @@ impl NetClient {
     }
 
     /// Create with default configuration
-    pub fn default() -> Result<Self, Error> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the HTTP client cannot be created with default settings.
+    pub fn with_defaults() -> Result<Self, Error> {
         Self::new(NetConfig::default())
     }
 
     /// Execute a GET request with retries
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails after all retry attempts, including
+    /// network timeouts, connection failures, or server errors.
     pub async fn get(&self, url: &str) -> Result<Response, Error> {
         self.retry_request(|| self.client.get(url).send()).await
     }
 
     /// Execute a HEAD request with retries
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails after all retry attempts, including
+    /// network timeouts, connection failures, or server errors.
     pub async fn head(&self, url: &str) -> Result<Response, Error> {
         self.retry_request(|| self.client.head(url).send()).await
     }
 
     /// Download file with progress callback
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the download fails, the file cannot be created,
+    /// or if there are I/O errors while writing the downloaded content.
     pub async fn download_file_with_progress<F>(
         &self,
         url: &str,
@@ -86,23 +111,23 @@ impl NetClient {
     {
         let response = self.get(url).await?;
         let total_size = response.content_length().unwrap_or(0);
-        
+
         let mut file = tokio::fs::File::create(dest).await?;
         let mut stream = response.bytes_stream();
         let mut downloaded = 0u64;
-        
-        use futures::StreamExt;
+
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| spsv2_errors::NetworkError::DownloadFailed(e.to_string()))?;
+            let chunk =
+                chunk.map_err(|e| spsv2_errors::NetworkError::DownloadFailed(e.to_string()))?;
             tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await?;
-            
+
             downloaded += chunk.len() as u64;
             progress_callback(DownloadProgress {
                 downloaded,
                 total: total_size,
             });
         }
-        
+
         Ok(())
     }
 
@@ -142,7 +167,7 @@ impl NetClient {
                     last_error = Some(e);
 
                     // Don't retry on certain errors
-                    if !self.should_retry(&last_error.as_ref().unwrap()) {
+                    if !Self::should_retry(last_error.as_ref().unwrap()) {
                         break;
                     }
                 }
@@ -152,7 +177,10 @@ impl NetClient {
         // Convert the last error
         match last_error {
             Some(e) if e.is_timeout() => Err(NetworkError::Timeout {
-                url: e.url().map(|u| u.to_string()).unwrap_or_default(),
+                url: e
+                    .url()
+                    .map(std::string::ToString::to_string)
+                    .unwrap_or_default(),
             }
             .into()),
             Some(e) if e.is_connect() => Err(NetworkError::ConnectionRefused(e.to_string()).into()),
@@ -162,14 +190,15 @@ impl NetClient {
     }
 
     /// Determine if an error should be retried
-    fn should_retry(&self, error: &reqwest::Error) -> bool {
+    fn should_retry(error: &reqwest::Error) -> bool {
         // Retry on timeout, connection errors, and server errors
         error.is_timeout()
             || error.is_connect()
-            || error.status().map(|s| s.is_server_error()).unwrap_or(true)
+            || error.status().is_none_or(|s| s.is_server_error())
     }
 
     /// Get the underlying reqwest client for advanced usage
+    #[must_use]
     pub fn inner(&self) -> &Client {
         &self.client
     }

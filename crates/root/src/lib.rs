@@ -18,7 +18,7 @@ type Result<T> = std::result::Result<T, Error>;
 /// APFS clonefile support
 #[cfg(target_os = "macos")]
 mod apfs {
-    use super::*;
+    use super::{CString, Error, OsStrExt, Path, Result, StorageError};
     use libc::{c_char, c_int};
 
     extern "C" {
@@ -57,6 +57,13 @@ mod apfs {
 }
 
 /// Atomic rename with swap support
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Path conversion to C string fails
+/// - The atomic rename operation fails (permissions, file not found, etc.)
+/// - The blocking task panics
 pub async fn atomic_rename(src: &Path, dst: &Path) -> Result<()> {
     // On macOS, we can use renamex_np with RENAME_SWAP flag
     #[cfg(target_os = "macos")]
@@ -109,12 +116,23 @@ pub async fn atomic_rename(src: &Path, dst: &Path) -> Result<()> {
 }
 
 /// Clone a directory tree using APFS clonefile
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Path conversion to C string fails
+/// - The APFS clonefile operation fails (permissions, insufficient space, etc.)
+/// - The blocking task panics
 #[cfg(target_os = "macos")]
 pub async fn clone_directory(src: &Path, dst: &Path) -> Result<()> {
     apfs::clone_path(src, dst).await
 }
 
 /// Clone a directory tree (fallback for non-APFS)
+///
+/// # Errors
+///
+/// Returns an error if the recursive copy operation fails
 #[cfg(not(target_os = "macos"))]
 pub async fn clone_directory(src: &Path, dst: &Path) -> Result<()> {
     // Fallback to recursive copy
@@ -122,6 +140,13 @@ pub async fn clone_directory(src: &Path, dst: &Path) -> Result<()> {
 }
 
 /// Recursively copy a directory
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Creating the destination directory fails
+/// - Reading the source directory fails
+/// - Copying any file or subdirectory fails
 pub async fn copy_directory(src: &Path, dst: &Path) -> Result<()> {
     fs::create_dir_all(dst).await?;
 
@@ -142,6 +167,12 @@ pub async fn copy_directory(src: &Path, dst: &Path) -> Result<()> {
 }
 
 /// Create a directory with all parent directories
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Permission is denied
+/// - Any I/O operation fails during directory creation
 pub async fn create_dir_all(path: &Path) -> Result<()> {
     fs::create_dir_all(path).await.map_err(|e| {
         match e.kind() {
@@ -157,6 +188,11 @@ pub async fn create_dir_all(path: &Path) -> Result<()> {
 }
 
 /// Remove a directory and all its contents
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The directory removal operation fails (permissions, non-empty directory, etc.)
 pub async fn remove_dir_all(path: &Path) -> Result<()> {
     if path.exists() {
         fs::remove_dir_all(path)
@@ -169,6 +205,13 @@ pub async fn remove_dir_all(path: &Path) -> Result<()> {
 }
 
 /// Create a hard link
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The source file does not exist
+/// - The destination already exists
+/// - The hard link operation fails (cross-device link, permissions, etc.)
 pub async fn hard_link(src: &Path, dst: &Path) -> Result<()> {
     fs::hard_link(src, dst).await.map_err(|e| {
         StorageError::IoError {
@@ -184,6 +227,13 @@ pub async fn exists(path: &Path) -> bool {
 }
 
 /// Get the size of a file or directory
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Reading file metadata fails
+/// - Reading directory contents fails
+/// - Any I/O operation fails during recursive directory traversal
 pub async fn size(path: &Path) -> Result<u64> {
     if path.is_file() {
         let metadata = fs::metadata(path).await?;
@@ -208,6 +258,12 @@ pub async fn size(path: &Path) -> Result<u64> {
 }
 
 /// Ensure a directory exists and is empty
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Directory removal fails
+/// - Directory creation fails
 pub async fn ensure_empty_dir(path: &Path) -> Result<()> {
     if exists(path).await {
         remove_dir_all(path).await?;
@@ -216,15 +272,24 @@ pub async fn ensure_empty_dir(path: &Path) -> Result<()> {
 }
 
 /// Set APFS compression attribute on a path
+///
+/// # Errors
+///
+/// Currently this is a no-op placeholder and does not return errors
 #[cfg(target_os = "macos")]
-pub async fn set_compression(path: &Path) -> Result<()> {
+pub fn set_compression(_path: &Path) -> Result<()> {
     // This would use the compression extended attributes
     // For now, this is a placeholder
     Ok(())
 }
 
+/// Set APFS compression attribute on a path
+///
+/// # Errors
+///
+/// This is a no-op on non-macOS platforms and does not return errors
 #[cfg(not(target_os = "macos"))]
-pub async fn set_compression(_path: &Path) -> Result<()> {
+pub fn set_compression(_path: &Path) -> Result<()> {
     // No-op on non-macOS
     Ok(())
 }

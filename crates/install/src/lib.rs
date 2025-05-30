@@ -16,11 +16,11 @@ pub use installer::{InstallConfig, Installer};
 pub use operations::{InstallOperation, UninstallOperation, UpdateOperation};
 pub use parallel::{ExecutionContext, ParallelExecutor};
 
-use spsv2_errors::Error;
+// Removed unused imports: Error, EventSender, ResolutionResult, Version, HashMap
+// These will be imported where needed in future implementations
 use spsv2_events::EventSender;
-use spsv2_resolver::{PackageId, ResolutionResult};
-use spsv2_types::{PackageSpec, Version};
-use std::collections::HashMap;
+use spsv2_resolver::PackageId;
+use spsv2_types::PackageSpec;
 use std::path::PathBuf;
 use uuid::Uuid;
 
@@ -41,6 +41,7 @@ pub struct InstallContext {
 
 impl InstallContext {
     /// Create new install context
+    #[must_use]
     pub fn new() -> Self {
         Self {
             packages: Vec::new(),
@@ -52,30 +53,35 @@ impl InstallContext {
     }
 
     /// Add package to install
+    #[must_use]
     pub fn add_package(mut self, spec: PackageSpec) -> Self {
         self.packages.push(spec);
         self
     }
 
     /// Add local file to install
+    #[must_use]
     pub fn add_local_file(mut self, path: PathBuf) -> Self {
         self.local_files.push(path);
         self
     }
 
     /// Set force reinstallation
+    #[must_use]
     pub fn with_force(mut self, force: bool) -> Self {
         self.force = force;
         self
     }
 
     /// Set dry run mode
+    #[must_use]
     pub fn with_dry_run(mut self, dry_run: bool) -> Self {
         self.dry_run = dry_run;
         self
     }
 
     /// Set event sender
+    #[must_use]
     pub fn with_event_sender(mut self, event_sender: EventSender) -> Self {
         self.event_sender = Some(event_sender);
         self
@@ -103,6 +109,7 @@ pub struct InstallResult {
 
 impl InstallResult {
     /// Create new install result
+    #[must_use]
     pub fn new(state_id: Uuid) -> Self {
         Self {
             state_id,
@@ -128,6 +135,7 @@ impl InstallResult {
     }
 
     /// Get total number of changes
+    #[must_use]
     pub fn total_changes(&self) -> usize {
         self.installed_packages.len() + self.updated_packages.len() + self.removed_packages.len()
     }
@@ -150,6 +158,7 @@ pub struct UninstallContext {
 
 impl UninstallContext {
     /// Create new uninstall context
+    #[must_use]
     pub fn new() -> Self {
         Self {
             packages: Vec::new(),
@@ -161,30 +170,35 @@ impl UninstallContext {
     }
 
     /// Add package to uninstall
+    #[must_use]
     pub fn add_package(mut self, name: String) -> Self {
         self.packages.push(name);
         self
     }
 
     /// Set autoremove
+    #[must_use]
     pub fn with_autoremove(mut self, autoremove: bool) -> Self {
         self.autoremove = autoremove;
         self
     }
 
     /// Set force removal
+    #[must_use]
     pub fn with_force(mut self, force: bool) -> Self {
         self.force = force;
         self
     }
 
     /// Set dry run mode
+    #[must_use]
     pub fn with_dry_run(mut self, dry_run: bool) -> Self {
         self.dry_run = dry_run;
         self
     }
 
     /// Set event sender
+    #[must_use]
     pub fn with_event_sender(mut self, event_sender: EventSender) -> Self {
         self.event_sender = Some(event_sender);
         self
@@ -212,6 +226,7 @@ pub struct UpdateContext {
 
 impl UpdateContext {
     /// Create new update context
+    #[must_use]
     pub fn new() -> Self {
         Self {
             packages: Vec::new(),
@@ -222,24 +237,28 @@ impl UpdateContext {
     }
 
     /// Add package to update
+    #[must_use]
     pub fn add_package(mut self, name: String) -> Self {
         self.packages.push(name);
         self
     }
 
     /// Set upgrade mode
+    #[must_use]
     pub fn with_upgrade(mut self, upgrade: bool) -> Self {
         self.upgrade = upgrade;
         self
     }
 
     /// Set dry run mode
+    #[must_use]
     pub fn with_dry_run(mut self, dry_run: bool) -> Self {
         self.dry_run = dry_run;
         self
     }
 
     /// Set event sender
+    #[must_use]
     pub fn with_event_sender(mut self, event_sender: EventSender) -> Self {
         self.event_sender = Some(event_sender);
         self

@@ -7,6 +7,7 @@
 //! This crate provides the sandboxed Starlark environment for build recipes,
 //! exposing a limited API for package metadata and build operations.
 
+mod error_helpers;
 mod recipe;
 mod sandbox;
 mod starlark_api;
@@ -19,6 +20,11 @@ use spsv2_errors::Error;
 use std::path::Path;
 
 /// Load and parse a recipe file
+///
+/// # Errors
+///
+/// Returns a `BuildError::RecipeError` if the file cannot be read from the filesystem
+/// or if the recipe content is invalid (missing required functions).
 pub async fn load_recipe(path: &Path) -> Result<Recipe, Error> {
     let content = tokio::fs::read_to_string(path).await.map_err(|e| {
         spsv2_errors::BuildError::RecipeError {
@@ -30,6 +36,13 @@ pub async fn load_recipe(path: &Path) -> Result<Recipe, Error> {
 }
 
 /// Execute a recipe and get metadata
+///
+/// # Errors
+///
+/// Returns an error if the recipe execution fails, including:
+/// - Starlark parsing or evaluation errors
+/// - Missing or invalid metadata in the recipe
+/// - Runtime errors during recipe execution
 pub fn execute_recipe(recipe: &Recipe) -> Result<RecipeResult, Error> {
     let engine = RecipeEngine::new();
     engine.execute(recipe)

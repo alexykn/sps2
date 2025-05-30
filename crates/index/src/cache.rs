@@ -24,12 +24,16 @@ impl IndexCache {
         self.cache_dir.join("index.json")
     }
 
-    /// Get the index metadata file path (for ETag, etc.)
+    /// Get the index metadata file path (for `ETag`, etc.)
     fn metadata_path(&self) -> PathBuf {
         self.cache_dir.join("index.meta")
     }
 
     /// Load index from cache
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the cache file doesn't exist or contains invalid data.
     pub async fn load(&self) -> Result<Index, Error> {
         let path = self.index_path();
 
@@ -43,6 +47,10 @@ impl IndexCache {
     }
 
     /// Save index to cache
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the cache directory cannot be created or the file cannot be written.
     pub async fn save(&self, index: &Index) -> Result<(), Error> {
         // Ensure cache directory exists
         fs::create_dir_all(&self.cache_dir)
@@ -78,6 +86,10 @@ impl IndexCache {
     }
 
     /// Get cache age in seconds
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if file metadata cannot be read or timestamps are invalid.
     pub async fn age(&self) -> Result<Option<u64>, Error> {
         let path = self.index_path();
 
@@ -99,13 +111,21 @@ impl IndexCache {
     }
 
     /// Clear the cache
+    ///
+    /// # Errors
+    ///
+    /// This function does not return errors as file removal failures are ignored.
     pub async fn clear(&self) -> Result<(), Error> {
         let _ = fs::remove_file(self.index_path()).await;
         let _ = fs::remove_file(self.metadata_path()).await;
         Ok(())
     }
 
-    /// Load cached ETag
+    /// Load cached `ETag`
+    ///
+    /// # Errors
+    ///
+    /// Does not return errors - missing files return `None`.
     pub async fn load_etag(&self) -> Result<Option<String>, Error> {
         let path = self.metadata_path();
 
@@ -118,7 +138,11 @@ impl IndexCache {
         }
     }
 
-    /// Save ETag
+    /// Save `ETag`
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the metadata file cannot be written.
     pub async fn save_etag(&self, etag: &str) -> Result<(), Error> {
         let path = self.metadata_path();
 

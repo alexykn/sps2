@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod tests {
     use httpmock::prelude::*;
+    use httpmock::Method::HEAD;
     use spsv2_events::channel;
     use spsv2_hash::Hash;
     use spsv2_net::*;
@@ -25,7 +26,7 @@ mod tests {
         // Setup
         let temp = tempdir().unwrap();
         let dest = temp.path().join("downloaded.txt");
-        let client = NetClient::default().unwrap();
+        let client = NetClient::with_defaults().unwrap();
         let url = server.url("/test.txt");
 
         // Download
@@ -36,7 +37,7 @@ mod tests {
         // Verify
         mock.assert();
         assert_eq!(result.size, content.len() as u64);
-        assert_eq!(result.hash, Hash::hash(content));
+        assert_eq!(result.hash, Hash::from_data(content));
 
         let downloaded = tokio::fs::read(&dest).await.unwrap();
         assert_eq!(downloaded, content);
@@ -64,7 +65,7 @@ mod tests {
 
         // Mock response
         let content = b"verified content";
-        let expected_hash = Hash::hash(content);
+        let expected_hash = Hash::from_data(content);
 
         server.mock(|when, then| {
             when.method(GET).path("/verified.txt");
@@ -74,7 +75,7 @@ mod tests {
         // Setup
         let temp = tempdir().unwrap();
         let dest = temp.path().join("verified.txt");
-        let client = NetClient::default().unwrap();
+        let client = NetClient::with_defaults().unwrap();
         let url = server.url("/verified.txt");
 
         // Download with correct hash
@@ -84,7 +85,7 @@ mod tests {
         assert_eq!(result.hash, expected_hash);
 
         // Download with wrong hash should fail
-        let wrong_hash = Hash::hash(b"different content");
+        let wrong_hash = Hash::from_data(b"different content");
         let dest2 = temp.path().join("wrong.txt");
         let error = download_file(&client, &url, &dest2, Some(&wrong_hash), &tx)
             .await
@@ -109,7 +110,7 @@ mod tests {
                 .body(content);
         });
 
-        let client = NetClient::default().unwrap();
+        let client = NetClient::with_defaults().unwrap();
         let url = server.url("/text");
 
         let text = fetch_text(&client, &url, &tx).await.unwrap();
@@ -126,7 +127,7 @@ mod tests {
             then.status(404).body("Not Found");
         });
 
-        let client = NetClient::default().unwrap();
+        let client = NetClient::with_defaults().unwrap();
         let url = server.url("/404");
 
         let error = fetch_text(&client, &url, &tx).await.unwrap_err();
@@ -150,7 +151,7 @@ mod tests {
             then.status(404);
         });
 
-        let client = NetClient::default().unwrap();
+        let client = NetClient::with_defaults().unwrap();
 
         assert!(check_url(&client, &server.url("/exists")).await.unwrap());
         assert!(!check_url(&client, &server.url("/missing")).await.unwrap());

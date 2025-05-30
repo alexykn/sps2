@@ -3,7 +3,7 @@
 
 //! State management for spsv2
 //!
-//! This crate manages the SQLite database that tracks system state,
+//! This crate manages the `SQLite` database that tracks system state,
 //! installed packages, and enables atomic updates with rollback.
 
 pub mod manager;
@@ -28,7 +28,11 @@ use sqlx::{Pool, Sqlite};
 use std::path::Path;
 use std::time::Duration;
 
-/// Create a new SQLite connection pool
+/// Create a new `SQLite` connection pool
+///
+/// # Errors
+///
+/// Returns an error if the database connection fails or configuration is invalid.
 pub async fn create_pool(db_path: &Path) -> Result<Pool<Sqlite>, Error> {
     let options = SqliteConnectOptions::new()
         .filename(db_path)
@@ -49,6 +53,10 @@ pub async fn create_pool(db_path: &Path) -> Result<Pool<Sqlite>, Error> {
 }
 
 /// Run database migrations
+///
+/// # Errors
+///
+/// Returns an error if any migration fails to execute.
 pub async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), Error> {
     sqlx::migrate!("./migrations").run(pool).await.map_err(|e| {
         spsv2_errors::StateError::MigrationFailed {

@@ -16,7 +16,7 @@ use crate::events::EventHandler;
 use crate::setup::SystemSetup;
 use clap::Parser;
 use spsv2_config::Config;
-use spsv2_events::{Event, EventReceiver, EventSender};
+use spsv2_events::{EventReceiver, EventSender};
 use spsv2_ops::{OperationResult, OpsContextBuilder};
 use std::process;
 use tokio::select;
@@ -188,7 +188,7 @@ async fn execute_command(
         Commands::Build {
             recipe,
             output_dir,
-            network,
+            network: _,
             jobs: _,
         } => {
             // TODO: Pass network and jobs options to builder

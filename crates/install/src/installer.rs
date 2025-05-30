@@ -1,11 +1,11 @@
 //! Main installer implementation
 
 use crate::{
-    AtomicInstaller, InstallContext, InstallOperation, InstallResult, ParallelExecutor,
-    UninstallContext, UninstallOperation, UpdateContext, UpdateOperation,
+    AtomicInstaller, InstallContext, InstallOperation, InstallResult, UninstallContext,
+    UninstallOperation, UpdateContext, UpdateOperation,
 };
 use spsv2_errors::{Error, InstallError};
-use spsv2_events::EventSender;
+// EventSender not used directly in this module but imported for potential future use
 use spsv2_resolver::Resolver;
 use spsv2_state::StateManager;
 use spsv2_store::PackageStore;
@@ -37,24 +37,28 @@ impl Default for InstallConfig {
 
 impl InstallConfig {
     /// Create config with custom concurrency
+    #[must_use]
     pub fn with_concurrency(mut self, max_concurrency: usize) -> Self {
         self.max_concurrency = max_concurrency;
         self
     }
 
     /// Set download timeout
+    #[must_use]
     pub fn with_timeout(mut self, timeout_seconds: u64) -> Self {
         self.download_timeout = timeout_seconds;
         self
     }
 
     /// Enable/disable APFS optimizations
+    #[must_use]
     pub fn with_apfs(mut self, enable: bool) -> Self {
         self.enable_apfs = enable;
         self
     }
 
     /// Set state retention policy
+    #[must_use]
     pub fn with_retention(mut self, count: usize) -> Self {
         self.state_retention = count;
         self
@@ -75,6 +79,7 @@ pub struct Installer {
 
 impl Installer {
     /// Create new installer
+    #[must_use]
     pub fn new(
         config: InstallConfig,
         resolver: Resolver,
@@ -90,9 +95,13 @@ impl Installer {
     }
 
     /// Install packages
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if package resolution fails, download fails, or installation fails.
     pub async fn install(&mut self, context: InstallContext) -> Result<InstallResult, Error> {
         // Validate context
-        self.validate_install_context(&context)?;
+        Self::validate_install_context(&context)?;
 
         // Create install operation
         let mut operation = InstallOperation::new(
@@ -111,9 +120,13 @@ impl Installer {
     }
 
     /// Uninstall packages
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if package validation fails or uninstall operation fails.
     pub async fn uninstall(&mut self, context: UninstallContext) -> Result<InstallResult, Error> {
         // Validate context
-        self.validate_uninstall_context(&context)?;
+        Self::validate_uninstall_context(&context)?;
 
         // Create uninstall operation
         let mut operation = UninstallOperation::new(self.state_manager.clone(), self.store.clone());
@@ -128,9 +141,13 @@ impl Installer {
     }
 
     /// Update packages
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if package resolution fails, download fails, or update fails.
     pub async fn update(&mut self, context: UpdateContext) -> Result<InstallResult, Error> {
         // Validate context
-        self.validate_update_context(&context)?;
+        Self::validate_update_context(&context);
 
         // Create update operation
         let mut operation = UpdateOperation::new(
@@ -149,6 +166,10 @@ impl Installer {
     }
 
     /// Rollback to a previous state
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the target state doesn't exist or rollback operation fails.
     pub async fn rollback(&mut self, target_state_id: Uuid) -> Result<(), Error> {
         // Validate target state exists
         if !self.state_manager.state_exists(&target_state_id).await? {
@@ -169,6 +190,10 @@ impl Installer {
     }
 
     /// List available states for rollback
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if querying the state database fails.
     pub async fn list_states(&self) -> Result<Vec<StateInfo>, Error> {
         let states = self.state_manager.list_states().await?;
 
@@ -179,10 +204,14 @@ impl Installer {
             state_infos.push(StateInfo {
                 id: state_id,
                 timestamp: chrono::Utc::now(), // Placeholder - would need to fetch from state table
-                parent_id: None, // Placeholder - would need to fetch from state table
+                parent_id: None,               // Placeholder - would need to fetch from state table
                 package_count: packages.len(),
-                packages: packages.into_iter().take(5)
-                    .map(|name| spsv2_types::PackageId::new(name, spsv2_types::Version::new(1, 0, 0)))
+                packages: packages
+                    .into_iter()
+                    .take(5)
+                    .map(|name| {
+                        spsv2_types::PackageId::new(name, spsv2_types::Version::new(1, 0, 0))
+                    })
                     .collect(), // First 5 packages
             });
         }
@@ -191,11 +220,12 @@ impl Installer {
     }
 
     /// Get current state information
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the current state cannot be found or accessed.
     pub async fn current_state(&self) -> Result<StateInfo, Error> {
-        let current_id = self
-            .state_manager
-            .get_current_state_id()
-            .await?;
+        let current_id = self.state_manager.get_current_state_id().await?;
 
         let states = self.list_states().await?;
         states
@@ -214,12 +244,12 @@ impl Installer {
         self.state_manager
             .cleanup_old_states(self.config.state_retention)
             .await?;
-        self.store.garbage_collect().await?;
+        self.store.garbage_collect()?;
         Ok(())
     }
 
     /// Validate install context
-    fn validate_install_context(&self, context: &InstallContext) -> Result<(), Error> {
+    fn validate_install_context(context: &InstallContext) -> Result<(), Error> {
         if context.packages.is_empty() && context.local_files.is_empty() {
             return Err(InstallError::NoPackagesSpecified.into());
         }
@@ -233,7 +263,7 @@ impl Installer {
                 .into());
             }
 
-            if !path.extension().map_or(false, |ext| ext == "sp") {
+            if path.extension().is_none_or(|ext| ext != "sp") {
                 return Err(InstallError::InvalidPackageFile {
                     path: path.display().to_string(),
                     message: "file must have .sp extension".to_string(),
@@ -246,7 +276,7 @@ impl Installer {
     }
 
     /// Validate uninstall context
-    fn validate_uninstall_context(&self, context: &UninstallContext) -> Result<(), Error> {
+    fn validate_uninstall_context(context: &UninstallContext) -> Result<(), Error> {
         if context.packages.is_empty() {
             return Err(InstallError::NoPackagesSpecified.into());
         }
@@ -255,9 +285,8 @@ impl Installer {
     }
 
     /// Validate update context
-    fn validate_update_context(&self, _context: &UpdateContext) -> Result<(), Error> {
+    fn validate_update_context(_context: &UpdateContext) {
         // Update context is always valid (empty packages means update all)
-        Ok(())
     }
 }
 
@@ -278,16 +307,19 @@ pub struct StateInfo {
 
 impl StateInfo {
     /// Check if this is the root state
+    #[must_use]
     pub fn is_root(&self) -> bool {
         self.parent_id.is_none()
     }
 
     /// Get age of this state
+    #[must_use]
     pub fn age(&self) -> chrono::Duration {
         chrono::Utc::now() - self.timestamp
     }
 
     /// Format package list for display
+    #[must_use]
     pub fn package_summary(&self) -> String {
         if self.packages.is_empty() {
             "No packages".to_string()
@@ -331,7 +363,7 @@ mod tests {
 
         let resolver = Resolver::new(index_manager);
         let state_manager = StateManager::new(temp.path()).await.unwrap();
-        let store = PackageStore::new(temp.path()).await.unwrap();
+        let store = PackageStore::new(temp.path().to_path_buf());
         let config = InstallConfig::default();
 
         Installer::new(config, resolver, state_manager, store)
@@ -362,45 +394,41 @@ mod tests {
 
     #[tokio::test]
     async fn test_install_context_validation() {
-        let installer = create_test_installer().await;
+        let _installer = create_test_installer().await;
 
         // Empty context should fail
         let empty_context = InstallContext::new();
-        assert!(installer.validate_install_context(&empty_context).is_err());
+        assert!(Installer::validate_install_context(&empty_context).is_err());
 
         // Context with packages should pass
         let valid_context =
             InstallContext::new().add_package(PackageSpec::parse("curl>=8.0.0").unwrap());
-        assert!(installer.validate_install_context(&valid_context).is_ok());
+        assert!(Installer::validate_install_context(&valid_context).is_ok());
     }
 
     #[tokio::test]
     async fn test_uninstall_context_validation() {
-        let installer = create_test_installer().await;
+        let _installer = create_test_installer().await;
 
         // Empty context should fail
         let empty_context = UninstallContext::new();
-        assert!(installer
-            .validate_uninstall_context(&empty_context)
-            .is_err());
+        assert!(Installer::validate_uninstall_context(&empty_context).is_err());
 
         // Context with packages should pass
         let valid_context = UninstallContext::new().add_package("curl".to_string());
-        assert!(installer.validate_uninstall_context(&valid_context).is_ok());
+        assert!(Installer::validate_uninstall_context(&valid_context).is_ok());
     }
 
     #[tokio::test]
     async fn test_update_context_validation() {
-        let installer = create_test_installer().await;
+        let _installer = create_test_installer().await;
 
         // All update contexts are valid (empty means update all)
         let empty_context = UpdateContext::new();
-        assert!(installer.validate_update_context(&empty_context).is_ok());
+        Installer::validate_update_context(&empty_context);
 
         let context_with_packages = UpdateContext::new().add_package("curl".to_string());
-        assert!(installer
-            .validate_update_context(&context_with_packages)
-            .is_ok());
+        Installer::validate_update_context(&context_with_packages);
     }
 
     #[test]

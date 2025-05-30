@@ -15,19 +15,19 @@ mod tests {
         // Create manifest
         let mut manifest = Manifest::new(
             "test-app".to_string(),
-            Version::parse("2.5.0").unwrap(),
+            &Version::parse("2.5.0").unwrap(),
             3,
-            Arch::Arm64,
+            &Arch::Arm64,
         );
 
         manifest.package.description = Some("Test application".to_string());
         manifest.add_runtime_dep("libfoo>=1.0.0");
-        manifest.add_build_dep("make>=4.0");
+        manifest.add_build_dep("make>=4.0.0");
 
         // Set SBOM info
-        let spdx_hash = Hash::hash(b"spdx content");
-        let cdx_hash = Hash::hash(b"cyclonedx content");
-        manifest.set_sbom(spdx_hash, Some(cdx_hash));
+        let spdx_hash = Hash::from_data(b"spdx content");
+        let cdx_hash = Hash::from_data(b"cyclonedx content");
+        manifest.set_sbom(&spdx_hash, Some(&cdx_hash));
 
         // Write to file
         manifest.write_to_file(&manifest_path).await.unwrap();
@@ -44,21 +44,21 @@ mod tests {
             Some("Test application")
         );
         assert_eq!(loaded.dependencies.runtime, vec!["libfoo>=1.0.0"]);
-        assert_eq!(loaded.dependencies.build, vec!["make>=4.0"]);
+        assert_eq!(loaded.dependencies.build, vec!["make>=4.0.0"]);
 
         // Check SBOM
         assert!(loaded.sbom.is_some());
         let sbom = loaded.sbom.unwrap();
         assert_eq!(sbom.spdx, spdx_hash.to_hex());
-        assert_eq!(sbom.cyclonedx.as_deref(), Some(&cdx_hash.to_hex()));
+        assert_eq!(sbom.cyclonedx.as_deref(), Some(cdx_hash.to_hex().as_str()));
     }
 
     #[test]
     fn test_dependency_parsing() {
         let manifest = ManifestBuilder::new(
             "pkg".to_string(),
-            Version::parse("1.0.0").unwrap(),
-            Arch::Arm64,
+            &Version::parse("1.0.0").unwrap(),
+            &Arch::Arm64,
         )
         .depends_on("dep1>=1.0.0,<2.0.0")
         .depends_on("dep2~=3.4.0")
@@ -98,8 +98,8 @@ runtime = [
     "libidn2>=2.0.0"
 ]
 build = [
-    "pkg-config>=0.29",
-    "perl>=5.0"
+    "pkg-config>=0.29.0",
+    "perl>=5.0.0"
 ]
 
 [sbom]
@@ -131,11 +131,11 @@ name = "incomplete"
         // Invalid dependency spec
         let mut manifest = Manifest::new(
             "bad-deps".to_string(),
-            Version::parse("1.0.0").unwrap(),
+            &Version::parse("1.0.0").unwrap(),
             1,
-            Arch::Arm64,
+            &Arch::Arm64,
         );
-        manifest.add_runtime_dep("invalid@@version");
+        manifest.add_runtime_dep("invalid>=not.a.version");
 
         assert!(manifest.runtime_deps().is_err());
     }

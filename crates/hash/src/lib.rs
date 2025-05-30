@@ -25,21 +25,27 @@ pub struct Hash {
 
 impl Hash {
     /// Create a hash from raw bytes
+    #[must_use]
     pub fn from_bytes(bytes: [u8; 32]) -> Self {
         Self { bytes }
     }
 
     /// Get the raw bytes
+    #[must_use]
     pub fn as_bytes(&self) -> &[u8; 32] {
         &self.bytes
     }
 
     /// Convert to hex string
+    #[must_use]
     pub fn to_hex(&self) -> String {
         hex::encode(self.bytes)
     }
 
     /// Parse from hex string
+    ///
+    /// # Errors
+    /// Returns an error if the input string is not valid hexadecimal or is not exactly 64 characters (32 bytes).
     pub fn from_hex(s: &str) -> Result<Self, Error> {
         let bytes = hex::decode(s).map_err(|e| StorageError::CorruptedData {
             message: format!("invalid hex: {e}"),
@@ -58,12 +64,16 @@ impl Hash {
     }
 
     /// Compute hash of a byte slice
-    pub fn hash(data: &[u8]) -> Self {
+    #[must_use]
+    pub fn from_data(data: &[u8]) -> Self {
         let hash = blake3::hash(data);
         Self::from_bytes(*hash.as_bytes())
     }
 
     /// Compute hash of a file
+    ///
+    /// # Errors
+    /// Returns an error if the file cannot be opened, read, or if any I/O operation fails.
     pub async fn hash_file(path: &Path) -> Result<Self, Error> {
         let mut file = File::open(path)
             .await
@@ -86,6 +96,9 @@ impl Hash {
     }
 
     /// Compute hash while copying data to a writer
+    ///
+    /// # Errors
+    /// Returns an error if reading from the reader or writing to the writer fails.
     pub async fn hash_and_copy<R, W>(mut reader: R, mut writer: W) -> Result<(Self, u64), Error>
     where
         R: AsyncReadExt + Unpin,
@@ -137,12 +150,16 @@ impl<'de> Deserialize<'de> for Hash {
 }
 
 /// Verify a file matches an expected hash
+///
+/// # Errors
+/// Returns an error if the file cannot be read or hashed.
 pub async fn verify_file(path: &Path, expected: &Hash) -> Result<bool, Error> {
     let actual = Hash::hash_file(path).await?;
     Ok(actual == *expected)
 }
 
 /// Create a content-addressed path from a hash
+#[must_use]
 pub fn content_path(hash: &Hash) -> String {
     let hex = hash.to_hex();
     // Use first 2 chars as directory for better filesystem performance
@@ -158,7 +175,7 @@ mod tests {
     #[test]
     fn test_hash_basics() {
         let data = b"hello world";
-        let hash = Hash::hash(data);
+        let hash = Hash::from_data(data);
 
         // Known BLAKE3 hash of "hello world"
         let expected = "d74981efa70a0c880b8d8c1985d075dbcbf679b99a5f9914e5aaf96b831a9e24";
@@ -167,7 +184,7 @@ mod tests {
 
     #[test]
     fn test_hash_serialization() {
-        let hash = Hash::hash(b"test");
+        let hash = Hash::from_data(b"test");
         let json = serde_json::to_string(&hash).unwrap();
         let deserialized: Hash = serde_json::from_str(&json).unwrap();
         assert_eq!(hash, deserialized);
@@ -181,7 +198,7 @@ mod tests {
         temp.write_all(data).unwrap();
 
         let hash = Hash::hash_file(temp.path()).await.unwrap();
-        let expected = Hash::hash(data);
+        let expected = Hash::from_data(data);
         assert_eq!(hash, expected);
     }
 
@@ -195,12 +212,12 @@ mod tests {
 
         assert_eq!(writer, data);
         assert_eq!(bytes, data.len() as u64);
-        assert_eq!(hash, Hash::hash(data));
+        assert_eq!(hash, Hash::from_data(data));
     }
 
     #[test]
     fn test_content_path() {
-        let hash = Hash::hash(b"test");
+        let hash = Hash::from_data(b"test");
         let path = content_path(&hash);
         assert!(path.starts_with("48/"));
     }

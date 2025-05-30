@@ -7,6 +7,7 @@ use spsv2_errors::{AuditError, Error};
 /// SBOM parser for extracting component information
 pub struct SbomParser {
     /// Parser configuration
+    #[allow(dead_code)] // Configuration fields reserved for future implementation
     config: ParserConfig,
 }
 
@@ -14,8 +15,10 @@ pub struct SbomParser {
 #[derive(Debug, Clone)]
 struct ParserConfig {
     /// Maximum depth for recursive parsing
+    #[allow(dead_code)] // Will be used when recursive dependency parsing is implemented
     max_depth: usize,
     /// Include dev dependencies
+    #[allow(dead_code)] // Will be used to filter dev dependencies in future versions
     include_dev_deps: bool,
 }
 
@@ -30,6 +33,7 @@ impl Default for ParserConfig {
 
 impl SbomParser {
     /// Create new SBOM parser
+    #[must_use]
     pub fn new() -> Self {
         Self {
             config: ParserConfig::default(),
@@ -37,6 +41,11 @@ impl SbomParser {
     }
 
     /// Parse SBOM data to extract components
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the SBOM data cannot be parsed as valid JSON or
+    /// if the SBOM format is not recognized (must be SPDX or `CycloneDX`).
     pub fn parse_sbom(&self, sbom_data: &[u8]) -> Result<Vec<Component>, Error> {
         // Try to parse as JSON
         let json: Value =
@@ -64,10 +73,10 @@ impl SbomParser {
             || json.get("packages").is_some()
     }
 
-    /// Check if JSON is CycloneDX format
+    /// Check if JSON is `CycloneDX` format
     fn is_cyclonedx_format(&self, json: &Value) -> bool {
         json.get("bomFormat")
-            .map_or(false, |v| v.as_str() == Some("CycloneDX"))
+            .is_some_and(|v| v.as_str() == Some("CycloneDX"))
             || json.get("specVersion").is_some()
             || json.get("components").is_some()
     }
@@ -78,7 +87,7 @@ impl SbomParser {
 
         if let Some(packages) = json.get("packages").and_then(|p| p.as_array()) {
             for package in packages {
-                if let Some(component) = self.parse_spdx_package(package)? {
+                if let Some(component) = self.parse_spdx_package(package) {
                     components.push(component);
                 }
             }
@@ -88,10 +97,10 @@ impl SbomParser {
     }
 
     /// Parse SPDX package
-    fn parse_spdx_package(&self, package: &Value) -> Result<Option<Component>, Error> {
+    fn parse_spdx_package(&self, package: &Value) -> Option<Component> {
         // Skip if this is the root document package
         if package.get("SPDXID").and_then(|id| id.as_str()) == Some("SPDXRef-DOCUMENT") {
-            return Ok(None);
+            return None;
         }
 
         let name = package
@@ -146,21 +155,21 @@ impl SbomParser {
             package_type: "unknown".to_string(), // SPDX doesn't always specify type
         };
 
-        Ok(Some(Component {
+        Some(Component {
             identifier,
             dependencies: Vec::new(), // Would need to parse relationships
             license,
             download_location,
-        }))
+        })
     }
 
-    /// Parse CycloneDX format SBOM
+    /// Parse `CycloneDX` format SBOM
     fn parse_cyclonedx(&self, json: &Value) -> Result<Vec<Component>, Error> {
         let mut components = Vec::new();
 
         if let Some(component_list) = json.get("components").and_then(|c| c.as_array()) {
             for component in component_list {
-                if let Some(comp) = self.parse_cyclonedx_component(component)? {
+                if let Some(comp) = self.parse_cyclonedx_component(component) {
                     components.push(comp);
                 }
             }
@@ -169,8 +178,8 @@ impl SbomParser {
         Ok(components)
     }
 
-    /// Parse CycloneDX component
-    fn parse_cyclonedx_component(&self, component: &Value) -> Result<Option<Component>, Error> {
+    /// Parse `CycloneDX` component
+    fn parse_cyclonedx_component(&self, component: &Value) -> Option<Component> {
         let name = component
             .get("name")
             .and_then(|n| n.as_str())
@@ -239,12 +248,12 @@ impl SbomParser {
             package_type,
         };
 
-        Ok(Some(Component {
+        Some(Component {
             identifier,
             dependencies: Vec::new(), // Would need to parse dependencies section
             license,
             download_location: None,
-        }))
+        })
     }
 }
 

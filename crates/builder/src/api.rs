@@ -1,6 +1,6 @@
-//! Builder API for Rhai recipes
+//! Builder API for Starlark recipes
 
-use crate::{BuildEnvironment, BuildCommandResult};
+use crate::{BuildCommandResult, BuildEnvironment};
 use spsv2_errors::{BuildError, Error};
 use spsv2_hash::Hash;
 use spsv2_net::{NetClient, NetConfig};
@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
-/// Builder API exposed to Rhai recipes
+/// Builder API exposed to Starlark recipes
 #[derive(Clone)]
 pub struct BuilderApi {
     /// Working directory for source extraction
@@ -27,6 +27,10 @@ pub struct BuilderApi {
 
 impl BuilderApi {
     /// Create new builder API
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the network client cannot be created.
     pub fn new(working_dir: PathBuf) -> Result<Self, Error> {
         Ok(Self {
             working_dir,
@@ -44,12 +48,21 @@ impl BuilderApi {
     }
 
     /// Allow network access during build
+    #[must_use]
     pub fn allow_network(&mut self, allow: bool) -> &mut Self {
         self.allow_network = allow;
         self
     }
 
     /// Download and verify a file
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Network access is disabled
+    /// - The URL is invalid
+    /// - The download fails
+    /// - The file hash doesn't match the expected hash
     pub async fn fetch(&mut self, url: &str, expected_hash: &str) -> Result<PathBuf, Error> {
         if !self.allow_network {
             return Err(BuildError::NetworkDisabled {
@@ -66,7 +79,7 @@ impl BuilderApi {
         // Extract filename from URL
         let filename = url
             .split('/')
-            .last()
+            .next_back()
             .ok_or_else(|| BuildError::InvalidUrl {
                 url: url.to_string(),
             })?;
@@ -76,9 +89,12 @@ impl BuilderApi {
         // Download file using the download module
         // For builder, we don't have an event sender, so we'll use the client directly
         let response = self.net_client.get(url).await?;
-        let bytes = response.bytes().await.map_err(|e| BuildError::FetchFailed {
-            url: url.to_string(),
-        })?;
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|_e| BuildError::FetchFailed {
+                url: url.to_string(),
+            })?;
         fs::write(&download_path, &bytes).await?;
 
         // Verify hash
@@ -99,6 +115,10 @@ impl BuilderApi {
     }
 
     /// Apply a patch file
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the patch command fails.
     pub async fn apply_patch(
         &self,
         patch_path: &Path,
@@ -113,6 +133,10 @@ impl BuilderApi {
     }
 
     /// Configure with autotools
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the configure or make commands fail.
     pub async fn autotools(
         &self,
         args: &[String],
@@ -140,7 +164,11 @@ impl BuilderApi {
             .await
     }
 
-    /// Configure with CMake
+    /// Configure with `CMake`
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the cmake or make commands fail.
     pub async fn cmake(
         &self,
         args: &[String],
@@ -169,6 +197,10 @@ impl BuilderApi {
     }
 
     /// Configure with Meson
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the meson commands fail.
     pub async fn meson(
         &self,
         args: &[String],
@@ -189,6 +221,10 @@ impl BuilderApi {
     }
 
     /// Build with Cargo
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the cargo command fails.
     pub async fn cargo(
         &self,
         args: &[String],
@@ -203,12 +239,15 @@ impl BuilderApi {
     }
 
     /// Run configure step only
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the configure command fails.
     pub async fn configure(
         &self,
         args: &[String],
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
-        let arg_strs: Vec<&str> = args.iter().map(String::as_str).collect();
         env.execute_command(
             "sh",
             &["-c", &format!("./configure {}", args.join(" "))],
@@ -218,6 +257,10 @@ impl BuilderApi {
     }
 
     /// Run make step only
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the make command fails.
     pub async fn make(
         &self,
         args: &[String],
@@ -232,6 +275,10 @@ impl BuilderApi {
     }
 
     /// Install to staging directory
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the install command fails.
     pub async fn install(&self, env: &BuildEnvironment) -> Result<BuildCommandResult, Error> {
         // Check if we're in a build subdirectory (CMake/Meson)
         let build_dir = self.working_dir.join("build");
@@ -246,25 +293,32 @@ impl BuilderApi {
     }
 
     /// Set SBOM generation
+    #[must_use]
     pub fn auto_sbom(&mut self, enable: bool) -> &mut Self {
         self.auto_sbom = enable;
         self
     }
 
     /// Set SBOM exclusion patterns
+    #[must_use]
     pub fn sbom_excludes(&mut self, patterns: Vec<String>) -> &mut Self {
         self.sbom_excludes = patterns;
         self
     }
 
     /// Get SBOM configuration
+    #[must_use]
     pub fn sbom_config(&self) -> (bool, &[String]) {
         (self.auto_sbom, &self.sbom_excludes)
     }
 
     /// Extract downloaded archives
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any archive extraction fails.
     pub async fn extract_downloads(&self) -> Result<(), Error> {
-        for (url, path) in &self.downloads {
+        for path in self.downloads.values() {
             if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                 match ext {
                     "gz" | "tgz" => {
@@ -281,7 +335,6 @@ impl BuilderApi {
                     }
                     _ => {
                         // Unknown format, skip extraction
-                        continue;
                     }
                 }
             }
@@ -290,16 +343,24 @@ impl BuilderApi {
     }
 
     /// Extract tar.gz archive
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the tar command fails.
     async fn extract_tar_gz(&self, path: &Path) -> Result<(), Error> {
         let output = tokio::process::Command::new("tar")
-            .args(&["-xzf", &path.display().to_string()])
+            .args(["-xzf", &path.display().to_string()])
             .current_dir(&self.working_dir)
             .output()
             .await?;
 
         if !output.status.success() {
             return Err(BuildError::ExtractionFailed {
-                message: format!("Failed to extract {}: {}", path.display(), String::from_utf8_lossy(&output.stderr)),
+                message: format!(
+                    "Failed to extract {}: {}",
+                    path.display(),
+                    String::from_utf8_lossy(&output.stderr)
+                ),
             }
             .into());
         }
@@ -308,16 +369,24 @@ impl BuilderApi {
     }
 
     /// Extract tar.bz2 archive
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the tar command fails.
     async fn extract_tar_bz2(&self, path: &Path) -> Result<(), Error> {
         let output = tokio::process::Command::new("tar")
-            .args(&["-xjf", &path.display().to_string()])
+            .args(["-xjf", &path.display().to_string()])
             .current_dir(&self.working_dir)
             .output()
             .await?;
 
         if !output.status.success() {
             return Err(BuildError::ExtractionFailed {
-                message: format!("Failed to extract {}: {}", path.display(), String::from_utf8_lossy(&output.stderr)),
+                message: format!(
+                    "Failed to extract {}: {}",
+                    path.display(),
+                    String::from_utf8_lossy(&output.stderr)
+                ),
             }
             .into());
         }
@@ -326,16 +395,24 @@ impl BuilderApi {
     }
 
     /// Extract tar.xz archive
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the tar command fails.
     async fn extract_tar_xz(&self, path: &Path) -> Result<(), Error> {
         let output = tokio::process::Command::new("tar")
-            .args(&["-xJf", &path.display().to_string()])
+            .args(["-xJf", &path.display().to_string()])
             .current_dir(&self.working_dir)
             .output()
             .await?;
 
         if !output.status.success() {
             return Err(BuildError::ExtractionFailed {
-                message: format!("Failed to extract {}: {}", path.display(), String::from_utf8_lossy(&output.stderr)),
+                message: format!(
+                    "Failed to extract {}: {}",
+                    path.display(),
+                    String::from_utf8_lossy(&output.stderr)
+                ),
             }
             .into());
         }
@@ -344,16 +421,24 @@ impl BuilderApi {
     }
 
     /// Extract zip archive
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the unzip command fails.
     async fn extract_zip(&self, path: &Path) -> Result<(), Error> {
         let output = tokio::process::Command::new("unzip")
-            .args(&["-q", &path.display().to_string()])
+            .args(["-q", &path.display().to_string()])
             .current_dir(&self.working_dir)
             .output()
             .await?;
 
         if !output.status.success() {
             return Err(BuildError::ExtractionFailed {
-                message: format!("Failed to extract {}: {}", path.display(), String::from_utf8_lossy(&output.stderr)),
+                message: format!(
+                    "Failed to extract {}: {}",
+                    path.display(),
+                    String::from_utf8_lossy(&output.stderr)
+                ),
             }
             .into());
         }
@@ -370,7 +455,7 @@ mod tests {
     #[test]
     fn test_builder_api_creation() {
         let temp = tempdir().unwrap();
-        let api = BuilderApi::new(temp.path().to_path_buf());
+        let api = BuilderApi::new(temp.path().to_path_buf()).unwrap();
 
         assert!(!api.allow_network);
         assert!(api.auto_sbom);
@@ -380,9 +465,10 @@ mod tests {
     #[test]
     fn test_builder_api_configuration() {
         let temp = tempdir().unwrap();
-        let mut api = BuilderApi::new(temp.path().to_path_buf());
+        let mut api = BuilderApi::new(temp.path().to_path_buf()).unwrap();
 
-        api.allow_network(true)
+        let _ = api
+            .allow_network(true)
             .auto_sbom(false)
             .sbom_excludes(vec!["*.test".to_string()]);
 

@@ -10,16 +10,17 @@ mod api;
 mod builder;
 mod environment;
 mod sbom;
+mod signing;
 
 pub use api::BuilderApi;
 pub use builder::{BuildConfig, Builder};
-pub use environment::{BuildEnvironment, BuildCommandResult, BuildResult};
+pub use environment::{BuildCommandResult, BuildEnvironment, BuildResult};
 pub use sbom::{SbomConfig, SbomFiles, SbomGenerator};
+pub use signing::{PackageSigner, SigningConfig};
 
-use spsv2_errors::Error;
 use spsv2_events::EventSender;
 use spsv2_types::Version;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Build context for package building
 #[derive(Clone, Debug)]
@@ -42,6 +43,7 @@ pub struct BuildContext {
 
 impl BuildContext {
     /// Create new build context
+    #[must_use]
     pub fn new(name: String, version: Version, recipe_path: PathBuf, output_dir: PathBuf) -> Self {
         Self {
             name,
@@ -55,24 +57,28 @@ impl BuildContext {
     }
 
     /// Set revision number
+    #[must_use]
     pub fn with_revision(mut self, revision: u32) -> Self {
         self.revision = revision;
         self
     }
 
     /// Set architecture
+    #[must_use]
     pub fn with_arch(mut self, arch: String) -> Self {
         self.arch = arch;
         self
     }
 
     /// Set event sender
+    #[must_use]
     pub fn with_event_sender(mut self, event_sender: EventSender) -> Self {
         self.event_sender = Some(event_sender);
         self
     }
 
     /// Get package filename
+    #[must_use]
     pub fn package_filename(&self) -> String {
         format!(
             "{}-{}-{}.{}.sp",
@@ -81,6 +87,7 @@ impl BuildContext {
     }
 
     /// Get full output path
+    #[must_use]
     pub fn output_path(&self) -> PathBuf {
         self.output_dir.join(self.package_filename())
     }

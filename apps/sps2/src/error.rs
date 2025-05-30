@@ -14,6 +14,7 @@ pub enum CliError {
     /// Event channel closed unexpectedly
     EventChannelClosed,
     /// Invalid command arguments
+    #[allow(dead_code)]
     InvalidArguments(String),
     /// I/O error
     Io(std::io::Error),

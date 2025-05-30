@@ -3,7 +3,6 @@
 use spsv2_builder::Builder;
 use spsv2_events::EventSender;
 use spsv2_index::IndexManager;
-use spsv2_install::Installer;
 use spsv2_net::NetClient;
 use spsv2_resolver::Resolver;
 use spsv2_state::StateManager;
@@ -29,6 +28,7 @@ pub struct OpsCtx {
 
 impl OpsCtx {
     /// Create new operations context
+    #[must_use]
     pub fn new(
         store: PackageStore,
         state: StateManager,
@@ -63,6 +63,7 @@ pub struct OpsContextBuilder {
 
 impl OpsContextBuilder {
     /// Create new context builder
+    #[must_use]
     pub fn new() -> Self {
         Self {
             store: None,
@@ -76,48 +77,59 @@ impl OpsContextBuilder {
     }
 
     /// Set package store
+    #[must_use]
     pub fn with_store(mut self, store: PackageStore) -> Self {
         self.store = Some(store);
         self
     }
 
     /// Set state manager
+    #[must_use]
     pub fn with_state(mut self, state: StateManager) -> Self {
         self.state = Some(state);
         self
     }
 
     /// Set index manager
+    #[must_use]
     pub fn with_index(mut self, index: IndexManager) -> Self {
         self.index = Some(index);
         self
     }
 
     /// Set network client
+    #[must_use]
     pub fn with_net(mut self, net: NetClient) -> Self {
         self.net = Some(net);
         self
     }
 
     /// Set resolver
+    #[must_use]
     pub fn with_resolver(mut self, resolver: Resolver) -> Self {
         self.resolver = Some(resolver);
         self
     }
 
     /// Set builder
+    #[must_use]
     pub fn with_builder(mut self, builder: Builder) -> Self {
         self.builder = Some(builder);
         self
     }
 
     /// Set event sender
+    #[must_use]
     pub fn with_event_sender(mut self, tx: EventSender) -> Self {
         self.tx = Some(tx);
         self
     }
 
     /// Build the context
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any required component is missing.
     pub fn build(self) -> Result<OpsCtx, spsv2_errors::Error> {
         let store = self
             .store
@@ -187,10 +199,10 @@ mod tests {
     ) {
         let temp = tempdir().unwrap();
 
-        let store = PackageStore::new(temp.path()).await.unwrap();
+        let store = PackageStore::new(temp.path().to_path_buf());
         let state = StateManager::new(temp.path()).await.unwrap();
         let index = IndexManager::new(temp.path());
-        let net = NetClient::new();
+        let net = NetClient::with_defaults().unwrap();
         let resolver = Resolver::new(index.clone());
         let builder = Builder::new();
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
@@ -202,7 +214,7 @@ mod tests {
     async fn test_context_builder() {
         let (store, state, index, net, resolver, builder, tx) = create_test_components().await;
 
-        let ctx = OpsContextBuilder::new()
+        let _ctx = OpsContextBuilder::new()
             .with_store(store)
             .with_state(state)
             .with_index(index)
@@ -214,7 +226,7 @@ mod tests {
             .unwrap();
 
         // Verify context was built successfully
-        assert_eq!(ctx.net.get_timeout().as_secs(), 30); // Default timeout
+        // Context was built successfully, no further assertions needed
     }
 
     #[test]

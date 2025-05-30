@@ -228,7 +228,7 @@ mod tests {
         assert!(spec.matches(&Version::parse("1.2.9").unwrap()));
         assert!(!spec.matches(&Version::parse("1.3.0").unwrap()));
 
-        // ~=1.2.0 means >=1.2.0,<1.3.0  
+        // ~=1.2.0 means >=1.2.0,<1.3.0
         let spec = VersionSpec::from_str("~=1.2.0").unwrap();
         assert!(spec.matches(&Version::parse("1.2.0").unwrap()));
         assert!(spec.matches(&Version::parse("1.2.5").unwrap()));

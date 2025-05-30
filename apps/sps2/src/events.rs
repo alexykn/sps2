@@ -2,10 +2,7 @@
 
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use spsv2_events::Event;
-use spsv2_types::Version;
 use std::collections::HashMap;
-use std::sync::Arc;
-use uuid::Uuid;
 
 /// Event handler for progress display and user feedback
 pub struct EventHandler {
@@ -14,6 +11,7 @@ pub struct EventHandler {
     /// Active progress bars by URL
     download_bars: HashMap<String, ProgressBar>,
     /// Output renderer for final results
+    #[allow(dead_code)]
     renderer: crate::display::OutputRenderer,
 }
 
@@ -70,7 +68,11 @@ impl EventHandler {
             Event::StateCreating { state_id } => {
                 self.show_status(&format!("🔄 Creating state {}", state_id));
             }
-            Event::StateTransition { from, to, operation: _ } => {
+            Event::StateTransition {
+                from,
+                to,
+                operation: _,
+            } => {
                 self.show_status(&format!("🔄 State transition {} → {}", from, to));
             }
 
@@ -115,7 +117,11 @@ impl EventHandler {
                     self.show_status(&format!("🔍 Resolving dependencies for {} packages", count));
                 }
             }
-            Event::DependencyResolved { package, version: _, count } => {
+            Event::DependencyResolved {
+                package,
+                version: _,
+                count,
+            } => {
                 if count == 1 {
                     self.show_status(&format!("✅ Resolved dependencies for {}", package));
                 } else {
@@ -284,17 +290,11 @@ impl EventHandler {
             Event::HealthCheckStarting => {
                 self.show_status("🔍 Checking system health");
             }
-            Event::HealthCheckCompleted {
-                healthy,
-                issues,
-            } => {
+            Event::HealthCheckCompleted { healthy, issues } => {
                 if healthy {
                     self.show_status("✅ System healthy");
                 } else {
-                    self.show_status(&format!(
-                        "⚠️  {} issues found",
-                        issues.len()
-                    ));
+                    self.show_status(&format!("⚠️  {} issues found", issues.len()));
                 }
             }
 
@@ -310,9 +310,14 @@ impl EventHandler {
             Event::IndexUpdateStarting { url } => {
                 self.show_status(&format!("📥 Updating index from {}", url));
             }
-            Event::IndexUpdateCompleted { packages_added, packages_updated } => {
-                self.show_status(&format!("✅ Index updated: {} added, {} updated", 
-                    packages_added, packages_updated));
+            Event::IndexUpdateCompleted {
+                packages_added,
+                packages_updated,
+            } => {
+                self.show_status(&format!(
+                    "✅ Index updated: {} added, {} updated",
+                    packages_added, packages_updated
+                ));
             }
 
             // State rollback event
@@ -339,7 +344,7 @@ impl EventHandler {
 
     /// Handle download started event
     fn handle_download_started(&mut self, url: &str, size: Option<u64>) {
-        let filename = url.split('/').last().unwrap_or(url);
+        let filename = url.split('/').next_back().unwrap_or(url);
 
         let pb = if let Some(total) = size {
             ProgressBar::new(total)
@@ -398,7 +403,7 @@ impl EventHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use spsv2_types::ColorChoice;
+    use spsv2_types::{ColorChoice, Version};
 
     #[test]
     fn test_event_handler_creation() {

@@ -33,6 +33,7 @@ impl Default for ScanOptions {
 
 impl ScanOptions {
     /// Create new scan options
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -98,6 +99,7 @@ impl ScanResult {
 /// CVE scanner
 pub struct AuditScanner {
     /// Scanner configuration
+    #[allow(dead_code)] // Configuration fields reserved for future implementation
     config: ScannerConfig,
 }
 
@@ -105,8 +107,10 @@ pub struct AuditScanner {
 #[derive(Debug, Clone)]
 struct ScannerConfig {
     /// Maximum concurrent scans
+    #[allow(dead_code)] // Will be used when parallel scanning is implemented
     max_concurrent: usize,
     /// Scan timeout per component
+    #[allow(dead_code)] // Will be used for timeout handling in production scanning
     component_timeout: std::time::Duration,
 }
 
@@ -121,6 +125,7 @@ impl Default for ScannerConfig {
 
 impl AuditScanner {
     /// Create new audit scanner
+    #[must_use]
     pub fn new() -> Self {
         Self {
             config: ScannerConfig::default(),
@@ -307,7 +312,7 @@ mod tests {
         let options = ScanOptions::default();
         assert_eq!(options.severity_threshold, Severity::Low);
         assert!(!options.fail_on_critical);
-        assert_eq!(options.confidence_threshold, 0.5);
+        assert!((options.confidence_threshold - 0.5).abs() < f32::EPSILON);
 
         let custom_options = ScanOptions::new()
             .with_severity_threshold(Severity::High)
@@ -316,7 +321,7 @@ mod tests {
 
         assert_eq!(custom_options.severity_threshold, Severity::High);
         assert!(custom_options.fail_on_critical);
-        assert_eq!(custom_options.confidence_threshold, 0.8);
+        assert!((custom_options.confidence_threshold - 0.8).abs() < f32::EPSILON);
     }
 
     #[test]

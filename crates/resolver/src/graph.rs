@@ -13,6 +13,7 @@ pub struct PackageId {
 
 impl PackageId {
     /// Create new package ID
+    #[must_use]
     pub fn new(name: String, version: Version) -> Self {
         Self { name, version }
     }
@@ -25,7 +26,7 @@ impl fmt::Display for PackageId {
 }
 
 /// Dependency kind
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum DepKind {
     /// Build-time dependency
     Build,
@@ -55,11 +56,13 @@ pub struct DepEdge {
 
 impl DepEdge {
     /// Create new dependency edge
+    #[must_use]
     pub fn new(name: String, spec: VersionSpec, kind: DepKind) -> Self {
         Self { name, spec, kind }
     }
 
     /// Check if a version satisfies this edge
+    #[must_use]
     pub fn satisfies(&self, version: &Version) -> bool {
         self.spec.matches(version)
     }
@@ -84,6 +87,7 @@ pub struct ResolvedNode {
 
 impl ResolvedNode {
     /// Create new resolved node for download
+    #[must_use]
     pub fn download(name: String, version: Version, url: String, deps: Vec<DepEdge>) -> Self {
         Self {
             name,
@@ -96,6 +100,7 @@ impl ResolvedNode {
     }
 
     /// Create new resolved node for local file
+    #[must_use]
     pub fn local(name: String, version: Version, path: PathBuf, deps: Vec<DepEdge>) -> Self {
         Self {
             name,
@@ -108,6 +113,7 @@ impl ResolvedNode {
     }
 
     /// Get package ID
+    #[must_use]
     pub fn package_id(&self) -> PackageId {
         PackageId::new(self.name.clone(), self.version.clone())
     }
@@ -274,7 +280,8 @@ mod tests {
 
     #[test]
     fn test_dep_edge() {
-        let spec = VersionSpec::parse(">=1.0.0").unwrap();
+        use std::str::FromStr;
+        let spec = VersionSpec::from_str(">=1.0.0").unwrap();
         let edge = DepEdge::new("test".to_string(), spec, DepKind::Runtime);
 
         assert!(edge.satisfies(&Version::parse("1.0.0").unwrap()));
@@ -284,15 +291,16 @@ mod tests {
 
     #[test]
     fn test_resolved_node() {
+        use std::str::FromStr;
         let deps = vec![
             DepEdge::new(
                 "dep1".to_string(),
-                VersionSpec::parse(">=1.0.0").unwrap(),
+                VersionSpec::from_str(">=1.0.0").unwrap(),
                 DepKind::Runtime,
             ),
             DepEdge::new(
                 "dep2".to_string(),
-                VersionSpec::parse(">=2.0.0").unwrap(),
+                VersionSpec::from_str(">=2.0.0").unwrap(),
                 DepKind::Build,
             ),
         ];
@@ -377,8 +385,9 @@ mod tests {
         graph.add_node(node_c);
 
         // a depends on b, b depends on c
-        graph.add_edge(&id_a, &id_b);
-        graph.add_edge(&id_b, &id_c);
+        // For topological sort: dependencies come first, so b->a and c->b
+        graph.add_edge(&id_b, &id_a);
+        graph.add_edge(&id_c, &id_b);
 
         let sorted = graph.topological_sort().unwrap();
 
