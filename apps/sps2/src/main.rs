@@ -247,6 +247,11 @@ async fn execute_command(
             .await?;
             Ok(OperationResult::AuditReport(report))
         }
+
+        Commands::SelfUpdate { skip_verify, force } => {
+            let result = sps2_ops::self_update(&ctx, skip_verify, force).await?;
+            Ok(OperationResult::Success(result))
+        }
     }
 }
 

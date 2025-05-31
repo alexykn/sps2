@@ -313,6 +313,34 @@ pub enum Event {
         target_state: uuid::Uuid,
         duration_ms: u64,
     },
+
+    // Self-update operations
+    SelfUpdateStarting,
+    SelfUpdateCheckingVersion {
+        current_version: String,
+    },
+    SelfUpdateVersionAvailable {
+        current_version: String,
+        latest_version: String,
+    },
+    SelfUpdateAlreadyLatest {
+        version: String,
+    },
+    SelfUpdateDownloading {
+        version: String,
+        url: String,
+    },
+    SelfUpdateVerifying {
+        version: String,
+    },
+    SelfUpdateInstalling {
+        version: String,
+    },
+    SelfUpdateCompleted {
+        old_version: String,
+        new_version: String,
+        duration_ms: u64,
+    },
 }
 
 /// Health status for components

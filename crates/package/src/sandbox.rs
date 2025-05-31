@@ -77,13 +77,13 @@ impl RecipeEngine {
         let mut eval = Evaluator::new(&module);
 
         // Set VM resource limits for sandboxing
-        
+
         // Limit call stack depth to prevent deep recursion attacks
         // Default of 100 is quite low - increase to a more reasonable production value
         // while still preventing stack overflow attacks
         let _ = eval.set_max_callstack_size(1000);
-        
-        // Note: starlark-rust 0.13.0 does not provide eval.set_heap_limit() or 
+
+        // Note: starlark-rust 0.13.0 does not provide eval.set_heap_limit() or
         // eval.set_max_steps() methods as mentioned in the README. However, Starlark
         // already provides significant built-in security:
         //
@@ -94,7 +94,7 @@ impl RecipeEngine {
         // 5. Values are frozen after evaluation - immutable state
         //
         // The language design itself provides sandboxing against most attacks.
-        // Future versions may add more granular limits via compilation flags or 
+        // Future versions may add more granular limits via compilation flags or
         // alternative evaluation contexts.
 
         // Evaluate the recipe

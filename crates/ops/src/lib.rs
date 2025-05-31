@@ -24,7 +24,7 @@ pub use types::{
 pub use large_ops::{build, install, uninstall, update, upgrade};
 pub use small_ops::{
     audit, check_health, cleanup, history, list_packages, package_info, reposync, rollback,
-    search_packages, update_vulndb, vulndb_stats,
+    search_packages, self_update, update_vulndb, vulndb_stats,
 };
 
 // Re-export audit types needed by the audit function

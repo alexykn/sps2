@@ -61,4 +61,7 @@ pub enum OpsError {
 
     #[error("repository sync failed: {message}")]
     RepoSyncFailed { message: String },
+
+    #[error("self-update failed: {message}")]
+    SelfUpdateFailed { message: String },
 }

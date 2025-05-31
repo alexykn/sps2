@@ -150,6 +150,18 @@ pub enum Commands {
         #[arg(long, value_name = "SEVERITY")]
         severity: Option<String>,
     },
+
+    /// Update sps2 to the latest version
+    #[command(name = "self-update")]
+    SelfUpdate {
+        /// Skip signature verification (not recommended)
+        #[arg(long)]
+        skip_verify: bool,
+
+        /// Force update even if already on latest version
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 /// Vulnerability database subcommands
@@ -182,6 +194,7 @@ impl Commands {
             Commands::CheckHealth => "check-health",
             Commands::VulnDb { .. } => "vulndb",
             Commands::Audit { .. } => "audit",
+            Commands::SelfUpdate { .. } => "self-update",
         }
     }
 
