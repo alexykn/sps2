@@ -170,14 +170,14 @@ impl BuildMethodFunction {
             .push(BuildStep::ApplyPatch { path: patch_path });
         Ok(())
     }
-    
+
     fn handle_command_invoke<'v>(
         &self,
         args: &Arguments<'v, '_>,
         eval: &mut starlark::eval::Evaluator<'v, '_, '_>,
     ) -> starlark::Result<()> {
         args.no_named_args()?;
-        
+
         // For simplicity, we'll only support the form: command("program", ["arg1", "arg2"])
         let len = args.len()?;
         if len < 1 {
@@ -185,25 +185,23 @@ impl BuildMethodFunction {
                 "command() requires at least one argument (the program to run)"
             )));
         }
-        
+
         // Get program name
-        let program = args.positional1(eval.heap())?
+        let program = args
+            .positional1(eval.heap())?
             .unpack_str()
             .ok_or_else(|| {
                 starlark::Error::new_other(anyhow::anyhow!("Program name must be a string"))
             })?
             .to_string();
-        
+
         // For now, we'll just use empty args. In the future we can parse a list from the second argument
         let cmd_args = Vec::new();
-        
-        self.context
-            .steps
-            .borrow_mut()
-            .push(BuildStep::Command { 
-                program,
-                args: cmd_args,
-            });
+
+        self.context.steps.borrow_mut().push(BuildStep::Command {
+            program,
+            args: cmd_args,
+        });
         Ok(())
     }
 }
@@ -421,7 +419,7 @@ impl BuildContext {
         });
         Ok(())
     }
-    
+
     /// Run an arbitrary command with arguments
     ///
     /// # Errors

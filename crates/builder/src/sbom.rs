@@ -299,9 +299,13 @@ impl SbomGenerator {
             let verify_hash = Hash::hash_file(&verify_path).await?;
             if verify_hash.to_hex() != *expected_hash {
                 // Read both files to help debug the difference
-                let original_content = tokio::fs::read_to_string(_spdx_path).await.unwrap_or_else(|_| "Failed to read original".to_string());
-                let verify_content = tokio::fs::read_to_string(&verify_path).await.unwrap_or_else(|_| "Failed to read verify".to_string());
-                
+                let original_content = tokio::fs::read_to_string(_spdx_path)
+                    .await
+                    .unwrap_or_else(|_| "Failed to read original".to_string());
+                let verify_content = tokio::fs::read_to_string(&verify_path)
+                    .await
+                    .unwrap_or_else(|_| "Failed to read verify".to_string());
+
                 return Err(BuildError::SbomError {
                     message: format!(
                         "SPDX SBOM generation is not deterministic: expected hash {}, got hash {}. Original length: {}, verify length: {}", 

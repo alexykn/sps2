@@ -104,19 +104,31 @@ impl BuildEnvironment {
         // Create build directories with better error reporting
         fs::create_dir_all(&self.build_prefix).await.map_err(|e| {
             sps2_errors::BuildError::Failed {
-                message: format!("Failed to create build prefix {}: {}", self.build_prefix.display(), e),
+                message: format!(
+                    "Failed to create build prefix {}: {}",
+                    self.build_prefix.display(),
+                    e
+                ),
             }
         })?;
-        
+
         fs::create_dir_all(&self.deps_prefix).await.map_err(|e| {
             sps2_errors::BuildError::Failed {
-                message: format!("Failed to create deps prefix {}: {}", self.deps_prefix.display(), e),
+                message: format!(
+                    "Failed to create deps prefix {}: {}",
+                    self.deps_prefix.display(),
+                    e
+                ),
             }
         })?;
-        
+
         fs::create_dir_all(&self.staging_dir).await.map_err(|e| {
             sps2_errors::BuildError::Failed {
-                message: format!("Failed to create staging dir {}: {}", self.staging_dir.display(), e),
+                message: format!(
+                    "Failed to create staging dir {}: {}",
+                    self.staging_dir.display(),
+                    e
+                ),
             }
         })?;
 
@@ -203,9 +215,13 @@ impl BuildEnvironment {
         // Send command info event to show what's running
         self.send_event(Event::DebugLog {
             message: format!("Executing: {program} {}", args.join(" ")),
-            context: std::collections::HashMap::from([
-                ("working_dir".to_string(), working_dir.map_or_else(|| self.build_prefix.display().to_string(), |p| p.display().to_string())),
-            ]),
+            context: std::collections::HashMap::from([(
+                "working_dir".to_string(),
+                working_dir.map_or_else(
+                    || self.build_prefix.display().to_string(),
+                    |p| p.display().to_string(),
+                ),
+            )]),
         });
 
         let mut child = cmd.spawn().map_err(|e| BuildError::CompileFailed {
@@ -271,8 +287,8 @@ impl BuildEnvironment {
         if !result.success {
             return Err(BuildError::CompileFailed {
                 message: format!(
-                    "{program} {} failed with exit code {:?}: {}", 
-                    args.join(" "), 
+                    "{program} {} failed with exit code {:?}: {}",
+                    args.join(" "),
                     result.exit_code,
                     result.stderr
                 ),
@@ -431,9 +447,7 @@ impl BuildEnvironment {
     /// Get build prefix path for package
     #[must_use]
     fn get_build_prefix_path(build_root: &Path, name: &str, version: &Version) -> PathBuf {
-        build_root
-            .join(name)
-            .join(version.to_string())
+        build_root.join(name).join(version.to_string())
     }
 
     /// Get CPU count for parallel builds
@@ -713,18 +727,18 @@ impl BuildEnvironment {
 
             let input_file = File::open(sp_path).await?;
             let output_file = File::create(&temp_tar_path).await?;
-            
+
             // Create zstd decoder
             let mut decoder = ZstdDecoder::new(BufReader::new(input_file));
-            
+
             // Copy decompressed data to output file
             let mut writer = BufWriter::new(output_file);
-            tokio::io::copy(&mut decoder, &mut writer).await.map_err(|e| {
-                BuildError::ExtractionFailed {
+            tokio::io::copy(&mut decoder, &mut writer)
+                .await
+                .map_err(|e| BuildError::ExtractionFailed {
                     message: format!("zstd decompression failed: {e}"),
-                }
-            })?;
-            
+                })?;
+
             // Ensure all data is written
             writer.flush().await?;
         }

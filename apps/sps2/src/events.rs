@@ -105,7 +105,10 @@ impl EventHandler {
             Event::BuildStepStarted { package, step } => {
                 self.show_status(&format!("🔧 {} > {}", package, step));
             }
-            Event::BuildStepOutput { package: _, line: _ } => {
+            Event::BuildStepOutput {
+                package: _,
+                line: _,
+            } => {
                 // Build output is now printed directly to stdout/stderr
                 // This event is kept for compatibility but not displayed
             }
@@ -430,7 +433,6 @@ impl EventHandler {
         // Use multi_progress to avoid interfering with progress bars
         self.multi_progress.println(message).unwrap_or(());
     }
-
 }
 
 #[cfg(test)]

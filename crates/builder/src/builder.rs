@@ -285,7 +285,10 @@ impl Builder {
         Self::send_event(
             &context,
             Event::DebugLog {
-                message: format!("Skipping cleanup for debugging - check {}", environment.build_prefix().display()),
+                message: format!(
+                    "Skipping cleanup for debugging - check {}",
+                    environment.build_prefix().display()
+                ),
                 context: std::collections::HashMap::new(),
             },
         );
@@ -325,19 +328,26 @@ impl Builder {
         fs::create_dir_all(&working_dir).await?;
 
         // Copy source files from recipe directory to working directory
-        let recipe_dir = context.recipe_path.parent().ok_or_else(|| BuildError::RecipeError {
-            message: "Invalid recipe path".to_string(),
-        })?;
-        
+        let recipe_dir = context
+            .recipe_path
+            .parent()
+            .ok_or_else(|| BuildError::RecipeError {
+                message: "Invalid recipe path".to_string(),
+            })?;
+
         // Copy all files from recipe directory to working directory (excluding .star files)
         Self::send_event(
             context,
             Event::DebugLog {
-                message: format!("Copying source files from {} to {}", recipe_dir.display(), working_dir.display()),
+                message: format!(
+                    "Copying source files from {} to {}",
+                    recipe_dir.display(),
+                    working_dir.display()
+                ),
                 context: std::collections::HashMap::new(),
             },
         );
-        
+
         let mut entries = fs::read_dir(recipe_dir).await?;
         while let Some(entry) = entries.next_entry().await? {
             let entry_path = entry.path();
@@ -345,11 +355,15 @@ impl Builder {
                 let file_name = entry.file_name();
                 let dest_path = working_dir.join(&file_name);
                 fs::copy(&entry_path, &dest_path).await?;
-                
+
                 Self::send_event(
                     context,
                     Event::DebugLog {
-                        message: format!("Copied {} to {}", file_name.to_string_lossy(), dest_path.display()),
+                        message: format!(
+                            "Copied {} to {}",
+                            file_name.to_string_lossy(),
+                            dest_path.display()
+                        ),
                         context: std::collections::HashMap::new(),
                     },
                 );
@@ -772,7 +786,7 @@ impl Builder {
                 operation: "Creating tar archive".to_string(),
             },
         );
-        
+
         // Debug: List contents before tar creation
         Self::send_event(
             context,
@@ -781,24 +795,26 @@ impl Builder {
                 context: std::collections::HashMap::new(),
             },
         );
-        
+
         let tar_path = package_temp_dir.join("package.tar");
-        
+
         // Add timeout for tar creation to prevent hanging
         let tar_result = tokio::time::timeout(
             std::time::Duration::from_secs(30),
-            self.create_deterministic_tar_archive(&package_temp_dir, &tar_path)
-        ).await;
-        
+            self.create_deterministic_tar_archive(&package_temp_dir, &tar_path),
+        )
+        .await;
+
         match tar_result {
             Ok(result) => result?,
             Err(_) => {
                 return Err(BuildError::Failed {
                     message: "Tar archive creation timed out after 30 seconds".to_string(),
-                }.into());
+                }
+                .into());
             }
         }
-        
+
         Self::send_event(
             context,
             Event::OperationCompleted {
@@ -865,17 +881,17 @@ impl Builder {
         let file = File::create(tar_path).await?;
         let file = file.into_std().await;
         let source_dir = source_dir.to_path_buf(); // Clone to move into closure
-        
+
         // Create deterministic tar using the tar crate
         tokio::task::spawn_blocking(move || -> Result<(), Error> {
             let mut tar_builder = Builder::new(file);
-            
+
             // Set deterministic behavior
             tar_builder.follow_symlinks(false);
-            
+
             Self::add_directory_to_tar(&mut tar_builder, &source_dir, "".as_ref())?;
             tar_builder.finish()?;
-            
+
             Ok(())
         })
         .await
@@ -892,31 +908,29 @@ impl Builder {
         dir_path: &Path,
         tar_path: &Path,
     ) -> Result<(), Error> {
-        
-        let mut entries = std::fs::read_dir(dir_path)?
-            .collect::<Result<Vec<_>, _>>()?;
-        
+        let mut entries = std::fs::read_dir(dir_path)?.collect::<Result<Vec<_>, _>>()?;
+
         // Sort entries by name for deterministic ordering
         entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
-        
+
         for entry in entries {
             let file_path = entry.path();
             let file_name = entry.file_name();
-            
+
             // Skip the package.tar file if it exists to avoid recursion
             if file_name == "package.tar" {
                 continue;
             }
-            
+
             // IMPORTANT: When tar_path is empty (first call), don't add a leading separator
             let tar_entry_path = if tar_path.as_os_str().is_empty() {
                 PathBuf::from(&file_name)
             } else {
                 tar_path.join(&file_name)
             };
-            
+
             let metadata = entry.metadata()?;
-            
+
             if metadata.is_dir() {
                 // Add directory entry
                 let mut header = tar::Header::new_gnu();
@@ -927,10 +941,10 @@ impl Builder {
                 header.set_uid(0);
                 header.set_gid(0);
                 header.set_cksum();
-                
+
                 let tar_dir_path = format!("{}/", tar_entry_path.display());
                 tar_builder.append_data(&mut header, &tar_dir_path, std::io::empty())?;
-                
+
                 // Recursively add directory contents
                 Self::add_directory_to_tar(tar_builder, &file_path, &tar_entry_path)?;
             } else if metadata.is_file() {
@@ -939,17 +953,25 @@ impl Builder {
                 let mut header = tar::Header::new_gnu();
                 header.set_entry_type(tar::EntryType::Regular);
                 header.set_size(metadata.len());
-                header.set_mode(if metadata.permissions().readonly() { 0o644 } else { 0o755 });
+                header.set_mode(if metadata.permissions().readonly() {
+                    0o644
+                } else {
+                    0o755
+                });
                 header.set_mtime(0); // Deterministic mtime
                 header.set_uid(0);
                 header.set_gid(0);
                 header.set_cksum();
-                
-                tar_builder.append_data(&mut header, tar_entry_path.display().to_string(), &mut file)?;
+
+                tar_builder.append_data(
+                    &mut header,
+                    tar_entry_path.display().to_string(),
+                    &mut file,
+                )?;
             }
             // Skip symlinks and other special files for simplicity
         }
-        
+
         Ok(())
     }
 
@@ -962,14 +984,14 @@ impl Builder {
 
         let input_file = File::open(tar_path).await?;
         let output_file = File::create(output_path).await?;
-        
+
         // Create zstd encoder with maximum compression level
         let mut encoder = ZstdEncoder::with_quality(output_file, Level::Best);
-        
+
         // Copy tar file through zstd encoder
         let mut reader = BufReader::new(input_file);
         tokio::io::copy(&mut reader, &mut encoder).await?;
-        
+
         // Ensure all data is written
         encoder.shutdown().await?;
 
@@ -1055,7 +1077,7 @@ mod tests {
         let custom_config = BuildConfig::default().with_timeout(1800).with_jobs(4);
         assert_eq!(custom_config.max_build_time, Some(1800));
         assert_eq!(custom_config.build_jobs, Some(4));
-        
+
         // Test custom build root
         let custom_root = PathBuf::from("/custom/build/root");
         let config_with_root = BuildConfig {

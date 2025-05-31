@@ -286,9 +286,7 @@ impl Config {
         self.paths
             .build_path
             .clone()
-            .unwrap_or_else(|| {
-                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-            })
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
     }
 
     /// Get the live root path
@@ -345,7 +343,7 @@ mod tests {
         assert_eq!(config.store_path(), PathBuf::from("/opt/pm/store"));
         assert_eq!(config.live_path(), PathBuf::from("/opt/pm/live"));
         assert_eq!(config.db_path(), PathBuf::from("/opt/pm/state.sqlite"));
-        
+
         // Test that build_path defaults to current directory
         let expected_build_path = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         assert_eq!(config.build_path(), expected_build_path);
