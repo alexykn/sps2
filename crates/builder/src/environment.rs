@@ -719,20 +719,25 @@ mod tests {
 
         let mut env = BuildEnvironment::new(context).unwrap();
 
-        // Set some potentially harmful environment variables
+        // Set some potentially harmful environment variables in the process
         std::env::set_var("LDFLAGS", "-L/some/bad/path");
         std::env::set_var("PKG_CONFIG_PATH", "/bad/pkgconfig");
 
         env.initialize().await.unwrap();
 
-        // Verify these were cleaned up and replaced with isolated versions
+        // The BuildEnvironment creates its own isolated environment
+        // It doesn't copy problematic variables from the process environment
+        // Instead it sets up clean versions with only the deps prefix
         let ldflags = env.env_vars.get("LDFLAGS").unwrap();
-        assert!(ldflags.contains(&format!("-L{}/lib", env.deps_prefix.display())));
-        assert!(!ldflags.contains("/some/bad/path"));
+        assert_eq!(ldflags, &format!("-L{}/lib", env.deps_prefix.display()));
 
+        // PKG_CONFIG_PATH is not set initially, only when build deps are set up
+        assert!(!env.env_vars.contains_key("PKG_CONFIG_PATH"));
+
+        // Setup build deps environment to get PKG_CONFIG_PATH
+        env.setup_build_deps_environment();
         let pkg_config = env.env_vars.get("PKG_CONFIG_PATH").unwrap();
-        assert!(pkg_config.contains(&format!("{}/lib/pkgconfig", env.deps_prefix.display())));
-        assert!(!pkg_config.contains("/bad/pkgconfig"));
+        assert_eq!(pkg_config, &format!("{}/lib/pkgconfig", env.deps_prefix.display()));
 
         // Clean up test environment variables
         std::env::remove_var("LDFLAGS");

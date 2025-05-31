@@ -14,6 +14,7 @@ mod tests {
             temp_file,
             r#"
 [general]
+default_output = "plain"
 parallel_downloads = 8
 color = "never"
 
@@ -23,11 +24,14 @@ network_access = true
 
 [security]
 verify_signatures = false
+allow_unsigned = true
+index_max_age_days = 7
         "#
         )
         .unwrap();
 
         let config = Config::load_from_file(temp_file.path()).await.unwrap();
+        assert_eq!(config.general.default_output, OutputFormat::Plain);
         assert_eq!(config.general.parallel_downloads, 8);
         assert_eq!(config.general.color, ColorChoice::Never);
         assert_eq!(config.build.build_jobs, 4);
