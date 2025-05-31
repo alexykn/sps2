@@ -84,6 +84,27 @@ impl NetClient {
         self.retry_request(|| self.client.get(url).send()).await
     }
 
+    /// Execute a GET request with custom headers and retries
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails after all retry attempts, including
+    /// network timeouts, connection failures, or server errors.
+    pub async fn get_with_headers(
+        &self,
+        url: &str,
+        headers: &[(&str, &str)],
+    ) -> Result<Response, Error> {
+        self.retry_request(|| {
+            let mut request = self.client.get(url);
+            for (key, value) in headers {
+                request = request.header(*key, *value);
+            }
+            request.send()
+        })
+        .await
+    }
+
     /// Execute a HEAD request with retries
     ///
     /// # Errors

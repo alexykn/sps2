@@ -204,7 +204,7 @@ mod tests {
         let index = IndexManager::new(temp.path());
         let net = NetClient::with_defaults().unwrap();
         let resolver = Resolver::new(index.clone());
-        let builder = Builder::new();
+        let builder = Builder::new().with_net(net.clone());
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
 
         (store, state, index, net, resolver, builder, tx)

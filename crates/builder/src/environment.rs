@@ -4,6 +4,7 @@ use crate::BuildContext;
 use sps2_errors::{BuildError, Error};
 use sps2_events::Event;
 use sps2_install::Installer;
+use sps2_net::NetClient;
 use sps2_resolver::{ResolutionContext, Resolver};
 use sps2_store::PackageStore;
 use sps2_types::{package::PackageSpec, Version};
@@ -31,6 +32,8 @@ pub struct BuildEnvironment {
     store: Option<PackageStore>,
     /// Installer for build dependencies
     installer: Option<Installer>,
+    /// Network client for downloads
+    net: Option<NetClient>,
 }
 
 impl BuildEnvironment {
@@ -57,6 +60,7 @@ impl BuildEnvironment {
             resolver: None,
             store: None,
             installer: None,
+            net: None,
         })
     }
 
@@ -78,6 +82,13 @@ impl BuildEnvironment {
     #[must_use]
     pub fn with_installer(mut self, installer: Installer) -> Self {
         self.installer = Some(installer);
+        self
+    }
+
+    /// Set network client for downloads
+    #[must_use]
+    pub fn with_net(mut self, net: NetClient) -> Self {
+        self.net = Some(net);
         self
     }
 
@@ -526,6 +537,13 @@ impl BuildEnvironment {
             .into());
         };
 
+        let Some(net_client) = &self.net else {
+            return Err(BuildError::MissingBuildDep {
+                name: "network client not configured".to_string(),
+            }
+            .into());
+        };
+
         self.send_event(Event::PackageInstalling {
             name: node.name.clone(),
             version: node.version.clone(),
@@ -546,15 +564,15 @@ impl BuildEnvironment {
                     let sp_filename = format!("{}-{}.sp", node.name, node.version);
                     let temp_sp_path = temp_dir.join(&sp_filename);
 
-                    // Use reqwest to download the file
-                    let response = reqwest::get(url)
+                    // Use NetClient to download the file with consistent retry logic
+                    let default_tx = {
+                        let (tx, _) = tokio::sync::mpsc::unbounded_channel();
+                        tx
+                    };
+                    let event_sender = self.context.event_sender.as_ref().unwrap_or(&default_tx);
+                    let bytes = sps2_net::fetch_bytes(net_client, url, event_sender)
                         .await
                         .map_err(|_e| BuildError::FetchFailed { url: url.clone() })?;
-
-                    let bytes = response
-                        .bytes()
-                        .await
-                        .map_err(|_| BuildError::FetchFailed { url: url.clone() })?;
 
                     tokio::fs::write(&temp_sp_path, &bytes).await?;
 

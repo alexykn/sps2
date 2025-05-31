@@ -227,6 +227,38 @@ impl Config {
             };
         }
 
+        // SPS2_BUILD_JOBS
+        if let Ok(jobs) = std::env::var("SPS2_BUILD_JOBS") {
+            self.build.build_jobs = jobs.parse().map_err(|_| ConfigError::InvalidValue {
+                field: "SPS2_BUILD_JOBS".to_string(),
+                value: jobs,
+            })?;
+        }
+
+        // SPS2_NETWORK_ACCESS
+        if let Ok(network) = std::env::var("SPS2_NETWORK_ACCESS") {
+            self.build.network_access = match network.as_str() {
+                "true" | "1" | "yes" => true,
+                "false" | "0" | "no" => false,
+                _ => {
+                    return Err(ConfigError::InvalidValue {
+                        field: "SPS2_NETWORK_ACCESS".to_string(),
+                        value: network,
+                    }
+                    .into())
+                }
+            };
+        }
+
+        // SPS2_PARALLEL_DOWNLOADS
+        if let Ok(downloads) = std::env::var("SPS2_PARALLEL_DOWNLOADS") {
+            self.general.parallel_downloads =
+                downloads.parse().map_err(|_| ConfigError::InvalidValue {
+                    field: "SPS2_PARALLEL_DOWNLOADS".to_string(),
+                    value: downloads,
+                })?;
+        }
+
         Ok(())
     }
 
@@ -311,5 +343,47 @@ mod tests {
         assert_eq!(config.store_path(), PathBuf::from("/opt/pm/store"));
         assert_eq!(config.live_path(), PathBuf::from("/opt/pm/live"));
         assert_eq!(config.db_path(), PathBuf::from("/opt/pm/state.sqlite"));
+    }
+
+    #[test]
+    fn test_merge_env_variables() {
+        let mut config = Config::default();
+
+        // Test SPS2_COLOR
+        std::env::set_var("SPS2_COLOR", "always");
+        std::env::set_var("SPS2_BUILD_JOBS", "16");
+        std::env::set_var("SPS2_NETWORK_ACCESS", "true");
+        std::env::set_var("SPS2_PARALLEL_DOWNLOADS", "8");
+
+        config.merge_env().unwrap();
+
+        assert_eq!(config.general.color, ColorChoice::Always);
+        assert_eq!(config.build.build_jobs, 16);
+        assert!(config.build.network_access);
+        assert_eq!(config.general.parallel_downloads, 8);
+
+        // Clean up
+        std::env::remove_var("SPS2_COLOR");
+        std::env::remove_var("SPS2_BUILD_JOBS");
+        std::env::remove_var("SPS2_NETWORK_ACCESS");
+        std::env::remove_var("SPS2_PARALLEL_DOWNLOADS");
+    }
+
+    #[test]
+    fn test_env_error_handling() {
+        let mut config = Config::default();
+
+        // Test invalid values
+        std::env::set_var("SPS2_COLOR", "invalid");
+        let result = config.merge_env();
+        assert!(result.is_err());
+
+        std::env::remove_var("SPS2_COLOR");
+
+        std::env::set_var("SPS2_BUILD_JOBS", "not_a_number");
+        let result = config.merge_env();
+        assert!(result.is_err());
+
+        std::env::remove_var("SPS2_BUILD_JOBS");
     }
 }

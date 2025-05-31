@@ -42,8 +42,15 @@ async fn main() {
 async fn run(cli: Cli) -> Result<(), CliError> {
     info!("Starting sps2 v{}", env!("CARGO_PKG_VERSION"));
 
-    // Load configuration
-    let config = Config::load_or_default(&cli.global.config).await?;
+    // Load configuration with proper precedence:
+    // 1. Start with file config (or defaults)
+    let mut config = Config::load_or_default(&cli.global.config).await?;
+
+    // 2. Merge environment variables
+    config.merge_env()?;
+
+    // 3. Apply CLI flags (highest precedence)
+    apply_cli_config(&mut config, &cli.global, &cli.command)?;
 
     // Initialize system setup
     let mut setup = SystemSetup::new(config.clone());
@@ -314,5 +321,92 @@ fn show_path_reminder_if_needed() {
         eprintln!("   echo 'export PATH=\"/opt/pm/live/bin:$PATH\"' >> ~/.zshrc");
         eprintln!("   source ~/.zshrc");
         eprintln!();
+    }
+}
+
+/// Apply CLI configuration overrides (highest precedence)
+fn apply_cli_config(
+    config: &mut Config,
+    global: &cli::GlobalArgs,
+    command: &cli::Commands,
+) -> Result<(), CliError> {
+    // Global CLI flags override everything
+    if let Some(color) = &global.color {
+        config.general.color = *color;
+    }
+
+    // Command-specific CLI flags
+    match command {
+        cli::Commands::Build { network, jobs, .. } => {
+            if *network {
+                config.build.network_access = true;
+            }
+            if let Some(job_count) = jobs {
+                config.build.build_jobs = *job_count;
+            }
+        }
+        _ => {
+            // No command-specific config overrides for other commands yet
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sps2_types::ColorChoice;
+
+    #[test]
+    fn test_cli_config_precedence() {
+        let mut config = Config::default();
+
+        // Start with default (auto color)
+        assert_eq!(config.general.color, ColorChoice::Auto);
+
+        // Test CLI override
+        let global_args = cli::GlobalArgs {
+            json: false,
+            debug: false,
+            color: Some(ColorChoice::Always),
+            config: None,
+        };
+
+        let command = cli::Commands::List;
+
+        apply_cli_config(&mut config, &global_args, &command).unwrap();
+
+        // CLI should override
+        assert_eq!(config.general.color, ColorChoice::Always);
+    }
+
+    #[test]
+    fn test_build_command_config_override() {
+        let mut config = Config::default();
+
+        // Start with defaults
+        assert!(!config.build.network_access);
+        assert_eq!(config.build.build_jobs, 0);
+
+        let global_args = cli::GlobalArgs {
+            json: false,
+            debug: false,
+            color: None,
+            config: None,
+        };
+
+        let command = cli::Commands::Build {
+            recipe: std::path::PathBuf::from("test.star"),
+            output_dir: None,
+            network: true,
+            jobs: Some(8),
+        };
+
+        apply_cli_config(&mut config, &global_args, &command).unwrap();
+
+        // Build command should override config
+        assert!(config.build.network_access);
+        assert_eq!(config.build.build_jobs, 8);
     }
 }

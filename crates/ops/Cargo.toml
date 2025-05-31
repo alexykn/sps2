@@ -26,6 +26,8 @@ tokio = { workspace = true, features = ["fs"] }
 uuid = { workspace = true }
 chrono = { workspace = true }
 tempfile = { workspace = true }
+minisign-verify = "0.2.4"
+hex = "0.4"
 
 [dev-dependencies]
 tempfile = { workspace = true }

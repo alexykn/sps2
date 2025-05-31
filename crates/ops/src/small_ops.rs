@@ -1,8 +1,9 @@
 //! Small operations implemented in the ops crate
 
 use crate::{
-    ChangeType, ComponentHealth, HealthCheck, HealthIssue, HealthStatus, IssueSeverity, OpChange,
-    OpsCtx, PackageInfo, PackageStatus, SearchResult, StateInfo, VulnDbStats,
+    keys::KeyManager, ChangeType, ComponentHealth, HealthCheck, HealthIssue, HealthStatus,
+    IssueSeverity, OpChange, OpsCtx, PackageInfo, PackageStatus, SearchResult, StateInfo,
+    VulnDbStats,
 };
 use sps2_errors::{Error, OpsError};
 use sps2_events::Event;
@@ -46,12 +47,11 @@ pub async fn reposync(ctx: &OpsCtx) -> Result<String, Error> {
         })
         .ok();
 
-    // 1. Download latest index.json and signature
-    let index_json = sps2_net::fetch_text(&ctx.net, &index_url, &ctx.tx)
-        .await
-        .map_err(|e| OpsError::RepoSyncFailed {
-            message: format!("Failed to download index.json: {e}"),
-        })?;
+    // 1. Download latest index.json and signature with `ETag` support
+    let cached_etag = ctx.index.cache.load_etag().await.unwrap_or(None);
+
+    let index_json =
+        download_index_conditional(ctx, &index_url, cached_etag.as_deref(), start).await?;
 
     let index_signature = sps2_net::fetch_text(&ctx.net, &index_sig_url, &ctx.tx)
         .await
@@ -73,13 +73,65 @@ pub async fn reposync(ctx: &OpsCtx) -> Result<String, Error> {
         }
     })?;
 
-    // 4. Parse the new index to count changes
+    // Process and save the new index
+    finalize_index_update(ctx, &index_json, start).await
+}
+
+/// Download index conditionally with `ETag` support
+async fn download_index_conditional(
+    ctx: &OpsCtx,
+    index_url: &str,
+    cached_etag: Option<&str>,
+    start: Instant,
+) -> Result<String, Error> {
+    let response = sps2_net::fetch_text_conditional(&ctx.net, index_url, cached_etag, &ctx.tx)
+        .await
+        .map_err(|e| OpsError::RepoSyncFailed {
+            message: format!("Failed to download index.json: {e}"),
+        })?;
+
+    if let Some((content, new_etag)) = response {
+        // Save new `ETag` if present
+        if let Some(etag) = new_etag {
+            if let Err(e) = ctx.index.cache.save_etag(&etag).await {
+                // Log but don't fail the operation
+                ctx.tx
+                    .send(Event::Warning {
+                        message: format!("Failed to save ETag: {e}"),
+                        context: Some("ETag caching disabled for this session".to_string()),
+                    })
+                    .ok();
+            }
+        }
+        Ok(content)
+    } else {
+        // Server returned 304 Not Modified - use cached content
+        ctx.tx
+            .send(Event::RepoSyncCompleted {
+                packages_updated: 0,
+                duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+            })
+            .ok();
+        Err(OpsError::RepoSyncFailed {
+            message: "Repository index is unchanged (304 Not Modified)".to_string(),
+        }
+        .into())
+    }
+}
+
+/// Process and save the new index
+async fn finalize_index_update(
+    ctx: &OpsCtx,
+    index_json: &str,
+    start: Instant,
+) -> Result<String, Error> {
+    // Parse the new index to count changes
     let old_package_count = ctx.index.index().map_or(0, |idx| idx.packages.len());
 
-    // 5. Load the new index into IndexManager
+    // Load the new index into IndexManager
     let mut new_index_manager = ctx.index.clone();
     new_index_manager
-        .load(Some(&index_json))
+        .load(Some(index_json))
         .await
         .map_err(|e| OpsError::RepoSyncFailed {
             message: format!("Failed to parse new index: {e}"),
@@ -90,7 +142,7 @@ pub async fn reposync(ctx: &OpsCtx) -> Result<String, Error> {
         .map_or(0, |idx| idx.packages.len());
     let packages_updated = new_package_count.saturating_sub(old_package_count);
 
-    // 6. Save to cache
+    // Save to cache
     new_index_manager
         .save_to_cache()
         .await
@@ -733,33 +785,54 @@ async fn fetch_and_verify_keys(
     keys_url: &str,
     tx: &sps2_events::EventSender,
 ) -> Result<Vec<String>, Error> {
-    // For simulation, we'll use a hardcoded bootstrap key
-    // In real implementation, this would:
-    // 1. Check /opt/pm/keys/ for existing trusted keys
-    // 2. Download keys.json from repository
-    // 3. Verify key rotation chain if new keys are present
-    // 4. Update local trusted keys in /opt/pm/keys/
+    // Initialize key manager
+    let mut key_manager = KeyManager::new("/opt/pm/keys");
 
-    // Simulate fetching keys.json (would normally parse and verify)
-    let _keys_response = sps2_net::fetch_text(net_client, keys_url, tx).await;
+    // Load existing trusted keys from disk
+    key_manager.load_trusted_keys().await?;
 
-    // Return simulated trusted key for now
-    let bootstrap_key = "RWRzQJ6bootstrap-key-simulation".to_string();
-    Ok(vec![bootstrap_key])
+    // Check if we have any trusted keys; if not, initialize with bootstrap
+    if key_manager.get_trusted_keys().is_empty() {
+        // Bootstrap key for initial trust - in production this would be:
+        // 1. Compiled into the binary
+        // 2. Distributed through secure channels
+        // 3. Verified through multiple sources
+        let bootstrap_key = "RWSGOq2NVecA2UPNdBUZykp1MLhfMmkAK/SZSjK3bpq2q7I8LbSVVBDm";
+
+        tx.send(Event::Warning {
+            message: "Initializing with bootstrap key".to_string(),
+            context: Some("First run - no trusted keys found".to_string()),
+        })
+        .ok();
+
+        key_manager
+            .initialize_with_bootstrap(bootstrap_key)
+            .await
+            .map_err(|e| OpsError::RepoSyncFailed {
+                message: format!("Failed to initialize bootstrap key: {e}"),
+            })?;
+    }
+
+    // Fetch and verify keys from repository
+    let trusted_keys = key_manager
+        .fetch_and_verify_keys(net_client, keys_url, tx)
+        .await?;
+
+    tx.send(Event::OperationCompleted {
+        operation: "Key verification".to_string(),
+        success: true,
+    })
+    .ok();
+
+    Ok(trusted_keys)
 }
 
 /// Verify minisign signature of index.json
 fn verify_index_signature(
     index_content: &str,
     signature: &str,
-    _trusted_keys: &[String],
+    trusted_keys: &[String],
 ) -> Result<(), Error> {
-    // For simulation, we'll just validate basic format
-    // In real implementation, this would:
-    // 1. Parse the minisign signature
-    // 2. Verify signature against index_content using trusted public keys
-    // 3. Ensure signature is recent (within max age)
-
     if index_content.is_empty() {
         return Err(OpsError::RepoSyncFailed {
             message: "Index content is empty".to_string(),
@@ -774,16 +847,69 @@ fn verify_index_signature(
         .into());
     }
 
-    // Basic format validation for minisign signature
-    if !signature.starts_with("untrusted comment:") {
+    if trusted_keys.is_empty() {
         return Err(OpsError::RepoSyncFailed {
-            message: "Invalid minisign signature format".to_string(),
+            message: "No trusted keys available for verification".to_string(),
         }
         .into());
     }
 
-    // Simulation: assume signature is valid
-    Ok(())
+    // Parse the minisign signature - expect format:
+    // untrusted comment: <comment>
+    // <base64-signature>
+    let signature_lines: Vec<&str> = signature.lines().collect();
+    if signature_lines.len() < 2 {
+        return Err(OpsError::RepoSyncFailed {
+            message: "Invalid minisign signature format - missing lines".to_string(),
+        }
+        .into());
+    }
+
+    if !signature_lines[0].starts_with("untrusted comment:") {
+        return Err(OpsError::RepoSyncFailed {
+            message: "Invalid minisign signature format - missing comment line".to_string(),
+        }
+        .into());
+    }
+
+    // Use the full signature content (not just the base64 part)
+    let sig =
+        minisign_verify::Signature::decode(signature).map_err(|e| OpsError::RepoSyncFailed {
+            message: format!("Failed to parse signature: {e}"),
+        })?;
+
+    // Try verification with each trusted key until one succeeds
+    let mut verification_errors = Vec::new();
+
+    for trusted_key in trusted_keys {
+        match minisign_verify::PublicKey::from_base64(trusted_key) {
+            Ok(public_key) => {
+                // Try to verify with this key - the verify method handles key ID comparison internally
+                match public_key.verify(index_content.as_bytes(), &sig, false) {
+                    Ok(()) => {
+                        // Signature verification successful
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        verification_errors.push(format!("Key verification failed: {e}"));
+                    }
+                }
+            }
+            Err(e) => {
+                verification_errors.push(format!("Invalid trusted key format: {e}"));
+            }
+        }
+    }
+
+    // If we get here, no key successfully verified the signature
+    Err(OpsError::RepoSyncFailed {
+        message: format!(
+            "Index signature verification failed. Tried {} trusted keys. Errors: {}",
+            trusted_keys.len(),
+            verification_errors.join("; ")
+        ),
+    }
+    .into())
 }
 
 /// Get package count for a specific state
@@ -913,7 +1039,7 @@ mod tests {
 
         let net = sps2_net::NetClient::with_defaults().unwrap();
         let resolver = sps2_resolver::Resolver::new(index.clone());
-        let builder = sps2_builder::Builder::new();
+        let builder = sps2_builder::Builder::new().with_net(net.clone());
 
         OpsCtx::new(store, state, index, net, resolver, builder, tx)
     }

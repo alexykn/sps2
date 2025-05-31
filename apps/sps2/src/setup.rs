@@ -222,7 +222,8 @@ impl SystemSetup {
     /// Initialize builder
     async fn init_builder(&mut self) -> Result<(), CliError> {
         debug!("Initializing builder");
-        let builder = Builder::new();
+        let net = self.net.as_ref().unwrap().clone();
+        let builder = Builder::new().with_net(net);
 
         self.builder = Some(builder);
         Ok(())

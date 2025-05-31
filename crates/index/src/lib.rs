@@ -28,7 +28,7 @@ pub const SUPPORTED_INDEX_VERSION: u32 = 1;
 #[derive(Clone)]
 pub struct IndexManager {
     index: Option<Index>,
-    cache: IndexCache,
+    pub cache: IndexCache,
 }
 
 impl IndexManager {

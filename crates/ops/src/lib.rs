@@ -8,6 +8,7 @@
 //! large operations delegate to specialized crates.
 
 mod context;
+mod keys;
 mod large_ops;
 mod small_ops;
 mod types;

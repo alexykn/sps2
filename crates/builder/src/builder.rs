@@ -7,6 +7,7 @@ use crate::{
 use sps2_errors::{BuildError, Error};
 use sps2_events::Event;
 use sps2_manifest::Manifest;
+use sps2_net::NetClient;
 use sps2_package::{execute_recipe, load_recipe};
 use sps2_resolver::Resolver;
 use sps2_store::PackageStore;
@@ -89,6 +90,8 @@ pub struct Builder {
     resolver: Option<Resolver>,
     /// Package store for output
     store: Option<PackageStore>,
+    /// Network client for downloads
+    net: Option<NetClient>,
 }
 
 impl Builder {
@@ -99,6 +102,7 @@ impl Builder {
             config: BuildConfig::default(),
             resolver: None,
             store: None,
+            net: None,
         }
     }
 
@@ -109,6 +113,7 @@ impl Builder {
             config,
             resolver: None,
             store: None,
+            net: None,
         }
     }
 
@@ -123,6 +128,13 @@ impl Builder {
     #[must_use]
     pub fn with_store(mut self, store: PackageStore) -> Self {
         self.store = Some(store);
+        self
+    }
+
+    /// Set network client
+    #[must_use]
+    pub fn with_net(mut self, net: NetClient) -> Self {
+        self.net = Some(net);
         self
     }
 
@@ -148,12 +160,15 @@ impl Builder {
         // Create build environment with full isolation setup
         let mut environment = BuildEnvironment::new(context.clone())?;
 
-        // Configure environment with resolver and store if available
+        // Configure environment with resolver, store, and net client if available
         if let Some(resolver) = &self.resolver {
             environment = environment.with_resolver(resolver.clone());
         }
         if let Some(store) = &self.store {
             environment = environment.with_store(store.clone());
+        }
+        if let Some(net) = &self.net {
+            environment = environment.with_net(net.clone());
         }
 
         // Initialize isolated environment
