@@ -86,6 +86,22 @@ pub enum Commands {
         /// Number of parallel build jobs (0=auto)
         #[arg(short, long)]
         jobs: Option<usize>,
+
+        /// Compression level: fast, balanced, maximum, or 1-22
+        #[arg(long, value_name = "LEVEL")]
+        compression_level: Option<String>,
+
+        /// Use fast compression (equivalent to --compression-level fast)
+        #[arg(long, conflicts_with = "compression_level")]
+        fast: bool,
+
+        /// Use maximum compression (equivalent to --compression-level maximum)
+        #[arg(long, conflicts_with_all = ["compression_level", "fast"])]
+        max: bool,
+
+        /// Use legacy compression format (single stream, no seeking)
+        #[arg(long)]
+        legacy: bool,
     },
 
     /// List installed packages
@@ -175,6 +191,34 @@ pub enum VulnDbCommands {
 }
 
 impl Commands {
+    /// Extract compression configuration from build command arguments
+    ///
+    /// Returns a tuple of (compression_level_string, use_legacy_format)
+    #[allow(dead_code)] // Used in tests, will be used when compression config is wired up
+    pub fn compression_config(&self) -> Option<(String, bool)> {
+        match self {
+            Commands::Build {
+                compression_level,
+                fast,
+                max,
+                legacy,
+                ..
+            } => {
+                let level = if *fast {
+                    "fast".to_string()
+                } else if *max {
+                    "maximum".to_string()
+                } else if let Some(level) = compression_level {
+                    level.clone()
+                } else {
+                    "balanced".to_string() // Default
+                };
+                Some((level, *legacy))
+            }
+            _ => None,
+        }
+    }
+
     /// Get command name for logging
     #[allow(dead_code)] // Used in tests
     pub fn name(&self) -> &'static str {
@@ -208,11 +252,34 @@ impl Commands {
             Commands::Uninstall { packages } if packages.is_empty() => {
                 Err("No packages specified for removal".to_string())
             }
-            Commands::Build { recipe, .. } => {
+            Commands::Build {
+                recipe,
+                compression_level,
+                ..
+            } => {
                 if !recipe.exists() {
                     Err(format!("Recipe file not found: {}", recipe.display()))
                 } else if recipe.extension().is_none_or(|ext| ext != "star") {
                     Err("Recipe file must have .star extension".to_string())
+                } else if let Some(level) = compression_level {
+                    // Validate compression level
+                    match level.to_lowercase().as_str() {
+                        "fast" | "balanced" | "maximum" | "max" => Ok(()),
+                        numeric => {
+                            if let Ok(level_num) = numeric.parse::<u8>() {
+                                if (1..=22).contains(&level_num) {
+                                    Ok(())
+                                } else {
+                                    Err(format!("Compression level must be between 1 and 22, got {level_num}"))
+                                }
+                            } else {
+                                Err(format!(
+                                    "Invalid compression level '{}'. Valid options: fast, balanced, maximum, or 1-22",
+                                    level
+                                ))
+                            }
+                        }
+                    }
                 } else {
                     Ok(())
                 }
@@ -295,5 +362,196 @@ mod tests {
         assert_eq!(Commands::Install { packages: vec![] }.name(), "install");
         assert_eq!(Commands::List.name(), "list");
         assert_eq!(Commands::CheckHealth.name(), "check-health");
+    }
+
+    #[test]
+    fn test_build_compression_flags() {
+        // Test --fast flag
+        let cli = Cli::parse_from(["sps2", "build", "--fast", "test.star"]);
+        if let Commands::Build {
+            fast,
+            max,
+            compression_level,
+            legacy,
+            ..
+        } = cli.command
+        {
+            assert!(fast);
+            assert!(!max);
+            assert!(compression_level.is_none());
+            assert!(!legacy);
+        } else {
+            panic!("Expected Build command");
+        }
+
+        // Test --max flag
+        let cli = Cli::parse_from(["sps2", "build", "--max", "test.star"]);
+        if let Commands::Build {
+            fast,
+            max,
+            compression_level,
+            legacy,
+            ..
+        } = cli.command
+        {
+            assert!(!fast);
+            assert!(max);
+            assert!(compression_level.is_none());
+            assert!(!legacy);
+        } else {
+            panic!("Expected Build command");
+        }
+
+        // Test --compression-level flag
+        let cli = Cli::parse_from(["sps2", "build", "--compression-level", "15", "test.star"]);
+        if let Commands::Build {
+            fast,
+            max,
+            compression_level,
+            legacy,
+            ..
+        } = cli.command
+        {
+            assert!(!fast);
+            assert!(!max);
+            assert_eq!(compression_level.as_deref(), Some("15"));
+            assert!(!legacy);
+        } else {
+            panic!("Expected Build command");
+        }
+
+        // Test --legacy flag
+        let cli = Cli::parse_from(["sps2", "build", "--legacy", "test.star"]);
+        if let Commands::Build { legacy, .. } = cli.command {
+            assert!(legacy);
+        } else {
+            panic!("Expected Build command");
+        }
+    }
+
+    #[test]
+    fn test_compression_config_extraction() {
+        // Test fast compression
+        let build_fast = Commands::Build {
+            recipe: PathBuf::from("test.star"),
+            output_dir: None,
+            network: false,
+            jobs: None,
+            compression_level: None,
+            fast: true,
+            max: false,
+            legacy: false,
+        };
+        let (level, legacy) = build_fast.compression_config().unwrap();
+        assert_eq!(level, "fast");
+        assert!(!legacy);
+
+        // Test maximum compression
+        let build_max = Commands::Build {
+            recipe: PathBuf::from("test.star"),
+            output_dir: None,
+            network: false,
+            jobs: None,
+            compression_level: None,
+            fast: false,
+            max: true,
+            legacy: true,
+        };
+        let (level, legacy) = build_max.compression_config().unwrap();
+        assert_eq!(level, "maximum");
+        assert!(legacy);
+
+        // Test custom level
+        let build_custom = Commands::Build {
+            recipe: PathBuf::from("test.star"),
+            output_dir: None,
+            network: false,
+            jobs: None,
+            compression_level: Some("15".to_string()),
+            fast: false,
+            max: false,
+            legacy: false,
+        };
+        let (level, legacy) = build_custom.compression_config().unwrap();
+        assert_eq!(level, "15");
+        assert!(!legacy);
+
+        // Test default (balanced)
+        let build_default = Commands::Build {
+            recipe: PathBuf::from("test.star"),
+            output_dir: None,
+            network: false,
+            jobs: None,
+            compression_level: None,
+            fast: false,
+            max: false,
+            legacy: false,
+        };
+        let (level, legacy) = build_default.compression_config().unwrap();
+        assert_eq!(level, "balanced");
+        assert!(!legacy);
+
+        // Test non-build command
+        let list = Commands::List;
+        assert!(list.compression_config().is_none());
+    }
+
+    #[test]
+    fn test_compression_level_validation() {
+        use tempfile::tempdir;
+
+        let temp = tempdir().unwrap();
+        let recipe_path = temp.path().join("test.star");
+        std::fs::write(&recipe_path, "# test recipe").unwrap();
+
+        // Test valid compression levels
+        let build_valid = Commands::Build {
+            recipe: recipe_path.clone(),
+            output_dir: None,
+            network: false,
+            jobs: None,
+            compression_level: Some("fast".to_string()),
+            fast: false,
+            max: false,
+            legacy: false,
+        };
+        assert!(build_valid.validate().is_ok());
+
+        let build_numeric = Commands::Build {
+            recipe: recipe_path.clone(),
+            output_dir: None,
+            network: false,
+            jobs: None,
+            compression_level: Some("15".to_string()),
+            fast: false,
+            max: false,
+            legacy: false,
+        };
+        assert!(build_numeric.validate().is_ok());
+
+        // Test invalid compression levels
+        let build_invalid = Commands::Build {
+            recipe: recipe_path.clone(),
+            output_dir: None,
+            network: false,
+            jobs: None,
+            compression_level: Some("invalid".to_string()),
+            fast: false,
+            max: false,
+            legacy: false,
+        };
+        assert!(build_invalid.validate().is_err());
+
+        let build_out_of_range = Commands::Build {
+            recipe: recipe_path,
+            output_dir: None,
+            network: false,
+            jobs: None,
+            compression_level: Some("25".to_string()),
+            fast: false,
+            max: false,
+            legacy: false,
+        };
+        assert!(build_out_of_range.validate().is_err());
     }
 }

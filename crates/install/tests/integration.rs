@@ -204,10 +204,10 @@ mod tests {
         let state_manager = StateManager::new(temp.path()).await.unwrap();
         let store = PackageStore::new(temp.path().to_path_buf());
 
-        let atomic_installer = AtomicInstaller::new(state_manager, store);
+        let atomic_installer = AtomicInstaller::new(state_manager, store).await.unwrap();
 
         // Just verify creation succeeds - internal fields are private
-        let _ = atomic_installer;
+        drop(atomic_installer);
     }
 
     #[tokio::test]
