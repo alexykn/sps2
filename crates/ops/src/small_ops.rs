@@ -1,8 +1,8 @@
 //! Small operations implemented in the ops crate
 
 use crate::{
-    ComponentHealth, HealthCheck, HealthIssue, HealthStatus, IssueSeverity, OpsCtx, PackageInfo,
-    PackageStatus, SearchResult, StateInfo, VulnDbStats,
+    ChangeType, ComponentHealth, HealthCheck, HealthIssue, HealthStatus, IssueSeverity, OpChange,
+    OpsCtx, PackageInfo, PackageStatus, SearchResult, StateInfo, VulnDbStats,
 };
 use spsv2_errors::{Error, OpsError};
 use spsv2_events::Event;
@@ -721,7 +721,136 @@ pub async fn audit(
     Ok(report)
 }
 
-/// Fetch and verify signing keys with rotation support\nasync fn fetch_and_verify_keys(\n    net_client: &spsv2_net::NetClient,\n    keys_url: &str,\n    _tx: &spsv2_events::EventSender,\n) -> Result<Vec<String>, Error> {\n    // For simulation, we'll use a hardcoded bootstrap key\n    // In real implementation, this would:\n    // 1. Check /opt/pm/keys/ for existing trusted keys\n    // 2. Download keys.json from repository\n    // 3. Verify key rotation chain if new keys are present\n    // 4. Update local trusted keys in /opt/pm/keys/\n    \n    // Simulate fetching keys.json (would normally parse and verify)\n    let _keys_response = spsv2_net::fetch_text(net_client, keys_url, _tx).await;\n    \n    // Return simulated trusted key for now\n    let bootstrap_key = \"RWRzQJ6bootstrap-key-simulation\".to_string();\n    Ok(vec![bootstrap_key])\n}\n\n/// Verify minisign signature of index.json\nfn verify_index_signature(\n    index_content: &str,\n    signature: &str,\n    _trusted_keys: &[String],\n) -> Result<(), Error> {\n    // For simulation, we'll just validate basic format\n    // In real implementation, this would:\n    // 1. Parse the minisign signature\n    // 2. Verify signature against index_content using trusted public keys\n    // 3. Ensure signature is recent (within max age)\n    \n    if index_content.is_empty() {\n        return Err(OpsError::RepoSyncFailed {\n            message: \"Index content is empty\".to_string(),\n        }.into());\n    }\n    \n    if signature.is_empty() {\n        return Err(OpsError::RepoSyncFailed {\n            message: \"Signature is empty\".to_string(),\n        }.into());\n    }\n    \n    // Basic format validation for minisign signature\n    if !signature.starts_with(\"untrusted comment:\") {\n        return Err(OpsError::RepoSyncFailed {\n            message: \"Invalid minisign signature format\".to_string(),\n        }.into());\n    }\n    \n    // Simulation: assume signature is valid\n    Ok(())\n}\n\n/// Get package count for a specific state\nasync fn get_state_package_count(ctx: &OpsCtx, state_id: &Uuid) -> Result<usize, Error> {\n    let packages = ctx.state.get_state_packages(state_id).await?;\n    Ok(packages.len())\n}\n\n/// Calculate changes between parent and child states\nasync fn calculate_state_changes(\n    ctx: &OpsCtx,\n    parent_id: &Uuid,\n    child_id: &Uuid,\n) -> Result<Vec<OpChange>, Error> {\n    let parent_packages = ctx.state.get_state_packages(parent_id).await?;\n    let child_packages = ctx.state.get_state_packages(child_id).await?;\n\n    let mut changes = Vec::new();\n\n    // Convert to sets for easier comparison\n    let parent_set: std::collections::HashSet<&String> = parent_packages.iter().collect();\n    let child_set: std::collections::HashSet<&String> = child_packages.iter().collect();\n\n    // Find packages that were added (in child but not parent)\n    for package in &child_packages {\n        if !parent_set.contains(package) {\n            // For now, we can't get version info from package names only\n            // In a real implementation, we'd need to get full Package objects\n            changes.push(OpChange {\n                change_type: ChangeType::Install,\n                package: package.clone(),\n                old_version: None,\n                new_version: None, // Would need actual Package data\n            });\n        }\n    }\n\n    // Find packages that were removed (in parent but not child)\n    for package in &parent_packages {\n        if !child_set.contains(package) {\n            changes.push(OpChange {\n                change_type: ChangeType::Remove,\n                package: package.clone(),\n                old_version: None, // Would need actual Package data\n                new_version: None,\n            });\n        }\n    }\n\n    // Note: Updates/downgrades would require version comparison\n    // which needs full Package objects, not just names\n\n    Ok(changes)\n}\n\n/// Get changes for initial state (all packages are installs)\nasync fn get_initial_state_changes(ctx: &OpsCtx, state_id: &Uuid) -> Result<Vec<OpChange>, Error> {\n    let packages = ctx.state.get_state_packages(state_id).await?;\n    let mut changes = Vec::new();\n\n    for package in packages {\n        changes.push(OpChange {\n            change_type: ChangeType::Install,\n            package,\n            old_version: None,\n            new_version: None, // Would need actual Package data\n        });\n    }\n\n    Ok(changes)\n}\n\n#[cfg(test)]
+/// Fetch and verify signing keys with rotation support
+async fn fetch_and_verify_keys(
+    net_client: &spsv2_net::NetClient,
+    keys_url: &str,
+    tx: &spsv2_events::EventSender,
+) -> Result<Vec<String>, Error> {
+    // For simulation, we'll use a hardcoded bootstrap key
+    // In real implementation, this would:
+    // 1. Check /opt/pm/keys/ for existing trusted keys
+    // 2. Download keys.json from repository
+    // 3. Verify key rotation chain if new keys are present
+    // 4. Update local trusted keys in /opt/pm/keys/
+
+    // Simulate fetching keys.json (would normally parse and verify)
+    let _keys_response = spsv2_net::fetch_text(net_client, keys_url, tx).await;
+
+    // Return simulated trusted key for now
+    let bootstrap_key = "RWRzQJ6bootstrap-key-simulation".to_string();
+    Ok(vec![bootstrap_key])
+}
+
+/// Verify minisign signature of index.json
+fn verify_index_signature(
+    index_content: &str,
+    signature: &str,
+    _trusted_keys: &[String],
+) -> Result<(), Error> {
+    // For simulation, we'll just validate basic format
+    // In real implementation, this would:
+    // 1. Parse the minisign signature
+    // 2. Verify signature against index_content using trusted public keys
+    // 3. Ensure signature is recent (within max age)
+
+    if index_content.is_empty() {
+        return Err(OpsError::RepoSyncFailed {
+            message: "Index content is empty".to_string(),
+        }
+        .into());
+    }
+
+    if signature.is_empty() {
+        return Err(OpsError::RepoSyncFailed {
+            message: "Signature is empty".to_string(),
+        }
+        .into());
+    }
+
+    // Basic format validation for minisign signature
+    if !signature.starts_with("untrusted comment:") {
+        return Err(OpsError::RepoSyncFailed {
+            message: "Invalid minisign signature format".to_string(),
+        }
+        .into());
+    }
+
+    // Simulation: assume signature is valid
+    Ok(())
+}
+
+/// Get package count for a specific state
+async fn get_state_package_count(ctx: &OpsCtx, state_id: &Uuid) -> Result<usize, Error> {
+    let packages = ctx.state.get_state_packages(state_id).await?;
+    Ok(packages.len())
+}
+
+/// Calculate changes between parent and child states
+async fn calculate_state_changes(
+    ctx: &OpsCtx,
+    parent_id: &Uuid,
+    child_id: &Uuid,
+) -> Result<Vec<OpChange>, Error> {
+    let parent_packages = ctx.state.get_state_packages(parent_id).await?;
+    let child_packages = ctx.state.get_state_packages(child_id).await?;
+
+    let mut changes = Vec::new();
+
+    // Convert to sets for easier comparison
+    let parent_set: std::collections::HashSet<&String> = parent_packages.iter().collect();
+    let child_set: std::collections::HashSet<&String> = child_packages.iter().collect();
+
+    // Find packages that were added (in child but not parent)
+    for package in &child_packages {
+        if !parent_set.contains(package) {
+            // For now, we can't get version info from package names only
+            // In a real implementation, we'd need to get full Package objects
+            changes.push(OpChange {
+                change_type: ChangeType::Install,
+                package: package.clone(),
+                old_version: None,
+                new_version: None, // Would need actual Package data
+            });
+        }
+    }
+
+    // Find packages that were removed (in parent but not child)
+    for package in &parent_packages {
+        if !child_set.contains(package) {
+            changes.push(OpChange {
+                change_type: ChangeType::Remove,
+                package: package.clone(),
+                old_version: None, // Would need actual Package data
+                new_version: None,
+            });
+        }
+    }
+
+    // Note: Updates/downgrades would require version comparison
+    // which needs full Package objects, not just names
+
+    Ok(changes)
+}
+
+/// Get changes for initial state (all packages are installs)
+async fn get_initial_state_changes(ctx: &OpsCtx, state_id: &Uuid) -> Result<Vec<OpChange>, Error> {
+    let packages = ctx.state.get_state_packages(state_id).await?;
+    let mut changes = Vec::new();
+
+    for package in packages {
+        changes.push(OpChange {
+            change_type: ChangeType::Install,
+            package,
+            old_version: None,
+            new_version: None, // Would need actual Package data
+        });
+    }
+
+    Ok(changes)
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use spsv2_index::Index;

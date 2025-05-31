@@ -401,6 +401,8 @@ pub async fn build(
     ctx: &OpsCtx,
     recipe_path: &Path,
     output_dir: Option<&Path>,
+    network: bool,
+    jobs: Option<usize>,
 ) -> Result<BuildReport, Error> {
     let start = Instant::now();
 
@@ -455,8 +457,22 @@ pub async fn build(
     )
     .with_event_sender(ctx.tx.clone());
 
-    // Use the builder from context (already configured with resolver and store)
-    let result = ctx.builder.build(build_context).await?;
+    // Configure builder with network and jobs options
+    let mut builder_config = spsv2_builder::BuildConfig::default();
+    if network {
+        builder_config.allow_network = true;
+    }
+    if let Some(job_count) = jobs {
+        builder_config.build_jobs = Some(job_count);
+    }
+
+    // Create builder with custom configuration
+    let builder = spsv2_builder::Builder::with_config(builder_config)
+        .with_resolver(ctx.resolver.clone())
+        .with_store(ctx.store.clone());
+
+    // Use the builder with custom configuration
+    let result = builder.build(build_context).await?;
 
     let report = BuildReport {
         package: package_name,

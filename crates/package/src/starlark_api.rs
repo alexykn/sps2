@@ -55,9 +55,10 @@ impl<'v> StarlarkValue<'v> for BuildMethodFunction {
                 Ok(Value::new_none())
             }
             "make" => {
-                self.context.steps.borrow_mut().push(BuildStep::Make {
-                    args: vec![],
-                });
+                self.context
+                    .steps
+                    .borrow_mut()
+                    .push(BuildStep::Make { args: vec![] });
                 Ok(Value::new_none())
             }
             "install" => {
@@ -65,33 +66,38 @@ impl<'v> StarlarkValue<'v> for BuildMethodFunction {
                 Ok(Value::new_none())
             }
             "configure" => {
-                self.context.steps.borrow_mut().push(BuildStep::Configure {
-                    args: vec![],
-                });
+                self.context
+                    .steps
+                    .borrow_mut()
+                    .push(BuildStep::Configure { args: vec![] });
                 Ok(Value::new_none())
             }
             "autotools" => {
-                self.context.steps.borrow_mut().push(BuildStep::Autotools {
-                    args: vec![],
-                });
+                self.context
+                    .steps
+                    .borrow_mut()
+                    .push(BuildStep::Autotools { args: vec![] });
                 Ok(Value::new_none())
             }
             "cmake" => {
-                self.context.steps.borrow_mut().push(BuildStep::Cmake {
-                    args: vec![],
-                });
+                self.context
+                    .steps
+                    .borrow_mut()
+                    .push(BuildStep::Cmake { args: vec![] });
                 Ok(Value::new_none())
             }
             "meson" => {
-                self.context.steps.borrow_mut().push(BuildStep::Meson {
-                    args: vec![],
-                });
+                self.context
+                    .steps
+                    .borrow_mut()
+                    .push(BuildStep::Meson { args: vec![] });
                 Ok(Value::new_none())
             }
             "cargo" => {
-                self.context.steps.borrow_mut().push(BuildStep::Cargo {
-                    args: vec![],
-                });
+                self.context
+                    .steps
+                    .borrow_mut()
+                    .push(BuildStep::Cargo { args: vec![] });
                 Ok(Value::new_none())
             }
             "apply_patch" => {
@@ -100,9 +106,10 @@ impl<'v> StarlarkValue<'v> for BuildMethodFunction {
                 });
                 Ok(Value::new_none())
             }
-            _ => {
-                Err(starlark::Error::new_other(anyhow::anyhow!("unknown method: {}", self.method_name)))
-            }
+            _ => Err(starlark::Error::new_other(anyhow::anyhow!(
+                "unknown method: {}",
+                self.method_name
+            ))),
         }
     }
 }

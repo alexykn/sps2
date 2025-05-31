@@ -188,12 +188,11 @@ async fn execute_command(
         Commands::Build {
             recipe,
             output_dir,
-            network: _,
-            jobs: _,
+            network,
+            jobs,
         } => {
-            // TODO: Pass network and jobs options to builder
             let output_path = output_dir.as_deref();
-            let report = spsv2_ops::build(&ctx, &recipe, output_path).await?;
+            let report = spsv2_ops::build(&ctx, &recipe, output_path, network, jobs).await?;
             Ok(OperationResult::BuildReport(report))
         }
 

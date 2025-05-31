@@ -264,6 +264,10 @@ impl BuilderApi {
     /// # Errors
     ///
     /// Returns an error if the cargo command fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the binary filename cannot be extracted from the path.
     pub async fn cargo(
         &self,
         args: &[String],
@@ -289,7 +293,7 @@ impl BuilderApi {
             let mut entries = fs::read_dir(&target_dir).await?;
             while let Some(entry) = entries.next_entry().await? {
                 let path = entry.path();
-                if path.is_file() && !path.extension().map_or(false, |ext| ext == "d") {
+                if path.is_file() && path.extension().is_none_or(|ext| ext != "d") {
                     let filename = path.file_name().unwrap();
                     fs::copy(&path, staging_bin.join(filename)).await?;
                 }
