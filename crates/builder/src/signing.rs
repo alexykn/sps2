@@ -250,18 +250,16 @@ impl PackageSigner {
     ///
     /// Returns an error if key pair generation fails.
     pub fn generate_encrypted_keypair(
-        password: Option<String>,
+        password: Option<&str>,
     ) -> Result<(SecretKeyBox, PublicKey), Error> {
         let KeyPair { pk, sk } =
             KeyPair::generate_unencrypted_keypair().map_err(|e| BuildError::SigningError {
                 message: format!("Failed to generate key pair: {e}"),
             })?;
 
-        let sk_box = sk
-            .to_box(password.as_deref())
-            .map_err(|e| BuildError::SigningError {
-                message: format!("Failed to encrypt secret key: {e}"),
-            })?;
+        let sk_box = sk.to_box(password).map_err(|e| BuildError::SigningError {
+            message: format!("Failed to encrypt secret key: {e}"),
+        })?;
 
         Ok((sk_box, pk))
     }
