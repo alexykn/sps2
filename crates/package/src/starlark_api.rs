@@ -1,4 +1,17 @@
-//! Starlark API exposed to recipes - Working Minimal Version
+//! Starlark API exposed to recipes - Improved with Better Argument Processing
+//!
+//! NOTE: The current implementation has limitations due to the Arguments type in
+//! Starlark 0.13 not providing methods to iterate over or extract multiple positional
+//! arguments when used in a custom `StarlarkValue`'s `invoke()` method.
+//!
+//! The Arguments type only provides:
+//! - `positional1()` - for extracting exactly 1 positional argument
+//! - `len()` - for getting the total count
+//! - `no_positional_args()` - to ensure no positional args
+//! - `no_named_args()` - to ensure no named args
+//!
+//! For proper argument handling, consider refactoring to use the `#[starlark_module]`
+//! macro with proper function definitions instead of custom `StarlarkValue` implementations.
 
 #![allow(clippy::needless_lifetimes)]
 
@@ -53,77 +66,135 @@ unsafe impl<'v> Trace<'v> for BuildMethodFunction {
     }
 }
 
+impl BuildMethodFunction {
+    /// Handle zero-argument methods
+    fn handle_no_args_method(
+        &self,
+        args: &Arguments<'_, '_>,
+        step: BuildStep,
+    ) -> starlark::Result<()> {
+        let len = args.len()?;
+        if len != 0 {
+            return Err(starlark::Error::new_other(anyhow::anyhow!(
+                "Method requires no arguments, got {}",
+                len
+            )));
+        }
+        args.no_named_args()?;
+
+        self.context.steps.borrow_mut().push(step);
+        Ok(())
+    }
+
+    /// Handle variable-argument methods (placeholder implementation)
+    fn handle_variable_args_method(
+        &self,
+        args: &Arguments<'_, '_>,
+        method_name: &str,
+    ) -> starlark::Result<()> {
+        args.no_named_args()?;
+
+        let empty_args = Vec::new();
+        let step = match method_name {
+            "make" => BuildStep::Make { args: empty_args },
+            "configure" => BuildStep::Configure { args: empty_args },
+            "autotools" => BuildStep::Autotools { args: empty_args },
+            "cmake" => BuildStep::Cmake { args: empty_args },
+            "meson" => BuildStep::Meson { args: empty_args },
+            "cargo" => BuildStep::Cargo { args: empty_args },
+            _ => {
+                return Err(starlark::Error::new_other(anyhow::anyhow!(
+                    "Unknown variable args method: {}",
+                    method_name
+                )))
+            }
+        };
+
+        self.context.steps.borrow_mut().push(step);
+        Ok(())
+    }
+
+    fn handle_fetch_invoke<'v>(
+        &self,
+        args: &Arguments<'v, '_>,
+        eval: &mut starlark::eval::Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<()> {
+        let len = args.len()?;
+        if len != 1 {
+            return Err(starlark::Error::new_other(anyhow::anyhow!(
+                "fetch() requires exactly 1 argument: url, got {}",
+                len
+            )));
+        }
+        args.no_named_args()?;
+
+        let url = args
+            .positional1(eval.heap())?
+            .unpack_str()
+            .ok_or_else(|| starlark::Error::new_other(anyhow::anyhow!("URL must be a string")))?
+            .to_string();
+
+        let blake3 = "<blake3-placeholder>".to_string();
+        self.context
+            .steps
+            .borrow_mut()
+            .push(BuildStep::Fetch { url, blake3 });
+        Ok(())
+    }
+
+    fn handle_apply_patch_invoke<'v>(
+        &self,
+        args: &Arguments<'v, '_>,
+        eval: &mut starlark::eval::Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<()> {
+        let len = args.len()?;
+        if len != 1 {
+            return Err(starlark::Error::new_other(anyhow::anyhow!(
+                "apply_patch() requires exactly 1 argument: patch path, got {}",
+                len
+            )));
+        }
+        args.no_named_args()?;
+
+        let patch_path = args
+            .positional1(eval.heap())?
+            .unpack_str()
+            .ok_or_else(|| {
+                starlark::Error::new_other(anyhow::anyhow!("Patch path must be a string"))
+            })?
+            .to_string();
+
+        self.context
+            .steps
+            .borrow_mut()
+            .push(BuildStep::ApplyPatch { path: patch_path });
+        Ok(())
+    }
+}
+
 #[starlark_value(type = "BuildMethodFunction")]
 impl<'v> StarlarkValue<'v> for BuildMethodFunction {
     fn invoke(
         &self,
         _me: Value<'v>,
-        _args: &Arguments<'v, '_>,
-        _eval: &mut starlark::eval::Evaluator<'v, '_, '_>,
+        args: &Arguments<'v, '_>,
+        eval: &mut starlark::eval::Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
-        // For now, just record the build step without actual argument processing
-        // This enables Starlark recipes to work with method calls
-        // TODO: Implement actual executor delegation when needed
         match self.method_name.as_str() {
             "fetch" => {
-                // For a minimal working version, we could extract arguments manually
-                // but for now, let's just record a placeholder step
-                self.context.steps.borrow_mut().push(BuildStep::Fetch {
-                    url: "placeholder".to_string(),
-                    blake3: "placeholder".to_string(),
-                });
+                self.handle_fetch_invoke(args, eval)?;
                 Ok(Value::new_none())
             }
-            "make" => {
-                self.context
-                    .steps
-                    .borrow_mut()
-                    .push(BuildStep::Make { args: vec![] });
+            "make" | "configure" | "autotools" | "cmake" | "meson" | "cargo" => {
+                self.handle_variable_args_method(args, &self.method_name)?;
                 Ok(Value::new_none())
             }
             "install" => {
-                self.context.steps.borrow_mut().push(BuildStep::Install);
-                Ok(Value::new_none())
-            }
-            "configure" => {
-                self.context
-                    .steps
-                    .borrow_mut()
-                    .push(BuildStep::Configure { args: vec![] });
-                Ok(Value::new_none())
-            }
-            "autotools" => {
-                self.context
-                    .steps
-                    .borrow_mut()
-                    .push(BuildStep::Autotools { args: vec![] });
-                Ok(Value::new_none())
-            }
-            "cmake" => {
-                self.context
-                    .steps
-                    .borrow_mut()
-                    .push(BuildStep::Cmake { args: vec![] });
-                Ok(Value::new_none())
-            }
-            "meson" => {
-                self.context
-                    .steps
-                    .borrow_mut()
-                    .push(BuildStep::Meson { args: vec![] });
-                Ok(Value::new_none())
-            }
-            "cargo" => {
-                self.context
-                    .steps
-                    .borrow_mut()
-                    .push(BuildStep::Cargo { args: vec![] });
+                self.handle_no_args_method(args, BuildStep::Install)?;
                 Ok(Value::new_none())
             }
             "apply_patch" => {
-                self.context.steps.borrow_mut().push(BuildStep::ApplyPatch {
-                    path: "placeholder".to_string(),
-                });
+                self.handle_apply_patch_invoke(args, eval)?;
                 Ok(Value::new_none())
             }
             _ => Err(starlark::Error::new_other(anyhow::anyhow!(

@@ -279,26 +279,18 @@ impl AtomicInstaller {
     pub async fn rollback(&mut self, target_state_id: Uuid) -> Result<(), Error> {
         let target_path = self.state_manager.get_state_path(target_state_id)?;
 
-        // Atomic swap to target state
-        self.atomic_rename_swap(&target_path, &self.live_path)
-            .await?;
+        // Use true atomic swap to exchange target state with live directory
+        sps2_root::atomic_swap(&target_path, &self.live_path)
+            .await
+            .map_err(|e| InstallError::FilesystemError {
+                operation: "rollback_atomic_swap".to_string(),
+                path: target_path.display().to_string(),
+                message: e.to_string(),
+            })?;
 
         // Update active state in database
         self.state_manager.set_active_state(target_state_id).await?;
 
-        Ok(())
-    }
-
-    /// Atomic rename swap using `renamex_np` with `RENAME_SWAP`
-    async fn atomic_rename_swap(&self, from: &Path, to: &Path) -> Result<(), Error> {
-        // Use the proper atomic swap implementation from sps2_root
-        sps2_root::atomic_swap(from, to)
-            .await
-            .map_err(|e| InstallError::FilesystemError {
-                operation: "atomic_swap".to_string(),
-                path: from.display().to_string(),
-                message: e.to_string(),
-            })?;
         Ok(())
     }
 }
@@ -435,19 +427,30 @@ impl StateTransition {
             )
             .await?;
 
-        // Atomic filesystem swap
+        // Prepare archived path for current live directory
         let old_live_path = PathBuf::from(format!(
             "/opt/pm/states/{}",
             self.parent_id.unwrap_or_default()
         ));
 
-        // Move current live to archived location
+        // True atomic swap using sps2_root::atomic_swap
+        // This uses macOS renamex_np with RENAME_SWAP for single OS-level atomic operation
         if live_path.exists() {
-            fs::rename(live_path, &old_live_path).await?;
-        }
+            // Use atomic swap to exchange staging and live directories
+            sps2_root::atomic_swap(&self.staging_path, live_path)
+                .await
+                .map_err(|e| InstallError::FilesystemError {
+                    operation: "atomic_swap".to_string(),
+                    path: live_path.display().to_string(),
+                    message: e.to_string(),
+                })?;
 
-        // Move staging to live
-        fs::rename(&self.staging_path, live_path).await?;
+            // Move the old live directory (now in staging_path) to archived location
+            fs::rename(&self.staging_path, &old_live_path).await?;
+        } else {
+            // If live doesn't exist, just move staging to live (first install)
+            fs::rename(&self.staging_path, live_path).await?;
+        }
 
         // Update active state pointer
         self.state_manager
@@ -477,6 +480,7 @@ impl StateTransition {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+    use tokio::fs;
 
     #[tokio::test]
     async fn test_state_transition_id_generation() {
@@ -521,5 +525,214 @@ mod tests {
         result.add_installed(package_id);
         assert_eq!(result.total_changes(), 1);
         assert_eq!(result.installed_packages.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_atomic_commit_swap() {
+        // Test atomic swap behavior during commit
+        let temp = tempdir().unwrap();
+        let base_path = temp.path();
+
+        // Create mock directories
+        let live_path = base_path.join("live");
+        let staging_path = base_path.join("staging");
+        let archived_path = base_path.join("archived");
+
+        // Set up live directory with content
+        fs::create_dir_all(&live_path).await.unwrap();
+        fs::create_dir_all(live_path.join("bin")).await.unwrap();
+        fs::write(live_path.join("bin/old-app"), b"old version")
+            .await
+            .unwrap();
+
+        // Set up staging directory with new content
+        fs::create_dir_all(&staging_path).await.unwrap();
+        fs::create_dir_all(staging_path.join("bin")).await.unwrap();
+        fs::write(staging_path.join("bin/new-app"), b"new version")
+            .await
+            .unwrap();
+        fs::write(staging_path.join("bin/old-app"), b"updated version")
+            .await
+            .unwrap();
+
+        // Perform atomic swap
+        sps2_root::atomic_swap(&staging_path, &live_path)
+            .await
+            .unwrap();
+
+        // Verify swap occurred
+        assert!(live_path.join("bin/new-app").exists());
+        assert!(staging_path.join("bin/old-app").exists());
+
+        // Verify content was swapped correctly
+        let new_content = fs::read(live_path.join("bin/new-app")).await.unwrap();
+        assert_eq!(new_content, b"new version");
+
+        let old_content = fs::read(staging_path.join("bin/old-app")).await.unwrap();
+        assert_eq!(old_content, b"old version");
+
+        // Clean up staged directory (simulating archive step)
+        fs::rename(&staging_path, &archived_path).await.unwrap();
+        assert!(archived_path.exists());
+        assert!(!staging_path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_atomic_rollback_swap() {
+        // Test atomic swap behavior during rollback
+        let temp = tempdir().unwrap();
+        let base_path = temp.path();
+
+        // Create mock directories
+        let live_path = base_path.join("live");
+        let backup_path = base_path.join("backup");
+
+        // Set up live directory (current state)
+        fs::create_dir_all(&live_path).await.unwrap();
+        fs::create_dir_all(live_path.join("bin")).await.unwrap();
+        fs::write(live_path.join("bin/app"), b"current version")
+            .await
+            .unwrap();
+
+        // Set up backup directory (rollback target)
+        fs::create_dir_all(&backup_path).await.unwrap();
+        fs::create_dir_all(backup_path.join("bin")).await.unwrap();
+        fs::write(backup_path.join("bin/app"), b"previous version")
+            .await
+            .unwrap();
+
+        // Perform atomic swap for rollback
+        sps2_root::atomic_swap(&backup_path, &live_path)
+            .await
+            .unwrap();
+
+        // Verify rollback occurred
+        let live_content = fs::read(live_path.join("bin/app")).await.unwrap();
+        assert_eq!(live_content, b"previous version");
+
+        let backup_content = fs::read(backup_path.join("bin/app")).await.unwrap();
+        assert_eq!(backup_content, b"current version");
+    }
+
+    #[tokio::test]
+    async fn test_rapid_operations() {
+        // Test that rapid install/uninstall operations maintain consistency
+        let temp = tempdir().unwrap();
+        let base_path = temp.path();
+
+        let live_path = base_path.join("live");
+        let staging1_path = base_path.join("staging1");
+        let staging2_path = base_path.join("staging2");
+
+        // Initial state
+        fs::create_dir_all(&live_path).await.unwrap();
+        fs::write(live_path.join("state.txt"), b"initial")
+            .await
+            .unwrap();
+
+        // First operation
+        fs::create_dir_all(&staging1_path).await.unwrap();
+        fs::write(staging1_path.join("state.txt"), b"first_update")
+            .await
+            .unwrap();
+
+        sps2_root::atomic_swap(&staging1_path, &live_path)
+            .await
+            .unwrap();
+
+        let content = fs::read(live_path.join("state.txt")).await.unwrap();
+        assert_eq!(content, b"first_update");
+
+        // Second operation (rapid)
+        fs::create_dir_all(&staging2_path).await.unwrap();
+        fs::write(staging2_path.join("state.txt"), b"second_update")
+            .await
+            .unwrap();
+
+        sps2_root::atomic_swap(&staging2_path, &live_path)
+            .await
+            .unwrap();
+
+        let content = fs::read(live_path.join("state.txt")).await.unwrap();
+        assert_eq!(content, b"second_update");
+
+        // Verify intermediate state is preserved
+        let first_content = fs::read(staging2_path.join("state.txt")).await.unwrap();
+        assert_eq!(first_content, b"first_update");
+    }
+
+    #[tokio::test]
+    async fn test_atomic_swap_consistency() {
+        // Test that atomic swap maintains directory consistency
+        let temp = tempdir().unwrap();
+        let base_path = temp.path();
+
+        let dir1 = base_path.join("dir1");
+        let dir2 = base_path.join("dir2");
+
+        // Create complex directory structures
+        fs::create_dir_all(dir1.join("subdir/nested"))
+            .await
+            .unwrap();
+        fs::create_dir_all(dir2.join("other/deeply/nested"))
+            .await
+            .unwrap();
+
+        fs::write(dir1.join("file1.txt"), b"content1")
+            .await
+            .unwrap();
+        fs::write(dir1.join("subdir/file2.txt"), b"subcontent1")
+            .await
+            .unwrap();
+        fs::write(dir2.join("file3.txt"), b"content2")
+            .await
+            .unwrap();
+        fs::write(dir2.join("other/file4.txt"), b"othercontent2")
+            .await
+            .unwrap();
+
+        // Perform swap
+        sps2_root::atomic_swap(&dir1, &dir2).await.unwrap();
+
+        // Verify complete structure was swapped
+        assert!(dir1.join("file3.txt").exists());
+        assert!(dir1.join("other/file4.txt").exists());
+        assert!(dir2.join("file1.txt").exists());
+        assert!(dir2.join("subdir/file2.txt").exists());
+
+        // Verify content integrity
+        let content1 = fs::read(dir2.join("file1.txt")).await.unwrap();
+        assert_eq!(content1, b"content1");
+
+        let content2 = fs::read(dir1.join("file3.txt")).await.unwrap();
+        assert_eq!(content2, b"content2");
+    }
+
+    #[tokio::test]
+    async fn test_first_install_without_existing_live() {
+        // Test first install when live directory doesn't exist
+        let temp = tempdir().unwrap();
+        let base_path = temp.path();
+
+        let live_path = base_path.join("live");
+        let staging_path = base_path.join("staging");
+
+        // Set up staging directory (no live directory exists yet)
+        fs::create_dir_all(&staging_path).await.unwrap();
+        fs::create_dir_all(staging_path.join("bin")).await.unwrap();
+        fs::write(staging_path.join("bin/app"), b"first install")
+            .await
+            .unwrap();
+
+        // For first install, just rename staging to live
+        assert!(!live_path.exists());
+        fs::rename(&staging_path, &live_path).await.unwrap();
+
+        // Verify first install
+        assert!(live_path.exists());
+        assert!(!staging_path.exists());
+
+        let content = fs::read(live_path.join("bin/app")).await.unwrap();
+        assert_eq!(content, b"first install");
     }
 }

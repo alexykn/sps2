@@ -109,7 +109,7 @@ Key external crates used throughout the project:
 | `num_cpus` | `1.x` | MIT/Apache-2.0 | `builder` | CPU count detection |
 | `semver` | `1.x` | MIT/Apache-2.0 | `types` | Version parsing |
 | `blake3` | `1.x` | CC0-1.0/Apache-2.0 | `hash` | Content hashing |
-| `rhai` | `1.x` | MIT/Apache-2.0 | `package` | Recipe scripting |
+| `starlark` | `0.11` | Apache-2.0 | `package` | Recipe scripting |
 | `thiserror` | `1.x` | MIT/Apache-2.0 | `errors` | Error derives |
 | `serde` | `1.x` | MIT/Apache-2.0 | Most crates | Serialization |
 | `tracing` | `0.1` | MIT | All crates (macros) / `sps2` (subscriber) | Structured logging |

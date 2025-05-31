@@ -202,7 +202,7 @@ def metadata():
 def build(ctx):
     # Test method dispatch - this should work with our BuildMethodFunction implementation
     # These calls will record BuildStep entries in the context
-    ctx.fetch()
+    ctx.fetch("https://example.com/file.tar.gz")
     ctx.configure()
     ctx.make()
     ctx.install()
@@ -210,7 +210,7 @@ def build(ctx):
     ctx.cmake()
     ctx.meson()
     ctx.cargo()
-    ctx.apply_patch()
+    ctx.apply_patch("some.patch")
 "#;
 
         let recipe = Recipe::parse(recipe_content).unwrap();
