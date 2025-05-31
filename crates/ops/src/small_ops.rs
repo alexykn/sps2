@@ -2,7 +2,7 @@
 
 use crate::{
     ComponentHealth, HealthCheck, HealthIssue, HealthStatus, IssueSeverity, OpsCtx, PackageInfo,
-    PackageStatus, SearchResult, StateInfo,
+    PackageStatus, SearchResult, StateInfo, VulnDbStats,
 };
 use spsv2_errors::{Error, OpsError};
 use spsv2_events::Event;
@@ -527,6 +527,120 @@ async fn get_state_info(ctx: &OpsCtx, state_id: Uuid) -> Result<StateInfo, Error
     })
 }
 
+/// Update vulnerability database
+///
+/// # Errors
+///
+/// Returns an error if the vulnerability database update fails.
+pub async fn update_vulndb(_ctx: &OpsCtx) -> Result<String, Error> {
+    // Initialize vulnerability database manager
+    let mut vulndb = spsv2_audit::VulnDbManager::new(spsv2_audit::VulnDbManager::default_path())?;
+
+    // Initialize if needed
+    vulndb.initialize().await?;
+
+    // Update the database from all sources
+    vulndb.update().await?;
+
+    Ok("Vulnerability database updated successfully".to_string())
+}
+
+/// Get vulnerability database statistics
+///
+/// # Errors
+///
+/// Returns an error if the vulnerability database cannot be accessed.
+pub async fn vulndb_stats(_ctx: &OpsCtx) -> Result<VulnDbStats, Error> {
+    // Initialize vulnerability database manager
+    let mut vulndb = spsv2_audit::VulnDbManager::new(spsv2_audit::VulnDbManager::default_path())?;
+
+    // Initialize if needed
+    vulndb.initialize().await?;
+
+    // Get database
+    let db = vulndb.get_database().await?;
+
+    // Get statistics
+    let stats = db.get_statistics().await?;
+
+    // Get database file size
+    let db_path = spsv2_audit::VulnDbManager::default_path();
+    let metadata = tokio::fs::metadata(&db_path).await?;
+    let database_size = metadata.len();
+
+    Ok(VulnDbStats {
+        vulnerability_count: stats.vulnerability_count,
+        last_updated: stats.last_updated,
+        database_size,
+        severity_breakdown: stats.severity_breakdown,
+    })
+}
+
+/// Audit packages for vulnerabilities
+///
+/// # Errors
+///
+/// Returns an error if the audit scan fails.
+pub async fn audit(
+    ctx: &OpsCtx,
+    package_name: Option<&str>,
+    fail_on_critical: bool,
+    severity_threshold: spsv2_audit::Severity,
+) -> Result<spsv2_audit::AuditReport, Error> {
+    // Create audit system
+    let audit_system = spsv2_audit::AuditSystem::new(spsv2_audit::VulnDbManager::default_path())?;
+
+    // Configure scan options
+    let scan_options = spsv2_audit::ScanOptions::new()
+        .with_fail_on_critical(fail_on_critical)
+        .with_severity_threshold(severity_threshold);
+
+    // Run audit based on whether a specific package is requested
+    let report = if let Some(name) = package_name {
+        // Scan specific package
+        let installed_packages = ctx.state.get_installed_packages().await?;
+        let package = installed_packages
+            .iter()
+            .find(|pkg| pkg.name == name)
+            .ok_or_else(|| OpsError::PackageNotFound {
+                package: name.to_string(),
+            })?;
+
+        ctx.tx.send(Event::AuditStarting { package_count: 1 }).ok();
+
+        let package_audit = audit_system
+            .scan_package(&package.name, &package.version(), &ctx.store, &scan_options)
+            .await?;
+
+        let vuln_count = package_audit.vulnerabilities.len();
+        ctx.tx
+            .send(Event::AuditPackageCompleted {
+                package: package.name.clone(),
+                vulnerabilities_found: vuln_count,
+            })
+            .ok();
+
+        let report = spsv2_audit::AuditReport::new(vec![package_audit]);
+
+        ctx.tx
+            .send(Event::AuditCompleted {
+                packages_scanned: 1,
+                vulnerabilities_found: report.total_vulnerabilities(),
+                critical_count: report.critical_count(),
+            })
+            .ok();
+
+        report
+    } else {
+        // Scan all packages
+        audit_system
+            .scan_all_packages(&ctx.state, &ctx.store, scan_options, Some(ctx.tx.clone()))
+            .await?
+    };
+
+    Ok(report)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -596,5 +710,21 @@ mod tests {
         assert!(health.components.contains_key("store"));
         assert!(health.components.contains_key("state"));
         assert!(health.components.contains_key("index"));
+    }
+
+    #[tokio::test]
+    async fn test_audit() {
+        let ctx = create_test_context().await;
+
+        // Test audit with no packages installed
+        let report = audit(&ctx, None, false, spsv2_audit::Severity::Low)
+            .await
+            .unwrap();
+        assert_eq!(report.package_audits.len(), 0);
+        assert_eq!(report.total_vulnerabilities(), 0);
+
+        // Test audit for specific package that doesn't exist
+        let result = audit(&ctx, Some("nonexistent"), false, spsv2_audit::Severity::Low).await;
+        assert!(result.is_err());
     }
 }

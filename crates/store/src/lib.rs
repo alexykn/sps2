@@ -127,17 +127,44 @@ impl PackageStore {
     ///
     /// # Errors
     ///
-    /// Currently returns empty data, but may return errors in future implementations
-    /// when package lookup is implemented
-    pub fn get_package_sbom(
+    /// Returns an error if:
+    /// - Package cannot be found by name/version
+    /// - SBOM file cannot be read
+    pub async fn get_package_sbom(
         &self,
-        _package_name: &str,
-        _package_version: &spsv2_types::Version,
+        package_name: &str,
+        package_version: &spsv2_types::Version,
     ) -> Result<Vec<u8>, Error> {
-        // This is a placeholder implementation
-        // In reality, we would need to find the package by name/version
-        // For now, return empty SBOM data
-        Ok(Vec::new())
+        // Get the package path (this is a simplified implementation)
+        let package_path = self.get_package_path(package_name, package_version)?;
+
+        // Try to read SPDX SBOM first
+        let spdx_path = package_path.join("sbom.spdx.json");
+        if exists(&spdx_path).await {
+            return tokio::fs::read(&spdx_path).await.map_err(|e| {
+                StorageError::IoError {
+                    message: format!("failed to read SBOM file: {e}"),
+                }
+                .into()
+            });
+        }
+
+        // Fall back to CycloneDX SBOM
+        let cdx_path = package_path.join("sbom.cdx.json");
+        if exists(&cdx_path).await {
+            return tokio::fs::read(&cdx_path).await.map_err(|e| {
+                StorageError::IoError {
+                    message: format!("failed to read SBOM file: {e}"),
+                }
+                .into()
+            });
+        }
+
+        // No SBOM found
+        Err(StorageError::IoError {
+            message: format!("SBOM file not found for package {package_name}-{package_version}"),
+        }
+        .into())
     }
 
     /// Get package path by name and version

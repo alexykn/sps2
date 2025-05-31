@@ -124,6 +124,42 @@ pub enum Commands {
     /// Check system health
     #[command(name = "check-health")]
     CheckHealth,
+
+    /// Vulnerability database management
+    #[command(name = "vulndb")]
+    VulnDb {
+        #[command(subcommand)]
+        command: VulnDbCommands,
+    },
+
+    /// Audit installed packages for vulnerabilities
+    Audit {
+        /// Scan all packages (default: all)
+        #[arg(long)]
+        all: bool,
+
+        /// Scan specific package
+        #[arg(long, value_name = "NAME")]
+        package: Option<String>,
+
+        /// Fail on critical vulnerabilities
+        #[arg(long)]
+        fail_on_critical: bool,
+
+        /// Minimum severity to report (low, medium, high, critical)
+        #[arg(long, value_name = "SEVERITY")]
+        severity: Option<String>,
+    },
+}
+
+/// Vulnerability database subcommands
+#[derive(Subcommand)]
+pub enum VulnDbCommands {
+    /// Update vulnerability database from sources
+    Update,
+
+    /// Show vulnerability database statistics
+    Stats,
 }
 
 impl Commands {
@@ -144,6 +180,8 @@ impl Commands {
             Commands::Rollback { .. } => "rollback",
             Commands::History => "history",
             Commands::CheckHealth => "check-health",
+            Commands::VulnDb { .. } => "vulndb",
+            Commands::Audit { .. } => "audit",
         }
     }
 

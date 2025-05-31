@@ -61,7 +61,7 @@ impl RecipeEngine {
 
         // Freeze the module to access functions
         let frozen_module = module.freeze().map_err(|e| BuildError::RecipeError {
-            message: format!("Failed to freeze module: {e}"),
+            message: format!("Failed to freeze module: {e:?}"),
         })?;
 
         // Call metadata function

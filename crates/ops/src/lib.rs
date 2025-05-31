@@ -16,15 +16,18 @@ pub use context::{OpsContextBuilder, OpsCtx};
 pub use types::{
     BuildReport, ChangeType, ComponentHealth, HealthCheck, HealthIssue, HealthStatus,
     InstallReport, InstallRequest, IssueSeverity, OpChange, OpReport, PackageInfo, PackageStatus,
-    SearchResult, StateInfo,
+    SearchResult, StateInfo, VulnDbStats,
 };
 
 // Re-export operation functions
 pub use large_ops::{build, install, uninstall, update, upgrade};
 pub use small_ops::{
-    check_health, cleanup, history, list_packages, package_info, reposync, rollback,
-    search_packages,
+    audit, check_health, cleanup, history, list_packages, package_info, reposync, rollback,
+    search_packages, update_vulndb, vulndb_stats,
 };
+
+// Re-export audit types needed by the audit function
+pub use spsv2_audit::{AuditReport, Severity};
 
 use spsv2_errors::Error;
 
@@ -52,6 +55,10 @@ pub enum OperationResult {
     Success(String),
     /// Generic report
     Report(OpReport),
+    /// Vulnerability database statistics
+    VulnDbStats(VulnDbStats),
+    /// Audit report
+    AuditReport(spsv2_audit::AuditReport),
 }
 
 impl OperationResult {
@@ -81,7 +88,9 @@ impl OperationResult {
             | OperationResult::BuildReport(_)
             | OperationResult::StateInfo(_)
             | OperationResult::StateHistory(_)
-            | OperationResult::Report(_) => true,
+            | OperationResult::Report(_)
+            | OperationResult::VulnDbStats(_)
+            | OperationResult::AuditReport(_) => true,
             OperationResult::HealthCheck(health) => health.is_healthy(),
         }
     }

@@ -3,8 +3,8 @@
 use comfy_table::{presets::UTF8_FULL, Attribute, Cell, Color, ContentArrangement, Table};
 use console::{Style, Term};
 use spsv2_ops::{
-    BuildReport, HealthCheck, HealthStatus, InstallReport, IssueSeverity, OperationResult,
-    PackageInfo, PackageStatus, SearchResult, StateInfo,
+    AuditReport, BuildReport, HealthCheck, HealthStatus, InstallReport, IssueSeverity,
+    OperationResult, PackageInfo, PackageStatus, SearchResult, Severity, StateInfo, VulnDbStats,
 };
 use spsv2_types::ColorChoice;
 use std::io;
@@ -61,6 +61,8 @@ impl OutputRenderer {
             OperationResult::HealthCheck(health) => self.render_health_check(health),
             OperationResult::Success(message) => self.render_success_message(message),
             OperationResult::Report(report) => self.render_op_report(report),
+            OperationResult::VulnDbStats(stats) => self.render_vulndb_stats(stats),
+            OperationResult::AuditReport(report) => self.render_audit_report(report),
         }
     }
 
@@ -527,6 +529,127 @@ impl OutputRenderer {
             ColorChoice::Never => false,
             ColorChoice::Auto => self.term.features().colors_supported(),
         }
+    }
+
+    /// Render vulnerability database statistics
+    fn render_vulndb_stats(&self, stats: &VulnDbStats) -> io::Result<()> {
+        println!("🔒 Vulnerability Database Statistics");
+        println!();
+        println!("Total Vulnerabilities: {}", stats.vulnerability_count);
+
+        if let Some(last_updated) = &stats.last_updated {
+            println!(
+                "Last Updated:         {}",
+                last_updated.format("%Y-%m-%d %H:%M:%S UTC")
+            );
+        } else {
+            println!("Last Updated:         Never");
+        }
+
+        println!("Database Size:        {}", format_size(stats.database_size));
+
+        if !stats.severity_breakdown.is_empty() {
+            println!();
+            println!("Severity Breakdown:");
+
+            let severities = ["critical", "high", "medium", "low"];
+            for severity in &severities {
+                if let Some(count) = stats.severity_breakdown.get(*severity) {
+                    let icon = match *severity {
+                        "critical" => "💥",
+                        "high" => "🚨",
+                        "medium" => "⚠️",
+                        "low" => "ℹ️",
+                        _ => "•",
+                    };
+                    println!("  {icon} {severity:8}: {count:6}");
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Render audit report
+    fn render_audit_report(&self, report: &AuditReport) -> io::Result<()> {
+        println!("🔍 Security Audit Report");
+        println!();
+        println!(
+            "Scan Time:     {}",
+            report.scan_timestamp.format("%Y-%m-%d %H:%M:%S UTC")
+        );
+        println!("Packages:      {}", report.summary.packages_scanned);
+        println!("Vulnerabilities: {}", report.summary.total_vulnerabilities);
+
+        if report.summary.total_vulnerabilities > 0 {
+            println!();
+            println!("Severity Breakdown:");
+            println!("  💥 Critical: {}", report.summary.critical_count);
+            println!("  🚨 High:     {}", report.summary.high_count);
+            println!("  ⚠️  Medium:   {}", report.summary.medium_count);
+            println!("  ℹ️  Low:      {}", report.summary.low_count);
+
+            println!();
+            println!(
+                "Vulnerable Packages ({}):",
+                report.summary.vulnerable_packages
+            );
+
+            for audit in &report.package_audits {
+                if !audit.vulnerabilities.is_empty() {
+                    println!();
+                    println!(
+                        "📦 {} v{}",
+                        self.style_package_name(&audit.package_name),
+                        audit.package_version
+                    );
+
+                    // Group vulnerabilities by severity
+                    let mut critical_vulns = Vec::new();
+                    let mut high_vulns = Vec::new();
+                    let mut medium_vulns = Vec::new();
+                    let mut low_vulns = Vec::new();
+
+                    for vuln_match in &audit.vulnerabilities {
+                        match vuln_match.vulnerability.severity {
+                            Severity::Critical => critical_vulns.push(vuln_match),
+                            Severity::High => high_vulns.push(vuln_match),
+                            Severity::Medium => medium_vulns.push(vuln_match),
+                            Severity::Low => low_vulns.push(vuln_match),
+                        }
+                    }
+
+                    // Display vulnerabilities by severity
+                    for (severity, icon, vulns) in [
+                        ("CRITICAL", "💥", critical_vulns),
+                        ("HIGH", "🚨", high_vulns),
+                        ("MEDIUM", "⚠️", medium_vulns),
+                        ("LOW", "ℹ️", low_vulns),
+                    ] {
+                        for vuln_match in vulns {
+                            let vuln = &vuln_match.vulnerability;
+                            println!(
+                                "   {} {} {} - {}",
+                                icon, severity, vuln.cve_id, vuln.summary
+                            );
+
+                            if let Some(score) = vuln.cvss_score {
+                                println!("      CVSS Score: {:.1}", score);
+                            }
+
+                            if !vuln.fixed_versions.is_empty() {
+                                println!("      Fixed in: {}", vuln.fixed_versions.join(", "));
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            println!();
+            println!("✅ No vulnerabilities found!");
+        }
+
+        Ok(())
     }
 }
 

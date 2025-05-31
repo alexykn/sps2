@@ -27,7 +27,7 @@ pub use types::{
     AuditReport, Component, ComponentIdentifier, PackageAudit, Severity, Vulnerability,
     VulnerabilityMatch,
 };
-pub use vulndb::{VulnDbManager, VulnerabilityDatabase};
+pub use vulndb::{DatabaseStatistics, VulnDbManager, VulnerabilityDatabase};
 
 use spsv2_errors::Error;
 use spsv2_events::EventSender;
@@ -120,7 +120,9 @@ impl AuditSystem {
         options: &ScanOptions,
     ) -> Result<PackageAudit, Error> {
         // Get package SBOM from store
-        let sbom_data = store.get_package_sbom(package_name, package_version)?;
+        let sbom_data = store
+            .get_package_sbom(package_name, package_version)
+            .await?;
 
         // Parse SBOM to extract components
         let components = self.sbom_parser.parse_sbom(&sbom_data)?;

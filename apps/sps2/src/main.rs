@@ -9,7 +9,7 @@ mod error;
 mod events;
 mod setup;
 
-use crate::cli::{Cli, Commands};
+use crate::cli::{Cli, Commands, VulnDbCommands};
 use crate::display::OutputRenderer;
 use crate::error::CliError;
 use crate::events::EventHandler;
@@ -195,6 +195,47 @@ async fn execute_command(
             let output_path = output_dir.as_deref();
             let report = spsv2_ops::build(&ctx, &recipe, output_path).await?;
             Ok(OperationResult::BuildReport(report))
+        }
+
+        Commands::VulnDb { command } => match command {
+            VulnDbCommands::Update => {
+                let result = spsv2_ops::update_vulndb(&ctx).await?;
+                Ok(OperationResult::Success(result))
+            }
+            VulnDbCommands::Stats => {
+                let stats = spsv2_ops::vulndb_stats(&ctx).await?;
+                Ok(OperationResult::VulnDbStats(stats))
+            }
+        },
+
+        Commands::Audit {
+            all: _,
+            package,
+            fail_on_critical,
+            severity,
+        } => {
+            // Parse severity threshold
+            let severity_threshold = match severity.as_deref() {
+                Some("critical") => spsv2_ops::Severity::Critical,
+                Some("high") => spsv2_ops::Severity::High,
+                Some("medium") => spsv2_ops::Severity::Medium,
+                Some("low") | None => spsv2_ops::Severity::Low,
+                Some(s) => {
+                    return Err(CliError::InvalidArguments(format!(
+                        "Invalid severity '{}': must be one of: low, medium, high, critical",
+                        s
+                    )))
+                }
+            };
+
+            let report = spsv2_ops::audit(
+                &ctx,
+                package.as_deref(),
+                fail_on_critical,
+                severity_threshold,
+            )
+            .await?;
+            Ok(OperationResult::AuditReport(report))
         }
     }
 }

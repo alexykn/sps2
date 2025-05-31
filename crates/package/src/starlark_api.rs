@@ -138,7 +138,7 @@ impl<'v> StarlarkValue<'v> for BuildContext {
         &self,
         _me: Value<'v>,
         _args: &starlark::eval::Arguments<'v, '_>,
-        _eval: &mut starlark::eval::Evaluator<'v, '_>,
+        _eval: &mut starlark::eval::Evaluator<'v, '_, '_>,
     ) -> starlark::Result<Value<'v>> {
         // For now, let's remove method invocation and just track that methods were called
         // We'll implement this properly when we connect to the builder crate
@@ -153,8 +153,14 @@ impl<'v> AllocValue<'v> for BuildContext {
 }
 
 impl<'v> UnpackValue<'v> for BuildContext {
-    fn unpack_value(value: Value<'v>) -> Option<Self> {
-        value.request_value::<&BuildContext>().cloned()
+    type Error = starlark::Error;
+
+    fn unpack_value(value: Value<'v>) -> Result<Option<Self>, Self::Error> {
+        Ok(value.request_value::<&BuildContext>().cloned())
+    }
+
+    fn unpack_value_impl(value: Value<'v>) -> Result<Option<Self>, Self::Error> {
+        Ok(value.request_value::<&BuildContext>().cloned())
     }
 }
 
