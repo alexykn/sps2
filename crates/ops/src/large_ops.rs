@@ -513,7 +513,7 @@ mod tests {
 
         match &requests[1] {
             InstallRequest::LocalFile(path) => {
-                assert!(path.display().to_string().to_lowercase().ends_with(".sp"))
+                assert!(path.display().to_string().to_lowercase().ends_with(".sp"));
             }
             InstallRequest::Remote(_) => panic!("Expected local file request"),
         }

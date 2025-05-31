@@ -664,7 +664,7 @@ mod tests {
         let state = match spsv2_state::StateManager::new(base_path).await {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("Failed to create StateManager at {:?}: {}", base_path, e);
+                eprintln!("Failed to create StateManager at {base_path:?}: {e}");
                 eprintln!("Directory exists: {}", base_path.exists());
                 eprintln!(
                     "Directory is writable: {}",
@@ -673,7 +673,7 @@ mod tests {
                         .map(|m| !m.permissions().readonly())
                         .unwrap_or(false)
                 );
-                panic!("StateManager creation failed: {}", e);
+                panic!("StateManager creation failed: {e}");
             }
         };
         let mut index = spsv2_index::IndexManager::new(base_path);
@@ -685,12 +685,7 @@ mod tests {
         let resolver = spsv2_resolver::Resolver::new(index.clone());
         let builder = spsv2_builder::Builder::new();
 
-        let ops_ctx = OpsCtx::new(store, state, index, net, resolver, builder, tx);
-
-        // Create initial state for tests that need it
-        // We'll create it inside each test that needs an active state
-
-        ops_ctx
+        OpsCtx::new(store, state, index, net, resolver, builder, tx)
     }
 
     #[tokio::test]

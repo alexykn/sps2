@@ -362,7 +362,7 @@ mod tests {
 
         match local {
             InstallRequest::LocalFile(path) => {
-                assert!(path.display().to_string().ends_with("package.sp"))
+                assert!(path.display().to_string().ends_with("package.sp"));
             }
             InstallRequest::Remote(_) => panic!("Expected local file request"),
         }
