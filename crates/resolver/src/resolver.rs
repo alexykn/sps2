@@ -373,7 +373,7 @@ mod tests {
         let curl_entry = VersionEntry {
             revision: 1,
             arch: "arm64".to_string(),
-            sha256: "curl_hash".to_string(),
+            blake3: "curl_hash".to_string(),
             download_url: "https://example.com/curl-8.5.0.sp".to_string(),
             minisig_url: "https://example.com/curl-8.5.0.sp.minisig".to_string(),
             dependencies: DependencyInfo {
@@ -390,7 +390,7 @@ mod tests {
         let openssl_entry = VersionEntry {
             revision: 1,
             arch: "arm64".to_string(),
-            sha256: "openssl_hash".to_string(),
+            blake3: "openssl_hash".to_string(),
             download_url: "https://example.com/openssl-3.0.0.sp".to_string(),
             minisig_url: "https://example.com/openssl-3.0.0.sp.minisig".to_string(),
             dependencies: DependencyInfo::default(),

@@ -584,3 +584,25 @@ pub async fn remove_package_files(
 
     Ok(())
 }
+
+/// Insert a garbage collection log entry
+///
+/// # Errors
+///
+/// Returns an error if the database insert fails.
+pub async fn insert_gc_log(
+    tx: &mut Transaction<'_, Sqlite>,
+    items_removed: i64,
+    space_freed: i64,
+) -> Result<(), Error> {
+    let now = chrono::Utc::now().timestamp();
+
+    query("INSERT INTO gc_log (run_at, items_removed, space_freed) VALUES (?1, ?2, ?3)")
+        .bind(now)
+        .bind(items_removed)
+        .bind(space_freed)
+        .execute(&mut **tx)
+        .await?;
+
+    Ok(())
+}

@@ -213,7 +213,7 @@ mod tests {
                         "1.0.0": {
                             "revision": 1,
                             "arch": "arm64",
-                            "sha256": "abc123",
+                            "blake3": "abc123",
                             "download_url": "https://example.com/test-pkg-1.0.0.sp",
                             "minisig_url": "https://example.com/test-pkg-1.0.0.sp.minisig",
                             "dependencies": {

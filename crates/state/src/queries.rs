@@ -395,3 +395,23 @@ pub async fn remove_package_files(
 
     Ok(())
 }
+
+/// Insert a garbage collection log entry
+pub async fn insert_gc_log(
+    tx: &mut Transaction<'_, Sqlite>,
+    items_removed: i64,
+    space_freed: i64,
+) -> Result<(), Error> {
+    let now = chrono::Utc::now().timestamp();
+
+    query!(
+        "INSERT INTO gc_log (run_at, items_removed, space_freed) VALUES (?, ?, ?)",
+        now,
+        items_removed,
+        space_freed
+    )
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(())
+}

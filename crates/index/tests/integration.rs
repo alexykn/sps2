@@ -13,7 +13,7 @@ mod tests {
         let jq_170 = VersionEntry {
             revision: 1,
             arch: "arm64".to_string(),
-            sha256: "abc123".to_string(),
+            blake3: "abc123".to_string(),
             download_url: "https://cdn.example.com/jq-1.7.0-1.arm64.sp".to_string(),
             minisig_url: "https://cdn.example.com/jq-1.7.0-1.arm64.sp.minisig".to_string(),
             dependencies: DependencyInfo {
@@ -29,7 +29,7 @@ mod tests {
         let jq_160 = VersionEntry {
             revision: 2,
             arch: "arm64".to_string(),
-            sha256: "def456".to_string(),
+            blake3: "def456".to_string(),
             download_url: "https://cdn.example.com/jq-1.6.0-2.arm64.sp".to_string(),
             minisig_url: "https://cdn.example.com/jq-1.6.0-2.arm64.sp.minisig".to_string(),
             dependencies: DependencyInfo {
@@ -49,7 +49,7 @@ mod tests {
         let curl_850 = VersionEntry {
             revision: 1,
             arch: "arm64".to_string(),
-            sha256: "789xyz".to_string(),
+            blake3: "789xyz".to_string(),
             download_url: "https://cdn.example.com/curl-8.5.0-1.arm64.sp".to_string(),
             minisig_url: "https://cdn.example.com/curl-8.5.0-1.arm64.sp.minisig".to_string(),
             dependencies: DependencyInfo {
@@ -59,7 +59,7 @@ mod tests {
             sbom: Some(SbomInfo {
                 spdx: SbomEntry {
                     url: "https://cdn.example.com/curl-8.5.0-1.arm64.sbom.spdx.json".to_string(),
-                    sha256: "sbom123".to_string(),
+                    blake3: "sbom123".to_string(),
                 },
                 cyclonedx: None,
             }),
@@ -97,17 +97,17 @@ mod tests {
         let jq_versions = manager.get_package_versions("jq").unwrap();
         assert_eq!(jq_versions.len(), 2);
         // Should be sorted newest first
-        assert_eq!(jq_versions[0].sha256, "abc123"); // 1.7.0
-        assert_eq!(jq_versions[1].sha256, "def456"); // 1.6.0
+        assert_eq!(jq_versions[0].blake3, "abc123"); // 1.7.0
+        assert_eq!(jq_versions[1].blake3, "def456"); // 1.6.0
 
         // Test find best version
         let spec = PackageSpec::parse("jq>=1.6.0").unwrap();
         let best = manager.find_best_version(&spec).unwrap();
-        assert_eq!(best.sha256, "abc123"); // Should pick 1.7.0
+        assert_eq!(best.blake3, "abc123"); // Should pick 1.7.0
 
         let spec = PackageSpec::parse("jq==1.6.0").unwrap();
         let best = manager.find_best_version(&spec).unwrap();
-        assert_eq!(best.sha256, "def456"); // Should pick 1.6.0
+        assert_eq!(best.blake3, "def456"); // Should pick 1.6.0
 
         // Test get specific version
         let version = manager.get_version("curl", "8.5.0").unwrap();
@@ -176,7 +176,7 @@ mod tests {
             match expected_hash {
                 Some(hash) => {
                     assert!(result.is_some(), "Expected match for {spec_str}");
-                    assert_eq!(result.unwrap().sha256, hash);
+                    assert_eq!(result.unwrap().blake3, hash);
                 }
                 None => {
                     assert!(result.is_none(), "Expected no match for {spec_str}");

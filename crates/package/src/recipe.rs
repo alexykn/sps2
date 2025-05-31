@@ -62,7 +62,7 @@ pub struct RecipeMetadata {
 /// A build step from the `build()` function
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BuildStep {
-    Fetch { url: String, sha256: String },
+    Fetch { url: String, blake3: String },
     ApplyPatch { path: String },
     AllowNetwork { enabled: bool },
     Configure { args: Vec<String> },

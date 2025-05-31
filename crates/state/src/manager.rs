@@ -346,6 +346,13 @@ impl StateManager {
             }
         }
 
+        // Log cleanup operation to gc_log table
+        let total_items_removed = i64::try_from(states_to_remove.len())
+            .map_err(|e| Error::internal(format!("items removed count overflow: {e}")))?;
+        let space_freed_i64 = i64::try_from(space_freed)
+            .map_err(|e| Error::internal(format!("space freed overflow: {e}")))?;
+        queries::insert_gc_log(&mut tx, total_items_removed, space_freed_i64).await?;
+
         tx.commit().await?;
 
         self.tx.emit(Event::CleanupCompleted {
@@ -418,6 +425,13 @@ impl StateManager {
 
         // Delete from database first
         queries::delete_unreferenced_store_items(&mut tx, &hash_strings).await?;
+
+        // Log GC operation to gc_log table (only counting packages removed, space calculation is approximate)
+        let packages_removed_i64 = i64::try_from(packages_removed)
+            .map_err(|e| Error::internal(format!("packages removed count overflow: {e}")))?;
+        let total_size: i64 = unreferenced.iter().map(|item| item.size).sum();
+        queries::insert_gc_log(&mut tx, packages_removed_i64, total_size).await?;
+
         tx.commit().await?;
 
         // Remove files from store

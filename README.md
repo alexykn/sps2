@@ -90,7 +90,7 @@ cargo sqlx prepare
 | **Logging** | Events only - NO `info!`, `warn!`, `error!` | All output via event channel; JSON logs from subscriber |
 | **Progress** | Broadcast `Event` enum via channels | Decouples core from UI details |
 | **SBOM** | SPDX 3.0 JSON (primary), CycloneDX 1.6 (optional) | Built into every package via Syft |
-| **Crypto** | Minisign signatures; BLAKE3 for hashing | Small trust root + fast hashing |
+| **Crypto** | Minisign signatures; BLAKE3 for content hashing | Small trust root + fast hashing |
 | **Unit tests** | Each crate self-contained; tempdir fixtures | No integration tests hit real `/opt/pm` |
 | **Linting** | `#![deny(clippy::pedantic, unsafe_code)]` | Forces deliberate unsafe usage |
 | **CI** | `cargo deny` plus `cargo audit` | Catches transitive vulnerabilities |
@@ -1175,7 +1175,7 @@ def build(ctx):
     # TODO: Once builder implementation is complete:
     # ctx.fetch(
     #     "https://nodejs.org/dist/v20.11.0/node-v20.11.0.tar.gz",
-    #     "abc123...sha256..."
+    #     "abc123...blake3..."
     # )
     # ctx.configure(["--prefix=" + ctx.PREFIX])
     # ctx.make(["-j" + str(ctx.JOBS)])
@@ -1218,7 +1218,7 @@ def build(ctx):
 
 | Method | Effect | Notes |
 |--------|--------|-------|
-| `fetch(url, sha256)` | Downloads & verifies source | Retries + mirror fallback |
+| `fetch(url, blake3)` | Downloads & verifies source | Retries + mirror fallback |
 | `apply_patch(path)` | Applies a patchfile | Uses `patch -p1` |
 | `autotools(args[])` | `./configure && make && make install` | Configures with PREFIX |
 | `cmake(args[])` | CMake build helper | Sets CMAKE_PREFIX_PATH |
@@ -1298,8 +1298,8 @@ build = [
 ]
 
 [sbom]
-spdx = "sha256:4fa5..."
-cyclonedx = "sha256:31d2..."  # optional
+spdx = "blake3:4fa5..."
+cyclonedx = "blake3:31d2..."  # optional
 ```
 
 #### SBOM Generation (Built from Day 1)
@@ -1328,7 +1328,7 @@ b.sbom_excludes(["*.pdb", "*.dSYM", "*.a", "*.la"])  // Exclude patterns (static
         "1.7": {
           "revision": 1,
           "arch": "arm64",
-          "sha256": "...",
+          "blake3": "...",
           "download_url": "https://...",
           "minisig_url": "https://...",
           "dependencies": {
@@ -1338,11 +1338,11 @@ b.sbom_excludes(["*.pdb", "*.dSYM", "*.a", "*.la"])  // Exclude patterns (static
           "sbom": {
             "spdx": {
               "url": "https://.../jq-1.7-1.arm64.sbom.spdx.json",
-              "sha256": "4fa5..."
+              "blake3": "4fa5..."
             },
             "cyclonedx": {
               "url": "https://.../jq-1.7-1.arm64.sbom.cdx.json",
-              "sha256": "31d2..."
+              "blake3": "31d2..."
             }
           }
         }
@@ -1366,7 +1366,7 @@ b.sbom_excludes(["*.pdb", "*.dSYM", "*.a", "*.la"])  // Exclude patterns (static
 
 ### Security Model
 - **Minisign** for package signatures (small attack surface)
-- **SHA256** for content verification
+- **BLAKE3** for content verification and hashing
 - **SBOM** for supply chain transparency
 - **Codesigning** for macOS Gatekeeper
 - **Deterministic builds** for reproducibility

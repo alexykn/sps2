@@ -11,7 +11,7 @@ fn metadata(m) {
 fn build(b) {
     // Fetch source
     b.fetch("https://example.com/hello-world-1.0.0.tar.gz", 
-            "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+            "blake3:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
     
     // Simple build - just compile a hello world program
     b.run("mkdir -p src");

@@ -18,7 +18,7 @@ fn metadata(m) {
 fn build(b) {
     // Fetch source with verification
     b.fetch("https://github.com/example/complex-app/archive/v2.1.3.tar.gz",
-            "sha256:a665a45920422f9d417e4867efdc4fb8a04a1f3cbc663dda3c5c0c0c1b7e84c5");
+            "blake3:a665a45920422f9d417e4867efdc4fb8a04a1f3cbc663dda3c5c0c0c1b7e84c5");
     
     // Extract and enter source directory
     b.run("tar xzf v2.1.3.tar.gz");

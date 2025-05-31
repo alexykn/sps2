@@ -70,7 +70,7 @@ impl<'v> StarlarkValue<'v> for BuildMethodFunction {
                 // but for now, let's just record a placeholder step
                 self.context.steps.borrow_mut().push(BuildStep::Fetch {
                     url: "placeholder".to_string(),
-                    sha256: "placeholder".to_string(),
+                    blake3: "placeholder".to_string(),
                 });
                 Ok(Value::new_none())
             }
@@ -208,17 +208,17 @@ impl BuildContext {
         self
     }
 
-    /// Fetch a source archive from the given URL with SHA256 verification
+    /// Fetch a source archive from the given URL with BLAKE3 verification
     ///
     /// # Errors
     ///
     /// This method currently does not return errors in this minimal implementation,
     /// but will return errors in the full builder implementation for network failures,
-    /// invalid URLs, or SHA256 verification failures.
-    pub fn fetch(&self, url: &str, sha256: &str) -> anyhow::Result<()> {
+    /// invalid URLs, or BLAKE3 verification failures.
+    pub fn fetch(&self, url: &str, blake3: &str) -> anyhow::Result<()> {
         self.steps.borrow_mut().push(BuildStep::Fetch {
             url: url.to_string(),
-            sha256: sha256.to_string(),
+            blake3: blake3.to_string(),
         });
         Ok(())
     }

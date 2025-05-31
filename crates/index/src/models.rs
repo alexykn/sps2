@@ -33,7 +33,7 @@ pub struct PackageEntry {
 pub struct VersionEntry {
     pub revision: u32,
     pub arch: String,
-    pub sha256: String,
+    pub blake3: String,
     pub download_url: String,
     pub minisig_url: String,
     pub dependencies: DependencyInfo,
@@ -68,7 +68,7 @@ pub struct SbomInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SbomEntry {
     pub url: String,
-    pub sha256: String,
+    pub blake3: String,
 }
 
 impl Default for Index {
@@ -171,9 +171,9 @@ impl Index {
                     .into());
                 }
 
-                if entry.sha256.is_empty() {
+                if entry.blake3.is_empty() {
                     return Err(PackageError::InvalidFormat {
-                        message: format!("missing SHA256 for {name}-{version}"),
+                        message: format!("missing BLAKE3 hash for {name}-{version}"),
                     }
                     .into());
                 }
@@ -254,7 +254,7 @@ mod tests {
         let entry = VersionEntry {
             revision: 1,
             arch: "arm64".to_string(),
-            sha256: "abc123".to_string(),
+            blake3: "abc123".to_string(),
             download_url: "https://example.com/pkg.sp".to_string(),
             minisig_url: "https://example.com/pkg.sp.minisig".to_string(),
             dependencies: DependencyInfo::default(),
@@ -271,7 +271,7 @@ mod tests {
         let bad_entry = VersionEntry {
             revision: 1,
             arch: "x86_64".to_string(), // Not supported
-            sha256: "abc123".to_string(),
+            blake3: "abc123".to_string(),
             download_url: "https://example.com/pkg.sp".to_string(),
             minisig_url: "https://example.com/pkg.sp.minisig".to_string(),
             dependencies: DependencyInfo::default(),
@@ -292,7 +292,7 @@ mod tests {
         let entry = VersionEntry {
             revision: 1,
             arch: "arm64".to_string(),
-            sha256: "def456".to_string(),
+            blake3: "def456".to_string(),
             download_url: "https://cdn.example.com/curl-8.5.0-1.arm64.sp".to_string(),
             minisig_url: "https://cdn.example.com/curl-8.5.0-1.arm64.sp.minisig".to_string(),
             dependencies: DependencyInfo {
@@ -302,7 +302,7 @@ mod tests {
             sbom: Some(SbomInfo {
                 spdx: SbomEntry {
                     url: "https://cdn.example.com/curl-8.5.0-1.arm64.sbom.spdx.json".to_string(),
-                    sha256: "789abc".to_string(),
+                    blake3: "789abc".to_string(),
                 },
                 cyclonedx: None,
             }),

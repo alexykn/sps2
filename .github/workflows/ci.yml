@@ -11,6 +11,19 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  msrv:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install minimum supported Rust version
+        run: |
+          rustup toolchain install 1.86.0 --profile minimal
+          rustup override set 1.86.0
+      - name: Check with MSRV
+        run: cargo +1.86.0 check --workspace --all-features
+      - name: Test with MSRV
+        run: cargo +1.86.0 test --workspace
+
   test:
     name: Test
     runs-on: macos-latest

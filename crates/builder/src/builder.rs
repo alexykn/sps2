@@ -346,8 +346,8 @@ impl Builder {
         use sps2_package::BuildStep;
 
         match step {
-            BuildStep::Fetch { url, sha256 } => {
-                api.fetch(url, sha256).await?;
+            BuildStep::Fetch { url, blake3 } => {
+                api.fetch(url, blake3).await?;
             }
             BuildStep::Configure { args } => {
                 api.configure(args, environment).await?;

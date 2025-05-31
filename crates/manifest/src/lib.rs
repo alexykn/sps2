@@ -48,9 +48,9 @@ pub struct Dependencies {
 /// SBOM information section
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SbomInfo {
-    pub spdx: String, // SHA256 hash
+    pub spdx: String, // BLAKE3 hash
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cyclonedx: Option<String>, // SHA256 hash
+    pub cyclonedx: Option<String>, // BLAKE3 hash
 }
 
 impl Manifest {

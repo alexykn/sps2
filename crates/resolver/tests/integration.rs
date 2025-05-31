@@ -14,7 +14,7 @@ mod tests {
         let jq_entry = VersionEntry {
             revision: 1,
             arch: "arm64".to_string(),
-            sha256: "jq_hash".to_string(),
+            blake3: "jq_hash".to_string(),
             download_url: "https://example.com/jq-1.7.0.sp".to_string(),
             minisig_url: "https://example.com/jq-1.7.0.sp.minisig".to_string(),
             dependencies: DependencyInfo {
@@ -31,7 +31,7 @@ mod tests {
         let curl_entry = VersionEntry {
             revision: 1,
             arch: "arm64".to_string(),
-            sha256: "curl_hash".to_string(),
+            blake3: "curl_hash".to_string(),
             download_url: "https://example.com/curl-8.5.0.sp".to_string(),
             minisig_url: "https://example.com/curl-8.5.0.sp.minisig".to_string(),
             dependencies: DependencyInfo {
@@ -48,7 +48,7 @@ mod tests {
         let git_entry = VersionEntry {
             revision: 1,
             arch: "arm64".to_string(),
-            sha256: "git_hash".to_string(),
+            blake3: "git_hash".to_string(),
             download_url: "https://example.com/git-2.41.0.sp".to_string(),
             minisig_url: "https://example.com/git-2.41.0.sp.minisig".to_string(),
             dependencies: DependencyInfo {
@@ -75,7 +75,7 @@ mod tests {
             let entry = VersionEntry {
                 revision: 1,
                 arch: "arm64".to_string(),
-                sha256: format!("{name}_hash"),
+                blake3: format!("{name}_hash"),
                 download_url: format!("https://example.com/{name}-{version}.sp"),
                 minisig_url: format!("https://example.com/{name}-{version}.sp.minisig"),
                 dependencies: DependencyInfo::default(),
@@ -252,7 +252,7 @@ mod tests {
         let openssl_301 = VersionEntry {
             revision: 1,
             arch: "arm64".to_string(),
-            sha256: "openssl_301_hash".to_string(),
+            blake3: "openssl_301_hash".to_string(),
             download_url: "https://example.com/openssl-3.0.1.sp".to_string(),
             minisig_url: "https://example.com/openssl-3.0.1.sp.minisig".to_string(),
             dependencies: DependencyInfo::default(),
