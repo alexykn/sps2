@@ -160,146 +160,29 @@ impl Builder {
             },
         );
 
-        // Create build environment with full isolation setup
-        let default_build_root;
-        let build_root = if let Some(root) = &self.config.build_root {
-            root.as_path()
-        } else {
-            default_build_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-            &default_build_root
-        };
-        let mut environment = BuildEnvironment::new(context.clone(), build_root)?;
+        // Setup build environment
+        let mut environment = self.setup_build_environment(&context).await?;
 
-        // Configure environment with resolver, store, and net client if available
-        if let Some(resolver) = &self.resolver {
-            environment = environment.with_resolver(resolver.clone());
-        }
-        if let Some(store) = &self.store {
-            environment = environment.with_store(store.clone());
-        }
-        if let Some(net) = &self.net {
-            environment = environment.with_net(net.clone());
-        }
-
-        // Initialize isolated environment
-        environment.initialize().await?;
-
-        // Verify isolation is properly set up
-        environment.verify_isolation()?;
-
-        Self::send_event(
-            &context,
-            Event::OperationStarted {
-                operation: format!(
-                    "Build environment isolated for {} {}",
-                    context.name, context.version
-                ),
-            },
-        );
-
-        // Execute recipe
-        let (runtime_deps, build_deps, recipe_metadata) =
-            self.execute_recipe(&context, &mut environment).await?;
-
-        // Setup build dependencies in isolated environment
-        if !build_deps.is_empty() {
-            Self::send_event(
-                &context,
-                Event::OperationStarted {
-                    operation: format!("Setting up {} build dependencies", build_deps.len()),
-                },
-            );
-
-            environment.setup_dependencies(build_deps).await?;
-
-            // Log environment summary for debugging
-            let env_summary = environment.environment_summary();
-            Self::send_event(
-                &context,
-                Event::DebugLog {
-                    message: "Build environment configured".to_string(),
-                    context: env_summary,
-                },
-            );
-        }
-
-        // Scan for hardcoded paths (relocatability check)
-        self.scan_for_hardcoded_paths(&context, &environment)
+        // Execute recipe and setup dependencies
+        let (runtime_deps, recipe_metadata) = self
+            .execute_recipe_and_setup_deps(&context, &mut environment)
             .await?;
 
-        // Generate SBOM
-        Self::send_event(
-            &context,
-            Event::OperationStarted {
-                operation: "Generating SBOM".to_string(),
-            },
-        );
-        let sbom_files = self.generate_sbom(&environment).await?;
-        Self::send_event(
-            &context,
-            Event::OperationCompleted {
-                operation: "SBOM generation completed".to_string(),
-                success: true,
-            },
-        );
+        // Run quality checks
+        self.run_quality_checks(&context, &environment).await?;
 
-        // Create manifest
-        Self::send_event(
-            &context,
-            Event::OperationStarted {
-                operation: "Creating package manifest".to_string(),
-            },
-        );
-        let manifest = Self::create_manifest(&context, runtime_deps, &sbom_files, &recipe_metadata);
-        Self::send_event(
-            &context,
-            Event::OperationCompleted {
-                operation: "Package manifest created".to_string(),
-                success: true,
-            },
-        );
+        // Generate SBOM and create manifest
+        let (sbom_files, manifest) = self
+            .generate_sbom_and_manifest(&context, &environment, runtime_deps, &recipe_metadata)
+            .await?;
 
-        // Package the result
-        Self::send_event(
-            &context,
-            Event::OperationStarted {
-                operation: "Creating package archive".to_string(),
-            },
-        );
+        // Create and sign package
         let package_path = self
-            .create_package(&context, &environment, manifest, sbom_files)
+            .create_and_sign_package(&context, &environment, manifest, sbom_files)
             .await?;
-        Self::send_event(
-            &context,
-            Event::OperationCompleted {
-                operation: format!("Package created: {}", package_path.display()),
-                success: true,
-            },
-        );
 
-        // Sign the package if configured
-        self.sign_package(&context, &package_path).await?;
-
-        // Cleanup - skip for debugging
-        // environment.cleanup().await?;
-        Self::send_event(
-            &context,
-            Event::DebugLog {
-                message: format!(
-                    "Skipping cleanup for debugging - check {}",
-                    environment.build_prefix().display()
-                ),
-                context: std::collections::HashMap::new(),
-            },
-        );
-
-        Self::send_event(
-            &context,
-            Event::OperationCompleted {
-                operation: format!("Built {} {}", context.name, context.version),
-                success: true,
-            },
-        );
+        // Cleanup and finalize
+        Self::cleanup_and_finalize(&context, &environment, &package_path);
 
         Ok(BuildResult::new(package_path))
     }
@@ -351,7 +234,7 @@ impl Builder {
         let mut entries = fs::read_dir(recipe_dir).await?;
         while let Some(entry) = entries.next_entry().await? {
             let entry_path = entry.path();
-            if entry_path.is_file() && !entry_path.extension().map_or(false, |ext| ext == "star") {
+            if entry_path.is_file() && entry_path.extension().is_none_or(|ext| ext != "star") {
                 let file_name = entry.file_name();
                 let dest_path = working_dir.join(&file_name);
                 fs::copy(&entry_path, &dest_path).await?;
@@ -576,9 +459,8 @@ impl Builder {
                 return Ok(violations);
             }
 
-            let mut entries = match fs::read_dir(dir).await {
-                Ok(entries) => entries,
-                Err(_) => return Ok(violations), // Directory doesn't exist or can't be read
+            let Ok(mut entries) = fs::read_dir(dir).await else {
+                return Ok(violations);
             };
 
             while let Some(entry) = entries.next_entry().await? {
@@ -911,7 +793,7 @@ impl Builder {
         let mut entries = std::fs::read_dir(dir_path)?.collect::<Result<Vec<_>, _>>()?;
 
         // Sort entries by name for deterministic ordering
-        entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+        entries.sort_by_key(std::fs::DirEntry::file_name);
 
         for entry in entries {
             let file_path = entry.path();
@@ -1042,6 +924,199 @@ impl Builder {
         }
 
         Ok(())
+    }
+
+    /// Setup build environment with full isolation
+    async fn setup_build_environment(
+        &self,
+        context: &BuildContext,
+    ) -> Result<BuildEnvironment, Error> {
+        // Create build environment with full isolation setup
+        let default_build_root;
+        let build_root = if let Some(root) = &self.config.build_root {
+            root.as_path()
+        } else {
+            default_build_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            &default_build_root
+        };
+        let mut environment = BuildEnvironment::new(context.clone(), build_root)?;
+
+        // Configure environment with resolver, store, and net client if available
+        if let Some(resolver) = &self.resolver {
+            environment = environment.with_resolver(resolver.clone());
+        }
+        if let Some(store) = &self.store {
+            environment = environment.with_store(store.clone());
+        }
+        if let Some(net) = &self.net {
+            environment = environment.with_net(net.clone());
+        }
+
+        // Initialize isolated environment
+        environment.initialize().await?;
+
+        // Verify isolation is properly set up
+        environment.verify_isolation()?;
+
+        Self::send_event(
+            context,
+            Event::OperationStarted {
+                operation: format!(
+                    "Build environment isolated for {} {}",
+                    context.name, context.version
+                ),
+            },
+        );
+
+        Ok(environment)
+    }
+
+    /// Execute recipe and setup build dependencies
+    async fn execute_recipe_and_setup_deps(
+        &self,
+        context: &BuildContext,
+        environment: &mut BuildEnvironment,
+    ) -> Result<(Vec<String>, sps2_package::RecipeMetadata), Error> {
+        // Execute recipe
+        let (runtime_deps, build_deps, recipe_metadata) =
+            self.execute_recipe(context, environment).await?;
+
+        // Setup build dependencies in isolated environment
+        if !build_deps.is_empty() {
+            Self::send_event(
+                context,
+                Event::OperationStarted {
+                    operation: format!("Setting up {} build dependencies", build_deps.len()),
+                },
+            );
+
+            environment.setup_dependencies(build_deps).await?;
+
+            // Log environment summary for debugging
+            let env_summary = environment.environment_summary();
+            Self::send_event(
+                context,
+                Event::DebugLog {
+                    message: "Build environment configured".to_string(),
+                    context: env_summary,
+                },
+            );
+        }
+
+        Ok((runtime_deps, recipe_metadata))
+    }
+
+    /// Run quality checks on the built package
+    async fn run_quality_checks(
+        &self,
+        context: &BuildContext,
+        environment: &BuildEnvironment,
+    ) -> Result<(), Error> {
+        // Scan for hardcoded paths (relocatability check)
+        self.scan_for_hardcoded_paths(context, environment).await
+    }
+
+    /// Generate SBOM and create package manifest
+    async fn generate_sbom_and_manifest(
+        &self,
+        context: &BuildContext,
+        environment: &BuildEnvironment,
+        runtime_deps: Vec<String>,
+        recipe_metadata: &sps2_package::RecipeMetadata,
+    ) -> Result<(SbomFiles, Manifest), Error> {
+        // Generate SBOM
+        Self::send_event(
+            context,
+            Event::OperationStarted {
+                operation: "Generating SBOM".to_string(),
+            },
+        );
+        let sbom_files = self.generate_sbom(environment).await?;
+        Self::send_event(
+            context,
+            Event::OperationCompleted {
+                operation: "SBOM generation completed".to_string(),
+                success: true,
+            },
+        );
+
+        // Create manifest
+        Self::send_event(
+            context,
+            Event::OperationStarted {
+                operation: "Creating package manifest".to_string(),
+            },
+        );
+        let manifest = Self::create_manifest(context, runtime_deps, &sbom_files, recipe_metadata);
+        Self::send_event(
+            context,
+            Event::OperationCompleted {
+                operation: "Package manifest created".to_string(),
+                success: true,
+            },
+        );
+
+        Ok((sbom_files, manifest))
+    }
+
+    /// Create package archive and sign it
+    async fn create_and_sign_package(
+        &self,
+        context: &BuildContext,
+        environment: &BuildEnvironment,
+        manifest: Manifest,
+        sbom_files: SbomFiles,
+    ) -> Result<PathBuf, Error> {
+        // Package the result
+        Self::send_event(
+            context,
+            Event::OperationStarted {
+                operation: "Creating package archive".to_string(),
+            },
+        );
+        let package_path = self
+            .create_package(context, environment, manifest, sbom_files)
+            .await?;
+        Self::send_event(
+            context,
+            Event::OperationCompleted {
+                operation: format!("Package created: {}", package_path.display()),
+                success: true,
+            },
+        );
+
+        // Sign the package if configured
+        self.sign_package(context, &package_path).await?;
+
+        Ok(package_path)
+    }
+
+    /// Cleanup build environment and finalize
+    fn cleanup_and_finalize(
+        context: &BuildContext,
+        environment: &BuildEnvironment,
+        _package_path: &Path,
+    ) {
+        // Cleanup - skip for debugging
+        // environment.cleanup().await?;
+        Self::send_event(
+            context,
+            Event::DebugLog {
+                message: format!(
+                    "Skipping cleanup for debugging - check {}",
+                    environment.build_prefix().display()
+                ),
+                context: std::collections::HashMap::new(),
+            },
+        );
+
+        Self::send_event(
+            context,
+            Event::OperationCompleted {
+                operation: format!("Built {} {}", context.name, context.version),
+                success: true,
+            },
+        );
     }
 
     /// Send event if context has event sender

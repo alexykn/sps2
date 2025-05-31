@@ -279,6 +279,7 @@ impl SbomGenerator {
     /// # Errors
     ///
     /// Returns an error if temp directory creation fails or SBOM generation is not deterministic.
+    #[allow(dead_code)]
     async fn verify_deterministic(
         &self,
         sbom_files: &SbomFiles,
@@ -290,7 +291,7 @@ impl SbomGenerator {
         })?;
 
         // Regenerate SPDX and compare
-        if let (Some(_spdx_path), Some(expected_hash)) =
+        if let (Some(spdx_path), Some(expected_hash)) =
             (&sbom_files.spdx_path, &sbom_files.spdx_hash)
         {
             let verify_path = temp_dir.path().join("verify.spdx.json");
@@ -299,7 +300,7 @@ impl SbomGenerator {
             let verify_hash = Hash::hash_file(&verify_path).await?;
             if verify_hash.to_hex() != *expected_hash {
                 // Read both files to help debug the difference
-                let original_content = tokio::fs::read_to_string(_spdx_path)
+                let original_content = tokio::fs::read_to_string(spdx_path)
                     .await
                     .unwrap_or_else(|_| "Failed to read original".to_string());
                 let verify_content = tokio::fs::read_to_string(&verify_path)
@@ -308,8 +309,8 @@ impl SbomGenerator {
 
                 return Err(BuildError::SbomError {
                     message: format!(
-                        "SPDX SBOM generation is not deterministic: expected hash {}, got hash {}. Original length: {}, verify length: {}", 
-                        expected_hash, 
+                        "SPDX SBOM generation is not deterministic: expected hash {}, got hash {}. Original length: {}, verify length: {}",
+                        expected_hash,
                         verify_hash.to_hex(),
                         original_content.len(),
                         verify_content.len()

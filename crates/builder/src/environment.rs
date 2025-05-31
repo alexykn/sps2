@@ -186,6 +186,10 @@ impl BuildEnvironment {
     /// # Errors
     ///
     /// Returns an error if the command fails to execute or exits with a non-zero status.
+    ///
+    /// # Panics
+    ///
+    /// Panics if stdout is not available when capturing command output.
     pub async fn execute_command(
         &self,
         program: &str,
@@ -243,8 +247,8 @@ impl BuildEnvironment {
                 line = stdout_reader.next_line() => {
                     match line {
                         Ok(Some(line)) => {
-                            // Print build output directly to stdout
-                            println!("{}", line);
+                            // Send build output via events
+                            Self::send_build_output(&self.context, &line, false);
                             stdout_lines.push(line);
                         }
                         Ok(None) => break,
@@ -258,11 +262,11 @@ impl BuildEnvironment {
                 line = stderr_reader.next_line() => {
                     match line {
                         Ok(Some(line)) => {
-                            // Print build errors directly to stderr
-                            eprintln!("{}", line);
+                            // Send build errors via events
+                            Self::send_build_output(&self.context, &line, true);
                             stderr_lines.push(line);
                         }
-                        Ok(None) => continue,
+                        Ok(None) => {},
                         Err(e) => {
                             return Err(BuildError::CompileFailed {
                                 message: format!("Failed to read stderr: {e}"),
@@ -442,6 +446,23 @@ impl BuildEnvironment {
     pub fn set_env_var(&mut self, key: String, value: String) -> Result<(), Error> {
         self.env_vars.insert(key, value);
         Ok(())
+    }
+
+    /// Send build output via events instead of direct printing
+    fn send_build_output(context: &BuildContext, line: &str, is_error: bool) {
+        if let Some(sender) = &context.event_sender {
+            let _ = sender.send(if is_error {
+                Event::Error {
+                    message: line.to_string(),
+                    details: Some("Build stderr".to_string()),
+                }
+            } else {
+                Event::BuildStepOutput {
+                    package: context.name.clone(),
+                    line: line.to_string(),
+                }
+            });
+        }
     }
 
     /// Get build prefix path for package
