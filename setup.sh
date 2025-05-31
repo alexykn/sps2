@@ -11,7 +11,6 @@ NC='\033[0m' # No Color
 
 # Configuration
 PM_ROOT="/opt/pm"
-SQLX_DIR="$PM_ROOT/.sqlx"
 DB_PATH="$PM_ROOT/state.sqlite"
 LIVE_DIR="$PM_ROOT/live"
 STORE_DIR="$PM_ROOT/store"
@@ -30,6 +29,21 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
+# Get the user who invoked sudo (or current user if not using sudo)
+if [[ -n "${SUDO_USER}" ]]; then
+    INSTALL_USER="${SUDO_USER}"
+else
+    INSTALL_USER="${USER}"
+fi
+
+echo "Installing for user: $INSTALL_USER"
+
+# Function to set proper ownership
+set_ownership() {
+    local path="$1"
+    chown -R "${INSTALL_USER}:admin" "$path"
+}
+
 # Check architecture
 ARCH=$(uname -m)
 if [[ "$ARCH" != "arm64" && "$ARCH" != "aarch64" ]]; then
@@ -39,7 +53,6 @@ fi
 # Create directory structure
 echo "Creating directory structure..."
 mkdir -p "$PM_ROOT"
-mkdir -p "$SQLX_DIR"
 mkdir -p "$LIVE_DIR/bin"
 mkdir -p "$LIVE_DIR/lib"
 mkdir -p "$LIVE_DIR/share"
@@ -50,7 +63,7 @@ mkdir -p "$BUILD_DIR"
 mkdir -p "$KEYS_DIR"
 mkdir -p "$VULNDB_DIR"
 
-# Set permissions
+# Set permissions and ownership
 chmod 755 "$PM_ROOT"
 chmod 755 "$LIVE_DIR"
 chmod 755 "$STORE_DIR"
@@ -60,57 +73,14 @@ chmod 755 "$BUILD_DIR"
 chmod 755 "$KEYS_DIR"
 chmod 755 "$VULNDB_DIR"
 
-# Initialize SQLite database
-echo "Initializing database..."
-if [[ ! -f "$DB_PATH" ]]; then
-    sqlite3 "$DB_PATH" < crates/state/migrations/0001_initial_schema.sql
-    sqlite3 "$DB_PATH" < crates/state/migrations/0002_add_build_deps.sql
-    echo -e "${GREEN}Database initialized${NC}"
-else
-    echo -e "${YELLOW}Database already exists, skipping initialization${NC}"
-fi
+# Set ownership to user:admin
+set_ownership "$PM_ROOT"
 
-# Prepare SQLx offline queries
-echo "Preparing SQLx offline queries..."
+# Database will be initialized automatically by sqlx migrations on first run
+echo "Database will be initialized on first run..."
+
+# Set DATABASE_URL for runtime queries
 export DATABASE_URL="sqlite://$DB_PATH"
-
-# Create .env file for development
-cat > .env << EOF
-DATABASE_URL=sqlite://$DB_PATH
-SQLX_OFFLINE=true
-SQLX_OFFLINE_DIR=$SQLX_DIR
-EOF
-
-# Run sqlx prepare
-if command -v cargo &> /dev/null && command -v sqlx &> /dev/null; then
-    echo "Running cargo sqlx prepare..."
-    cd crates/state
-    cargo sqlx prepare --database-url "sqlite://$DB_PATH"
-    
-    # Copy prepared queries to system location
-    if [[ -d ".sqlx" ]]; then
-        cp -r .sqlx/* "$SQLX_DIR/"
-        echo -e "${GREEN}SQLx queries prepared${NC}"
-    else
-        echo -e "${YELLOW}Warning: .sqlx directory not created${NC}"
-    fi
-    cd ../..
-else
-    echo -e "${YELLOW}Warning: cargo or sqlx CLI not found. Install with: cargo install sqlx-cli${NC}"
-fi
-
-# Create initial state
-echo "Creating initial state..."
-INITIAL_STATE_ID=$(uuidgen)
-sqlite3 "$DB_PATH" <<EOF
-INSERT INTO states (id, parent_id, operation, created_at, success)
-VALUES ('$INITIAL_STATE_ID', NULL, 'initial', $(date +%s), 1);
-
-INSERT INTO active_state (id, state_id, updated_at)
-VALUES (1, '$INITIAL_STATE_ID', $(date +%s));
-EOF
-
-echo -e "${GREEN}Initial state created: $INITIAL_STATE_ID${NC}"
 
 # Initialize vulnerability database
 echo "Initializing vulnerability database..."
@@ -171,6 +141,7 @@ INSERT INTO metadata (key, value, updated_at) VALUES ('version', '1.0', $(date +
 INSERT INTO metadata (key, value, updated_at) VALUES ('last_update', '0', $(date +%s));
 EOF
 
+    set_ownership "$VULNDB_PATH"
     echo -e "${GREEN}Vulnerability database initialized${NC}"
 else
     echo -e "${YELLOW}Vulnerability database already exists, skipping initialization${NC}"
@@ -186,18 +157,25 @@ if [[ -f "target/release/sps2" ]]; then
     echo "Installing sps2 binary..."
     cp target/release/sps2 "$LIVE_DIR/bin/"
     chmod 755 "$LIVE_DIR/bin/sps2"
+    set_ownership "$LIVE_DIR/bin/sps2"
     echo -e "${GREEN}sps2 installed to $LIVE_DIR/bin/${NC}"
 elif [[ -f "target/debug/sps2" ]]; then
     echo "Installing sps2 binary (debug build)..."
     cp target/debug/sps2 "$LIVE_DIR/bin/"
     chmod 755 "$LIVE_DIR/bin/sps2"
+    set_ownership "$LIVE_DIR/bin/sps2"
     echo -e "${YELLOW}sps2 (debug) installed to $LIVE_DIR/bin/${NC}"
 else
     echo -e "${YELLOW}sps2 binary not found. Run 'cargo build --release' first${NC}"
 fi
 
+# Final ownership check to ensure everything is properly owned
+echo "Ensuring proper ownership for all files..."
+set_ownership "$PM_ROOT"
+
 echo
 echo -e "${GREEN}Setup complete!${NC}"
+echo -e "All files in $PM_ROOT are owned by ${INSTALL_USER}:admin"
 echo
 echo "Next steps:"
 echo "1. Add $LIVE_DIR/bin to your PATH"
