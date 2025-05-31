@@ -1,40 +1,29 @@
 # Test configuration for spsv2
 
 [general]
-# Use smaller parallelism for tests
-parallelism = 2
-output_format = "human"
+default_output = "tty"
+color = "auto"
+parallel_downloads = 2
 
 [paths]
-# Test paths - will be overridden in tests with temp directories
 store_path = "/tmp/test-sps2/store"
-state_db_path = "/tmp/test-sps2/state.sqlite"
-live_path = "/tmp/test-sps2/live"
+state_path = "/tmp/test-sps2/states"
+build_path = "/tmp/test-sps2/build"
 
 [network]
-# Shorter timeouts for tests
-download_timeout = 30
-connection_timeout = 10
-max_retries = 2
-user_agent = "spsv2-test/0.1.0"
-
-[repository]
-# Test repository
-index_url = "https://repo.example.com/index.json"
-max_age_days = 1  # Shorter for tests
+timeout = 30
+retries = 2
+retry_delay = 1
 
 [security]
-# Test keys
-verify_signatures = false  # Disable for tests
-trusted_keys = []
+verify_signatures = false
+allow_unsigned = true
+index_max_age_days = 1
 
 [build]
-# Smaller resource usage for tests
-max_build_jobs = 2
-build_timeout = 300  # 5 minutes
-temp_cleanup = true
+build_jobs = 2
+network_access = true
 
-[logging]
-# Verbose logging for tests
-level = "debug"
-enable_file_logging = true
+[state]
+retention_count = 5
+retention_days = 7

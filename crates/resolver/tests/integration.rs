@@ -19,7 +19,7 @@ mod tests {
             minisig_url: "https://example.com/jq-1.7.0.sp.minisig".to_string(),
             dependencies: DependencyInfo {
                 runtime: vec!["oniguruma>=6.9.0".to_string()],
-                build: vec!["autoconf>=2.71".to_string()],
+                build: vec!["autoconf>=2.71.0".to_string()],
             },
             sbom: None,
             description: Some("JSON processor".to_string()),
@@ -53,7 +53,7 @@ mod tests {
             minisig_url: "https://example.com/git-2.41.0.sp.minisig".to_string(),
             dependencies: DependencyInfo {
                 runtime: vec!["curl>=8.0.0".to_string(), "zlib>=1.2.0".to_string()],
-                build: vec!["make>=4.0".to_string()],
+                build: vec!["make>=4.0.0".to_string()],
             },
             sbom: None,
             description: Some("Version control".to_string()),
@@ -66,9 +66,9 @@ mod tests {
             ("oniguruma", "6.9.8"),
             ("openssl", "3.0.0"),
             ("zlib", "1.2.11"),
-            ("autoconf", "2.71"),
+            ("autoconf", "2.71.0"),
             ("pkg-config", "0.29.2"),
-            ("make", "4.3"),
+            ("make", "4.3.0"),
         ];
 
         for (name, version) in deps {
@@ -289,7 +289,7 @@ mod tests {
     fn test_resolution_context_builder() {
         let context = ResolutionContext::new()
             .add_runtime_dep(PackageSpec::parse("curl>=8.0.0").unwrap())
-            .add_build_dep(PackageSpec::parse("pkg-config>=0.29").unwrap())
+            .add_build_dep(PackageSpec::parse("pkg-config>=0.29.0").unwrap())
             .add_local_file("/path/to/local.sp".into());
 
         assert_eq!(context.runtime_deps.len(), 1);

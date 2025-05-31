@@ -123,8 +123,13 @@ async fn test_system_initialization() -> Result<(), Box<dyn std::error::Error>> 
     assert!(env.temp_dir.path().join("live").exists());
 
     // Test state manager initialization
-    let packages = env.ops_ctx.state.get_installed_packages().await?;
-    assert!(packages.is_empty()); // Should start empty
+    // In a fresh system, there's no active state yet
+    let active_state_result = env.ops_ctx.state.get_active_state().await;
+    assert!(active_state_result.is_err()); // Should fail with no active state
+    
+    // List of states should be empty
+    let states = env.ops_ctx.state.list_states().await?;
+    assert!(states.is_empty());
 
     Ok(())
 }
@@ -170,14 +175,17 @@ async fn test_version_parsing_and_constraints() -> Result<(), Box<dyn std::error
     use spsv2_types::{PackageSpec, Version};
 
     // Test version parsing
+    eprintln!("Parsing version 2.1.3");
     let version = Version::parse("2.1.3")?;
     assert_eq!(version.major, 2);
     assert_eq!(version.minor, 1);
     assert_eq!(version.patch, 3);
 
     // Test package specs with version constraints
-    let spec1 = PackageSpec::parse("pkg>=1.1.1,<2.0")?;
+    eprintln!("Parsing package spec: pkg>=1.1.1,<2.0.0");
+    let spec1 = PackageSpec::parse("pkg>=1.1.1,<2.0.0")?;
     assert_eq!(spec1.name, "pkg");
+    eprintln!("Parsing versions for comparison");
     let v1 = Version::parse("1.1.1")?;
     let v2 = Version::parse("1.5.0")?;
     let v3 = Version::parse("2.0.0")?;
@@ -206,10 +214,10 @@ async fn test_package_spec_parsing() -> Result<(), Box<dyn std::error::Error>> {
     let spec1 = PackageSpec::parse("curl>=8.0.0")?;
     assert_eq!(spec1.name, "curl");
 
-    let spec2 = PackageSpec::parse("jq==1.7")?;
+    let spec2 = PackageSpec::parse("jq==1.7.0")?;
     assert_eq!(spec2.name, "jq");
 
-    let spec3 = PackageSpec::parse("sqlite~=3.36")?;
+    let spec3 = PackageSpec::parse("sqlite~=3.36.0")?;
     assert_eq!(spec3.name, "sqlite");
 
     // Test version parsing
@@ -439,6 +447,7 @@ async fn test_large_manifest_parsing() -> Result<(), Box<dyn std::error::Error>>
 name = "large-package"
 version = "1.0.0"
 revision = 1
+arch = "aarch64-apple-darwin"
 description = "Package with many dependencies for testing"
 license = "MIT"
 

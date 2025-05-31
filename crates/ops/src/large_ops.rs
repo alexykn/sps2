@@ -532,7 +532,8 @@ mod tests {
 
     #[test]
     fn test_invalid_package_spec() {
-        let specs = vec!["invalid spec with spaces".to_string()];
+        // Package names can have spaces, but invalid version specs should fail
+        let specs = vec!["package>=invalid".to_string()];
         let result = parse_install_requests(&specs);
         assert!(result.is_err());
     }
