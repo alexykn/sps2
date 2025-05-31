@@ -22,7 +22,7 @@ mod tests {
 
     #[test]
     fn test_package_spec_with_complex_version() {
-        let spec = PackageSpec::parse("libfoo>=2.0,<3.0,!=2.5.0").unwrap();
+        let spec = PackageSpec::parse("libfoo>=2.0.0,<3.0.0,!=2.5.0").unwrap();
         assert_eq!(spec.name, "libfoo");
 
         let v = Version::parse("2.5.0").unwrap();

@@ -41,6 +41,10 @@ index_max_age_days = 7
 
     #[test]
     fn test_merge_env() {
+        // Clean up any existing env vars first
+        std::env::remove_var("SPSV2_OUTPUT");
+        std::env::remove_var("SPSV2_COLOR");
+        
         std::env::set_var("SPSV2_OUTPUT", "json");
         std::env::set_var("SPSV2_COLOR", "always");
 
@@ -57,6 +61,10 @@ index_max_age_days = 7
 
     #[test]
     fn test_invalid_env_value() {
+        // Clean up any existing env vars first
+        std::env::remove_var("SPSV2_OUTPUT");
+        std::env::remove_var("SPSV2_COLOR");
+        
         std::env::set_var("SPSV2_OUTPUT", "invalid");
 
         let mut config = Config::default();

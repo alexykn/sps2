@@ -10,6 +10,9 @@ mod tests {
     use tokio::fs;
 
     async fn create_test_package(dir: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+        // Create the directory first
+        fs::create_dir_all(dir).await?;
+        
         // Create manifest
         let manifest = ManifestBuilder::new(
             "test-pkg".to_string(),
@@ -17,7 +20,7 @@ mod tests {
             &Arch::Arm64,
         )
         .description("Test package".to_string())
-        .depends_on("libtest>=1.0")
+        .depends_on("libtest>=1.0.0")
         .build()?;
 
         manifest.write_to_file(&dir.join("manifest.toml")).await?;
