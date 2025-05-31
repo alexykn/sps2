@@ -146,6 +146,10 @@ async fn execute_command(
 
         Commands::Cleanup => {
             let result = spsv2_ops::cleanup(&ctx).await?;
+            // Also update the GC timestamp through SystemSetup (best effort)
+            if let Err(e) = crate::setup::SystemSetup::update_gc_timestamp_static().await {
+                tracing::warn!("Failed to update GC timestamp: {}", e);
+            }
             Ok(OperationResult::Success(result))
         }
 

@@ -331,6 +331,12 @@ pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
         })
         .ok();
 
+    // Update GC timestamp after successful cleanup
+    if let Err(e) = update_gc_timestamp().await {
+        // Log but don't fail the cleanup operation
+        eprintln!("Warning: Failed to update GC timestamp: {e}");
+    }
+
     Ok(message)
 }
 
@@ -848,6 +854,21 @@ async fn get_initial_state_changes(ctx: &OpsCtx, state_id: &Uuid) -> Result<Vec<
     }
 
     Ok(changes)
+}
+
+/// Update the GC timestamp after successful cleanup
+async fn update_gc_timestamp() -> Result<(), Error> {
+    let timestamp_path = std::path::Path::new("/opt/pm/.last_gc_timestamp");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    tokio::fs::write(timestamp_path, now.to_string())
+        .await
+        .map_err(|e| spsv2_errors::Error::internal(format!("Failed to write GC timestamp: {e}")))?;
+
+    Ok(())
 }
 
 #[cfg(test)]

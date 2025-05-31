@@ -15,12 +15,13 @@ mod utils {
     use spsv2_state::StateManager;
     use spsv2_store::PackageStore;
 
-    #[allow(dead_code)]
     pub struct TestEnvironment {
         pub temp_dir: TempDir,
         pub config: Config,
         pub ops_ctx: OpsCtx,
+        #[allow(dead_code)] // Used in event-based integration tests
         pub event_sender: EventSender,
+        #[allow(dead_code)] // Used in event-based integration tests
         pub event_receiver: EventReceiver,
     }
 
@@ -95,7 +96,7 @@ mod utils {
             Ok(fs::read_to_string(manifest_path).await?)
         }
 
-        #[allow(dead_code)]
+        #[allow(dead_code)] // Used in Starlark recipe testing
         pub async fn load_test_recipe(
             &self,
             name: &str,

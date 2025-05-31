@@ -164,7 +164,7 @@ pub enum VulnDbCommands {
 
 impl Commands {
     /// Get command name for logging
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Used in tests
     pub fn name(&self) -> &'static str {
         match self {
             Commands::Install { .. } => "install",
@@ -185,17 +185,8 @@ impl Commands {
         }
     }
 
-    /// Check if command requires package arguments
-    #[allow(dead_code)]
-    pub fn requires_packages(&self) -> bool {
-        matches!(self,
-            Commands::Install { packages } |
-            Commands::Uninstall { packages } if packages.is_empty()
-        )
-    }
-
     /// Validate command arguments
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Used in tests
     pub fn validate(&self) -> Result<(), String> {
         match self {
             Commands::Install { packages } if packages.is_empty() => {

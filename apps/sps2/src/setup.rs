@@ -8,7 +8,7 @@ use spsv2_net::NetClient;
 use spsv2_resolver::Resolver;
 use spsv2_state::StateManager;
 use spsv2_store::PackageStore;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
 
 /// System setup and component initialization
@@ -256,6 +256,9 @@ impl SystemSetup {
                     cleaned_packages
                 );
             }
+
+            // Update GC timestamp after successful cleanup
+            self.write_last_gc_timestamp().await?;
         }
 
         // Clean orphaned staging directories
@@ -266,10 +269,23 @@ impl SystemSetup {
 
     /// Check if startup GC should run
     async fn should_run_startup_gc(&self, _state: &StateManager) -> Result<bool, CliError> {
-        // Check if last GC was >7 days ago
-        // For now, just return false since we don't track GC timestamps yet
-        // In a real implementation, this would check a timestamp file or database record
-        Ok(false)
+        // Check if last GC was >7 days ago by reading timestamp file
+        match self.read_last_gc_timestamp().await {
+            Ok(last_gc) => {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+
+                let seven_days_ago = now.saturating_sub(7 * 24 * 60 * 60);
+                Ok(last_gc < seven_days_ago)
+            }
+            Err(_) => {
+                // If we can't read the timestamp file, assume GC is needed
+                debug!("No GC timestamp found, running startup GC");
+                Ok(true)
+            }
+        }
     }
 
     /// Clean up orphaned staging directories
@@ -308,6 +324,61 @@ impl SystemSetup {
         if cleaned > 0 {
             info!("Cleaned {} orphaned staging directories", cleaned);
         }
+
+        Ok(())
+    }
+
+    /// Read the last GC timestamp from file
+    async fn read_last_gc_timestamp(&self) -> Result<u64, CliError> {
+        let timestamp_path = self.gc_timestamp_path();
+        let content = tokio::fs::read_to_string(&timestamp_path)
+            .await
+            .map_err(|e| CliError::Setup(format!("Failed to read GC timestamp: {}", e)))?;
+
+        content
+            .trim()
+            .parse::<u64>()
+            .map_err(|e| CliError::Setup(format!("Invalid GC timestamp format: {}", e)))
+    }
+
+    /// Write the current timestamp as the last GC time
+    async fn write_last_gc_timestamp(&self) -> Result<(), CliError> {
+        let timestamp_path = self.gc_timestamp_path();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        tokio::fs::write(&timestamp_path, now.to_string())
+            .await
+            .map_err(|e| CliError::Setup(format!("Failed to write GC timestamp: {}", e)))?;
+
+        debug!("Updated GC timestamp: {}", now);
+        Ok(())
+    }
+
+    /// Get the path to the GC timestamp file
+    fn gc_timestamp_path(&self) -> PathBuf {
+        Path::new("/opt/pm/.last_gc_timestamp").to_path_buf()
+    }
+
+    /// Update GC timestamp after successful cleanup  
+    #[allow(dead_code)] // Instance method for future use
+    pub async fn update_gc_timestamp(&self) -> Result<(), CliError> {
+        self.write_last_gc_timestamp().await
+    }
+
+    /// Update GC timestamp - public static method for ops crate
+    pub async fn update_gc_timestamp_static() -> Result<(), CliError> {
+        let timestamp_path = std::path::Path::new("/opt/pm/.last_gc_timestamp");
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        tokio::fs::write(timestamp_path, now.to_string())
+            .await
+            .map_err(|e| CliError::Setup(format!("Failed to write GC timestamp: {e}")))?;
 
         Ok(())
     }
