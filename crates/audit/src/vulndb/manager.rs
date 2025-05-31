@@ -61,6 +61,9 @@ impl VulnDbManager {
         // Run migrations to create tables
         self.create_tables(&pool).await?;
 
+        // Initialize metadata if this is a new database
+        self.initialize_metadata(&pool).await?;
+
         self.pool = Some(pool);
         Ok(())
     }
@@ -374,6 +377,42 @@ impl VulnDbManager {
         )
         .execute(pool)
         .await?;
+
+        Ok(())
+    }
+
+    /// Initialize metadata for new database
+    async fn initialize_metadata(&self, pool: &SqlitePool) -> Result<(), Error> {
+        let now = chrono::Utc::now().timestamp();
+        
+        // Check if metadata already exists
+        let existing = sqlx::query("SELECT COUNT(*) as count FROM metadata")
+            .fetch_one(pool)
+            .await
+            .map_err(|e| AuditError::DatabaseError {
+                message: format!("Failed to check metadata: {e}"),
+            })?
+            .get::<i64, _>("count");
+
+        // Only initialize if no metadata exists
+        if existing == 0 {
+            // Set initial metadata
+            sqlx::query("INSERT INTO metadata (key, value, updated_at) VALUES ('version', '1.0', ?)")
+                .bind(now)
+                .execute(pool)
+                .await
+                .map_err(|e| AuditError::DatabaseError {
+                    message: format!("Failed to set version metadata: {e}"),
+                })?;
+
+            sqlx::query("INSERT INTO metadata (key, value, updated_at) VALUES ('last_update', '0', ?)")
+                .bind(now)
+                .execute(pool)
+                .await
+                .map_err(|e| AuditError::DatabaseError {
+                    message: format!("Failed to set last_update metadata: {e}"),
+                })?;
+        }
 
         Ok(())
     }

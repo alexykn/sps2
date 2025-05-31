@@ -82,70 +82,8 @@ echo "Database will be initialized on first run..."
 # Set DATABASE_URL for runtime queries
 export DATABASE_URL="sqlite://$DB_PATH"
 
-# Initialize vulnerability database
-echo "Initializing vulnerability database..."
-VULNDB_PATH="$VULNDB_DIR/vulndb.sqlite"
-if [[ ! -f "$VULNDB_PATH" ]]; then
-    sqlite3 "$VULNDB_PATH" <<'EOSQL'
--- Create metadata table
-CREATE TABLE IF NOT EXISTS metadata (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL,
-    updated_at INTEGER NOT NULL
-);
-
--- Create vulnerabilities table
-CREATE TABLE IF NOT EXISTS vulnerabilities (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    cve_id TEXT UNIQUE NOT NULL,
-    summary TEXT NOT NULL,
-    severity TEXT NOT NULL,
-    cvss_score REAL,
-    published TEXT NOT NULL,
-    modified TEXT NOT NULL,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-
--- Create affected packages table
-CREATE TABLE IF NOT EXISTS affected_packages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    vulnerability_id INTEGER NOT NULL,
-    package_name TEXT NOT NULL,
-    package_type TEXT,
-    affected_version TEXT,
-    fixed_version TEXT,
-    purl TEXT,
-    cpe TEXT,
-    FOREIGN KEY (vulnerability_id) REFERENCES vulnerabilities(id)
-);
-
--- Create references table
-CREATE TABLE IF NOT EXISTS vulnerability_references (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    vulnerability_id INTEGER NOT NULL,
-    url TEXT NOT NULL,
-    reference_type TEXT,
-    FOREIGN KEY (vulnerability_id) REFERENCES vulnerabilities(id)
-);
-
--- Create indexes for performance
-CREATE INDEX IF NOT EXISTS idx_vulnerabilities_cve_id ON vulnerabilities(cve_id);
-CREATE INDEX IF NOT EXISTS idx_affected_packages_name ON affected_packages(package_name);
-CREATE INDEX IF NOT EXISTS idx_affected_packages_purl ON affected_packages(purl);
-CREATE INDEX IF NOT EXISTS idx_affected_packages_cpe ON affected_packages(cpe);
-EOSQL
-
-    # Set initial metadata
-    sqlite3 "$VULNDB_PATH" <<EOF
-INSERT INTO metadata (key, value, updated_at) VALUES ('version', '1.0', $(date +%s));
-INSERT INTO metadata (key, value, updated_at) VALUES ('last_update', '0', $(date +%s));
-EOF
-
-    set_ownership "$VULNDB_PATH"
-    echo -e "${GREEN}Vulnerability database initialized${NC}"
-else
-    echo -e "${YELLOW}Vulnerability database already exists, skipping initialization${NC}"
-fi
+# Vulnerability database will be initialized by Rust app on first use
+echo "Vulnerability database will be initialized on first use..."
 
 # Setup PATH
 echo

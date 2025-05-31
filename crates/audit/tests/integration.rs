@@ -985,7 +985,8 @@ async fn test_database_statistics() -> Result<(), Box<dyn std::error::Error>> {
 
     // Empty database should have zero vulnerabilities
     assert_eq!(stats.vulnerability_count, 0);
-    assert!(stats.last_updated.is_none());
+    // With the unified schema management, metadata is initialized with last_update = "0"
+    assert!(stats.last_updated.is_some());
 
     Ok(())
 }
