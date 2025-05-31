@@ -338,32 +338,65 @@ impl UninstallOperation {
         packages: &[PackageId],
     ) -> Result<(), Error> {
         for package in packages {
-            // Find and remove all hard links belonging to this package
-            // This is a simplified implementation - in practice, we'd need to
-            // track which files belong to which packages more precisely
-            let package_files = Self::get_package_files(package);
+            // Get all files belonging to this package from the database
+            let package_files = self.get_package_files(package).await?;
 
-            for file_path in package_files {
+            // Remove files in reverse order to handle directories properly
+            // (remove files before their parent directories)
+            let mut sorted_files = package_files;
+            sorted_files.sort_by(|a, b| b.cmp(a)); // Reverse lexicographic order
+
+            for file_path in sorted_files {
                 let staging_file = transition.staging_path.join(&file_path);
                 if staging_file.exists() {
-                    tokio::fs::remove_file(&staging_file).await.map_err(|e| {
-                        sps2_errors::InstallError::FilesystemError {
-                            operation: "remove_file".to_string(),
-                            path: staging_file.display().to_string(),
-                            message: e.to_string(),
+                    if staging_file.is_dir() {
+                        // Only remove directory if it's empty
+                        if let Ok(mut entries) = tokio::fs::read_dir(&staging_file).await {
+                            if entries.next_entry().await?.is_none() {
+                                tokio::fs::remove_dir(&staging_file).await.map_err(|e| {
+                                    sps2_errors::InstallError::FilesystemError {
+                                        operation: "remove_dir".to_string(),
+                                        path: staging_file.display().to_string(),
+                                        message: e.to_string(),
+                                    }
+                                })?;
+                            }
                         }
-                    })?;
+                    } else {
+                        tokio::fs::remove_file(&staging_file).await.map_err(|e| {
+                            sps2_errors::InstallError::FilesystemError {
+                                operation: "remove_file".to_string(),
+                                path: staging_file.display().to_string(),
+                                message: e.to_string(),
+                            }
+                        })?;
+                    }
                 }
             }
         }
         Ok(())
     }
 
-    /// Get file paths for a package (placeholder implementation)
-    fn get_package_files(_package: &PackageId) -> Vec<std::path::PathBuf> {
-        // TODO: Implement actual package file tracking
-        // For now return empty list
-        Vec::new()
+    /// Get file paths for a package from the active state
+    async fn get_package_files(
+        &self,
+        package: &PackageId,
+    ) -> Result<Vec<std::path::PathBuf>, Error> {
+        let mut tx = self.state_manager.begin_transaction().await?;
+
+        let file_paths = sps2_state::queries::get_active_package_files(
+            &mut tx,
+            &package.name,
+            &package.version.to_string(),
+        )
+        .await?;
+
+        tx.commit().await?;
+
+        Ok(file_paths
+            .into_iter()
+            .map(std::path::PathBuf::from)
+            .collect())
     }
 
     /// Find orphaned dependencies that can be auto-removed

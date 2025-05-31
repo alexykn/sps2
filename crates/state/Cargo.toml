@@ -15,6 +15,7 @@ sps2-events = { path = "../events" }
 sps2-hash = { path = "../hash" }
 sps2-root = { path = "../root" }
 sps2-resolver = { path = "../resolver" }
+sps2-store = { path = "../store" }
 sqlx = { workspace = true }
 tokio = { workspace = true }
 uuid = { workspace = true }

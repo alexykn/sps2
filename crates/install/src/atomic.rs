@@ -121,12 +121,21 @@ impl AtomicInstaller {
         store_path: &Path,
         package_id: &PackageId,
     ) -> Result<(), Error> {
-        // Create hard links from store to staging directory
+        // Create hard links from store to staging directory and collect file paths
         let staging_prefix = &transition.staging_path;
+        let mut file_paths = Vec::new();
 
         // Walk through store package contents and create hard links
-        self.create_hardlinks_recursive(store_path, staging_prefix)
-            .await?;
+        self.create_hardlinks_recursive_with_tracking(
+            store_path,
+            staging_prefix,
+            store_path,
+            &mut file_paths,
+        )
+        .await?;
+
+        // Begin database transaction to record package and files
+        let mut tx = self.state_manager.begin_transaction().await?;
 
         // Update package references in database
         // TODO: Get actual hash and size from resolved node or store
@@ -136,16 +145,48 @@ impl AtomicInstaller {
             hash: "placeholder-hash".to_string(), // TODO: Get from ResolvedNode
             size: 0,                              // TODO: Get from ResolvedNode
         };
-        self.state_manager.add_package_ref(&package_ref).await?;
+        self.state_manager
+            .add_package_ref_with_tx(&mut tx, &package_ref)
+            .await?;
+
+        // Record all linked files in the package_files table
+        for (file_path, is_directory) in file_paths {
+            sps2_state::queries::add_package_file(
+                &mut tx,
+                &transition.staging_id,
+                &package_id.name,
+                &package_id.version.to_string(),
+                &file_path,
+                is_directory,
+            )
+            .await?;
+        }
+
+        // Commit the transaction
+        tx.commit().await?;
 
         Ok(())
     }
 
-    /// Create hard links recursively
+    /// Create hard links recursively without tracking (for legacy code)
+    #[allow(dead_code)]
     async fn create_hardlinks_recursive(
         &self,
         source: &Path,
         dest_prefix: &Path,
+    ) -> Result<(), Error> {
+        let mut dummy_paths = Vec::new();
+        self.create_hardlinks_recursive_with_tracking(source, dest_prefix, source, &mut dummy_paths)
+            .await
+    }
+
+    /// Create hard links recursively and track file paths
+    async fn create_hardlinks_recursive_with_tracking(
+        &self,
+        source: &Path,
+        dest_prefix: &Path,
+        root_source: &Path,
+        file_paths: &mut Vec<(String, bool)>,
     ) -> Result<(), Error> {
         let mut entries = fs::read_dir(source).await?;
 
@@ -154,10 +195,29 @@ impl AtomicInstaller {
             let file_name = entry.file_name();
             let dest_path = dest_prefix.join(&file_name);
 
+            // Calculate relative path from store root
+            let relative_path = entry_path.strip_prefix(root_source).map_err(|e| {
+                InstallError::FilesystemError {
+                    operation: "calculate_relative_path".to_string(),
+                    path: entry_path.display().to_string(),
+                    message: e.to_string(),
+                }
+            })?;
+
             if entry_path.is_dir() {
                 // Create directory and recurse
                 fs::create_dir_all(&dest_path).await?;
-                Box::pin(self.create_hardlinks_recursive(&entry_path, &dest_path)).await?;
+
+                // Record directory in file tracking
+                file_paths.push((relative_path.display().to_string(), true));
+
+                Box::pin(self.create_hardlinks_recursive_with_tracking(
+                    &entry_path,
+                    &dest_path,
+                    root_source,
+                    file_paths,
+                ))
+                .await?;
             } else {
                 // Create hard link
                 #[cfg(target_os = "macos")]
@@ -165,6 +225,9 @@ impl AtomicInstaller {
                     // Use APFS hard link on macOS
                     Self::create_hard_link(&entry_path, &dest_path)?;
                 }
+
+                // Record file in file tracking
+                file_paths.push((relative_path.display().to_string(), false));
             }
         }
 
@@ -226,19 +289,16 @@ impl AtomicInstaller {
         Ok(())
     }
 
-    /// Atomic rename swap using renameat2 with `RENAME_SWAP`
+    /// Atomic rename swap using `renamex_np` with `RENAME_SWAP`
     async fn atomic_rename_swap(&self, from: &Path, to: &Path) -> Result<(), Error> {
-        #[cfg(target_os = "macos")]
-        {
-            // On macOS, use atomic rename
-            fs::rename(from, to)
-                .await
-                .map_err(|e| InstallError::FilesystemError {
-                    operation: "atomic_swap".to_string(),
-                    path: from.display().to_string(),
-                    message: e.to_string(),
-                })?;
-        }
+        // Use the proper atomic swap implementation from sps2_root
+        sps2_root::atomic_swap(from, to)
+            .await
+            .map_err(|e| InstallError::FilesystemError {
+                operation: "atomic_swap".to_string(),
+                path: from.display().to_string(),
+                message: e.to_string(),
+            })?;
         Ok(())
     }
 }

@@ -14,7 +14,7 @@ mod starlark_api;
 
 pub use recipe::{BuildStep, Recipe, RecipeMetadata};
 pub use sandbox::{RecipeEngine, RecipeResult};
-pub use starlark_api::BuildContext;
+pub use starlark_api::{BuildContext, BuildExecutor};
 
 use sps2_errors::Error;
 use std::path::Path;

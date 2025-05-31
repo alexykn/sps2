@@ -4,11 +4,12 @@ use crate::error_helpers::{
     format_build_error, format_eval_error, format_missing_function_error, format_parse_error,
 };
 use crate::recipe::{BuildStep, Recipe, RecipeMetadata};
-use crate::starlark_api::{build_api, parse_metadata, BuildContext};
+use crate::starlark_api::{build_api, parse_metadata, BuildContext, BuildExecutor};
 use sps2_errors::{BuildError, Error};
 use starlark::environment::{Globals, GlobalsBuilder, Module};
 use starlark::eval::Evaluator;
 use starlark::syntax::{AstModule, Dialect};
+use std::sync::Arc;
 
 /// Result of recipe execution
 #[derive(Debug)]
@@ -40,6 +41,32 @@ impl RecipeEngine {
     /// - Required metadata fields are missing or invalid
     /// - The module cannot be frozen after evaluation
     pub fn execute(&self, recipe: &Recipe) -> Result<RecipeResult, Error> {
+        self.execute_internal(recipe, None)
+    }
+
+    /// Execute a recipe with executor integration
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The recipe fails to parse as valid Starlark
+    /// - The recipe execution fails (missing functions, runtime errors, etc.)
+    /// - Required metadata fields are missing or invalid
+    /// - The module cannot be frozen after evaluation
+    /// - The executor operations fail
+    pub fn execute_with_executor(
+        &self,
+        recipe: &Recipe,
+        executor: &Arc<tokio::sync::Mutex<dyn BuildExecutor>>,
+    ) -> Result<RecipeResult, Error> {
+        self.execute_internal(recipe, Some(executor))
+    }
+
+    fn execute_internal(
+        &self,
+        recipe: &Recipe,
+        executor: Option<&Arc<tokio::sync::Mutex<dyn BuildExecutor>>>,
+    ) -> Result<RecipeResult, Error> {
         // Parse the recipe
         let recipe_path = recipe.path.as_deref().unwrap_or("recipe.star");
         let ast = AstModule::parse(recipe_path, recipe.content.clone(), &Dialect::Standard)
@@ -88,11 +115,13 @@ impl RecipeEngine {
 
         // Create build context with metadata
         let jobs = i32::try_from(num_cpus::get()).unwrap_or(1);
-        let context = BuildContext::new(
-            "/opt/pm/build".to_string(), // This will be replaced by builder
-            jobs,
-        )
-        .with_metadata(metadata.name.clone(), metadata.version.clone());
+        let context = if let Some(exec) = &executor {
+            BuildContext::with_executor("/opt/pm/build".to_string(), jobs, (**exec).clone())
+                .with_metadata(metadata.name.clone(), metadata.version.clone())
+        } else {
+            BuildContext::new("/opt/pm/build".to_string(), jobs)
+                .with_metadata(metadata.name.clone(), metadata.version.clone())
+        };
 
         // Allocate the context in the build module's heap
         let context_value = build_module.heap().alloc(context.clone());

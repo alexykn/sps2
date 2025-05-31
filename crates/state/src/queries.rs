@@ -111,8 +111,8 @@ pub async fn add_package(
     Ok(result.last_insert_rowid())
 }
 
-/// Increment store reference count
-pub async fn increment_store_ref(
+/// Get or create store reference
+pub async fn get_or_create_store_ref(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &str,
     size: i64,
@@ -120,11 +120,26 @@ pub async fn increment_store_ref(
     let now = chrono::Utc::now().timestamp();
 
     query!(
-        "INSERT INTO store_refs (hash, ref_count, size, created_at) VALUES (?, 1, ?, ?)
-         ON CONFLICT(hash) DO UPDATE SET ref_count = ref_count + 1",
+        "INSERT INTO store_refs (hash, ref_count, size, created_at) VALUES (?, 0, ?, ?)
+         ON CONFLICT(hash) DO NOTHING",
         hash,
         size,
         now
+    )
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(())
+}
+
+/// Increment store reference count
+pub async fn increment_store_ref(
+    tx: &mut Transaction<'_, Sqlite>,
+    hash: &str,
+) -> Result<(), Error> {
+    query!(
+        "UPDATE store_refs SET ref_count = ref_count + 1 WHERE hash = ?",
+        hash
     )
     .execute(&mut **tx)
     .await?;
@@ -168,10 +183,13 @@ pub async fn get_unreferenced_store_items(
 /// Delete unreferenced store items
 pub async fn delete_unreferenced_store_items(
     tx: &mut Transaction<'_, Sqlite>,
+    hash_strings: &[String],
 ) -> Result<(), Error> {
-    query!("DELETE FROM store_refs WHERE ref_count <= 0")
-        .execute(&mut **tx)
-        .await?;
+    for hash in hash_strings {
+        query!("DELETE FROM store_refs WHERE hash = ?", hash)
+            .execute(&mut **tx)
+            .await?;
+    }
 
     Ok(())
 }
@@ -295,4 +313,85 @@ pub async fn get_parent_state_id(
         },
         None => Ok(None),
     }
+}
+
+/// Add a file to the package_files table
+pub async fn add_package_file(
+    tx: &mut Transaction<'_, Sqlite>,
+    state_id: &StateId,
+    package_name: &str,
+    package_version: &str,
+    file_path: &str,
+    is_directory: bool,
+) -> Result<(), Error> {
+    let id_str = state_id.to_string();
+
+    query!(
+        "INSERT INTO package_files (state_id, package_name, package_version, file_path, is_directory)
+         VALUES (?, ?, ?, ?, ?)",
+        id_str,
+        package_name,
+        package_version,
+        file_path,
+        is_directory
+    )
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(())
+}
+
+/// Get all files for a package in a specific state
+pub async fn get_package_files(
+    tx: &mut Transaction<'_, Sqlite>,
+    state_id: &StateId,
+    package_name: &str,
+    package_version: &str,
+) -> Result<Vec<String>, Error> {
+    let id_str = state_id.to_string();
+
+    let files = query!(
+        "SELECT file_path FROM package_files 
+         WHERE state_id = ? AND package_name = ? AND package_version = ?
+         ORDER BY file_path",
+        id_str,
+        package_name,
+        package_version
+    )
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(files.into_iter().map(|r| r.file_path).collect())
+}
+
+/// Get all files for a package in the active state
+pub async fn get_active_package_files(
+    tx: &mut Transaction<'_, Sqlite>,
+    package_name: &str,
+    package_version: &str,
+) -> Result<Vec<String>, Error> {
+    let active_state = get_active_state(tx).await?;
+    get_package_files(tx, &active_state, package_name, package_version).await
+}
+
+/// Remove all files for a package from package_files table
+pub async fn remove_package_files(
+    tx: &mut Transaction<'_, Sqlite>,
+    state_id: &StateId,
+    package_name: &str,
+    package_version: &str,
+) -> Result<(), Error> {
+    let id_str = state_id.to_string();
+
+    query!(
+        "DELETE FROM package_files 
+         WHERE state_id = ? AND package_name = ? AND package_version = ?",
+        id_str,
+        package_name,
+        package_version
+    )
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(())
 }

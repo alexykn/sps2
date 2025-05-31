@@ -190,21 +190,25 @@ impl StateManager {
             queries::decrement_store_ref(&mut tx, &pkg.hash).await?;
         }
 
-        // Atomic filesystem swap
+        // Archive current live state before swapping
         let old_live_backup = self.state_path.join(transition.from.to_string());
-        sps2_root::atomic_rename(&self.live_path, &transition.staging_path).await?;
+
+        // Remove old backup if it exists
+        if sps2_root::exists(&old_live_backup).await {
+            sps2_root::remove_dir_all(&old_live_backup).await?;
+        }
+
+        // Move current live to backup, then staging to live
+        if sps2_root::exists(&self.live_path).await {
+            tokio::fs::rename(&self.live_path, &old_live_backup).await?;
+        }
+        tokio::fs::rename(&transition.staging_path, &self.live_path).await?;
 
         // Update active state
         queries::set_active_state(&mut tx, &transition.to).await?;
 
         // Commit transaction
         tx.commit().await?;
-
-        // Archive old state
-        if sps2_root::exists(&old_live_backup).await {
-            sps2_root::remove_dir_all(&old_live_backup).await?;
-        }
-        tokio::fs::rename(&transition.staging_path, &old_live_backup).await?;
 
         self.tx.emit(Event::StateTransition {
             from: transition.from,
@@ -260,8 +264,8 @@ impl StateManager {
             .into());
         }
 
-        // Atomic swap
-        sps2_root::atomic_rename(&target_path, &self.live_path).await?;
+        // Atomic swap - exchange target state with live
+        sps2_root::atomic_swap(&target_path, &self.live_path).await?;
 
         // Update database
         let mut tx = self.pool.begin().await?;
@@ -390,6 +394,51 @@ impl StateManager {
         Ok(hashes)
     }
 
+    /// Garbage collect unreferenced store items with file removal
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations or file removal fails.
+    pub async fn gc_store_with_removal(
+        &self,
+        store: &sps2_store::PackageStore,
+    ) -> Result<usize, Error> {
+        self.tx.emit(Event::OperationStarted {
+            operation: "Garbage collection".to_string(),
+        });
+
+        let mut tx = self.pool.begin().await?;
+
+        // Get unreferenced items
+        let unreferenced = queries::get_unreferenced_store_items(&mut tx).await?;
+        let hashes: Vec<Hash> = unreferenced.iter().map(StoreRef::hash).collect();
+        let hash_strings: Vec<String> = unreferenced.iter().map(|item| item.hash.clone()).collect();
+
+        let packages_removed = unreferenced.len();
+
+        // Delete from database first
+        queries::delete_unreferenced_store_items(&mut tx, &hash_strings).await?;
+        tx.commit().await?;
+
+        // Remove files from store
+        for hash in &hashes {
+            if let Err(e) = store.remove_package(hash).await {
+                // Log warning but continue with other packages
+                self.tx.emit(Event::Warning {
+                    message: format!("Failed to remove package {}: {e}", hash.to_hex()),
+                    context: None,
+                });
+            }
+        }
+
+        self.tx.emit(Event::OperationCompleted {
+            operation: "Garbage collection".to_string(),
+            success: true,
+        });
+
+        Ok(packages_removed)
+    }
+
     /// Add package reference
     ///
     /// # Errors
@@ -414,6 +463,34 @@ impl StateManager {
         queries::increment_store_ref(&mut tx, &package_ref.hash).await?;
 
         tx.commit().await?;
+        Ok(())
+    }
+
+    /// Add package reference with an existing transaction
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations fail.
+    pub async fn add_package_ref_with_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        package_ref: &PackageRef,
+    ) -> Result<(), Error> {
+        // Add package to the state
+        queries::add_package(
+            tx,
+            &package_ref.state_id,
+            &package_ref.package_id.name,
+            &package_ref.package_id.version.to_string(),
+            &package_ref.hash,
+            package_ref.size,
+        )
+        .await?;
+
+        // Ensure store reference exists and increment it
+        queries::get_or_create_store_ref(tx, &package_ref.hash, package_ref.size).await?;
+        queries::increment_store_ref(tx, &package_ref.hash).await?;
+
         Ok(())
     }
 

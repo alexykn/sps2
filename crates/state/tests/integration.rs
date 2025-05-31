@@ -19,6 +19,14 @@ mod tests {
             .await
             .unwrap();
 
+        // Add some initial content to the live directory so cloning works
+        tokio::fs::write(
+            temp_dir.path().join("live").join("initial.txt"),
+            b"initial state",
+        )
+        .await
+        .unwrap();
+
         // Setup database and create initial state manually
         let pool = create_pool(&db_path).await.unwrap();
         run_migrations(&pool).await.unwrap();

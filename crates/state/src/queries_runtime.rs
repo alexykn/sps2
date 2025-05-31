@@ -487,3 +487,100 @@ pub async fn get_parent_state_id(
         None => Ok(None),
     }
 }
+
+/// Add a file to the `package_files` table
+///
+/// # Errors
+///
+/// Returns an error if the database insert fails.
+pub async fn add_package_file(
+    tx: &mut Transaction<'_, Sqlite>,
+    state_id: &StateId,
+    package_name: &str,
+    package_version: &str,
+    file_path: &str,
+    is_directory: bool,
+) -> Result<(), Error> {
+    let id_str = state_id.to_string();
+
+    query(
+        "INSERT INTO package_files (state_id, package_name, package_version, file_path, is_directory)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+    )
+    .bind(id_str)
+    .bind(package_name)
+    .bind(package_version)
+    .bind(file_path)
+    .bind(is_directory)
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(())
+}
+
+/// Get all files for a package in a specific state
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
+pub async fn get_package_files(
+    tx: &mut Transaction<'_, Sqlite>,
+    state_id: &StateId,
+    package_name: &str,
+    package_version: &str,
+) -> Result<Vec<String>, Error> {
+    let id_str = state_id.to_string();
+
+    let rows = query(
+        "SELECT file_path FROM package_files 
+         WHERE state_id = ?1 AND package_name = ?2 AND package_version = ?3
+         ORDER BY file_path",
+    )
+    .bind(id_str)
+    .bind(package_name)
+    .bind(package_version)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(rows.into_iter().map(|r| r.get("file_path")).collect())
+}
+
+/// Get all files for a package in the active state
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
+pub async fn get_active_package_files(
+    tx: &mut Transaction<'_, Sqlite>,
+    package_name: &str,
+    package_version: &str,
+) -> Result<Vec<String>, Error> {
+    let active_state = get_active_state(tx).await?;
+    get_package_files(tx, &active_state, package_name, package_version).await
+}
+
+/// Remove all files for a package from `package_files` table
+///
+/// # Errors
+///
+/// Returns an error if the database delete fails.
+pub async fn remove_package_files(
+    tx: &mut Transaction<'_, Sqlite>,
+    state_id: &StateId,
+    package_name: &str,
+    package_version: &str,
+) -> Result<(), Error> {
+    let id_str = state_id.to_string();
+
+    query(
+        "DELETE FROM package_files 
+         WHERE state_id = ?1 AND package_name = ?2 AND package_version = ?3",
+    )
+    .bind(id_str)
+    .bind(package_name)
+    .bind(package_version)
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(())
+}

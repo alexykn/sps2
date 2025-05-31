@@ -11,12 +11,14 @@ mod builder;
 mod environment;
 mod sbom;
 mod signing;
+mod starlark_bridge;
 
 pub use api::BuilderApi;
 pub use builder::{BuildConfig, Builder};
 pub use environment::{BuildCommandResult, BuildEnvironment, BuildResult};
 pub use sbom::{SbomConfig, SbomFiles, SbomGenerator};
 pub use signing::{PackageSigner, SigningConfig};
+pub use starlark_bridge::StarlarkBridge;
 
 use sps2_events::EventSender;
 use sps2_types::Version;

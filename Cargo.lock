@@ -3486,6 +3486,7 @@ dependencies = [
 name = "sps2-builder"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "minisign",
  "num_cpus",
  "reqwest",
@@ -3691,6 +3692,7 @@ version = "0.1.0"
 dependencies = [
  "allocative",
  "anyhow",
+ "async-trait",
  "num_cpus",
  "serde",
  "sps2-errors",
@@ -3743,6 +3745,7 @@ dependencies = [
  "sps2-hash",
  "sps2-resolver",
  "sps2-root",
+ "sps2-store",
  "sps2-types",
  "sqlx",
  "tempfile",

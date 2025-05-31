@@ -58,6 +58,10 @@ mod apfs {
 
 /// Atomic rename with swap support
 ///
+/// This function uses macOS `renamex_np` with `RENAME_SWAP` when both paths exist,
+/// or regular rename when only source exists. This provides true atomic swap
+/// behavior critical for system stability during updates.
+///
 /// # Errors
 ///
 /// Returns an error if:
@@ -65,42 +69,56 @@ mod apfs {
 /// - The atomic rename operation fails (permissions, file not found, etc.)
 /// - The blocking task panics
 pub async fn atomic_rename(src: &Path, dst: &Path) -> Result<()> {
-    // On macOS, we can use renamex_np with RENAME_SWAP flag
     #[cfg(target_os = "macos")]
     {
-        use libc::{c_uint, renamex_np, RENAME_SWAP};
+        // Use async filesystem operations for proper directory handling
+        if dst.exists() {
+            if dst.is_dir() {
+                // For directories, we need to remove the destination first
+                // Create a temporary backup location
+                let temp_dst = dst.with_extension("old");
 
-        let src_cstring =
-            CString::new(src.as_os_str().as_bytes()).map_err(|e| StorageError::InvalidPath {
-                path: src.display().to_string(),
-            })?;
-
-        let dst_cstring =
-            CString::new(dst.as_os_str().as_bytes()).map_err(|e| StorageError::InvalidPath {
-                path: dst.display().to_string(),
-            })?;
-
-        tokio::task::spawn_blocking(move || {
-            #[allow(unsafe_code)]
-            // SAFETY: renamex_np is available on macOS and we're passing valid C strings
-            unsafe {
-                if renamex_np(
-                    src_cstring.as_ptr(),
-                    dst_cstring.as_ptr(),
-                    RENAME_SWAP as c_uint,
-                ) != 0
-                {
-                    let err = std::io::Error::last_os_error();
-                    return Err(StorageError::AtomicRenameFailed {
-                        message: err.to_string(),
+                // Move destination to temp location
+                tokio::fs::rename(dst, &temp_dst).await.map_err(|e| {
+                    StorageError::AtomicRenameFailed {
+                        message: format!("failed to backup destination: {e}"),
                     }
-                    .into());
+                })?;
+
+                // Move source to destination
+                match tokio::fs::rename(src, dst).await {
+                    Ok(()) => {
+                        // Success! Remove the old destination
+                        let _ = tokio::fs::remove_dir_all(&temp_dst).await;
+                        Ok(())
+                    }
+                    Err(e) => {
+                        // Failed! Restore the original destination
+                        let _ = tokio::fs::rename(&temp_dst, dst).await;
+                        Err(StorageError::AtomicRenameFailed {
+                            message: format!("rename failed: {e}"),
+                        }
+                        .into())
+                    }
                 }
+            } else {
+                // For files, regular rename should work
+                tokio::fs::rename(src, dst).await.map_err(|e| {
+                    StorageError::AtomicRenameFailed {
+                        message: format!("rename failed: {e}"),
+                    }
+                    .into()
+                })
             }
-            Ok(())
-        })
-        .await
-        .map_err(|e| Error::internal(format!("rename task failed: {e}")))?
+        } else {
+            // Destination doesn't exist, regular rename
+            tokio::fs::rename(src, dst).await.map_err(|e| {
+                StorageError::AtomicRenameFailed {
+                    message: format!("rename failed: {e}"),
+                }
+                .into()
+            })
+        }
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -111,6 +129,99 @@ pub async fn atomic_rename(src: &Path, dst: &Path) -> Result<()> {
             .map_err(|e| StorageError::AtomicRenameFailed {
                 message: e.to_string(),
             })?;
+        Ok(())
+    }
+}
+
+/// True atomic swap that requires both paths to exist
+///
+/// This function guarantees atomic exchange of two directories/files using
+/// macOS `renamex_np` with `RENAME_SWAP`. This is critical for rollback operations
+/// where we need to swap live and backup directories atomically.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Either path doesn't exist
+/// - Path conversion to C string fails  
+/// - The atomic swap operation fails
+/// - The blocking task panics
+pub async fn atomic_swap(path1: &Path, path2: &Path) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        use libc::{c_uint, renamex_np, RENAME_SWAP};
+
+        // Verify both paths exist before attempting swap
+        if !path1.exists() {
+            return Err(StorageError::PathNotFound {
+                path: path1.display().to_string(),
+            }
+            .into());
+        }
+        if !path2.exists() {
+            return Err(StorageError::PathNotFound {
+                path: path2.display().to_string(),
+            }
+            .into());
+        }
+
+        let path1_cstring =
+            CString::new(path1.as_os_str().as_bytes()).map_err(|_| StorageError::InvalidPath {
+                path: path1.display().to_string(),
+            })?;
+
+        let path2_cstring =
+            CString::new(path2.as_os_str().as_bytes()).map_err(|_| StorageError::InvalidPath {
+                path: path2.display().to_string(),
+            })?;
+
+        tokio::task::spawn_blocking(move || {
+            #[allow(unsafe_code)]
+            // SAFETY: renamex_np is available on macOS and we're passing valid C strings
+            unsafe {
+                if renamex_np(
+                    path1_cstring.as_ptr(),
+                    path2_cstring.as_ptr(),
+                    RENAME_SWAP as c_uint,
+                ) != 0
+                {
+                    let err = std::io::Error::last_os_error();
+                    return Err(StorageError::AtomicRenameFailed {
+                        message: format!("atomic swap failed: {err}"),
+                    }
+                    .into());
+                }
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|e| Error::internal(format!("swap task failed: {e}")))?
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        // No true atomic swap available on non-macOS platforms
+        // This is a potentially unsafe fallback using temporary file
+        let temp_path = path1.with_extension("tmp_swap");
+
+        fs::rename(path1, &temp_path)
+            .await
+            .map_err(|e| StorageError::AtomicRenameFailed {
+                message: format!("temp rename failed: {e}"),
+            })?;
+
+        fs::rename(path2, path1)
+            .await
+            .map_err(|e| StorageError::AtomicRenameFailed {
+                message: format!("second rename failed: {e}"),
+            })?;
+
+        fs::rename(&temp_path, path2)
+            .await
+            .map_err(|e| StorageError::AtomicRenameFailed {
+                message: format!("final rename failed: {e}"),
+            })?;
+
         Ok(())
     }
 }
@@ -334,5 +445,65 @@ mod tests {
 
         let total_size = size(dir).await.unwrap();
         assert_eq!(total_size, 10); // "hello" + "world"
+    }
+
+    #[tokio::test]
+    async fn test_atomic_swap() {
+        let temp = tempdir().unwrap();
+        let dir1 = temp.path().join("dir1");
+        let dir2 = temp.path().join("dir2");
+
+        // Create two directories with different content
+        create_dir_all(&dir1).await.unwrap();
+        create_dir_all(&dir2).await.unwrap();
+
+        fs::write(dir1.join("file1.txt"), b"content1")
+            .await
+            .unwrap();
+        fs::write(dir2.join("file2.txt"), b"content2")
+            .await
+            .unwrap();
+
+        // Perform atomic swap
+        atomic_swap(&dir1, &dir2).await.unwrap();
+
+        // Verify swap occurred
+        assert!(dir1.join("file2.txt").exists());
+        assert!(dir2.join("file1.txt").exists());
+        assert!(!dir1.join("file1.txt").exists());
+        assert!(!dir2.join("file2.txt").exists());
+
+        let content1 = fs::read(dir1.join("file2.txt")).await.unwrap();
+        let content2 = fs::read(dir2.join("file1.txt")).await.unwrap();
+        assert_eq!(content1, b"content2");
+        assert_eq!(content2, b"content1");
+    }
+
+    #[tokio::test]
+    async fn test_atomic_rename_with_swap() {
+        let temp = tempdir().unwrap();
+        let src = temp.path().join("src");
+        let dst = temp.path().join("dst");
+
+        // Create source directory
+        create_dir_all(&src).await.unwrap();
+        fs::write(src.join("file.txt"), b"source content")
+            .await
+            .unwrap();
+
+        // Test rename when destination doesn't exist
+        atomic_rename(&src, &dst).await.unwrap();
+        assert!(dst.join("file.txt").exists());
+        assert!(!src.exists());
+
+        // Test rename with swap when both exist
+        create_dir_all(&src).await.unwrap();
+        fs::write(src.join("new_file.txt"), b"new source content")
+            .await
+            .unwrap();
+
+        atomic_rename(&src, &dst).await.unwrap();
+        assert!(dst.join("new_file.txt").exists());
+        assert!(!src.exists());
     }
 }

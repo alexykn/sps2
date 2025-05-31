@@ -314,7 +314,7 @@ pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
     let cleaned_states = ctx.state.cleanup_old_states(10).await?;
 
     // Run garbage collection on store
-    let cleaned_packages = ctx.store.garbage_collect()?;
+    let cleaned_packages = ctx.state.gc_store_with_removal(&ctx.store).await?;
 
     let duration = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
     let message = format!(

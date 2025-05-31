@@ -14,12 +14,31 @@ use starlark::values::{
 use starlark_derive::{starlark_value, NoSerialize};
 use std::cell::RefCell;
 use std::fmt::{self, Display};
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+/// Trait for actual build operations that can be implemented by the builder crate
+#[async_trait::async_trait]
+pub trait BuildExecutor: Send + Sync + std::fmt::Debug {
+    async fn fetch(&mut self, url: &str, hash: &str) -> Result<PathBuf, Error>;
+    async fn make(&mut self, args: &[String]) -> Result<(), Error>;
+    async fn install(&mut self) -> Result<(), Error>;
+    async fn configure(&mut self, args: &[String]) -> Result<(), Error>;
+    async fn autotools(&mut self, args: &[String]) -> Result<(), Error>;
+    async fn cmake(&mut self, args: &[String]) -> Result<(), Error>;
+    async fn meson(&mut self, args: &[String]) -> Result<(), Error>;
+    async fn cargo(&mut self, args: &[String]) -> Result<(), Error>;
+    async fn apply_patch(&mut self, patch_path: &Path) -> Result<(), Error>;
+}
 
 /// Build method function that can be called from Starlark
 #[derive(Debug, Clone, ProvidesStaticType, NoSerialize, Allocative)]
 pub struct BuildMethodFunction {
     context: BuildContext,
     method_name: String,
+    #[allocative(skip)]
+    executor: Option<Arc<tokio::sync::Mutex<dyn BuildExecutor>>>,
 }
 
 impl Display for BuildMethodFunction {
@@ -44,6 +63,7 @@ impl<'v> StarlarkValue<'v> for BuildMethodFunction {
     ) -> starlark::Result<Value<'v>> {
         // For now, just record the build step without actual argument processing
         // This enables Starlark recipes to work with method calls
+        // TODO: Implement actual executor delegation when needed
         match self.method_name.as_str() {
             "fetch" => {
                 // For a minimal working version, we could extract arguments manually
@@ -144,6 +164,9 @@ pub struct BuildContext {
     // Metadata that can be accessed in build()
     pub name: String,
     pub version: String,
+    // Build executor integration
+    #[allocative(skip)]
+    executor: Option<Arc<tokio::sync::Mutex<dyn BuildExecutor>>>,
 }
 
 impl BuildContext {
@@ -156,6 +179,25 @@ impl BuildContext {
             network_allowed: RefCell::new(false),
             name: String::new(),
             version: String::new(),
+            executor: None,
+        }
+    }
+
+    /// Create a new build context with executor integration
+    #[must_use]
+    pub fn with_executor(
+        prefix: String,
+        jobs: i32,
+        executor: Arc<tokio::sync::Mutex<dyn BuildExecutor>>,
+    ) -> Self {
+        Self {
+            steps: RefCell::new(Vec::new()),
+            prefix,
+            jobs,
+            network_allowed: RefCell::new(false),
+            name: String::new(),
+            version: String::new(),
+            executor: Some(executor),
         }
     }
 
@@ -316,38 +358,47 @@ impl<'v> StarlarkValue<'v> for BuildContext {
             "fetch" => Some(heap.alloc(BuildMethodFunction {
                 context: self.clone(),
                 method_name: "fetch".to_string(),
+                executor: self.executor.clone(),
             })),
             "make" => Some(heap.alloc(BuildMethodFunction {
                 context: self.clone(),
                 method_name: "make".to_string(),
+                executor: self.executor.clone(),
             })),
             "install" => Some(heap.alloc(BuildMethodFunction {
                 context: self.clone(),
                 method_name: "install".to_string(),
+                executor: self.executor.clone(),
             })),
             "configure" => Some(heap.alloc(BuildMethodFunction {
                 context: self.clone(),
                 method_name: "configure".to_string(),
+                executor: self.executor.clone(),
             })),
             "autotools" => Some(heap.alloc(BuildMethodFunction {
                 context: self.clone(),
                 method_name: "autotools".to_string(),
+                executor: self.executor.clone(),
             })),
             "cmake" => Some(heap.alloc(BuildMethodFunction {
                 context: self.clone(),
                 method_name: "cmake".to_string(),
+                executor: self.executor.clone(),
             })),
             "meson" => Some(heap.alloc(BuildMethodFunction {
                 context: self.clone(),
                 method_name: "meson".to_string(),
+                executor: self.executor.clone(),
             })),
             "cargo" => Some(heap.alloc(BuildMethodFunction {
                 context: self.clone(),
                 method_name: "cargo".to_string(),
+                executor: self.executor.clone(),
             })),
             "apply_patch" => Some(heap.alloc(BuildMethodFunction {
                 context: self.clone(),
                 method_name: "apply_patch".to_string(),
+                executor: self.executor.clone(),
             })),
             _ => None,
         }

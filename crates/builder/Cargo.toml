@@ -27,6 +27,7 @@ tempfile = { workspace = true }
 num_cpus = "1.17.0"
 toml = { workspace = true }
 minisign = "0.7.9"
+async-trait = "0.1.83"
 
 [dev-dependencies]
 tempfile = { workspace = true }
