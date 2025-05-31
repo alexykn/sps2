@@ -74,6 +74,8 @@ mod tests {
                 name: "test-pkg".to_string(),
                 version: Version::parse("1.0.0").unwrap(),
             },
+            hash: "test-hash-1234".to_string(),
+            size: 1024,
         };
 
         manager
@@ -112,6 +114,8 @@ mod tests {
                 name: "temp-pkg".to_string(),
                 version: Version::parse("1.0.0").unwrap(),
             },
+            hash: "temp-hash-5678".to_string(),
+            size: 2048,
         };
         manager
             .commit_transition(transition, vec![pkg], vec![])

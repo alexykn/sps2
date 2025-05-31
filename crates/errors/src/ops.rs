@@ -58,4 +58,7 @@ pub enum OpsError {
 
     #[error("state not found: {state_id}")]
     StateNotFound { state_id: uuid::Uuid },
+
+    #[error("repository sync failed: {message}")]
+    RepoSyncFailed { message: String },
 }

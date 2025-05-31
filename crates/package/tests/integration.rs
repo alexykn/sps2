@@ -189,4 +189,63 @@ def build(ctx):
         assert_eq!(result.metadata.name, "env-test");
         assert_eq!(result.metadata.version, "1.0.0");
     }
+
+    #[test]
+    fn test_starlark_method_dispatch() {
+        let recipe_content = r#"
+def metadata():
+    return {
+        "name": "method-test",
+        "version": "1.0.0"
+    }
+
+def build(ctx):
+    # Test method dispatch - this should work with our BuildMethodFunction implementation
+    # These calls will record BuildStep entries in the context
+    ctx.fetch()
+    ctx.configure()
+    ctx.make()
+    ctx.install()
+    ctx.autotools()
+    ctx.cmake()
+    ctx.meson()
+    ctx.cargo()
+    ctx.apply_patch()
+"#;
+
+        let recipe = Recipe::parse(recipe_content).unwrap();
+        let result = execute_recipe(&recipe).unwrap();
+
+        // Verify metadata
+        assert_eq!(result.metadata.name, "method-test");
+        assert_eq!(result.metadata.version, "1.0.0");
+
+        // Verify that build steps were recorded (method dispatch worked)
+        assert_eq!(result.build_steps.len(), 9);
+        
+        // Check that each method call was recorded as the appropriate BuildStep
+        use BuildStep::*;
+        let expected_steps = vec![
+            Fetch { url: "placeholder".to_string(), sha256: "placeholder".to_string() },
+            Configure { args: vec![] },
+            Make { args: vec![] },
+            Install,
+            Autotools { args: vec![] },
+            Cmake { args: vec![] },
+            Meson { args: vec![] },
+            Cargo { args: vec![] },
+            ApplyPatch { path: "placeholder".to_string() },
+        ];
+
+        for (i, expected) in expected_steps.iter().enumerate() {
+            assert_eq!(
+                std::mem::discriminant(&result.build_steps[i]),
+                std::mem::discriminant(expected),
+                "Build step {} should be {:?}, got {:?}",
+                i,
+                expected,
+                result.build_steps[i]
+            );
+        }
+    }
 }

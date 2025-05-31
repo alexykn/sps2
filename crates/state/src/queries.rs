@@ -273,3 +273,26 @@ pub async fn get_state_package_names(
 
     Ok(rows.into_iter().map(|r| r.name).collect())
 }
+
+/// Get parent state ID for a given state
+pub async fn get_parent_state_id(
+    tx: &mut Transaction<'_, Sqlite>,
+    state_id: &StateId,
+) -> Result<Option<StateId>, Error> {
+    let id_str = state_id.to_string();
+    let row = query!("SELECT parent_id FROM states WHERE id = ?", id_str)
+        .fetch_optional(&mut **tx)
+        .await?;
+
+    match row {
+        Some(r) => match r.parent_id {
+            Some(parent_str) => {
+                let parent_uuid = uuid::Uuid::parse_str(&parent_str)
+                    .map_err(|e| Error::internal(format!("invalid parent state ID: {e}")))?;
+                Ok(Some(parent_uuid))
+            }
+            None => Ok(None),
+        },
+        None => Ok(None),
+    }
+}

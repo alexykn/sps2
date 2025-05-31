@@ -173,11 +173,11 @@ impl StateManager {
                 &transition.to,
                 &pkg.package_id.name,
                 &pkg.package_id.version.to_string(),
-                "placeholder_hash", // TODO: Get actual hash from package store
-                0i64,               // TODO: Get actual size from package store
+                &pkg.hash,
+                pkg.size,
             )
             .await?;
-            new_packages.push(("placeholder_hash".to_string(), 0i64));
+            new_packages.push((pkg.hash.clone(), pkg.size));
         }
 
         // Update store reference counts
@@ -186,9 +186,8 @@ impl StateManager {
             queries::increment_store_ref(&mut tx, hash).await?;
         }
 
-        for _pkg in &packages_removed {
-            // TODO: Get actual hash from package store and decrement reference
-            // queries::decrement_store_ref(&mut tx, &hash).await?;
+        for pkg in &packages_removed {
+            queries::decrement_store_ref(&mut tx, &pkg.hash).await?;
         }
 
         // Atomic filesystem swap
@@ -391,13 +390,30 @@ impl StateManager {
         Ok(hashes)
     }
 
-    /// Add package reference (placeholder implementation)
+    /// Add package reference
     ///
     /// # Errors
     ///
-    /// Currently returns `Ok(())` as this is a placeholder implementation.
-    pub fn add_package_ref(&self, _package_ref: &PackageRef) -> Result<(), Error> {
-        // Placeholder implementation
+    /// Returns an error if database operations fail.
+    pub async fn add_package_ref(&self, package_ref: &PackageRef) -> Result<(), Error> {
+        let mut tx = self.pool.begin().await?;
+
+        // Add package to the state
+        queries::add_package(
+            &mut tx,
+            &package_ref.state_id,
+            &package_ref.package_id.name,
+            &package_ref.package_id.version.to_string(),
+            &package_ref.hash,
+            package_ref.size,
+        )
+        .await?;
+
+        // Ensure store reference exists and increment it
+        queries::get_or_create_store_ref(&mut tx, &package_ref.hash, package_ref.size).await?;
+        queries::increment_store_ref(&mut tx, &package_ref.hash).await?;
+
+        tx.commit().await?;
         Ok(())
     }
 
@@ -530,20 +546,19 @@ impl StateManager {
         Ok(self.pool.begin().await?)
     }
 
-    /// Create state with transaction (placeholder implementation)
+    /// Create state with transaction
     ///
     /// # Errors
     ///
-    /// Currently returns `Ok(())` as this is a placeholder implementation.
-    pub fn create_state_with_tx(
+    /// Returns an error if the database insert fails.
+    pub async fn create_state_with_tx(
         &self,
-        _tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-        _state_id: &spsv2_types::StateId,
-        _parent_id: Option<&spsv2_types::StateId>,
-        _operation: &str,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        state_id: &spsv2_types::StateId,
+        parent_id: Option<&spsv2_types::StateId>,
+        operation: &str,
     ) -> Result<(), Error> {
-        // Placeholder implementation
-        Ok(())
+        queries::create_state(tx, state_id, parent_id, operation).await
     }
 
     /// Get parent state ID
@@ -553,12 +568,12 @@ impl StateManager {
     /// Returns an error if database operations fail.
     pub async fn get_parent_state_id(
         &self,
-        _state_id: &spsv2_types::StateId,
+        state_id: &spsv2_types::StateId,
     ) -> Result<Option<spsv2_types::StateId>, Error> {
-        let tx = self.pool.begin().await?;
-        // For now, return None as we need to implement proper state parent tracking
+        let mut tx = self.pool.begin().await?;
+        let parent_id = queries::get_parent_state_id(&mut tx, state_id).await?;
         tx.commit().await?;
-        Ok(None)
+        Ok(parent_id)
     }
 
     /// Verify database consistency

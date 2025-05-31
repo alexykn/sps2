@@ -197,15 +197,100 @@ impl Resolver {
 
     /// Load manifest from local .sp file
     fn load_local_manifest(path: &Path) -> Result<Manifest, Error> {
-        // For now, just return an error - this would need integration with store crate
-        // to extract and read the manifest from the .sp archive
-        Err(PackageError::InvalidFormat {
-            message: format!(
-                "local package loading not yet implemented: {}",
-                path.display()
-            ),
+        // Use async version to handle the file operations
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current()
+                .block_on(async { Self::load_local_manifest_async(path).await })
+        })
+    }
+
+    /// Async helper for loading manifest from local .sp file
+    async fn load_local_manifest_async(path: &Path) -> Result<Manifest, Error> {
+        use tokio::fs;
+        use tokio::process::Command;
+
+        // Create temporary directory for extraction
+        let temp_dir =
+            std::env::temp_dir().join(format!("spsv2_manifest_{}", uuid::Uuid::new_v4().simple()));
+        fs::create_dir_all(&temp_dir).await?;
+
+        // Ensure cleanup on error
+        let _cleanup_guard = scopeguard::guard(&temp_dir, |temp_dir| {
+            if temp_dir.exists() {
+                let _ = std::fs::remove_dir_all(temp_dir);
+            }
+        });
+
+        // Step 1: Decompress .sp file with zstd to get tar file
+        let tar_path = temp_dir.join("package.tar");
+        let zstd_output = Command::new("zstd")
+            .args([
+                "--decompress",
+                "--output",
+                &tar_path.display().to_string(),
+                &path.display().to_string(),
+            ])
+            .output()
+            .await?;
+
+        if !zstd_output.status.success() {
+            return Err(PackageError::InvalidFormat {
+                message: format!(
+                    "failed to decompress .sp file: {}",
+                    String::from_utf8_lossy(&zstd_output.stderr)
+                ),
+            }
+            .into());
         }
-        .into())
+
+        // Step 2: Extract only manifest.toml from tar archive
+        let manifest_content = Self::extract_manifest_from_tar(&tar_path).await?;
+
+        // Step 3: Parse the manifest
+        let manifest = Manifest::from_toml(&manifest_content)?;
+
+        Ok(manifest)
+    }
+
+    /// Extract manifest.toml content from tar archive
+    async fn extract_manifest_from_tar(tar_path: &Path) -> Result<String, Error> {
+        use tokio::process::Command;
+
+        // Use tar to extract just the manifest.toml file and output to stdout
+        let tar_output = Command::new("tar")
+            .args([
+                "--extract",
+                "--file",
+                &tar_path.display().to_string(),
+                "--to-stdout",
+                "manifest.toml",
+            ])
+            .output()
+            .await?;
+
+        if !tar_output.status.success() {
+            return Err(PackageError::InvalidFormat {
+                message: format!(
+                    "failed to extract manifest from tar: {}",
+                    String::from_utf8_lossy(&tar_output.stderr)
+                ),
+            }
+            .into());
+        }
+
+        let content =
+            String::from_utf8(tar_output.stdout).map_err(|_| PackageError::InvalidFormat {
+                message: "manifest.toml contains invalid UTF-8".to_string(),
+            })?;
+
+        if content.trim().is_empty() {
+            return Err(PackageError::InvalidFormat {
+                message: "manifest.toml is empty or missing".to_string(),
+            }
+            .into());
+        }
+
+        Ok(content)
     }
 
     /// Get available versions for a package

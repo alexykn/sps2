@@ -57,6 +57,13 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
         }
     }
 
+    // Get currently installed packages before install to track from_version for updates
+    let installed_before = ctx.state.get_installed_packages().await?;
+    let installed_map: std::collections::HashMap<String, Version> = installed_before
+        .iter()
+        .map(|pkg| (pkg.name.clone(), pkg.version()))
+        .collect();
+
     // Execute installation
     let result = installer.install(install_context).await?;
 
@@ -77,13 +84,11 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
         updated: result
             .updated_packages
             .iter()
-            .map(|pkg| {
-                crate::types::PackageChange {
-                    name: pkg.name.clone(),
-                    from_version: None, // TODO: Get previous version
-                    to_version: Some(pkg.version.clone()),
-                    size: None,
-                }
+            .map(|pkg| crate::types::PackageChange {
+                name: pkg.name.clone(),
+                from_version: installed_map.get(&pkg.name).cloned(),
+                to_version: Some(pkg.version.clone()),
+                size: None,
             })
             .collect(),
         removed: result
@@ -153,6 +158,13 @@ pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRep
         update_context = update_context.add_package(package_name.clone());
     }
 
+    // Get currently installed packages before update to track from_version
+    let installed_before = ctx.state.get_installed_packages().await?;
+    let installed_map: std::collections::HashMap<String, Version> = installed_before
+        .iter()
+        .map(|pkg| (pkg.name.clone(), pkg.version()))
+        .collect();
+
     // Execute update
     let result = installer.update(update_context).await?;
 
@@ -171,13 +183,11 @@ pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRep
         updated: result
             .updated_packages
             .iter()
-            .map(|pkg| {
-                crate::types::PackageChange {
-                    name: pkg.name.clone(),
-                    from_version: None, // TODO: Get previous version
-                    to_version: Some(pkg.version.clone()),
-                    size: None,
-                }
+            .map(|pkg| crate::types::PackageChange {
+                name: pkg.name.clone(),
+                from_version: installed_map.get(&pkg.name).cloned(),
+                to_version: Some(pkg.version.clone()),
+                size: None,
             })
             .collect(),
         removed: result
@@ -247,6 +257,13 @@ pub async fn upgrade(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRe
         update_context = update_context.add_package(package_name.clone());
     }
 
+    // Get currently installed packages before upgrade to track from_version
+    let installed_before = ctx.state.get_installed_packages().await?;
+    let installed_map: std::collections::HashMap<String, Version> = installed_before
+        .iter()
+        .map(|pkg| (pkg.name.clone(), pkg.version()))
+        .collect();
+
     // Execute upgrade
     let result = installer.update(update_context).await?;
 
@@ -265,13 +282,11 @@ pub async fn upgrade(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRe
         updated: result
             .updated_packages
             .iter()
-            .map(|pkg| {
-                crate::types::PackageChange {
-                    name: pkg.name.clone(),
-                    from_version: None, // TODO: Get previous version
-                    to_version: Some(pkg.version.clone()),
-                    size: None,
-                }
+            .map(|pkg| crate::types::PackageChange {
+                name: pkg.name.clone(),
+                from_version: installed_map.get(&pkg.name).cloned(),
+                to_version: Some(pkg.version.clone()),
+                size: None,
             })
             .collect(),
         removed: result

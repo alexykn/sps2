@@ -4,7 +4,7 @@ use crate::BuildContext;
 use spsv2_errors::{BuildError, Error};
 use spsv2_events::Event;
 use spsv2_install::Installer;
-use spsv2_resolver::{DepKind, ResolutionContext, Resolver};
+use spsv2_resolver::{ResolutionContext, Resolver};
 use spsv2_store::PackageStore;
 use spsv2_types::{package::PackageSpec, Version};
 use std::collections::HashMap;
@@ -135,9 +135,8 @@ impl BuildEnvironment {
 
         // Install build dependencies to deps prefix
         for node in resolution.packages_in_order() {
-            if node.deps.iter().any(|edge| edge.kind == DepKind::Build) {
-                self.install_build_dependency(node)?;
-            }
+            // Install all resolved build dependencies to the isolated deps prefix
+            self.install_build_dependency(node).await?;
         }
 
         // Update environment for build deps
@@ -509,7 +508,10 @@ impl BuildEnvironment {
     /// # Errors
     ///
     /// Returns an error if the installer or store is not configured, or if installation fails.
-    fn install_build_dependency(&self, node: &spsv2_resolver::ResolvedNode) -> Result<(), Error> {
+    async fn install_build_dependency(
+        &self,
+        node: &spsv2_resolver::ResolvedNode,
+    ) -> Result<(), Error> {
         let Some(_installer) = &self.installer else {
             return Err(BuildError::MissingBuildDep {
                 name: "installer not configured".to_string(),
@@ -534,16 +536,36 @@ impl BuildEnvironment {
         match &node.action {
             spsv2_resolver::NodeAction::Download => {
                 if let Some(url) = &node.url {
-                    // Download and install the package to deps prefix
-                    // For now, we'll simulate this - in a full implementation,
-                    // this would download the .sp file and extract it to deps_prefix
                     self.send_event(Event::DownloadStarted {
                         url: url.clone(),
                         size: None,
                     });
 
-                    // TODO: Implement actual package download and extraction
-                    // installer.install_to_prefix(url, &self.deps_prefix).await?;
+                    // Download the .sp file to a temporary location
+                    let temp_dir = std::env::temp_dir();
+                    let sp_filename = format!("{}-{}.sp", node.name, node.version);
+                    let temp_sp_path = temp_dir.join(&sp_filename);
+
+                    // Use reqwest to download the file
+                    let response = reqwest::get(url)
+                        .await
+                        .map_err(|_e| BuildError::FetchFailed { url: url.clone() })?;
+
+                    let bytes = response
+                        .bytes()
+                        .await
+                        .map_err(|_| BuildError::FetchFailed { url: url.clone() })?;
+
+                    tokio::fs::write(&temp_sp_path, &bytes).await?;
+
+                    // Extract the .sp file to the deps prefix
+                    self.extract_sp_package(&temp_sp_path, &self.deps_prefix)
+                        .await?;
+
+                    // Clean up temporary file
+                    if temp_sp_path.exists() {
+                        let _ = tokio::fs::remove_file(&temp_sp_path).await;
+                    }
 
                     self.send_event(Event::PackageInstalled {
                         name: node.name.clone(),
@@ -553,10 +575,9 @@ impl BuildEnvironment {
                 }
             }
             spsv2_resolver::NodeAction::Local => {
-                if let Some(_path) = &node.path {
-                    // Install from local .sp file to deps prefix
-                    // TODO: Implement actual local package installation
-                    // installer.install_local_to_prefix(path, &self.deps_prefix).await?;
+                if let Some(path) = &node.path {
+                    // Extract local .sp file to deps prefix
+                    self.extract_sp_package(path, &self.deps_prefix).await?;
 
                     self.send_event(Event::PackageInstalled {
                         name: node.name.clone(),
@@ -565,6 +586,77 @@ impl BuildEnvironment {
                     });
                 }
             }
+        }
+
+        Ok(())
+    }
+
+    /// Extract .sp package to destination directory
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if package extraction fails.
+    async fn extract_sp_package(&self, sp_path: &Path, dest_dir: &Path) -> Result<(), Error> {
+        // Create destination directory
+        fs::create_dir_all(dest_dir).await?;
+
+        // Extract .sp package (compressed tar archive)
+        // First decompress with zstd, then extract with tar
+        let temp_dir = std::env::temp_dir();
+        let tar_filename = format!(
+            "{}.tar",
+            sp_path.file_stem().unwrap_or_default().to_string_lossy()
+        );
+        let temp_tar_path = temp_dir.join(&tar_filename);
+
+        // Decompress with zstd
+        let zstd_output = Command::new("zstd")
+            .args([
+                "--decompress",
+                "--output",
+                &temp_tar_path.display().to_string(),
+                &sp_path.display().to_string(),
+            ])
+            .output()
+            .await?;
+
+        if !zstd_output.status.success() {
+            return Err(BuildError::ExtractionFailed {
+                message: format!(
+                    "zstd decompression failed: {}",
+                    String::from_utf8_lossy(&zstd_output.stderr)
+                ),
+            }
+            .into());
+        }
+
+        // Extract tar archive, only extracting the 'files/' directory to preserve package structure
+        let tar_output = Command::new("tar")
+            .args([
+                "--extract",
+                "--file",
+                &temp_tar_path.display().to_string(),
+                "--directory",
+                &dest_dir.display().to_string(),
+                "--strip-components=1", // Remove 'files/' prefix
+                "files/",
+            ])
+            .output()
+            .await?;
+
+        if !tar_output.status.success() {
+            return Err(BuildError::ExtractionFailed {
+                message: format!(
+                    "tar extraction failed: {}",
+                    String::from_utf8_lossy(&tar_output.stderr)
+                ),
+            }
+            .into());
+        }
+
+        // Clean up temporary tar file
+        if temp_tar_path.exists() {
+            let _ = fs::remove_file(&temp_tar_path).await;
         }
 
         Ok(())

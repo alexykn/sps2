@@ -4,8 +4,11 @@ use crate::{
     types::{Component, Severity, Vulnerability, VulnerabilityMatch},
     vulndb::VulnerabilityDatabase,
 };
+use futures::stream::{FuturesUnordered, StreamExt};
 use serde::{Deserialize, Serialize};
 use spsv2_errors::{AuditError, Error};
+use std::sync::Arc;
+use tokio::sync::Semaphore;
 
 /// Options for vulnerability scanning
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,19 +102,16 @@ impl ScanResult {
 /// CVE scanner
 pub struct AuditScanner {
     /// Scanner configuration
-    #[allow(dead_code)] // Configuration fields reserved for future implementation
     config: ScannerConfig,
 }
 
 /// Scanner configuration
 #[derive(Debug, Clone)]
-struct ScannerConfig {
+pub struct ScannerConfig {
     /// Maximum concurrent scans
-    #[allow(dead_code)] // Will be used when parallel scanning is implemented
-    max_concurrent: usize,
+    pub max_concurrent: usize,
     /// Scan timeout per component
-    #[allow(dead_code)] // Will be used for timeout handling in production scanning
-    component_timeout: std::time::Duration,
+    pub component_timeout: std::time::Duration,
 }
 
 impl Default for ScannerConfig {
@@ -120,6 +120,26 @@ impl Default for ScannerConfig {
             max_concurrent: 10,
             component_timeout: std::time::Duration::from_secs(30),
         }
+    }
+}
+
+impl ScannerConfig {
+    /// Create new scanner configuration
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set maximum concurrent scans
+    pub fn with_max_concurrent(mut self, max_concurrent: usize) -> Self {
+        self.max_concurrent = max_concurrent.max(1); // Ensure at least 1
+        self
+    }
+
+    /// Set component scan timeout
+    pub fn with_component_timeout(mut self, timeout: std::time::Duration) -> Self {
+        self.component_timeout = timeout;
+        self
     }
 }
 
@@ -132,7 +152,13 @@ impl AuditScanner {
         }
     }
 
-    /// Scan components for vulnerabilities
+    /// Create new audit scanner with custom configuration
+    #[must_use]
+    pub fn with_config(config: ScannerConfig) -> Self {
+        Self { config }
+    }
+
+    /// Scan components for vulnerabilities with parallel execution
     pub async fn scan_components(
         &self,
         components: &[Component],
@@ -140,25 +166,90 @@ impl AuditScanner {
         options: &ScanOptions,
     ) -> Result<ScanResult, Error> {
         let start_time = std::time::Instant::now();
-        let mut vulnerabilities = Vec::new();
 
-        // For now, implement a simple sequential scan
-        // In the future, this would be parallelized
+        if components.is_empty() {
+            return Ok(ScanResult {
+                vulnerabilities: Vec::new(),
+                components_scanned: 0,
+                scan_duration: start_time.elapsed(),
+            });
+        }
+
+        // Create a semaphore to limit concurrent scans
+        let semaphore = Arc::new(Semaphore::new(self.config.max_concurrent));
+        let vulndb = Arc::new(vulndb);
+        let scanner = Arc::new(self);
+        let scan_options = Arc::new(options);
+
+        // Create futures for scanning each component
+        let mut scan_futures = FuturesUnordered::new();
+
         for component in components {
-            let matches = self.scan_component(component, vulndb, options).await?;
-            vulnerabilities.extend(matches);
+            let component = component.clone();
+            let semaphore = semaphore.clone();
+            let vulndb = vulndb.clone();
+            let scanner = scanner.clone();
+            let scan_options = scan_options.clone();
+            let timeout = self.config.component_timeout;
+
+            let scan_future = async move {
+                // Acquire semaphore permit to limit concurrency
+                let _permit = semaphore
+                    .acquire()
+                    .await
+                    .map_err(|_| AuditError::ScanError {
+                        message: "Failed to acquire scan permit".to_string(),
+                    })?;
+
+                // Apply timeout to component scan
+                let scan_task = scanner.scan_component(&component, &vulndb, &scan_options);
+
+                match tokio::time::timeout(timeout, scan_task).await {
+                    Ok(scan_result) => scan_result,
+                    Err(_) => Err(AuditError::ScanTimeout {
+                        component: format!(
+                            "{}@{}",
+                            component.identifier.name, component.identifier.version
+                        ),
+                        timeout_seconds: timeout.as_secs(),
+                    }
+                    .into()),
+                }
+            };
+
+            scan_futures.push(scan_future);
+        }
+
+        // Collect all scan results
+        let mut all_vulnerabilities = Vec::new();
+        let mut scan_errors = Vec::new();
+
+        while let Some(scan_result) = scan_futures.next().await {
+            match scan_result {
+                Ok(matches) => all_vulnerabilities.extend(matches),
+                Err(e) => {
+                    // Collect errors but continue scanning other components
+                    scan_errors.push(e);
+                }
+            }
+        }
+
+        // If we have critical scan errors, fail early
+        if !scan_errors.is_empty() && scan_errors.len() == components.len() {
+            // All scans failed - return the first error
+            return Err(scan_errors.into_iter().next().unwrap());
         }
 
         // Filter by confidence threshold
-        vulnerabilities.retain(|v| v.confidence >= options.confidence_threshold);
+        all_vulnerabilities.retain(|v| v.confidence >= options.confidence_threshold);
 
         // Filter by severity threshold
-        vulnerabilities.retain(|v| v.vulnerability.severity >= options.severity_threshold);
+        all_vulnerabilities.retain(|v| v.vulnerability.severity >= options.severity_threshold);
 
         let scan_duration = start_time.elapsed();
 
         let result = ScanResult {
-            vulnerabilities,
+            vulnerabilities: all_vulnerabilities,
             components_scanned: components.len(),
             scan_duration,
         };
@@ -244,12 +335,9 @@ impl AuditScanner {
         Ok(matches)
     }
 
-    /// Check if a version is affected by a vulnerability
+    /// Check if a version is affected by a vulnerability using robust semver parsing
     fn is_version_affected(&self, version: &str, vulnerability: &Vulnerability) -> bool {
-        // Simplified version checking - in practice this would use semver
-        // and handle version ranges properly
-
-        // Check if version is in affected versions
+        // Check exact matches in affected versions list first
         if vulnerability
             .affected_versions
             .contains(&version.to_string())
@@ -257,19 +345,67 @@ impl AuditScanner {
             return true;
         }
 
-        // Check if version is before any fixed version
-        for fixed_version in &vulnerability.fixed_versions {
-            if let (Ok(current), Ok(fixed)) = (
-                semver::Version::parse(version),
-                semver::Version::parse(fixed_version),
+        // Check version ranges in affected_versions
+        for affected_version in &vulnerability.affected_versions {
+            if super::vulndb::parser::is_version_affected(
+                version,
+                affected_version,
+                vulnerability.fixed_versions.first().map(String::as_str),
             ) {
-                if current < fixed {
-                    return true;
+                return true;
+            }
+        }
+
+        // If no affected versions specified, check against fixed versions
+        if vulnerability.affected_versions.is_empty() && !vulnerability.fixed_versions.is_empty() {
+            // Try to parse both versions as semver
+            match semver::Version::parse(&self.normalize_version(version)) {
+                Ok(current_version) => {
+                    for fixed_version in &vulnerability.fixed_versions {
+                        match semver::Version::parse(&self.normalize_version(fixed_version)) {
+                            Ok(fixed_ver) => {
+                                if current_version < fixed_ver {
+                                    return true;
+                                }
+                            }
+                            Err(_) => {
+                                // Fall back to string comparison
+                                if version < fixed_version.as_str() {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(_) => {
+                    // Fall back to string comparison for non-semver versions
+                    for fixed_version in &vulnerability.fixed_versions {
+                        if version < fixed_version.as_str() {
+                            return true;
+                        }
+                    }
                 }
             }
         }
 
         false
+    }
+
+    /// Normalize a version string to be semver-compatible
+    fn normalize_version(&self, version: &str) -> String {
+        let trimmed = version.trim();
+
+        // Handle common version formats
+        if trimmed.chars().all(|c| c.is_ascii_digit() || c == '.') {
+            let parts: Vec<&str> = trimmed.split('.').collect();
+            match parts.len() {
+                1 => format!("{}.0.0", parts[0]),
+                2 => format!("{}.{}.0", parts[0], parts[1]),
+                _ => trimmed.to_string(),
+            }
+        } else {
+            trimmed.to_string()
+        }
     }
 
     /// Calculate match confidence (0.0-1.0)

@@ -21,6 +21,7 @@ spsv2-install = { path = "../install" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["fs", "process"] }
+reqwest = { workspace = true }
 # rhai = { workspace = true }  # Removed - handled via spsv2-package now
 tempfile = { workspace = true }
 num_cpus = "1.17.0"

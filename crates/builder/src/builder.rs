@@ -173,7 +173,8 @@ impl Builder {
         );
 
         // Execute recipe
-        let (runtime_deps, build_deps) = self.execute_recipe(&context, &mut environment).await?;
+        let (runtime_deps, build_deps, recipe_metadata) =
+            self.execute_recipe(&context, &mut environment).await?;
 
         // Setup build dependencies in isolated environment
         if !build_deps.is_empty() {
@@ -201,7 +202,7 @@ impl Builder {
         let sbom_files = self.generate_sbom(&environment).await?;
 
         // Create manifest
-        let manifest = Self::create_manifest(&context, runtime_deps, &sbom_files);
+        let manifest = Self::create_manifest(&context, runtime_deps, &sbom_files, &recipe_metadata);
 
         // Package the result
         let package_path = self
@@ -230,7 +231,7 @@ impl Builder {
         &self,
         context: &BuildContext,
         environment: &mut BuildEnvironment,
-    ) -> Result<(Vec<String>, Vec<PackageSpec>), Error> {
+    ) -> Result<(Vec<String>, Vec<PackageSpec>, spsv2_package::RecipeMetadata), Error> {
         // Read recipe file
         let _recipe_content = fs::read_to_string(&context.recipe_path)
             .await
@@ -277,7 +278,7 @@ impl Builder {
         recipe: &spsv2_package::Recipe,
         api: &mut BuilderApi,
         environment: &mut BuildEnvironment,
-    ) -> Result<(Vec<String>, Vec<PackageSpec>), Error> {
+    ) -> Result<(Vec<String>, Vec<PackageSpec>, spsv2_package::RecipeMetadata), Error> {
         // Execute the recipe to get metadata
         let recipe_result = execute_recipe(recipe)?;
 
@@ -313,7 +314,7 @@ impl Builder {
             );
         }
 
-        Ok((runtime_deps, build_deps))
+        Ok((runtime_deps, build_deps, recipe_result.metadata.clone()))
     }
 
     /// Execute a single build step
@@ -387,6 +388,7 @@ impl Builder {
         context: &BuildContext,
         runtime_deps: Vec<String>,
         sbom_files: &SbomFiles,
+        recipe_metadata: &spsv2_package::RecipeMetadata,
     ) -> Manifest {
         use spsv2_manifest::{Dependencies, PackageInfo, SbomInfo};
 
@@ -402,9 +404,9 @@ impl Builder {
                 version: context.version.to_string(),
                 revision: context.revision,
                 arch: context.arch.clone(),
-                description: None, // TODO: Extract from recipe metadata
-                homepage: None,    // TODO: Extract from recipe metadata
-                license: None,     // TODO: Extract from recipe metadata
+                description: recipe_metadata.description.clone(),
+                homepage: recipe_metadata.homepage.clone(),
+                license: recipe_metadata.license.clone(),
             },
             dependencies: Dependencies {
                 runtime: runtime_deps,

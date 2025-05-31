@@ -7,7 +7,7 @@ use crate::{
 use spsv2_errors::{Error, InstallError};
 use spsv2_events::Event;
 use spsv2_resolver::{PackageId, ResolutionContext, Resolver};
-use spsv2_state::StateManager;
+use spsv2_state::{manager::StateTransition, StateManager};
 use spsv2_store::PackageStore;
 use spsv2_types::PackageSpec;
 // HashMap import removed as it's not used in this module
@@ -155,18 +155,13 @@ impl InstallOperation {
 pub struct UninstallOperation {
     /// State manager
     state_manager: StateManager,
-    /// Package store
-    store: PackageStore,
 }
 
 impl UninstallOperation {
     /// Create new uninstall operation
     #[must_use]
-    pub fn new(state_manager: StateManager, store: PackageStore) -> Self {
-        Self {
-            state_manager,
-            store,
-        }
+    pub fn new(state_manager: StateManager, _store: PackageStore) -> Self {
+        Self { state_manager }
     }
 
     /// Execute uninstallation
@@ -232,14 +227,12 @@ impl UninstallOperation {
         }
 
         // Perform atomic uninstallation
-        let _atomic_installer =
-            AtomicInstaller::new(self.state_manager.clone(), self.store.clone());
-
         let package_ids: Vec<spsv2_resolver::PackageId> = packages_to_remove
             .iter()
             .map(|pkg| spsv2_resolver::PackageId::new(pkg.name.clone(), pkg.version()))
             .collect();
-        let result = Self::remove_packages(self, &package_ids[..]);
+
+        let result = self.remove_packages(&package_ids, &context).await?;
 
         Self::send_event(
             self,
@@ -257,23 +250,127 @@ impl UninstallOperation {
         Ok(result)
     }
 
-    /// Remove packages from system
-    fn remove_packages(_self: &Self, packages: &[PackageId]) -> InstallResult {
-        // This is a simplified implementation
-        // In practice, this would:
-        // 1. Create a new staging state
-        // 2. Remove hard links for the specified packages
-        // 3. Update package references in database
-        // 4. Commit the state transition
+    /// Remove packages from system using atomic state transitions
+    async fn remove_packages(
+        &self,
+        packages: &[PackageId],
+        context: &UninstallContext,
+    ) -> Result<InstallResult, Error> {
+        // Begin state transition
+        let transition = self.state_manager.begin_transition("uninstall").await?;
 
-        let state_id = uuid::Uuid::new_v4();
-        let mut result = InstallResult::new(state_id);
+        // Get the packages that will be removed (including autoremove candidates)
+        let mut packages_to_remove = packages.to_vec();
 
-        for package_id in packages {
-            result.add_removed(package_id.clone());
+        if context.autoremove {
+            // Find orphaned dependencies - packages that are only depended on by packages being removed
+            packages_to_remove.extend(Self::find_orphaned_dependencies(packages));
         }
 
-        result
+        // Start database transaction
+        let mut tx = self.state_manager.begin_transaction().await?;
+
+        // Create new state record
+        let new_state_id = transition.to;
+        spsv2_state::queries::create_state(
+            &mut tx,
+            &new_state_id,
+            Some(&transition.from),
+            "uninstall",
+        )
+        .await?;
+
+        // Copy all existing packages to new state except the ones being removed
+        let current_packages =
+            spsv2_state::queries::get_state_packages(&mut tx, &transition.from).await?;
+
+        let mut result = InstallResult::new(new_state_id);
+
+        for package in &current_packages {
+            let should_remove = packages_to_remove
+                .iter()
+                .any(|pkg| pkg.name == package.name);
+
+            if should_remove {
+                // Mark as removed and decrement store references
+                let package_id = spsv2_resolver::PackageId::new(
+                    package.name.clone(),
+                    spsv2_types::Version::parse(&package.version)
+                        .map_err(|e| Error::internal(format!("invalid version: {e}")))?,
+                );
+                result.add_removed(package_id);
+
+                // Decrement store reference for the package hash
+                spsv2_state::queries::decrement_store_ref(&mut tx, &package.hash).await?;
+            } else {
+                // Add to new state
+                spsv2_state::queries::add_package(
+                    &mut tx,
+                    &new_state_id,
+                    &package.name,
+                    &package.version,
+                    &package.hash,
+                    package.size,
+                )
+                .await?;
+            }
+        }
+
+        // Remove hard links from staging directory
+        self.remove_package_hardlinks(&transition, &packages_to_remove)
+            .await?;
+
+        // Commit the state transition
+        self.state_manager
+            .commit_transition(transition, Vec::new(), Vec::new())
+            .await?;
+
+        // Commit database transaction
+        tx.commit().await?;
+
+        Ok(result)
+    }
+
+    /// Remove hard links for packages from staging directory
+    async fn remove_package_hardlinks(
+        &self,
+        transition: &StateTransition,
+        packages: &[PackageId],
+    ) -> Result<(), Error> {
+        for package in packages {
+            // Find and remove all hard links belonging to this package
+            // This is a simplified implementation - in practice, we'd need to
+            // track which files belong to which packages more precisely
+            let package_files = Self::get_package_files(package);
+
+            for file_path in package_files {
+                let staging_file = transition.staging_path.join(&file_path);
+                if staging_file.exists() {
+                    tokio::fs::remove_file(&staging_file).await.map_err(|e| {
+                        spsv2_errors::InstallError::FilesystemError {
+                            operation: "remove_file".to_string(),
+                            path: staging_file.display().to_string(),
+                            message: e.to_string(),
+                        }
+                    })?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Get file paths for a package (placeholder implementation)
+    fn get_package_files(_package: &PackageId) -> Vec<std::path::PathBuf> {
+        // TODO: Implement actual package file tracking
+        // For now return empty list
+        Vec::new()
+    }
+
+    /// Find orphaned dependencies that can be auto-removed
+    fn find_orphaned_dependencies(_removing_packages: &[PackageId]) -> Vec<PackageId> {
+        // TODO: Implement dependency analysis
+        // For now return empty list
+        Vec::new()
     }
 
     /// Send event if context has event sender

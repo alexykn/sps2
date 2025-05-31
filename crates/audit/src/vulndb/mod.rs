@@ -1,7 +1,7 @@
 //! Vulnerability database management module
 
 mod manager;
-mod parser;
+pub(crate) mod parser;
 mod sources;
 
 pub use manager::{DatabaseStatistics, VulnDbManager, VulnerabilityDatabase};

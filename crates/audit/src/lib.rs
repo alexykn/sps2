@@ -1,14 +1,16 @@
 #![deny(clippy::pedantic, unsafe_code)]
 #![allow(clippy::module_name_repetitions)]
-// Placeholder implementation allowances - remove when fully implemented
+// Allow some placeholder implementation issues - will be removed gradually
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::unused_async)]
 #![allow(clippy::unused_self)]
 #![allow(clippy::unnecessary_wraps)]
 #![allow(clippy::must_use_candidate)]
-#![allow(clippy::return_self_not_must_use)]
 #![allow(clippy::cast_possible_truncation)]
 #![allow(clippy::cast_sign_loss)]
+#![allow(clippy::return_self_not_must_use)]
+#![allow(clippy::missing_panics_doc)]
+#![allow(clippy::too_many_lines)]
 
 //! CVE audit system for spsv2 (Future Implementation)
 //!
@@ -22,7 +24,7 @@ mod types;
 mod vulndb;
 
 pub use sbom_parser::SbomParser;
-pub use scanner::{AuditScanner, ScanOptions, ScanResult};
+pub use scanner::{AuditScanner, ScanOptions, ScanResult, ScannerConfig};
 pub use types::{
     AuditReport, Component, ComponentIdentifier, PackageAudit, Severity, Vulnerability,
     VulnerabilityMatch,
@@ -146,6 +148,14 @@ impl AuditSystem {
     /// Update vulnerability database
     pub async fn update_vulnerability_database(&mut self) -> Result<(), Error> {
         self.vulndb.update().await
+    }
+
+    /// Update vulnerability database with event reporting
+    pub async fn update_vulnerability_database_with_events(
+        &mut self,
+        event_sender: Option<&EventSender>,
+    ) -> Result<(), Error> {
+        self.vulndb.update_with_events(event_sender).await
     }
 
     /// Check if vulnerability database exists and is recent

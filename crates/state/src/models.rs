@@ -109,4 +109,6 @@ impl StoreRef {
 pub struct PackageRef {
     pub state_id: uuid::Uuid,
     pub package_id: spsv2_resolver::PackageId,
+    pub hash: String,
+    pub size: i64,
 }

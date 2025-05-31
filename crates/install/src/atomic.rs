@@ -129,11 +129,14 @@ impl AtomicInstaller {
             .await?;
 
         // Update package references in database
+        // TODO: Get actual hash and size from resolved node or store
         let package_ref = PackageRef {
             state_id: transition.staging_id,
             package_id: package_id.clone(),
+            hash: "placeholder-hash".to_string(), // TODO: Get from ResolvedNode
+            size: 0,                              // TODO: Get from ResolvedNode
         };
-        self.state_manager.add_package_ref(&package_ref)?;
+        self.state_manager.add_package_ref(&package_ref).await?;
 
         Ok(())
     }
@@ -363,12 +366,14 @@ impl StateTransition {
         let mut tx = self.state_manager.begin_transaction().await?;
 
         // Record new state in database
-        self.state_manager.create_state_with_tx(
-            &mut tx,
-            &self.staging_id,
-            self.parent_id.as_ref(),
-            "install",
-        )?;
+        self.state_manager
+            .create_state_with_tx(
+                &mut tx,
+                &self.staging_id,
+                self.parent_id.as_ref(),
+                "install",
+            )
+            .await?;
 
         // Atomic filesystem swap
         let old_live_path = PathBuf::from(format!(

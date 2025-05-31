@@ -224,6 +224,31 @@ pub enum Event {
         critical_count: usize,
     },
 
+    // Vulnerability database operations
+    VulnDbUpdateStarting,
+    VulnDbSourceUpdateStarting {
+        source: String,
+    },
+    VulnDbSourceUpdateProgress {
+        source: String,
+        processed: usize,
+        total: Option<usize>,
+    },
+    VulnDbSourceUpdateCompleted {
+        source: String,
+        vulnerabilities_added: usize,
+        duration_ms: u64,
+    },
+    VulnDbSourceUpdateFailed {
+        source: String,
+        error: String,
+    },
+    VulnDbUpdateCompleted {
+        total_vulnerabilities: usize,
+        sources_updated: usize,
+        duration_ms: u64,
+    },
+
     // Install operations
     StateCreating {
         state_id: uuid::Uuid,

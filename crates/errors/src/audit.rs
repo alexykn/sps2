@@ -40,4 +40,13 @@ pub enum AuditError {
 
     #[error("not implemented: {feature}")]
     NotImplemented { feature: String },
+
+    #[error("scan error: {message}")]
+    ScanError { message: String },
+
+    #[error("scan timeout for component {component} after {timeout_seconds} seconds")]
+    ScanTimeout {
+        component: String,
+        timeout_seconds: u64,
+    },
 }

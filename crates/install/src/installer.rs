@@ -195,16 +195,25 @@ impl Installer {
     ///
     /// Returns an error if querying the state database fails.
     pub async fn list_states(&self) -> Result<Vec<StateInfo>, Error> {
-        let states = self.state_manager.list_states().await?;
+        let states = self.state_manager.list_states_detailed().await?;
 
         let mut state_infos = Vec::new();
-        for state_id in states {
-            let packages = self.state_manager.get_state_packages(&state_id).await?;
+        for state in states {
+            let packages = self
+                .state_manager
+                .get_state_packages(&state.state_id())
+                .await?;
+
+            // Parse parent_id if present
+            let parent_id = state
+                .parent_id
+                .as_ref()
+                .and_then(|id| uuid::Uuid::parse_str(id).ok());
 
             state_infos.push(StateInfo {
-                id: state_id,
-                timestamp: chrono::Utc::now(), // Placeholder - would need to fetch from state table
-                parent_id: None,               // Placeholder - would need to fetch from state table
+                id: state.state_id(),
+                timestamp: state.timestamp(),
+                parent_id,
                 package_count: packages.len(),
                 packages: packages
                     .into_iter()
@@ -212,7 +221,7 @@ impl Installer {
                     .map(|name| {
                         spsv2_types::PackageId::new(name, spsv2_types::Version::new(1, 0, 0))
                     })
-                    .collect(), // First 5 packages
+                    .collect(), // First 5 packages as sample
             });
         }
 

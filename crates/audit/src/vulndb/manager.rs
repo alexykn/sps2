@@ -2,6 +2,7 @@
 
 use crate::types::{Severity, Vulnerability};
 use spsv2_errors::{AuditError, Error};
+use spsv2_events::{Event, EventSender, EventSenderExt};
 use sqlx::{Row, SqlitePool};
 use std::path::{Path, PathBuf};
 
@@ -76,50 +77,128 @@ impl VulnDbManager {
         Ok(VulnerabilityDatabase::new(pool.clone()))
     }
 
-    /// Update vulnerability database from sources
+    /// Update vulnerability database from sources with event reporting
     ///
     /// # Panics
     ///
     /// Panics if the pool is `None` after initialization, which should never happen
     /// as `initialize()` sets up the pool or returns an error.
     pub async fn update(&mut self) -> Result<(), Error> {
+        self.update_with_events(None).await
+    }
+
+    /// Update vulnerability database from sources with optional event reporting
+    ///
+    /// # Panics
+    ///
+    /// Panics if the pool is `None` after initialization, which should never happen
+    /// as `initialize()` sets up the pool or returns an error.
+    pub async fn update_with_events(
+        &mut self,
+        event_sender: Option<&EventSender>,
+    ) -> Result<(), Error> {
         if self.pool.is_none() {
             self.initialize().await?;
         }
 
         let pool = self.pool.as_ref().expect("pool should be initialized");
-        let mut _update_count = 0;
+        let start_time = std::time::Instant::now();
+        let mut sources_updated = 0;
+
+        if let Some(sender) = &event_sender {
+            sender.emit(Event::VulnDbUpdateStarting);
+        }
 
         // Update from NVD
+        if let Some(sender) = &event_sender {
+            sender.emit(Event::VulnDbSourceUpdateStarting {
+                source: "NVD".to_string(),
+            });
+        }
+
+        let nvd_start = std::time::Instant::now();
         match update_from_nvd(pool).await {
             Ok(count) => {
-                _update_count += count;
-                // Note: Event logging would be handled by the caller with access to EventSender
+                sources_updated += 1;
+                let duration = nvd_start.elapsed();
+
+                if let Some(sender) = &event_sender {
+                    sender.emit(Event::VulnDbSourceUpdateCompleted {
+                        source: "NVD".to_string(),
+                        vulnerabilities_added: count,
+                        duration_ms: duration.as_millis() as u64,
+                    });
+                }
             }
-            Err(_e) => {
-                // Note: Error logging would be handled by the caller with access to EventSender
+            Err(e) => {
+                if let Some(sender) = &event_sender {
+                    sender.emit(Event::VulnDbSourceUpdateFailed {
+                        source: "NVD".to_string(),
+                        error: e.to_string(),
+                    });
+                }
             }
         }
 
         // Update from OSV
+        if let Some(sender) = &event_sender {
+            sender.emit(Event::VulnDbSourceUpdateStarting {
+                source: "OSV".to_string(),
+            });
+        }
+
+        let osv_start = std::time::Instant::now();
         match update_from_osv(pool).await {
             Ok(count) => {
-                _update_count += count;
-                // Note: Event logging would be handled by the caller with access to EventSender
+                sources_updated += 1;
+                let duration = osv_start.elapsed();
+
+                if let Some(sender) = &event_sender {
+                    sender.emit(Event::VulnDbSourceUpdateCompleted {
+                        source: "OSV".to_string(),
+                        vulnerabilities_added: count,
+                        duration_ms: duration.as_millis() as u64,
+                    });
+                }
             }
-            Err(_e) => {
-                // Note: Error logging would be handled by the caller with access to EventSender
+            Err(e) => {
+                if let Some(sender) = &event_sender {
+                    sender.emit(Event::VulnDbSourceUpdateFailed {
+                        source: "OSV".to_string(),
+                        error: e.to_string(),
+                    });
+                }
             }
         }
 
         // Update from GitHub Security Advisories
+        if let Some(sender) = &event_sender {
+            sender.emit(Event::VulnDbSourceUpdateStarting {
+                source: "GitHub".to_string(),
+            });
+        }
+
+        let github_start = std::time::Instant::now();
         match update_from_github(pool).await {
             Ok(count) => {
-                _update_count += count;
-                // Note: Event logging would be handled by the caller with access to EventSender
+                sources_updated += 1;
+                let duration = github_start.elapsed();
+
+                if let Some(sender) = &event_sender {
+                    sender.emit(Event::VulnDbSourceUpdateCompleted {
+                        source: "GitHub".to_string(),
+                        vulnerabilities_added: count,
+                        duration_ms: duration.as_millis() as u64,
+                    });
+                }
             }
-            Err(_e) => {
-                // Note: Error logging would be handled by the caller with access to EventSender
+            Err(e) => {
+                if let Some(sender) = &event_sender {
+                    sender.emit(Event::VulnDbSourceUpdateFailed {
+                        source: "GitHub".to_string(),
+                        error: e.to_string(),
+                    });
+                }
             }
         }
 
@@ -133,8 +212,39 @@ impl VulnDbManager {
         .execute(pool)
         .await?;
 
-        // Note: Total update count logging would be handled by the caller with access to EventSender
+        // Get final total from database
+        let final_count = self.get_total_vulnerability_count().await.unwrap_or(0);
+        let total_duration = start_time.elapsed();
+
+        if let Some(sender) = &event_sender {
+            sender.emit(Event::VulnDbUpdateCompleted {
+                total_vulnerabilities: final_count,
+                sources_updated,
+                duration_ms: total_duration.as_millis() as u64,
+            });
+        }
+
         Ok(())
+    }
+
+    /// Get total vulnerability count from database
+    async fn get_total_vulnerability_count(&self) -> Result<usize, Error> {
+        let pool = self
+            .pool
+            .as_ref()
+            .ok_or_else(|| AuditError::DatabaseError {
+                message: "Database not initialized".to_string(),
+            })?;
+
+        let count = sqlx::query("SELECT COUNT(*) as count FROM vulnerabilities")
+            .fetch_one(pool)
+            .await
+            .map_err(|e| AuditError::DatabaseError {
+                message: format!("Failed to get vulnerability count: {e}"),
+            })?
+            .get::<i64, _>("count") as usize;
+
+        Ok(count)
     }
 
     /// Check if database is fresh (updated recently)

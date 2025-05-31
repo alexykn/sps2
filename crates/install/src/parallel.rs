@@ -84,11 +84,18 @@ impl ParallelExecutor {
         let semaphore = Arc::new(Semaphore::new(self.max_concurrency));
         let ready_queue = Arc::new(SegQueue::new());
         let inflight = Arc::new(DashMap::new());
-        let _graph = Self::build_execution_graph(self, execution_plan, resolved_packages);
+        let graph = Self::build_execution_graph(self, execution_plan, resolved_packages);
 
         // Initialize ready queue with packages that have no dependencies
         for package_id in execution_plan.ready_packages() {
-            ready_queue.push(package_id);
+            // Only add packages with in_degree 0 from our graph
+            if let Some(node) = graph.get(&package_id) {
+                if node.in_degree.load(std::sync::atomic::Ordering::Relaxed) == 0 {
+                    ready_queue.push(package_id);
+                }
+            } else {
+                ready_queue.push(package_id);
+            }
         }
 
         // Process packages until completion
@@ -365,18 +372,19 @@ impl Default for ExecutionContext {
 }
 
 /// Execution node for tracking dependencies
-#[allow(dead_code)] // Fields planned for future parallel execution optimization
 struct ExecutionNode {
-    /// Action to perform
+    /// Action to perform (for future use)
+    #[allow(dead_code)]
     action: NodeAction,
     /// Remaining dependencies
     in_degree: AtomicUsize,
-    /// Parent packages
+    /// Parent packages (for future dependency tracking)
+    #[allow(dead_code)]
     parents: Vec<PackageId>,
 }
 
 /// Download progress information
-#[allow(dead_code)] // Struct intended for future parallel download progress tracking
+#[cfg(test)]
 pub struct DownloadProgress {
     /// Bytes downloaded
     pub downloaded: u64,
@@ -384,9 +392,9 @@ pub struct DownloadProgress {
     pub total: u64,
 }
 
+#[cfg(test)]
 impl DownloadProgress {
     /// Calculate progress percentage
-    #[allow(dead_code)] // Method for future use in parallel download progress
     pub fn percentage(&self) -> f64 {
         if self.total == 0 {
             0.0

@@ -142,14 +142,22 @@ impl BuilderApi {
         args: &[String],
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
-        // Run ./configure
-        let mut configure_args = vec!["./configure"];
-        let arg_strs: Vec<&str> = args.iter().map(String::as_str).collect();
-        configure_args.extend(arg_strs);
+        // Extract source archive first if needed
+        self.extract_downloads().await?;
+
+        // Run ./configure with PREFIX automatically added
+        let mut configure_args = args.to_vec();
+        let staging_dir = env.staging_dir().display().to_string();
+        if !configure_args
+            .iter()
+            .any(|arg| arg.starts_with("--prefix="))
+        {
+            configure_args.insert(0, format!("--prefix={staging_dir}"));
+        }
 
         env.execute_command(
             "sh",
-            &["-c", &format!("./configure {}", args.join(" "))],
+            &["-c", &format!("./configure {}", configure_args.join(" "))],
             Some(&self.working_dir),
         )
         .await?;
@@ -161,6 +169,10 @@ impl BuilderApi {
             .unwrap_or(&"1".to_string())
             .clone();
         env.execute_command("make", &["-j", &jobs], Some(&self.working_dir))
+            .await?;
+
+        // Run make install
+        env.execute_command("make", &["install"], Some(&self.working_dir))
             .await
     }
 
@@ -174,16 +186,25 @@ impl BuilderApi {
         args: &[String],
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
+        // Extract source archive first if needed
+        self.extract_downloads().await?;
+
         // Create build directory
         let build_dir = self.working_dir.join("build");
         fs::create_dir_all(&build_dir).await?;
 
-        // Run cmake
-        let mut cmake_args = vec!["cmake".to_string(), "..".to_string()];
+        // Run cmake with CMAKE_INSTALL_PREFIX
+        let mut cmake_args = vec!["..".to_string()];
+        let staging_dir = env.staging_dir().display().to_string();
+
+        // Add CMAKE_INSTALL_PREFIX if not already specified
+        if !args.iter().any(|arg| arg.contains("CMAKE_INSTALL_PREFIX")) {
+            cmake_args.push(format!("-DCMAKE_INSTALL_PREFIX={staging_dir}"));
+        }
         cmake_args.extend(args.iter().cloned());
 
         let arg_strs: Vec<&str> = cmake_args.iter().map(String::as_str).collect();
-        env.execute_command("cmake", &arg_strs[1..], Some(&build_dir))
+        env.execute_command("cmake", &arg_strs, Some(&build_dir))
             .await?;
 
         // Run make
@@ -193,6 +214,10 @@ impl BuilderApi {
             .unwrap_or(&"1".to_string())
             .clone();
         env.execute_command("make", &["-j", &jobs], Some(&build_dir))
+            .await?;
+
+        // Run make install
+        env.execute_command("make", &["install"], Some(&build_dir))
             .await
     }
 
@@ -206,9 +231,19 @@ impl BuilderApi {
         args: &[String],
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
+        // Extract source archive first if needed
+        self.extract_downloads().await?;
+
         // Setup meson
         let build_dir = self.working_dir.join("build");
+        let staging_dir = env.staging_dir().display().to_string();
+
         let mut setup_args = vec!["setup".to_string(), build_dir.display().to_string()];
+
+        // Add prefix if not already specified
+        if !args.iter().any(|arg| arg.contains("--prefix")) {
+            setup_args.push(format!("--prefix={staging_dir}"));
+        }
         setup_args.extend(args.iter().cloned());
 
         let arg_strs: Vec<&str> = setup_args.iter().map(String::as_str).collect();
@@ -217,6 +252,10 @@ impl BuilderApi {
 
         // Compile
         env.execute_command("meson", &["compile"], Some(&build_dir))
+            .await?;
+
+        // Install
+        env.execute_command("meson", &["install"], Some(&build_dir))
             .await
     }
 
@@ -230,12 +269,39 @@ impl BuilderApi {
         args: &[String],
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
+        // Extract source archive first if needed
+        self.extract_downloads().await?;
+
         let mut cargo_args = vec!["build", "--release"];
         let arg_strs: Vec<&str> = args.iter().map(String::as_str).collect();
         cargo_args.extend(arg_strs);
 
         env.execute_command("cargo", &cargo_args, Some(&self.working_dir))
-            .await
+            .await?;
+
+        // Install binaries to staging directory
+        let staging_bin = env.staging_dir().join("bin");
+        fs::create_dir_all(&staging_bin).await?;
+
+        // Copy target/release/* to staging/bin (simplified for now)
+        let target_dir = self.working_dir.join("target/release");
+        if target_dir.exists() {
+            let mut entries = fs::read_dir(&target_dir).await?;
+            while let Some(entry) = entries.next_entry().await? {
+                let path = entry.path();
+                if path.is_file() && !path.extension().map_or(false, |ext| ext == "d") {
+                    let filename = path.file_name().unwrap();
+                    fs::copy(&path, staging_bin.join(filename)).await?;
+                }
+            }
+        }
+
+        Ok(BuildCommandResult {
+            success: true,
+            exit_code: Some(0),
+            stdout: "Cargo build completed".to_string(),
+            stderr: String::new(),
+        })
     }
 
     /// Run configure step only
@@ -248,9 +314,22 @@ impl BuilderApi {
         args: &[String],
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
+        // Extract source archive first if needed
+        self.extract_downloads().await?;
+
+        // Add prefix if not already specified
+        let mut configure_args = args.to_vec();
+        let staging_dir = env.staging_dir().display().to_string();
+        if !configure_args
+            .iter()
+            .any(|arg| arg.starts_with("--prefix="))
+        {
+            configure_args.insert(0, format!("--prefix={staging_dir}"));
+        }
+
         env.execute_command(
             "sh",
-            &["-c", &format!("./configure {}", args.join(" "))],
+            &["-c", &format!("./configure {}", configure_args.join(" "))],
             Some(&self.working_dir),
         )
         .await

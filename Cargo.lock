@@ -3464,6 +3464,8 @@ name = "spsv2-audit"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dashmap",
+ "futures",
  "reqwest",
  "semver",
  "serde",
@@ -3486,6 +3488,7 @@ version = "0.1.0"
 dependencies = [
  "minisign",
  "num_cpus",
+ "reqwest",
  "serde",
  "serde_json",
  "spsv2-errors",
@@ -3705,6 +3708,7 @@ version = "0.1.0"
 dependencies = [
  "crossbeam",
  "dashmap",
+ "scopeguard",
  "semver",
  "serde",
  "spsv2-errors",
@@ -3713,6 +3717,7 @@ dependencies = [
  "spsv2-types",
  "tempfile",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

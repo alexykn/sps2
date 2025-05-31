@@ -17,6 +17,8 @@ semver = { workspace = true }
 tokio = { workspace = true }
 dashmap = { workspace = true }
 crossbeam = { workspace = true }
+uuid = { version = "1.0", features = ["v4"] }
+scopeguard = "1.2"
 
 [dev-dependencies]
 tempfile = { workspace = true }
