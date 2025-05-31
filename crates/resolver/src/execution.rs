@@ -236,7 +236,7 @@ impl ExecutionStats {
 mod tests {
     use super::*;
     use crate::graph::{DependencyGraph, ResolvedNode};
-    use spsv2_types::Version;
+    use sps2_types::Version;
 
     #[test]
     fn test_node_meta() {

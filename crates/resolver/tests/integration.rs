@@ -2,9 +2,9 @@
 
 #[cfg(test)]
 mod tests {
-    use spsv2_index::{DependencyInfo, Index, IndexManager, VersionEntry};
-    use spsv2_resolver::*;
-    use spsv2_types::{PackageSpec, Version};
+    use sps2_index::{DependencyInfo, Index, IndexManager, VersionEntry};
+    use sps2_resolver::*;
+    use sps2_types::{PackageSpec, Version};
     use tempfile::tempdir;
 
     fn create_complex_index() -> Index {

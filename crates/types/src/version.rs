@@ -3,14 +3,14 @@
 //! Implements Python-style version constraints:
 //! - `==1.2.3` - Exact version
 //! - `>=1.2.0` - Minimum version
-//! - `<=2.0.0` - Maximum version  
+//! - `<=2.0.0` - Maximum version
 //! - `~=1.2.0` - Compatible release (>=1.2.0,<1.3.0)
 //! - `!=1.5.0` - Exclude version
 //! - Multiple constraints: `>=1.2,<2.0,!=1.5.0`
 
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use spsv2_errors::VersionError;
+use sps2_errors::VersionError;
 use std::fmt;
 use std::str::FromStr;
 

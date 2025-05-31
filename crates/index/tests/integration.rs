@@ -2,8 +2,8 @@
 
 #[cfg(test)]
 mod tests {
-    use spsv2_index::*;
-    use spsv2_types::PackageSpec;
+    use sps2_index::*;
+    use sps2_types::PackageSpec;
     use tempfile::tempdir;
 
     fn create_test_index() -> Index {

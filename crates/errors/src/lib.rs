@@ -1,7 +1,7 @@
 #![deny(clippy::pedantic, unsafe_code)]
 #![allow(clippy::module_name_repetitions)]
 
-//! Error types for the spsv2 package manager
+//! Error types for the sps2 package manager
 //!
 //! This crate provides fine-grained error types organized by domain.
 //! All error types implement Clone where possible for easier handling.
@@ -106,5 +106,5 @@ impl From<sqlx::Error> for Error {
     }
 }
 
-/// Result type alias for spsv2 operations
+/// Result type alias for sps2 operations
 pub type Result<T> = std::result::Result<T, Error>;

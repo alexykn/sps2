@@ -1,11 +1,11 @@
 //! Atomic installation operations using APFS clonefile and state transitions
 
 use crate::{InstallContext, InstallResult};
-use spsv2_errors::{Error, InstallError};
-use spsv2_events::Event;
-use spsv2_resolver::{PackageId, ResolvedNode};
-use spsv2_state::{PackageRef, StateManager};
-use spsv2_store::PackageStore;
+use sps2_errors::{Error, InstallError};
+use sps2_events::Event;
+use sps2_resolver::{PackageId, ResolvedNode};
+use sps2_state::{PackageRef, StateManager};
+use sps2_store::PackageStore;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::fs;
@@ -92,7 +92,7 @@ impl AtomicInstaller {
         result: &mut InstallResult,
     ) -> Result<(), Error> {
         match &node.action {
-            spsv2_resolver::NodeAction::Download => {
+            sps2_resolver::NodeAction::Download => {
                 // Package should already be in store from download phase
                 let store_path = self
                     .store
@@ -100,7 +100,7 @@ impl AtomicInstaller {
                 self.link_package_to_staging(transition, &store_path, package_id)
                     .await?;
             }
-            spsv2_resolver::NodeAction::Local => {
+            sps2_resolver::NodeAction::Local => {
                 if let Some(local_path) = &node.path {
                     // Extract local package to store and link
                     let store_path = self.store.add_local_package(local_path).await?;
@@ -455,7 +455,7 @@ mod tests {
 
         let package_id = PackageId::new(
             "test-pkg".to_string(),
-            spsv2_types::Version::parse("1.0.0").unwrap(),
+            sps2_types::Version::parse("1.0.0").unwrap(),
         );
 
         result.add_installed(package_id);

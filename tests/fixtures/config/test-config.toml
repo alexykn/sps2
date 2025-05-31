@@ -1,4 +1,4 @@
-# Test configuration for spsv2
+# Test configuration for sps2
 
 [general]
 default_output = "tty"

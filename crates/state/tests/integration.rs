@@ -2,8 +2,8 @@
 
 #[cfg(test)]
 mod tests {
-    use spsv2_state::*;
-    use spsv2_types::Version;
+    use sps2_state::*;
+    use sps2_types::Version;
     use tempfile::tempdir;
     use uuid::Uuid;
 
@@ -45,7 +45,7 @@ mod tests {
         tx.commit().await.unwrap();
 
         // Create manager with the pool
-        let (event_tx, _) = spsv2_events::channel();
+        let (event_tx, _) = sps2_events::channel();
         let manager = StateManager::with_pool(
             pool,
             temp_dir.path().join("states"),
@@ -70,7 +70,7 @@ mod tests {
         // Commit with a package
         let pkg = models::PackageRef {
             state_id: transition.to,
-            package_id: spsv2_resolver::PackageId {
+            package_id: sps2_resolver::PackageId {
                 name: "test-pkg".to_string(),
                 version: Version::parse("1.0.0").unwrap(),
             },
@@ -110,7 +110,7 @@ mod tests {
         let transition = manager.begin_transition("test change").await.unwrap();
         let pkg = models::PackageRef {
             state_id: transition.to,
-            package_id: spsv2_resolver::PackageId {
+            package_id: sps2_resolver::PackageId {
                 name: "temp-pkg".to_string(),
                 version: Version::parse("1.0.0").unwrap(),
             },

@@ -2,8 +2,8 @@
 
 #[cfg(test)]
 mod tests {
-    use spsv2_builder::*;
-    use spsv2_types::Version;
+    use sps2_builder::*;
+    use sps2_types::Version;
     use tempfile::tempdir;
     use tokio::fs;
 
@@ -24,7 +24,7 @@ fn metadata(m) {
     m.name("curl")
      .version("8.5.0")
      .description("Command line HTTP client");
-    
+
     m.depends_on("openssl>=3.0.0");
     m.depends_on("zlib~=1.2.0");
     m.build_depends_on("pkg-config>=0.29");

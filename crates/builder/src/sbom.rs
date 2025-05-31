@@ -1,7 +1,7 @@
 //! SBOM generation using Syft
 
-use spsv2_errors::{BuildError, Error};
-use spsv2_hash::Hash;
+use sps2_errors::{BuildError, Error};
+use sps2_hash::Hash;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 

@@ -1,5 +1,5 @@
 [package]
-name = "spsv2-hash"
+name = "sps2-hash"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -8,8 +8,8 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-spsv2-errors = { path = "../errors" }
-spsv2-types = { path = "../types" }
+sps2-errors = { path = "../errors" }
+sps2-types = { path = "../types" }
 blake3 = { workspace = true }
 tokio = { workspace = true, features = ["fs", "io-util"] }
 serde = { workspace = true }

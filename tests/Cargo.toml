@@ -1,5 +1,5 @@
 [package]
-name = "spsv2-integration-tests"
+name = "sps2-integration-tests"
 version = "0.1.0"
 edition = "2021"
 publish = false
@@ -10,23 +10,23 @@ path = "integration.rs"
 
 [dependencies]
 # Internal crates
-spsv2-audit = { path = "../crates/audit" }
-spsv2-builder = { path = "../crates/builder" }
-spsv2-config = { path = "../crates/config" }
-spsv2-errors = { path = "../crates/errors" }
-spsv2-events = { path = "../crates/events" }
-spsv2-hash = { path = "../crates/hash" }
-spsv2-index = { path = "../crates/index" }
-spsv2-install = { path = "../crates/install" }
-spsv2-manifest = { path = "../crates/manifest" }
-spsv2-net = { path = "../crates/net" }
-spsv2-ops = { path = "../crates/ops" }
-spsv2-package = { path = "../crates/package" }
-spsv2-resolver = { path = "../crates/resolver" }
-spsv2-root = { path = "../crates/root" }
-spsv2-state = { path = "../crates/state" }
-spsv2-store = { path = "../crates/store" }
-spsv2-types = { path = "../crates/types" }
+sps2-audit = { path = "../crates/audit" }
+sps2-builder = { path = "../crates/builder" }
+sps2-config = { path = "../crates/config" }
+sps2-errors = { path = "../crates/errors" }
+sps2-events = { path = "../crates/events" }
+sps2-hash = { path = "../crates/hash" }
+sps2-index = { path = "../crates/index" }
+sps2-install = { path = "../crates/install" }
+sps2-manifest = { path = "../crates/manifest" }
+sps2-net = { path = "../crates/net" }
+sps2-ops = { path = "../crates/ops" }
+sps2-package = { path = "../crates/package" }
+sps2-resolver = { path = "../crates/resolver" }
+sps2-root = { path = "../crates/root" }
+sps2-state = { path = "../crates/state" }
+sps2-store = { path = "../crates/store" }
+sps2-types = { path = "../crates/types" }
 
 # External dependencies
 tokio = { version = "1.45.1", features = ["full"] }
@@ -34,4 +34,9 @@ tempfile = "3.20.0"
 serde_json = "1.0.140"
 toml = "0.8.22"
 futures = "0.3.31"
-sqlx = { version = "0.8.6", features = ["runtime-tokio", "sqlite", "macros", "migrate"] }
+sqlx = { version = "0.8.6", features = [
+    "runtime-tokio",
+    "sqlite",
+    "macros",
+    "migrate",
+] }

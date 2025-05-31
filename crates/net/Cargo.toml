@@ -1,5 +1,5 @@
 [package]
-name = "spsv2-net"
+name = "sps2-net"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -8,10 +8,10 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-spsv2-errors = { path = "../errors" }
-spsv2-types = { path = "../types" }
-spsv2-events = { path = "../events" }
-spsv2-hash = { path = "../hash" }
+sps2-errors = { path = "../errors" }
+sps2-types = { path = "../types" }
+sps2-events = { path = "../events" }
+sps2-hash = { path = "../hash" }
 blake3 = { workspace = true }
 tokio = { workspace = true, features = ["fs"] }
 reqwest = { workspace = true }

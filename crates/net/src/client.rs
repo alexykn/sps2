@@ -2,7 +2,7 @@
 
 use futures::StreamExt;
 use reqwest::{Client, Response, StatusCode};
-use spsv2_errors::{Error, NetworkError};
+use sps2_errors::{Error, NetworkError};
 use std::time::Duration;
 
 /// Download progress information
@@ -33,7 +33,7 @@ impl Default for NetConfig {
             pool_max_idle_per_host: 10,
             retry_count: 3,
             retry_delay: Duration::from_secs(1),
-            user_agent: format!("spsv2/{}", env!("CARGO_PKG_VERSION")),
+            user_agent: format!("sps2/{}", env!("CARGO_PKG_VERSION")),
         }
     }
 }
@@ -118,7 +118,7 @@ impl NetClient {
 
         while let Some(chunk) = stream.next().await {
             let chunk =
-                chunk.map_err(|e| spsv2_errors::NetworkError::DownloadFailed(e.to_string()))?;
+                chunk.map_err(|e| sps2_errors::NetworkError::DownloadFailed(e.to_string()))?;
             tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await?;
 
             downloaded += chunk.len() as u64;

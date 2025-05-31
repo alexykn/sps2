@@ -1,7 +1,7 @@
 //! Index caching functionality
 
 use crate::models::Index;
-use spsv2_errors::{Error, StorageError};
+use sps2_errors::{Error, StorageError};
 use std::path::{Path, PathBuf};
 use tokio::fs;
 

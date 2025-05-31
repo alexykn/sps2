@@ -1,12 +1,12 @@
 //! Large operations that delegate to specialized crates
 
 use crate::{BuildReport, InstallReport, InstallRequest, OpsCtx};
-use spsv2_builder::BuildContext;
-use spsv2_errors::{Error, OpsError};
-use spsv2_events::Event;
-use spsv2_install::{InstallConfig, InstallContext, Installer, UninstallContext, UpdateContext};
-use spsv2_package::{execute_recipe, load_recipe};
-use spsv2_types::{PackageSpec, Version};
+use sps2_builder::BuildContext;
+use sps2_errors::{Error, OpsError};
+use sps2_events::Event;
+use sps2_install::{InstallConfig, InstallContext, Installer, UninstallContext, UpdateContext};
+use sps2_package::{execute_recipe, load_recipe};
+use sps2_types::{PackageSpec, Version};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -458,7 +458,7 @@ pub async fn build(
     .with_event_sender(ctx.tx.clone());
 
     // Configure builder with network and jobs options
-    let mut builder_config = spsv2_builder::BuildConfig::default();
+    let mut builder_config = sps2_builder::BuildConfig::default();
     if network {
         builder_config.allow_network = true;
     }
@@ -467,7 +467,7 @@ pub async fn build(
     }
 
     // Create builder with custom configuration
-    let builder = spsv2_builder::Builder::with_config(builder_config)
+    let builder = sps2_builder::Builder::with_config(builder_config)
         .with_resolver(ctx.resolver.clone())
         .with_store(ctx.store.clone());
 

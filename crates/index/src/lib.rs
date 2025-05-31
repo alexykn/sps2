@@ -1,7 +1,7 @@
 #![deny(clippy::pedantic, unsafe_code)]
 #![allow(clippy::module_name_repetitions)]
 
-//! Package repository index for spsv2
+//! Package repository index for sps2
 //!
 //! This crate handles the repository index that lists all available
 //! packages and their versions. The index is cached locally for
@@ -16,8 +16,8 @@ pub use models::{
 };
 
 use chrono::Utc;
-use spsv2_errors::Error;
-use spsv2_types::{package::PackageSpec, Version};
+use sps2_errors::Error;
+use sps2_types::{package::PackageSpec, Version};
 // HashMap removed - not used
 use std::path::Path;
 

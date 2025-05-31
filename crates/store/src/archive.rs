@@ -1,7 +1,7 @@
 //! Package archive handling (.sp files)
 
-use spsv2_errors::{Error, PackageError, StorageError};
-use spsv2_root::{create_dir_all, exists};
+use sps2_errors::{Error, PackageError, StorageError};
+use sps2_root::{create_dir_all, exists};
 use std::path::Path;
 use tar::Archive;
 

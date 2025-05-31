@@ -2,11 +2,11 @@
 
 use comfy_table::{presets::UTF8_FULL, Attribute, Cell, Color, ContentArrangement, Table};
 use console::{Style, Term};
-use spsv2_ops::{
+use sps2_ops::{
     AuditReport, BuildReport, HealthCheck, HealthStatus, InstallReport, IssueSeverity,
     OperationResult, PackageInfo, PackageStatus, SearchResult, Severity, StateInfo, VulnDbStats,
 };
-use spsv2_types::ColorChoice;
+use sps2_types::ColorChoice;
 use std::io;
 
 /// Output renderer for CLI results
@@ -294,14 +294,14 @@ impl OutputRenderer {
             println!("Changes:");
             for change in &info.changes {
                 match change.change_type {
-                    spsv2_ops::ChangeType::Install => {
+                    sps2_ops::ChangeType::Install => {
                         println!(
                             "  + {} {}",
                             change.package,
                             change.new_version.as_ref().unwrap()
                         );
                     }
-                    spsv2_ops::ChangeType::Update => {
+                    sps2_ops::ChangeType::Update => {
                         println!(
                             "  ~ {} {} → {}",
                             change.package,
@@ -309,14 +309,14 @@ impl OutputRenderer {
                             change.new_version.as_ref().unwrap()
                         );
                     }
-                    spsv2_ops::ChangeType::Remove => {
+                    sps2_ops::ChangeType::Remove => {
                         println!(
                             "  - {} {}",
                             change.package,
                             change.old_version.as_ref().unwrap()
                         );
                     }
-                    spsv2_ops::ChangeType::Downgrade => {
+                    sps2_ops::ChangeType::Downgrade => {
                         println!(
                             "  ↓ {} {} → {}",
                             change.package,
@@ -444,7 +444,7 @@ impl OutputRenderer {
     }
 
     /// Render operation report
-    fn render_op_report(&self, report: &spsv2_ops::OpReport) -> io::Result<()> {
+    fn render_op_report(&self, report: &sps2_ops::OpReport) -> io::Result<()> {
         let icon = if report.success { "✅" } else { "❌" };
         println!("{icon} {} Report", report.operation);
         println!();
@@ -456,14 +456,14 @@ impl OutputRenderer {
             println!("Changes:");
             for change in &report.changes {
                 match change.change_type {
-                    spsv2_ops::ChangeType::Install => {
+                    sps2_ops::ChangeType::Install => {
                         println!(
                             "  + {} {}",
                             change.package,
                             change.new_version.as_ref().unwrap()
                         );
                     }
-                    spsv2_ops::ChangeType::Update => {
+                    sps2_ops::ChangeType::Update => {
                         println!(
                             "  ~ {} {} → {}",
                             change.package,
@@ -471,14 +471,14 @@ impl OutputRenderer {
                             change.new_version.as_ref().unwrap()
                         );
                     }
-                    spsv2_ops::ChangeType::Remove => {
+                    sps2_ops::ChangeType::Remove => {
                         println!(
                             "  - {} {}",
                             change.package,
                             change.old_version.as_ref().unwrap()
                         );
                     }
-                    spsv2_ops::ChangeType::Downgrade => {
+                    sps2_ops::ChangeType::Downgrade => {
                         println!(
                             "  ↓ {} {} → {}",
                             change.package,

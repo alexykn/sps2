@@ -6,7 +6,7 @@ use crate::{
 };
 use futures::stream::{FuturesUnordered, StreamExt};
 use serde::{Deserialize, Serialize};
-use spsv2_errors::{AuditError, Error};
+use sps2_errors::{AuditError, Error};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 

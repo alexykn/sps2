@@ -4,13 +4,13 @@ use crate::{
     BuildContext, BuildEnvironment, BuildResult, BuilderApi, PackageSigner, SbomConfig, SbomFiles,
     SbomGenerator, SigningConfig,
 };
-use spsv2_errors::{BuildError, Error};
-use spsv2_events::Event;
-use spsv2_manifest::Manifest;
-use spsv2_package::{execute_recipe, load_recipe};
-use spsv2_resolver::Resolver;
-use spsv2_store::PackageStore;
-use spsv2_types::package::PackageSpec;
+use sps2_errors::{BuildError, Error};
+use sps2_events::Event;
+use sps2_manifest::Manifest;
+use sps2_package::{execute_recipe, load_recipe};
+use sps2_resolver::Resolver;
+use sps2_store::PackageStore;
+use sps2_types::package::PackageSpec;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
@@ -231,7 +231,7 @@ impl Builder {
         &self,
         context: &BuildContext,
         environment: &mut BuildEnvironment,
-    ) -> Result<(Vec<String>, Vec<PackageSpec>, spsv2_package::RecipeMetadata), Error> {
+    ) -> Result<(Vec<String>, Vec<PackageSpec>, sps2_package::RecipeMetadata), Error> {
         // Read recipe file
         let _recipe_content = fs::read_to_string(&context.recipe_path)
             .await
@@ -275,10 +275,10 @@ impl Builder {
     async fn execute_recipe_steps(
         &self,
         context: &BuildContext,
-        recipe: &spsv2_package::Recipe,
+        recipe: &sps2_package::Recipe,
         api: &mut BuilderApi,
         environment: &mut BuildEnvironment,
-    ) -> Result<(Vec<String>, Vec<PackageSpec>, spsv2_package::RecipeMetadata), Error> {
+    ) -> Result<(Vec<String>, Vec<PackageSpec>, sps2_package::RecipeMetadata), Error> {
         // Execute the recipe to get metadata
         let recipe_result = execute_recipe(recipe)?;
 
@@ -320,11 +320,11 @@ impl Builder {
     /// Execute a single build step
     async fn execute_build_step(
         &self,
-        step: &spsv2_package::BuildStep,
+        step: &sps2_package::BuildStep,
         api: &mut BuilderApi,
         environment: &mut BuildEnvironment,
     ) -> Result<(), Error> {
-        use spsv2_package::BuildStep;
+        use sps2_package::BuildStep;
 
         match step {
             BuildStep::Fetch { url, sha256 } => {
@@ -388,9 +388,9 @@ impl Builder {
         context: &BuildContext,
         runtime_deps: Vec<String>,
         sbom_files: &SbomFiles,
-        recipe_metadata: &spsv2_package::RecipeMetadata,
+        recipe_metadata: &sps2_package::RecipeMetadata,
     ) -> Manifest {
-        use spsv2_manifest::{Dependencies, PackageInfo, SbomInfo};
+        use sps2_manifest::{Dependencies, PackageInfo, SbomInfo};
 
         // Create SBOM info if files are available
         let sbom_info = sbom_files.spdx_hash.as_ref().map(|spdx_hash| SbomInfo {
@@ -645,7 +645,7 @@ impl Default for Builder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use spsv2_types::Version;
+    use sps2_types::Version;
     use tempfile::tempdir;
 
     #[test]

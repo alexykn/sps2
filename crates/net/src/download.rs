@@ -1,9 +1,9 @@
 //! File download with progress reporting and verification
 
 use futures::StreamExt;
-use spsv2_errors::{Error, NetworkError};
-use spsv2_events::{Event, EventSender, EventSenderExt};
-use spsv2_hash::Hash;
+use sps2_errors::{Error, NetworkError};
+use sps2_events::{Event, EventSender, EventSenderExt};
+use sps2_hash::Hash;
 use std::path::Path;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;

@@ -1,5 +1,5 @@
 [package]
-name = "spsv2-state"
+name = "sps2-state"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -9,12 +9,12 @@ repository.workspace = true
 build = "build.rs"
 
 [dependencies]
-spsv2-errors = { path = "../errors" }
-spsv2-types = { path = "../types" }
-spsv2-events = { path = "../events" }
-spsv2-hash = { path = "../hash" }
-spsv2-root = { path = "../root" }
-spsv2-resolver = { path = "../resolver" }
+sps2-errors = { path = "../errors" }
+sps2-types = { path = "../types" }
+sps2-events = { path = "../events" }
+sps2-hash = { path = "../hash" }
+sps2-root = { path = "../root" }
+sps2-resolver = { path = "../resolver" }
 sqlx = { workspace = true }
 tokio = { workspace = true }
 uuid = { workspace = true }

@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use spsv2_package::*;
+    use sps2_package::*;
     use tempfile::tempdir;
 
     #[tokio::test]

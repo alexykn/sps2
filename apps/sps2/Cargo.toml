@@ -13,17 +13,17 @@ name = "sps2"
 path = "src/main.rs"
 
 [dependencies]
-spsv2-ops = { path = "../../crates/ops" }
-spsv2-events = { path = "../../crates/events" }
-spsv2-errors = { path = "../../crates/errors" }
-spsv2-types = { path = "../../crates/types" }
-spsv2-config = { path = "../../crates/config" }
-spsv2-net = { path = "../../crates/net" }
-spsv2-resolver = { path = "../../crates/resolver" }
-spsv2-state = { path = "../../crates/state" }
-spsv2-store = { path = "../../crates/store" }
-spsv2-index = { path = "../../crates/index" }
-spsv2-builder = { path = "../../crates/builder" }
+sps2-ops = { path = "../../crates/ops" }
+sps2-events = { path = "../../crates/events" }
+sps2-errors = { path = "../../crates/errors" }
+sps2-types = { path = "../../crates/types" }
+sps2-config = { path = "../../crates/config" }
+sps2-net = { path = "../../crates/net" }
+sps2-resolver = { path = "../../crates/resolver" }
+sps2-state = { path = "../../crates/state" }
+sps2-store = { path = "../../crates/store" }
+sps2-index = { path = "../../crates/index" }
+sps2-builder = { path = "../../crates/builder" }
 
 clap = { version = "4.5.39", features = ["derive", "color"] }
 tokio = { workspace = true, features = ["full"] }

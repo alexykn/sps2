@@ -1,9 +1,9 @@
 #!/bin/bash
-# Test runner script for spsv2
+# Test runner script for sps2
 
 set -e
 
-echo "🧪 Running spsv2 integration tests..."
+echo "🧪 Running sps2 integration tests..."
 
 # Colors for output
 RED='\033[0;31m'

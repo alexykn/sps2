@@ -1,13 +1,13 @@
 //! System setup and initialization
 
 use crate::error::CliError;
-use spsv2_builder::Builder;
-use spsv2_config::Config;
-use spsv2_index::IndexManager;
-use spsv2_net::NetClient;
-use spsv2_resolver::Resolver;
-use spsv2_state::StateManager;
-use spsv2_store::PackageStore;
+use sps2_builder::Builder;
+use sps2_config::Config;
+use sps2_index::IndexManager;
+use sps2_net::NetClient;
+use sps2_resolver::Resolver;
+use sps2_state::StateManager;
+use sps2_store::PackageStore;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
 
@@ -172,7 +172,7 @@ impl SystemSetup {
             Err(e) => {
                 warn!("Failed to load cached index, will need reposync: {}", e);
                 // Create empty index for now
-                let empty_index = spsv2_index::Index::new();
+                let empty_index = sps2_index::Index::new();
                 let json = empty_index
                     .to_json()
                     .map_err(|e| CliError::Setup(format!("Failed to create empty index: {}", e)))?;
@@ -192,17 +192,17 @@ impl SystemSetup {
         debug!("Initializing network client");
 
         // Create NetConfig from our configuration
-        let net_config = spsv2_net::NetConfig {
+        let net_config = sps2_net::NetConfig {
             timeout: std::time::Duration::from_secs(self.config.network.timeout),
             connect_timeout: std::time::Duration::from_secs(30),
             pool_idle_timeout: std::time::Duration::from_secs(90),
             pool_max_idle_per_host: 10,
             retry_count: self.config.network.retries,
             retry_delay: std::time::Duration::from_secs(self.config.network.retry_delay),
-            user_agent: format!("spsv2/{}", env!("CARGO_PKG_VERSION")),
+            user_agent: format!("sps2/{}", env!("CARGO_PKG_VERSION")),
         };
 
-        let net = spsv2_net::NetClient::new(net_config)
+        let net = sps2_net::NetClient::new(net_config)
             .map_err(|e| CliError::Setup(format!("Failed to create network client: {}", e)))?;
 
         self.net = Some(net);
@@ -362,7 +362,7 @@ impl SystemSetup {
         Path::new("/opt/pm/.last_gc_timestamp").to_path_buf()
     }
 
-    /// Update GC timestamp after successful cleanup  
+    /// Update GC timestamp after successful cleanup
     #[allow(dead_code)] // Instance method for future use
     pub async fn update_gc_timestamp(&self) -> Result<(), CliError> {
         self.write_last_gc_timestamp().await

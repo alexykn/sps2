@@ -15,9 +15,9 @@ use crate::error::CliError;
 use crate::events::EventHandler;
 use crate::setup::SystemSetup;
 use clap::Parser;
-use spsv2_config::Config;
-use spsv2_events::{EventReceiver, EventSender};
-use spsv2_ops::{OperationResult, OpsContextBuilder};
+use sps2_config::Config;
+use sps2_events::{EventReceiver, EventSender};
+use sps2_ops::{OperationResult, OpsContextBuilder};
 use std::process;
 use tokio::select;
 use tracing::{error, info};
@@ -86,7 +86,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
 /// Execute command with concurrent event handling
 async fn execute_command_with_events(
     command: Commands,
-    ops_ctx: spsv2_ops::OpsCtx,
+    ops_ctx: sps2_ops::OpsCtx,
     mut event_receiver: EventReceiver,
     event_handler: &mut EventHandler,
 ) -> Result<OperationResult, CliError> {
@@ -120,32 +120,32 @@ async fn execute_command_with_events(
 /// Execute the specified command
 async fn execute_command(
     command: Commands,
-    ctx: spsv2_ops::OpsCtx,
+    ctx: sps2_ops::OpsCtx,
 ) -> Result<OperationResult, CliError> {
     match command {
         // Small operations (implemented in ops crate)
         Commands::Reposync => {
-            let result = spsv2_ops::reposync(&ctx).await?;
+            let result = sps2_ops::reposync(&ctx).await?;
             Ok(OperationResult::Success(result))
         }
 
         Commands::List => {
-            let packages = spsv2_ops::list_packages(&ctx).await?;
+            let packages = sps2_ops::list_packages(&ctx).await?;
             Ok(OperationResult::PackageList(packages))
         }
 
         Commands::Info { package } => {
-            let info = spsv2_ops::package_info(&ctx, &package).await?;
+            let info = sps2_ops::package_info(&ctx, &package).await?;
             Ok(OperationResult::PackageInfo(info))
         }
 
         Commands::Search { query } => {
-            let results = spsv2_ops::search_packages(&ctx, &query).await?;
+            let results = sps2_ops::search_packages(&ctx, &query).await?;
             Ok(OperationResult::SearchResults(results))
         }
 
         Commands::Cleanup => {
-            let result = spsv2_ops::cleanup(&ctx).await?;
+            let result = sps2_ops::cleanup(&ctx).await?;
             // Also update the GC timestamp through SystemSetup (best effort)
             if let Err(e) = crate::setup::SystemSetup::update_gc_timestamp_static().await {
                 tracing::warn!("Failed to update GC timestamp: {}", e);
@@ -154,38 +154,38 @@ async fn execute_command(
         }
 
         Commands::Rollback { state_id } => {
-            let state_info = spsv2_ops::rollback(&ctx, state_id).await?;
+            let state_info = sps2_ops::rollback(&ctx, state_id).await?;
             Ok(OperationResult::StateInfo(state_info))
         }
 
         Commands::History => {
-            let history = spsv2_ops::history(&ctx).await?;
+            let history = sps2_ops::history(&ctx).await?;
             Ok(OperationResult::StateHistory(history))
         }
 
         Commands::CheckHealth => {
-            let health = spsv2_ops::check_health(&ctx).await?;
+            let health = sps2_ops::check_health(&ctx).await?;
             Ok(OperationResult::HealthCheck(health))
         }
 
         // Large operations (delegate to specialized crates)
         Commands::Install { packages } => {
-            let report = spsv2_ops::install(&ctx, &packages).await?;
+            let report = sps2_ops::install(&ctx, &packages).await?;
             Ok(OperationResult::InstallReport(report))
         }
 
         Commands::Update { packages } => {
-            let report = spsv2_ops::update(&ctx, &packages).await?;
+            let report = sps2_ops::update(&ctx, &packages).await?;
             Ok(OperationResult::InstallReport(report))
         }
 
         Commands::Upgrade { packages } => {
-            let report = spsv2_ops::upgrade(&ctx, &packages).await?;
+            let report = sps2_ops::upgrade(&ctx, &packages).await?;
             Ok(OperationResult::InstallReport(report))
         }
 
         Commands::Uninstall { packages } => {
-            let report = spsv2_ops::uninstall(&ctx, &packages).await?;
+            let report = sps2_ops::uninstall(&ctx, &packages).await?;
             Ok(OperationResult::InstallReport(report))
         }
 
@@ -196,17 +196,17 @@ async fn execute_command(
             jobs,
         } => {
             let output_path = output_dir.as_deref();
-            let report = spsv2_ops::build(&ctx, &recipe, output_path, network, jobs).await?;
+            let report = sps2_ops::build(&ctx, &recipe, output_path, network, jobs).await?;
             Ok(OperationResult::BuildReport(report))
         }
 
         Commands::VulnDb { command } => match command {
             VulnDbCommands::Update => {
-                let result = spsv2_ops::update_vulndb(&ctx).await?;
+                let result = sps2_ops::update_vulndb(&ctx).await?;
                 Ok(OperationResult::Success(result))
             }
             VulnDbCommands::Stats => {
-                let stats = spsv2_ops::vulndb_stats(&ctx).await?;
+                let stats = sps2_ops::vulndb_stats(&ctx).await?;
                 Ok(OperationResult::VulnDbStats(stats))
             }
         },
@@ -219,10 +219,10 @@ async fn execute_command(
         } => {
             // Parse severity threshold
             let severity_threshold = match severity.as_deref() {
-                Some("critical") => spsv2_ops::Severity::Critical,
-                Some("high") => spsv2_ops::Severity::High,
-                Some("medium") => spsv2_ops::Severity::Medium,
-                Some("low") | None => spsv2_ops::Severity::Low,
+                Some("critical") => sps2_ops::Severity::Critical,
+                Some("high") => sps2_ops::Severity::High,
+                Some("medium") => sps2_ops::Severity::Medium,
+                Some("low") | None => sps2_ops::Severity::Low,
                 Some(s) => {
                     return Err(CliError::InvalidArguments(format!(
                         "Invalid severity '{}': must be one of: low, medium, high, critical",
@@ -231,7 +231,7 @@ async fn execute_command(
                 }
             };
 
-            let report = spsv2_ops::audit(
+            let report = sps2_ops::audit(
                 &ctx,
                 package.as_deref(),
                 fail_on_critical,
@@ -247,7 +247,7 @@ async fn execute_command(
 async fn build_ops_context(
     setup: &SystemSetup,
     event_sender: EventSender,
-) -> Result<spsv2_ops::OpsCtx, CliError> {
+) -> Result<sps2_ops::OpsCtx, CliError> {
     let ctx = OpsContextBuilder::new()
         .with_store(setup.store().clone())
         .with_state(setup.state().clone())
@@ -284,7 +284,7 @@ fn init_tracing() {
                 tracing_subscriber::fmt()
                     .json()
                     .with_writer(file)
-                    .with_env_filter("sps2=debug,spsv2=debug")
+                    .with_env_filter("sps2=debug,sps2=debug")
                     .init();
 
                 eprintln!("Debug logging enabled: {}", log_file.display());
@@ -293,14 +293,14 @@ fn init_tracing() {
                 eprintln!("Warning: Failed to create log file: {}", e);
                 // Fallback to stderr
                 tracing_subscriber::fmt()
-                    .with_env_filter("sps2=info,spsv2=info")
+                    .with_env_filter("sps2=info,sps2=info")
                     .init();
             }
         }
     } else {
         // Normal mode: minimal logging to stderr
         tracing_subscriber::fmt()
-            .with_env_filter("sps2=warn,spsv2=warn")
+            .with_env_filter("sps2=warn,sps2=warn")
             .init();
     }
 }

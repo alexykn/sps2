@@ -1,7 +1,7 @@
 #![deny(clippy::pedantic)]
 #![allow(clippy::module_name_repetitions, unsafe_code)]
 
-//! Package installation with atomic updates for spsv2
+//! Package installation with atomic updates for sps2
 //!
 //! This crate handles the installation of packages with atomic
 //! state transitions, rollback capabilities, and parallel execution.
@@ -18,9 +18,9 @@ pub use parallel::{ExecutionContext, ParallelExecutor};
 
 // Removed unused imports: Error, EventSender, ResolutionResult, Version, HashMap
 // These will be imported where needed in future implementations
-use spsv2_events::EventSender;
-use spsv2_resolver::PackageId;
-use spsv2_types::PackageSpec;
+use sps2_events::EventSender;
+use sps2_resolver::PackageId;
+use sps2_types::PackageSpec;
 use std::path::PathBuf;
 use uuid::Uuid;
 

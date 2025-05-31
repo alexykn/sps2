@@ -25,16 +25,21 @@ members = [
 [workspace.package]
 edition = "2021"
 rust-version = "1.86.0"
-authors = ["spsv2 Contributors"]
+authors = ["sps2 Contributors"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/org/spsv2"
+repository = "https://github.com/org/sps2"
 
 [workspace.dependencies]
 # Async runtime
 tokio = { version = "1.45.1", features = ["full"] }
 
 # Database
-sqlx = { version = "0.8.6", features = ["runtime-tokio", "sqlite", "macros", "migrate"] }
+sqlx = { version = "0.8.6", features = [
+    "runtime-tokio",
+    "sqlite",
+    "macros",
+    "migrate",
+] }
 
 # HTTP
 reqwest = { version = "0.12.18", features = ["json", "stream"] }

@@ -1,6 +1,6 @@
 //! OSV (Open Source Vulnerabilities) database source implementation
 
-use spsv2_errors::{AuditError, Error};
+use sps2_errors::{AuditError, Error};
 use sqlx::SqlitePool;
 use std::io::Read;
 use tokio::io::AsyncWriteExt;
@@ -14,7 +14,7 @@ pub(crate) async fn update_from_osv(pool: &SqlitePool) -> Result<usize, Error> {
     // Download OSV database
     let response = client
         .get("https://osv-vulnerabilities.storage.googleapis.com/all.zip")
-        .header("User-Agent", "spsv2-package-manager")
+        .header("User-Agent", "sps2-package-manager")
         .send()
         .await
         .map_err(|e| AuditError::CveFetchError {
@@ -105,7 +105,7 @@ async fn insert_osv_vulnerability(
 
     // Insert vulnerability
     let result = sqlx::query(
-        "INSERT OR REPLACE INTO vulnerabilities (cve_id, summary, severity, published, modified) 
+        "INSERT OR REPLACE INTO vulnerabilities (cve_id, summary, severity, published, modified)
          VALUES (?, ?, ?, ?, ?)",
     )
     .bind(id)
@@ -134,7 +134,7 @@ async fn insert_osv_vulnerability(
                     .and_then(|v| v.as_str())
                     .unwrap_or("osv");
                 sqlx::query(
-                    "INSERT OR IGNORE INTO vulnerability_references (vulnerability_id, url, reference_type) 
+                    "INSERT OR IGNORE INTO vulnerability_references (vulnerability_id, url, reference_type)
                      VALUES (?, ?, ?)",
                 )
                 .bind(vuln_id)
@@ -186,8 +186,8 @@ async fn process_osv_package(
                 }
 
                 sqlx::query(
-                    "INSERT OR IGNORE INTO affected_packages 
-                     (vulnerability_id, package_name, package_type, affected_version, fixed_version, purl) 
+                    "INSERT OR IGNORE INTO affected_packages
+                     (vulnerability_id, package_name, package_type, affected_version, fixed_version, purl)
                      VALUES (?, ?, ?, ?, ?, ?)",
                 )
                 .bind(vuln_id)

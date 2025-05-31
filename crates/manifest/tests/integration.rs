@@ -2,9 +2,9 @@
 
 #[cfg(test)]
 mod tests {
-    use spsv2_hash::Hash;
-    use spsv2_manifest::*;
-    use spsv2_types::{Arch, Version};
+    use sps2_hash::Hash;
+    use sps2_manifest::*;
+    use sps2_types::{Arch, Version};
     use tempfile::tempdir;
 
     #[tokio::test]

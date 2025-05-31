@@ -5,11 +5,11 @@ use crate::{
     DepEdge, DepKind, ExecutionPlan, PackageId, ResolutionContext, ResolutionResult, ResolvedNode,
 };
 use semver::Version;
-use spsv2_errors::{Error, PackageError};
-use spsv2_index::{IndexManager, VersionEntry};
-use spsv2_manifest::Manifest;
-use spsv2_types::package::PackageSpec;
-use spsv2_types::version::VersionSpec;
+use sps2_errors::{Error, PackageError};
+use sps2_index::{IndexManager, VersionEntry};
+use sps2_manifest::Manifest;
+use sps2_types::package::PackageSpec;
+use sps2_types::version::VersionSpec;
 use std::collections::HashSet;
 use std::path::Path;
 use std::str::FromStr;
@@ -211,7 +211,7 @@ impl Resolver {
 
         // Create temporary directory for extraction
         let temp_dir =
-            std::env::temp_dir().join(format!("spsv2_manifest_{}", uuid::Uuid::new_v4().simple()));
+            std::env::temp_dir().join(format!("sps2_manifest_{}", uuid::Uuid::new_v4().simple()));
         fs::create_dir_all(&temp_dir).await?;
 
         // Ensure cleanup on error
@@ -363,7 +363,7 @@ impl ResolutionConstraints {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use spsv2_index::{DependencyInfo, Index, IndexManager, VersionEntry};
+    use sps2_index::{DependencyInfo, Index, IndexManager, VersionEntry};
     use tempfile::tempdir;
 
     fn create_test_index() -> Index {

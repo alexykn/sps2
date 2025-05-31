@@ -2,8 +2,8 @@
 
 #[cfg(test)]
 mod tests {
-    use spsv2_config::*;
-    use spsv2_types::{ColorChoice, OutputFormat};
+    use sps2_config::*;
+    use sps2_types::{ColorChoice, OutputFormat};
     use std::io::Write;
     use std::sync::Mutex;
     use tempfile::NamedTempFile;
@@ -48,11 +48,11 @@ index_max_age_days = 7
         let _guard = ENV_TEST_MUTEX.lock().unwrap();
 
         // Clean up any existing env vars first
-        std::env::remove_var("SPSV2_OUTPUT");
-        std::env::remove_var("SPSV2_COLOR");
+        std::env::remove_var("SPS2_OUTPUT");
+        std::env::remove_var("SPS2_COLOR");
 
-        std::env::set_var("SPSV2_OUTPUT", "json");
-        std::env::set_var("SPSV2_COLOR", "always");
+        std::env::set_var("SPS2_OUTPUT", "json");
+        std::env::set_var("SPS2_COLOR", "always");
 
         let mut config = Config::default();
         config.merge_env().unwrap();
@@ -61,8 +61,8 @@ index_max_age_days = 7
         assert_eq!(config.general.color, ColorChoice::Always);
 
         // Clean up
-        std::env::remove_var("SPSV2_OUTPUT");
-        std::env::remove_var("SPSV2_COLOR");
+        std::env::remove_var("SPS2_OUTPUT");
+        std::env::remove_var("SPS2_COLOR");
     }
 
     #[test]
@@ -70,16 +70,16 @@ index_max_age_days = 7
         let _guard = ENV_TEST_MUTEX.lock().unwrap();
 
         // Clean up any existing env vars first
-        std::env::remove_var("SPSV2_OUTPUT");
-        std::env::remove_var("SPSV2_COLOR");
+        std::env::remove_var("SPS2_OUTPUT");
+        std::env::remove_var("SPS2_COLOR");
 
-        std::env::set_var("SPSV2_OUTPUT", "invalid");
+        std::env::set_var("SPS2_OUTPUT", "invalid");
 
         let mut config = Config::default();
         let result = config.merge_env();
         assert!(result.is_err());
 
         // Clean up
-        std::env::remove_var("SPSV2_OUTPUT");
+        std::env::remove_var("SPS2_OUTPUT");
     }
 }

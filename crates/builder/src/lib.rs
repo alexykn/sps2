@@ -1,7 +1,7 @@
 #![deny(clippy::pedantic, unsafe_code)]
 #![allow(clippy::module_name_repetitions)]
 
-//! Package building with SBOM generation for spsv2
+//! Package building with SBOM generation for sps2
 //!
 //! This crate handles building packages from Rhai recipes with
 //! isolated environments, dependency management, and SBOM generation.
@@ -18,8 +18,8 @@ pub use environment::{BuildCommandResult, BuildEnvironment, BuildResult};
 pub use sbom::{SbomConfig, SbomFiles, SbomGenerator};
 pub use signing::{PackageSigner, SigningConfig};
 
-use spsv2_events::EventSender;
-use spsv2_types::Version;
+use sps2_events::EventSender;
+use sps2_types::Version;
 use std::path::PathBuf;
 
 /// Build context for package building

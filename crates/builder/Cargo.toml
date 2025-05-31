@@ -1,5 +1,5 @@
 [package]
-name = "spsv2-builder"
+name = "sps2-builder"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -8,21 +8,21 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-spsv2-errors = { path = "../errors" }
-spsv2-types = { path = "../types" }
-spsv2-events = { path = "../events" }
-spsv2-package = { path = "../package" }
-spsv2-manifest = { path = "../manifest" }
-spsv2-hash = { path = "../hash" }
-spsv2-resolver = { path = "../resolver" }
-spsv2-store = { path = "../store" }
-spsv2-net = { path = "../net" }
-spsv2-install = { path = "../install" }
+sps2-errors = { path = "../errors" }
+sps2-types = { path = "../types" }
+sps2-events = { path = "../events" }
+sps2-package = { path = "../package" }
+sps2-manifest = { path = "../manifest" }
+sps2-hash = { path = "../hash" }
+sps2-resolver = { path = "../resolver" }
+sps2-store = { path = "../store" }
+sps2-net = { path = "../net" }
+sps2-install = { path = "../install" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["fs", "process"] }
 reqwest = { workspace = true }
-# rhai = { workspace = true }  # Removed - handled via spsv2-package now
+# rhai = { workspace = true }  # Removed - handled via sps2-package now
 tempfile = { workspace = true }
 num_cpus = "1.17.0"
 toml = { workspace = true }

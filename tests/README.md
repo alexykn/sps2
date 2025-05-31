@@ -1,6 +1,6 @@
 # Integration Tests
 
-This directory contains integration tests and test fixtures for the spsv2 package manager.
+This directory contains integration tests and test fixtures for the sps2 package manager.
 
 ## Structure
 

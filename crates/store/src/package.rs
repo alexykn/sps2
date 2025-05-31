@@ -1,8 +1,8 @@
 //! Stored package representation and operations
 
-use spsv2_errors::{Error, PackageError};
-use spsv2_manifest::Manifest;
-use spsv2_root::{create_dir_all, exists, hard_link, size};
+use sps2_errors::{Error, PackageError};
+use sps2_manifest::Manifest;
+use sps2_root::{create_dir_all, exists, hard_link, size};
 use std::path::{Path, PathBuf};
 use tokio::fs;
 

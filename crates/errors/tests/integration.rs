@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use spsv2_errors::*;
+    use sps2_errors::*;
 
     #[test]
     fn test_error_conversion() {

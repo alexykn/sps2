@@ -1,7 +1,7 @@
 //! Event handling and progress display
 
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use spsv2_events::Event;
+use sps2_events::Event;
 use std::collections::HashMap;
 
 /// Event handler for progress display and user feedback
@@ -403,7 +403,7 @@ impl EventHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use spsv2_types::{ColorChoice, Version};
+    use sps2_types::{ColorChoice, Version};
 
     #[test]
     fn test_event_handler_creation() {

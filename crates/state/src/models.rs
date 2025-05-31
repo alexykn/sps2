@@ -2,8 +2,8 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use spsv2_hash::Hash;
-use spsv2_types::{StateId, Version};
+use sps2_hash::Hash;
+use sps2_types::{StateId, Version};
 use sqlx::FromRow;
 
 /// A system state record
@@ -108,7 +108,7 @@ impl StoreRef {
 #[derive(Debug, Clone)]
 pub struct PackageRef {
     pub state_id: uuid::Uuid,
-    pub package_id: spsv2_resolver::PackageId,
+    pub package_id: sps2_resolver::PackageId,
     pub hash: String,
     pub size: i64,
 }

@@ -1,7 +1,7 @@
 #![deny(clippy::pedantic, unsafe_code)]
 #![allow(clippy::module_name_repetitions)]
 
-//! High-level operations orchestration for spsv2
+//! High-level operations orchestration for sps2
 //!
 //! This crate serves as the orchestration layer between the CLI and
 //! specialized crates. Small operations are implemented here, while
@@ -27,9 +27,9 @@ pub use small_ops::{
 };
 
 // Re-export audit types needed by the audit function
-pub use spsv2_audit::{AuditReport, Severity};
+pub use sps2_audit::{AuditReport, Severity};
 
-use spsv2_errors::Error;
+use sps2_errors::Error;
 
 /// Operation result that can be serialized for CLI output
 #[derive(Clone, Debug, serde::Serialize)]
@@ -58,7 +58,7 @@ pub enum OperationResult {
     /// Vulnerability database statistics
     VulnDbStats(VulnDbStats),
     /// Audit report
-    AuditReport(spsv2_audit::AuditReport),
+    AuditReport(sps2_audit::AuditReport),
 }
 
 impl OperationResult {
@@ -69,7 +69,7 @@ impl OperationResult {
     /// Returns an error if JSON serialization fails.
     pub fn to_json(&self) -> Result<String, Error> {
         serde_json::to_string_pretty(self).map_err(|e| {
-            spsv2_errors::OpsError::SerializationError {
+            sps2_errors::OpsError::SerializationError {
                 message: e.to_string(),
             }
             .into()

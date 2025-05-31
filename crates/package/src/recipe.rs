@@ -1,7 +1,7 @@
 //! Recipe data structures
 
 use serde::{Deserialize, Serialize};
-use spsv2_errors::{BuildError, Error};
+use sps2_errors::{BuildError, Error};
 
 /// A build recipe
 #[derive(Debug, Clone)]

@@ -1,7 +1,7 @@
 //! Types for CVE audit system
 
 use serde::{Deserialize, Serialize};
-use spsv2_types::Version;
+use sps2_types::Version;
 use std::collections::HashMap;
 
 /// Vulnerability severity levels

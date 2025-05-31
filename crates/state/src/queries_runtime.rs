@@ -1,8 +1,8 @@
 //! Runtime SQL queries for state operations (temporary until sqlx prepare is run)
 
 use crate::models::{Package, State, StoreRef};
-use spsv2_errors::{Error, StateError};
-use spsv2_types::StateId;
+use sps2_errors::{Error, StateError};
+use sps2_types::StateId;
 use sqlx::{query, Row, Sqlite, Transaction};
 
 /// Get the current active state
@@ -63,7 +63,7 @@ pub async fn create_state(
     let now = chrono::Utc::now().timestamp();
 
     query(
-        "INSERT INTO states (id, parent_id, created_at, operation, success) 
+        "INSERT INTO states (id, parent_id, created_at, operation, success)
          VALUES (?1, ?2, ?3, ?4, 1)",
     )
     .bind(id_str)
@@ -88,7 +88,7 @@ pub async fn get_state_packages(
     let id_str = state_id.to_string();
 
     let rows = query(
-        "SELECT id, state_id, name, version, hash, size, installed_at 
+        "SELECT id, state_id, name, version, hash, size, installed_at
          FROM packages WHERE state_id = ?1",
     )
     .bind(id_str)
@@ -128,7 +128,7 @@ pub async fn add_package(
     let now = chrono::Utc::now().timestamp();
 
     let result = query(
-        "INSERT INTO packages (state_id, name, version, hash, size, installed_at) 
+        "INSERT INTO packages (state_id, name, version, hash, size, installed_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
     )
     .bind(id_str)
@@ -177,7 +177,7 @@ pub async fn get_or_create_store_ref(
     let now = chrono::Utc::now().timestamp();
 
     query(
-        "INSERT OR IGNORE INTO store_refs (hash, ref_count, size, created_at) 
+        "INSERT OR IGNORE INTO store_refs (hash, ref_count, size, created_at)
          VALUES (?1, 0, ?2, ?3)",
     )
     .bind(hash)
@@ -312,8 +312,8 @@ pub async fn get_state_package_names(
 /// Returns an error if the database query fails.
 pub async fn get_all_states(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<State>, Error> {
     let rows = query(
-        r"SELECT id, parent_id, created_at, operation, 
-           success, rollback_of 
+        r"SELECT id, parent_id, created_at, operation,
+           success, rollback_of
            FROM states ORDER BY created_at DESC",
     )
     .fetch_all(&mut **tx)
@@ -346,7 +346,7 @@ pub async fn get_states_for_cleanup(
 ) -> Result<Vec<String>, Error> {
     let rows = query(
         r"
-        SELECT id FROM states 
+        SELECT id FROM states
         WHERE id NOT IN (
             SELECT state_id FROM active_state
             UNION

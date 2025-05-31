@@ -1,8 +1,8 @@
 //! Vulnerability database manager and core database operations
 
 use crate::types::{Severity, Vulnerability};
-use spsv2_errors::{AuditError, Error};
-use spsv2_events::{Event, EventSender, EventSenderExt};
+use sps2_errors::{AuditError, Error};
+use sps2_events::{Event, EventSender, EventSenderExt};
 use sqlx::{Row, SqlitePool};
 use std::path::{Path, PathBuf};
 
@@ -399,7 +399,7 @@ impl VulnerabilityDatabase {
     ) -> Result<Vec<Vulnerability>, Error> {
         let rows = sqlx::query(
             r"
-            SELECT DISTINCT v.cve_id, v.summary, v.severity, v.cvss_score, 
+            SELECT DISTINCT v.cve_id, v.summary, v.severity, v.cvss_score,
                    v.published, v.modified, ap.affected_version, ap.fixed_version
             FROM vulnerabilities v
             INNER JOIN affected_packages ap ON v.id = ap.vulnerability_id
@@ -468,7 +468,7 @@ impl VulnerabilityDatabase {
     ) -> Result<Vec<Vulnerability>, Error> {
         let rows = sqlx::query(
             r"
-            SELECT DISTINCT v.cve_id, v.summary, v.severity, v.cvss_score, 
+            SELECT DISTINCT v.cve_id, v.summary, v.severity, v.cvss_score,
                    v.published, v.modified, ap.affected_version, ap.fixed_version
             FROM vulnerabilities v
             INNER JOIN affected_packages ap ON v.id = ap.vulnerability_id
@@ -489,7 +489,7 @@ impl VulnerabilityDatabase {
     ) -> Result<Vec<Vulnerability>, Error> {
         let rows = sqlx::query(
             r"
-            SELECT DISTINCT v.cve_id, v.summary, v.severity, v.cvss_score, 
+            SELECT DISTINCT v.cve_id, v.summary, v.severity, v.cvss_score,
                    v.published, v.modified, ap.affected_version, ap.fixed_version
             FROM vulnerabilities v
             INNER JOIN affected_packages ap ON v.id = ap.vulnerability_id
@@ -575,8 +575,8 @@ impl VulnerabilityDatabase {
 
         // Get severity breakdown
         let severity_counts = sqlx::query(
-            r"SELECT severity, COUNT(*) as count 
-              FROM vulnerabilities 
+            r"SELECT severity, COUNT(*) as count
+              FROM vulnerabilities
               GROUP BY severity",
         )
         .fetch_all(&self.pool)

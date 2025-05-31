@@ -2,7 +2,7 @@
 
 use crate::types::{Component, ComponentIdentifier};
 use serde_json::Value;
-use spsv2_errors::{AuditError, Error};
+use sps2_errors::{AuditError, Error};
 
 /// SBOM parser for extracting component information
 pub struct SbomParser {

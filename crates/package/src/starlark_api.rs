@@ -5,7 +5,7 @@
 use crate::error_helpers::format_metadata_error;
 use crate::recipe::{BuildStep, RecipeMetadata};
 use allocative::Allocative;
-use spsv2_errors::Error;
+use sps2_errors::Error;
 use starlark::environment::GlobalsBuilder;
 use starlark::eval::Arguments;
 use starlark::values::{

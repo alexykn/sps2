@@ -1,4 +1,4 @@
--- Initial schema for spsv2 state management
+-- Initial schema for sps2 state management
 
 -- States table
 CREATE TABLE states (

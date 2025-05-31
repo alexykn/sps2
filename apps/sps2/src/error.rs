@@ -6,9 +6,9 @@ use std::fmt;
 #[derive(Debug)]
 pub enum CliError {
     /// Configuration error
-    Config(spsv2_errors::ConfigError),
+    Config(sps2_errors::ConfigError),
     /// Operations error
-    Ops(spsv2_errors::Error),
+    Ops(sps2_errors::Error),
     /// System setup error
     Setup(String),
     /// Event channel closed unexpectedly
@@ -43,14 +43,14 @@ impl std::error::Error for CliError {
     }
 }
 
-impl From<spsv2_errors::ConfigError> for CliError {
-    fn from(e: spsv2_errors::ConfigError) -> Self {
+impl From<sps2_errors::ConfigError> for CliError {
+    fn from(e: sps2_errors::ConfigError) -> Self {
         CliError::Config(e)
     }
 }
 
-impl From<spsv2_errors::Error> for CliError {
-    fn from(e: spsv2_errors::Error) -> Self {
+impl From<sps2_errors::Error> for CliError {
+    fn from(e: sps2_errors::Error) -> Self {
         CliError::Ops(e)
     }
 }

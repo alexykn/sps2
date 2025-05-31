@@ -1,7 +1,7 @@
 #![deny(clippy::pedantic, unsafe_code)]
 #![allow(clippy::module_name_repetitions)]
 
-//! Core type definitions for the spsv2 package manager
+//! Core type definitions for the sps2 package manager
 //!
 //! This crate provides fundamental types used throughout the system,
 //! including version specifications, package information, and common data structures.

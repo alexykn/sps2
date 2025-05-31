@@ -1,6 +1,6 @@
 //! Helper functions for comprehensive error messages
 
-use spsv2_errors::BuildError;
+use sps2_errors::BuildError;
 use std::fmt::Write;
 
 /// Format a Starlark parse error with helpful context

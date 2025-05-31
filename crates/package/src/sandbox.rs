@@ -5,7 +5,7 @@ use crate::error_helpers::{
 };
 use crate::recipe::{BuildStep, Recipe, RecipeMetadata};
 use crate::starlark_api::{build_api, parse_metadata, BuildContext};
-use spsv2_errors::{BuildError, Error};
+use sps2_errors::{BuildError, Error};
 use starlark::environment::{Globals, GlobalsBuilder, Module};
 use starlark::eval::Evaluator;
 use starlark::syntax::{AstModule, Dialect};

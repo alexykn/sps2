@@ -2,10 +2,10 @@
 
 #[cfg(test)]
 mod tests {
-    use spsv2_hash::Hash;
-    use spsv2_manifest::ManifestBuilder;
-    use spsv2_store::*;
-    use spsv2_types::{Arch, Version};
+    use sps2_hash::Hash;
+    use sps2_manifest::ManifestBuilder;
+    use sps2_store::*;
+    use sps2_types::{Arch, Version};
     use tempfile::tempdir;
     use tokio::fs;
 

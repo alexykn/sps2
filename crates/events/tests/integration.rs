@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use spsv2_events::*;
+    use sps2_events::*;
 
     #[tokio::test]
     async fn test_event_sender_ext() {

@@ -1,12 +1,12 @@
 //! Operations context for dependency injection
 
-use spsv2_builder::Builder;
-use spsv2_events::EventSender;
-use spsv2_index::IndexManager;
-use spsv2_net::NetClient;
-use spsv2_resolver::Resolver;
-use spsv2_state::StateManager;
-use spsv2_store::PackageStore;
+use sps2_builder::Builder;
+use sps2_events::EventSender;
+use sps2_index::IndexManager;
+use sps2_net::NetClient;
+use sps2_resolver::Resolver;
+use sps2_state::StateManager;
+use sps2_store::PackageStore;
 
 /// Operations context providing access to all system components
 pub struct OpsCtx {
@@ -130,46 +130,46 @@ impl OpsContextBuilder {
     /// # Errors
     ///
     /// Returns an error if any required component is missing.
-    pub fn build(self) -> Result<OpsCtx, spsv2_errors::Error> {
+    pub fn build(self) -> Result<OpsCtx, sps2_errors::Error> {
         let store = self
             .store
-            .ok_or_else(|| spsv2_errors::OpsError::MissingComponent {
+            .ok_or_else(|| sps2_errors::OpsError::MissingComponent {
                 component: "store".to_string(),
             })?;
 
         let state = self
             .state
-            .ok_or_else(|| spsv2_errors::OpsError::MissingComponent {
+            .ok_or_else(|| sps2_errors::OpsError::MissingComponent {
                 component: "state".to_string(),
             })?;
 
         let index = self
             .index
-            .ok_or_else(|| spsv2_errors::OpsError::MissingComponent {
+            .ok_or_else(|| sps2_errors::OpsError::MissingComponent {
                 component: "index".to_string(),
             })?;
 
         let net = self
             .net
-            .ok_or_else(|| spsv2_errors::OpsError::MissingComponent {
+            .ok_or_else(|| sps2_errors::OpsError::MissingComponent {
                 component: "net".to_string(),
             })?;
 
         let resolver = self
             .resolver
-            .ok_or_else(|| spsv2_errors::OpsError::MissingComponent {
+            .ok_or_else(|| sps2_errors::OpsError::MissingComponent {
                 component: "resolver".to_string(),
             })?;
 
         let builder = self
             .builder
-            .ok_or_else(|| spsv2_errors::OpsError::MissingComponent {
+            .ok_or_else(|| sps2_errors::OpsError::MissingComponent {
                 component: "builder".to_string(),
             })?;
 
         let tx = self
             .tx
-            .ok_or_else(|| spsv2_errors::OpsError::MissingComponent {
+            .ok_or_else(|| sps2_errors::OpsError::MissingComponent {
                 component: "event_sender".to_string(),
             })?;
 

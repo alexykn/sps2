@@ -2,8 +2,8 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use spsv2_errors::{Error, PackageError};
-use spsv2_types::Arch;
+use sps2_errors::{Error, PackageError};
+use sps2_types::Arch;
 use std::collections::HashMap;
 
 /// Repository index

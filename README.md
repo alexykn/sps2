@@ -1,5 +1,5 @@
 # Project Overview
-spsv2 is a modern package manager written in Rust, designed exclusively for macOS ARM64 (Apple Silicon). Built from the ground up with atomic operations, rollback capabilities, and a clean async architecture. This is a completely new package manager with its own package format, build system, and distribution infrastructure.
+sps2 is a modern package manager written in Rust, designed exclusively for macOS ARM64 (Apple Silicon). Built from the ground up with atomic operations, rollback capabilities, and a clean async architecture. This is a completely new package manager with its own package format, build system, and distribution infrastructure.
 
 ## Installation
 
@@ -12,8 +12,8 @@ spsv2 is a modern package manager written in Rust, designed exclusively for macO
 ### Setup
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/spsv2.git
-cd spsv2
+git clone https://github.com/yourusername/sps2.git
+cd sps2
 
 # Build the project
 cargo build --release
@@ -119,23 +119,23 @@ Key external crates used throughout the project:
 ## Project Structure
 
 ```
-spsv2/:
+sps2/:
 Cargo.toml              # Workspace manifest
 apps/
 crates/
 tests/                  # Integration tests
 
-spsv2/apps/:
+sps2/apps/:
 sps2/                   # CLI application
 
-spsv2/apps/sps2/:
+sps2/apps/sps2/:
 Cargo.toml
 src/
 
-spsv2/apps/sps2/src/:
+sps2/apps/sps2/src/:
 main.rs
 
-spsv2/crates/:
+sps2/crates/:
 audit/                  # Future: CVE detection using SBOMs
 builder/                # Package building with SBOM generation
 config/                 # Configuration management
@@ -154,199 +154,199 @@ state/                  # State management and transitions
 store/                  # Package store implementation
 types/                  # Shared type definitions
 
-spsv2/crates/audit/:
+sps2/crates/audit/:
 Cargo.toml
 src/
 tests/
 
-spsv2/crates/audit/src/:
+sps2/crates/audit/src/:
 lib.rs
 
-spsv2/crates/audit/tests/:
+sps2/crates/audit/tests/:
 integration.rs
 
-spsv2/crates/builder/:
+sps2/crates/builder/:
 Cargo.toml
 src/
 tests/
 
-spsv2/crates/builder/src/:
+sps2/crates/builder/src/:
 lib.rs
 
-spsv2/crates/builder/tests/:
+sps2/crates/builder/tests/:
 integration.rs
 
-spsv2/crates/config/:
+sps2/crates/config/:
 Cargo.toml
 src/
 tests/
 
-spsv2/crates/config/src/:
+sps2/crates/config/src/:
 lib.rs
 
-spsv2/crates/config/tests/:
+sps2/crates/config/tests/:
 integration.rs
 
-spsv2/crates/errors/:
+sps2/crates/errors/:
 Cargo.toml
 src/
 tests/
 
-spsv2/crates/errors/src/:
+sps2/crates/errors/src/:
 lib.rs
 
-spsv2/crates/errors/tests/:
+sps2/crates/errors/tests/:
 integration.rs
 
-spsv2/crates/events/:
+sps2/crates/events/:
 Cargo.toml
 src/
 tests/
 
-spsv2/crates/events/src/:
+sps2/crates/events/src/:
 lib.rs
 
-spsv2/crates/events/tests/:
+sps2/crates/events/tests/:
 integration.rs
 
-spsv2/crates/hash/:
+sps2/crates/hash/:
 Cargo.toml
 src/
 tests/
 
-spsv2/crates/hash/src/:
+sps2/crates/hash/src/:
 lib.rs
 
-spsv2/crates/hash/tests/:
+sps2/crates/hash/tests/:
 integration.rs
 
-spsv2/crates/index/:
+sps2/crates/index/:
 Cargo.toml
 src/
 tests/
 
-spsv2/crates/index/src/:
+sps2/crates/index/src/:
 lib.rs
 
-spsv2/crates/index/tests/:
+sps2/crates/index/tests/:
 integration.rs
 
-spsv2/crates/install/:
+sps2/crates/install/:
 Cargo.toml
 src/
 tests/
 
-spsv2/crates/install/src/:
+sps2/crates/install/src/:
 lib.rs
 
-spsv2/crates/install/tests/:
+sps2/crates/install/tests/:
 integration.rs
 
-spsv2/crates/manifest/:
+sps2/crates/manifest/:
 Cargo.toml
 src/
 tests/
 
-spsv2/crates/manifest/src/:
+sps2/crates/manifest/src/:
 lib.rs
 
-spsv2/crates/manifest/tests/:
+sps2/crates/manifest/tests/:
 integration.rs
 
-spsv2/crates/net/:
+sps2/crates/net/:
 Cargo.toml
 src/
 tests/
 
-spsv2/crates/net/src/:
+sps2/crates/net/src/:
 lib.rs
 
-spsv2/crates/net/tests/:
+sps2/crates/net/tests/:
 integration.rs
 
-spsv2/crates/ops/:
+sps2/crates/ops/:
 Cargo.toml
 src/
 tests/
 
-spsv2/crates/ops/src/:
+sps2/crates/ops/src/:
 lib.rs
 
-spsv2/crates/ops/tests/:
+sps2/crates/ops/tests/:
 integration.rs
 
-spsv2/crates/package/:
+sps2/crates/package/:
 Cargo.toml
 src/
 tests/
 
-spsv2/crates/package/src/:
+sps2/crates/package/src/:
 lib.rs
 
-spsv2/crates/package/tests/:
+sps2/crates/package/tests/:
 integration.rs
 
-spsv2/crates/resolver/:
+sps2/crates/resolver/:
 Cargo.toml
 src/
 tests/
 
-spsv2/crates/resolver/src/:
+sps2/crates/resolver/src/:
 lib.rs
 
-spsv2/crates/resolver/tests/:
+sps2/crates/resolver/tests/:
 integration.rs
 
-spsv2/crates/root/:
+sps2/crates/root/:
 Cargo.toml
 src/
 tests/
 
-spsv2/crates/root/src/:
+sps2/crates/root/src/:
 lib.rs
 
-spsv2/crates/root/tests/:
+sps2/crates/root/tests/:
 integration.rs
 
-spsv2/crates/state/:
+sps2/crates/state/:
 Cargo.toml
 src/
 tests/
 migrations/
 
-spsv2/crates/state/src/:
+sps2/crates/state/src/:
 lib.rs
 
-spsv2/crates/state/tests/:
+sps2/crates/state/tests/:
 integration.rs
 
-spsv2/crates/state/migrations/:
+sps2/crates/state/migrations/:
 0001_initial_schema.sql
 0002_add_build_deps.sql
 
-spsv2/crates/store/:
+sps2/crates/store/:
 Cargo.toml
 src/
 tests/
 
-spsv2/crates/store/src/:
+sps2/crates/store/src/:
 lib.rs
 
-spsv2/crates/store/tests/:
+sps2/crates/store/tests/:
 integration.rs
 
-spsv2/crates/types/:
+sps2/crates/types/:
 Cargo.toml
 src/
 tests/
 
-spsv2/crates/types/src/:
+sps2/crates/types/src/:
 lib.rs
 
-spsv2/crates/types/tests/:
+sps2/crates/types/tests/:
 integration.rs
 
-spsv2/tests/:
+sps2/tests/:
 # Integration tests directory
 
 Each crate follows standard Rust structure:
@@ -915,7 +915,7 @@ Each phase emits appropriate events for CLI feedback.
 ### Configuration Management
 
 #### Configuration File
-- **Location**: `~/.config/spsv2/config.toml` (follows XDG Base Directory spec)
+- **Location**: `~/.config/sps2/config.toml` (follows XDG Base Directory spec)
 - **Format**: TOML for consistency with Rust ecosystem
 - **Precedence**: CLI flags > Environment variables > Config file > Defaults
 - **Defaults location**: Hard-coded in `config` crate via `impl Default`
@@ -975,9 +975,9 @@ retention_days = 30     # Keep states newer than N days
 ```
 
 #### Environment Variables
-- `SPSV2_OUTPUT` - Override output format
-- `SPSV2_COLOR` - Override color setting
-- `SPSV2_DEBUG` - Enable debug logging
+- `SPS2_OUTPUT` - Override output format
+- `SPS2_COLOR` - Override color setting
+- `SPS2_DEBUG` - Enable debug logging
 
 ### Atomic Update System
 
@@ -1002,7 +1002,7 @@ state.sqlite-wal        # SQLite write-ahead log
 state.sqlite-shm        # SQLite shared memory
 
 logs/:                  # Debug logs (when --debug is used)
-logs/spsv2-<timestamp>.jsonl  # Structured JSON logs
+logs/sps2-<timestamp>.jsonl  # Structured JSON logs
 ```
 
 #### State Management Architecture
@@ -1164,7 +1164,7 @@ def metadata():
 
 def build(ctx):
     """Build the package using the provided context.
-    
+
     Args:
         ctx: Build context with attributes:
             - ctx.NAME: package name from metadata
@@ -1354,7 +1354,7 @@ b.sbom_excludes(["*.pdb", "*.dSYM", "*.a", "*.la"])  // Exclude patterns (static
 
 **Index version policy:**
 - If `index.version > client_supported_version`: Hard fail with clear error message
-- Users must upgrade spsv2 to use newer index formats
+- Users must upgrade sps2 to use newer index formats
 - If `client_version < minimum_client`: Warn but continue (soft deprecation)
 - Cache last known good index locally for offline use
 
@@ -1477,27 +1477,27 @@ msrv:
 ### Bootstrap Installation
 ```bash
 #!/bin/bash
-# Bootstrap installer for spsv2
-SPSV2_VERSION="0.1.0"
-SPSV2_URL="https://github.com/org/spsv2/releases/download/v${SPSV2_VERSION}/spsv2-darwin-arm64"
-SPSV2_MINISIG="https://github.com/org/spsv2/releases/download/v${SPSV2_VERSION}/spsv2-darwin-arm64.minisig"
+# Bootstrap installer for sps2
+SPS2_VERSION="0.1.0"
+SPS2_URL="https://github.com/org/sps2/releases/download/v${SPS2_VERSION}/sps2-darwin-arm64"
+SPS2_MINISIG="https://github.com/org/sps2/releases/download/v${SPS2_VERSION}/sps2-darwin-arm64.minisig"
 
 # Download and verify
-curl -L -o /tmp/spsv2 "$SPSV2_URL"
-curl -L -o /tmp/spsv2.minisig "$SPSV2_MINISIG"
+curl -L -o /tmp/sps2 "$SPS2_URL"
+curl -L -o /tmp/sps2.minisig "$SPS2_MINISIG"
 
 # Embedded public key for bootstrap trust
 PUBKEY="RWRzQJ6...bootstrap-key..."
-echo "$PUBKEY" | minisign -V -p /dev/stdin -m /tmp/spsv2
+echo "$PUBKEY" | minisign -V -p /dev/stdin -m /tmp/sps2
 
 # Install
 sudo mkdir -p /opt/pm/live/bin
-sudo mv /tmp/spsv2 /opt/pm/live/bin/
-sudo chmod +x /opt/pm/live/bin/spsv2
+sudo mv /tmp/sps2 /opt/pm/live/bin/
+sudo chmod +x /opt/pm/live/bin/sps2
 
 # Setup PATH
 echo 'export PATH="/opt/pm/live/bin:$PATH"' >> ~/.zshrc
-echo "spsv2 installed! Restart your shell or run: export PATH=\"/opt/pm/live/bin:\$PATH\""
+echo "sps2 installed! Restart your shell or run: export PATH=\"/opt/pm/live/bin:\$PATH\""
 ```
 
 ### PATH Policy
@@ -1508,7 +1508,7 @@ echo "spsv2 installed! Restart your shell or run: export PATH=\"/opt/pm/live/bin
 - **Documentation**: README prominently shows PATH setup instructions
 
 ### Update Mechanism
-- `sps2 self-update`: Updates spsv2 itself
+- `sps2 self-update`: Updates sps2 itself
 - Downloads new version to temporary location
 - Verifies signature before replacing
 - Atomic replacement of binary

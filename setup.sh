@@ -1,5 +1,5 @@
 #!/bin/bash
-# spsv2 Package Manager Setup Script
+# sps2 Package Manager Setup Script
 
 set -euo pipefail
 
@@ -20,7 +20,7 @@ BUILD_DIR="$PM_ROOT/build"
 KEYS_DIR="$PM_ROOT/keys"
 VULNDB_DIR="$PM_ROOT/vulndb"
 
-echo "=== spsv2 Package Manager Setup ==="
+echo "=== sps2 Package Manager Setup ==="
 echo
 
 # Check if running as root
@@ -47,7 +47,7 @@ set_ownership() {
 # Check architecture
 ARCH=$(uname -m)
 if [[ "$ARCH" != "arm64" && "$ARCH" != "aarch64" ]]; then
-    echo -e "${YELLOW}Warning: spsv2 is designed for ARM64 macOS. Current architecture: $ARCH${NC}"
+    echo -e "${YELLOW}Warning: sps2 is designed for ARM64 macOS. Current architecture: $ARCH${NC}"
 fi
 
 # Create directory structure

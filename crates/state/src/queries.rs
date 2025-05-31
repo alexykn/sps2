@@ -1,8 +1,8 @@
 //! SQL queries for state operations
 
 use crate::models::{Package, State, StoreRef};
-use spsv2_errors::{Error, StateError};
-use spsv2_types::StateId;
+use sps2_errors::{Error, StateError};
+use sps2_types::StateId;
 use sqlx::{query, query_as, Row, Sqlite, Transaction};
 
 /// Get the current active state
@@ -73,7 +73,7 @@ pub async fn get_state_packages(
 
     let packages = query_as!(
         Package,
-        "SELECT id, state_id, name, version, hash, size, installed_at 
+        "SELECT id, state_id, name, version, hash, size, installed_at
          FROM packages WHERE state_id = ?",
         id_str
     )
@@ -96,7 +96,7 @@ pub async fn add_package(
     let now = chrono::Utc::now().timestamp();
 
     let result = query!(
-        "INSERT INTO packages (state_id, name, version, hash, size, installed_at) 
+        "INSERT INTO packages (state_id, name, version, hash, size, installed_at)
          VALUES (?, ?, ?, ?, ?, ?)",
         id_str,
         name,
@@ -180,8 +180,8 @@ pub async fn delete_unreferenced_store_items(
 pub async fn get_all_states(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<State>, Error> {
     let states = query_as!(
         State,
-        r#"SELECT id, parent_id, created_at, operation, 
-           success as "success: bool", rollback_of 
+        r#"SELECT id, parent_id, created_at, operation,
+           success as "success: bool", rollback_of
            FROM states ORDER BY created_at DESC"#
     )
     .fetch_all(&mut **tx)
@@ -201,7 +201,7 @@ pub async fn get_states_to_cleanup(
     // Keep the N most recent states AND states newer than cutoff
     let states = query!(
         r#"
-        SELECT id FROM states 
+        SELECT id FROM states
         WHERE id NOT IN (
             SELECT id FROM states ORDER BY created_at DESC LIMIT ?
         )
@@ -260,7 +260,7 @@ pub async fn list_states_detailed(tx: &mut Transaction<'_, Sqlite>) -> Result<Ve
     get_all_states(tx).await
 }
 
-/// Get package names in a state  
+/// Get package names in a state
 pub async fn get_state_package_names(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,

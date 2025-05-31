@@ -4,11 +4,11 @@ use crate::{
     AtomicInstaller, InstallContext, InstallOperation, InstallResult, UninstallContext,
     UninstallOperation, UpdateContext, UpdateOperation,
 };
-use spsv2_errors::{Error, InstallError};
+use sps2_errors::{Error, InstallError};
 // EventSender not used directly in this module but imported for potential future use
-use spsv2_resolver::Resolver;
-use spsv2_state::StateManager;
-use spsv2_store::PackageStore;
+use sps2_resolver::Resolver;
+use sps2_state::StateManager;
+use sps2_store::PackageStore;
 use uuid::Uuid;
 
 /// Installer configuration
@@ -65,7 +65,7 @@ impl InstallConfig {
     }
 }
 
-/// Main installer for spsv2 packages
+/// Main installer for sps2 packages
 pub struct Installer {
     /// Configuration
     config: InstallConfig,
@@ -218,9 +218,7 @@ impl Installer {
                 packages: packages
                     .into_iter()
                     .take(5)
-                    .map(|name| {
-                        spsv2_types::PackageId::new(name, spsv2_types::Version::new(1, 0, 0))
-                    })
+                    .map(|name| sps2_types::PackageId::new(name, sps2_types::Version::new(1, 0, 0)))
                     .collect(), // First 5 packages as sample
             });
         }
@@ -311,7 +309,7 @@ pub struct StateInfo {
     /// Number of packages in this state
     pub package_count: usize,
     /// Sample of packages (for display)
-    pub packages: Vec<spsv2_types::PackageId>,
+    pub packages: Vec<sps2_types::PackageId>,
 }
 
 impl StateInfo {
@@ -357,8 +355,8 @@ impl StateInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use spsv2_index::{Index, IndexManager};
-    use spsv2_types::PackageSpec;
+    use sps2_index::{Index, IndexManager};
+    use sps2_types::PackageSpec;
     use tempfile::tempdir;
 
     async fn create_test_installer() -> Installer {

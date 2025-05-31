@@ -1,20 +1,20 @@
 #![deny(clippy::pedantic, unsafe_code)]
 #![allow(clippy::module_name_repetitions)]
 
-//! Event system for async communication in spsv2
+//! Event system for async communication in sps2
 //!
 //! This crate provides the event types and channel aliases used for
 //! communication between crates. All output goes through events - no
 //! direct logging or printing is allowed outside the CLI.
 
 use serde::{Deserialize, Serialize};
-use spsv2_types::{StateId, Version};
+use sps2_types::{StateId, Version};
 use std::collections::HashMap;
 
 /// Type alias for event sender
 pub type EventSender = tokio::sync::mpsc::UnboundedSender<Event>;
 
-/// Type alias for event receiver  
+/// Type alias for event receiver
 pub type EventReceiver = tokio::sync::mpsc::UnboundedReceiver<Event>;
 
 /// Create a new event channel

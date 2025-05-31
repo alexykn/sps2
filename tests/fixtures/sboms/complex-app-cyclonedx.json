@@ -9,7 +9,7 @@
       "components": [
         {
           "type": "application",
-          "name": "spsv2-builder",
+          "name": "sps2-builder",
           "version": "0.1.0"
         }
       ]

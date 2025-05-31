@@ -1,6 +1,6 @@
 //! Dependency graph types and operations
 
-use spsv2_types::{Version, VersionSpec};
+use sps2_types::{Version, VersionSpec};
 use std::fmt;
 use std::path::PathBuf;
 
@@ -205,11 +205,11 @@ impl DependencyGraph {
     }
 
     /// Perform topological sort using Kahn's algorithm
-    pub fn topological_sort(&self) -> Result<Vec<PackageId>, spsv2_errors::Error> {
+    pub fn topological_sort(&self) -> Result<Vec<PackageId>, sps2_errors::Error> {
         use std::collections::{HashMap, VecDeque};
 
         if self.has_cycles() {
-            return Err(spsv2_errors::PackageError::DependencyCycle {
+            return Err(sps2_errors::PackageError::DependencyCycle {
                 package: "unknown".to_string(),
             }
             .into());
@@ -251,7 +251,7 @@ impl DependencyGraph {
         }
 
         if result.len() != self.nodes.len() {
-            return Err(spsv2_errors::PackageError::DependencyCycle {
+            return Err(sps2_errors::PackageError::DependencyCycle {
                 package: "unknown".to_string(),
             }
             .into());
@@ -270,7 +270,7 @@ impl Default for DependencyGraph {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use spsv2_types::{Version, VersionSpec};
+    use sps2_types::{Version, VersionSpec};
 
     #[test]
     fn test_package_id() {

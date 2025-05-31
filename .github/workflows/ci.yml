@@ -80,8 +80,7 @@ jobs:
         run: cargo install cargo-audit
       - name: Run security audit
         run: cargo audit
-        with:
-          fail_ci_if_error: false
+        continue-on-error: true
 
   coverage:
     name: Code Coverage
@@ -100,7 +99,7 @@ jobs:
         uses: codecov/codecov-action@v3
         with:
           files: lcov.info
-          fail_ci_if_error: false
+        continue-on-error: true
 
   docs:
     name: Documentation
@@ -118,4 +117,4 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./target/doc
-          fail_ci_if_error: false
+        continue-on-error: true

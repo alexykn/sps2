@@ -1,4 +1,4 @@
-//! Integration tests for spsv2 package manager
+//! Integration tests for sps2 package manager
 //!
 //! These tests exercise the full system end-to-end using test fixtures.
 
@@ -9,11 +9,11 @@ use tokio::fs;
 // Test utilities module
 mod utils {
     use super::*;
-    use spsv2_config::Config;
-    use spsv2_events::{EventReceiver, EventSender};
-    use spsv2_ops::OpsCtx;
-    use spsv2_state::StateManager;
-    use spsv2_store::PackageStore;
+    use sps2_config::Config;
+    use sps2_events::{EventReceiver, EventSender};
+    use sps2_ops::OpsCtx;
+    use sps2_state::StateManager;
+    use sps2_store::PackageStore;
 
     pub struct TestEnvironment {
         pub temp_dir: TempDir,
@@ -54,10 +54,10 @@ mod utils {
             // Initialize components
             let state = StateManager::new(base_path).await?;
             let store = PackageStore::new(store_path);
-            let index = spsv2_index::IndexManager::new(base_path);
-            let net = spsv2_net::NetClient::with_defaults()?;
-            let resolver = spsv2_resolver::Resolver::new(index.clone());
-            let builder = spsv2_builder::Builder::new();
+            let index = sps2_index::IndexManager::new(base_path);
+            let net = sps2_net::NetClient::with_defaults()?;
+            let resolver = sps2_resolver::Resolver::new(index.clone());
+            let builder = sps2_builder::Builder::new();
 
             let ops_ctx = OpsCtx::new(
                 store,
@@ -141,7 +141,7 @@ async fn test_manifest_parsing() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test simple manifest
     let hello_manifest = env.load_test_manifest("hello-world-1.0.0").await?;
-    let manifest = spsv2_manifest::Manifest::from_toml(&hello_manifest)?;
+    let manifest = sps2_manifest::Manifest::from_toml(&hello_manifest)?;
 
     assert_eq!(manifest.package.name, "hello-world");
     assert_eq!(manifest.package.version, "1.0.0");
@@ -151,7 +151,7 @@ async fn test_manifest_parsing() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test complex manifest
     let complex_manifest = env.load_test_manifest("complex-app-2.1.3").await?;
-    let manifest = spsv2_manifest::Manifest::from_toml(&complex_manifest)?;
+    let manifest = sps2_manifest::Manifest::from_toml(&complex_manifest)?;
 
     assert_eq!(manifest.package.name, "complex-app");
     assert_eq!(manifest.package.version, "2.1.3");
@@ -173,7 +173,7 @@ async fn test_manifest_parsing() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 async fn test_version_parsing_and_constraints() -> Result<(), Box<dyn std::error::Error>> {
-    use spsv2_types::{PackageSpec, Version};
+    use sps2_types::{PackageSpec, Version};
 
     // Test version parsing
     eprintln!("Parsing version 2.1.3");
@@ -209,7 +209,7 @@ async fn test_version_parsing_and_constraints() -> Result<(), Box<dyn std::error
 
 #[tokio::test]
 async fn test_package_spec_parsing() -> Result<(), Box<dyn std::error::Error>> {
-    use spsv2_types::{PackageSpec, Version};
+    use sps2_types::{PackageSpec, Version};
 
     // Test parsing package specifications
     let spec1 = PackageSpec::parse("curl>=8.0.0")?;
@@ -232,7 +232,7 @@ async fn test_package_spec_parsing() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 async fn test_content_hashing() -> Result<(), Box<dyn std::error::Error>> {
-    use spsv2_hash::Hash;
+    use sps2_hash::Hash;
     use tempfile::NamedTempFile;
 
     // Test file hashing
@@ -261,8 +261,8 @@ async fn test_content_hashing() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 async fn test_event_system() -> Result<(), Box<dyn std::error::Error>> {
-    use spsv2_events::Event;
-    use spsv2_types::Version;
+    use sps2_events::Event;
+    use sps2_types::Version;
 
     let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
 
@@ -364,7 +364,7 @@ async fn test_index_parsing() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 async fn test_configuration_loading() -> Result<(), Box<dyn std::error::Error>> {
-    use spsv2_config::Config;
+    use sps2_config::Config;
 
     let fixtures_path = utils::TestEnvironment::fixtures_path();
     let config_path = fixtures_path.join("config").join("test-config.toml");
@@ -424,7 +424,7 @@ async fn test_concurrent_operations() -> Result<(), Box<dyn std::error::Error>> 
     for i in 0..10 {
         let task = tokio::spawn(async move {
             let data = format!("test data {i}").into_bytes();
-            spsv2_hash::Hash::from_data(&data)
+            sps2_hash::Hash::from_data(&data)
         });
         tasks.push(task);
     }
@@ -463,7 +463,7 @@ runtime = [
     }
     manifest_content.push_str("]\n");
 
-    let manifest = spsv2_manifest::Manifest::from_toml(&manifest_content)?;
+    let manifest = sps2_manifest::Manifest::from_toml(&manifest_content)?;
     assert_eq!(manifest.package.name, "large-package");
     assert_eq!(manifest.dependencies.runtime.len(), 100);
 
@@ -473,7 +473,7 @@ runtime = [
 // Error handling tests
 #[tokio::test]
 async fn test_invalid_version_handling() {
-    use spsv2_types::Version;
+    use sps2_types::Version;
 
     // Test invalid version strings
     assert!(Version::parse("").is_err());
@@ -488,7 +488,7 @@ async fn test_invalid_version_handling() {
 async fn test_invalid_manifest_handling() {
     // Test malformed TOML
     let invalid_toml = "this is not valid toml [[[";
-    assert!(spsv2_manifest::Manifest::from_toml(invalid_toml).is_err());
+    assert!(sps2_manifest::Manifest::from_toml(invalid_toml).is_err());
 
     // Test missing required fields
     let incomplete_manifest = r#"
@@ -496,7 +496,7 @@ async fn test_invalid_manifest_handling() {
 name = "incomplete"
 # missing version
 "#;
-    assert!(spsv2_manifest::Manifest::from_toml(incomplete_manifest).is_err());
+    assert!(sps2_manifest::Manifest::from_toml(incomplete_manifest).is_err());
 }
 
 // Cleanup test - should be last

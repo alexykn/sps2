@@ -3441,17 +3441,17 @@ dependencies = [
  "console",
  "indicatif",
  "serde_json",
- "spsv2-builder",
- "spsv2-config",
- "spsv2-errors",
- "spsv2-events",
- "spsv2-index",
- "spsv2-net",
- "spsv2-ops",
- "spsv2-resolver",
- "spsv2-state",
- "spsv2-store",
- "spsv2-types",
+ "sps2-builder",
+ "sps2-config",
+ "sps2-errors",
+ "sps2-events",
+ "sps2-index",
+ "sps2-net",
+ "sps2-ops",
+ "sps2-resolver",
+ "sps2-state",
+ "sps2-store",
+ "sps2-types",
  "tempfile",
  "tokio",
  "tracing",
@@ -3460,7 +3460,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "spsv2-audit"
+name = "sps2-audit"
 version = "0.1.0"
 dependencies = [
  "chrono",
@@ -3470,11 +3470,11 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
- "spsv2-errors",
- "spsv2-events",
- "spsv2-state",
- "spsv2-store",
- "spsv2-types",
+ "sps2-errors",
+ "sps2-events",
+ "sps2-state",
+ "sps2-store",
+ "sps2-types",
  "sqlx",
  "tempfile",
  "tokio",
@@ -3483,7 +3483,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "spsv2-builder"
+name = "sps2-builder"
 version = "0.1.0"
 dependencies = [
  "minisign",
@@ -3491,37 +3491,37 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "spsv2-errors",
- "spsv2-events",
- "spsv2-hash",
- "spsv2-install",
- "spsv2-manifest",
- "spsv2-net",
- "spsv2-package",
- "spsv2-resolver",
- "spsv2-store",
- "spsv2-types",
+ "sps2-errors",
+ "sps2-events",
+ "sps2-hash",
+ "sps2-install",
+ "sps2-manifest",
+ "sps2-net",
+ "sps2-package",
+ "sps2-resolver",
+ "sps2-store",
+ "sps2-types",
  "tempfile",
  "tokio",
  "toml",
 ]
 
 [[package]]
-name = "spsv2-config"
+name = "sps2-config"
 version = "0.1.0"
 dependencies = [
  "dirs",
  "num_cpus",
  "serde",
- "spsv2-errors",
- "spsv2-types",
+ "sps2-errors",
+ "sps2-types",
  "tempfile",
  "tokio",
  "toml",
 ]
 
 [[package]]
-name = "spsv2-errors"
+name = "sps2-errors"
 version = "0.1.0"
 dependencies = [
  "semver",
@@ -3532,49 +3532,49 @@ dependencies = [
 ]
 
 [[package]]
-name = "spsv2-events"
+name = "sps2-events"
 version = "0.1.0"
 dependencies = [
  "semver",
  "serde",
  "serde_json",
- "spsv2-errors",
- "spsv2-types",
+ "sps2-errors",
+ "sps2-types",
  "tokio",
  "uuid",
 ]
 
 [[package]]
-name = "spsv2-hash"
+name = "sps2-hash"
 version = "0.1.0"
 dependencies = [
  "blake3",
  "hex",
  "serde",
  "serde_json",
- "spsv2-errors",
- "spsv2-types",
+ "sps2-errors",
+ "sps2-types",
  "tempfile",
  "tokio",
 ]
 
 [[package]]
-name = "spsv2-index"
+name = "sps2-index"
 version = "0.1.0"
 dependencies = [
  "chrono",
  "semver",
  "serde",
  "serde_json",
- "spsv2-errors",
- "spsv2-manifest",
- "spsv2-types",
+ "sps2-errors",
+ "sps2-manifest",
+ "sps2-types",
  "tempfile",
  "tokio",
 ]
 
 [[package]]
-name = "spsv2-install"
+name = "sps2-install"
 version = "0.1.0"
 dependencies = [
  "chrono",
@@ -3582,16 +3582,16 @@ dependencies = [
  "dashmap",
  "libc",
  "serde",
- "spsv2-audit",
- "spsv2-errors",
- "spsv2-events",
- "spsv2-index",
- "spsv2-net",
- "spsv2-resolver",
- "spsv2-root",
- "spsv2-state",
- "spsv2-store",
- "spsv2-types",
+ "sps2-audit",
+ "sps2-errors",
+ "sps2-events",
+ "sps2-index",
+ "sps2-net",
+ "sps2-resolver",
+ "sps2-root",
+ "sps2-state",
+ "sps2-store",
+ "sps2-types",
  "sqlx",
  "tempfile",
  "tokio",
@@ -3599,28 +3599,28 @@ dependencies = [
 ]
 
 [[package]]
-name = "spsv2-integration-tests"
+name = "sps2-integration-tests"
 version = "0.1.0"
 dependencies = [
  "futures",
  "serde_json",
- "spsv2-audit",
- "spsv2-builder",
- "spsv2-config",
- "spsv2-errors",
- "spsv2-events",
- "spsv2-hash",
- "spsv2-index",
- "spsv2-install",
- "spsv2-manifest",
- "spsv2-net",
- "spsv2-ops",
- "spsv2-package",
- "spsv2-resolver",
- "spsv2-root",
- "spsv2-state",
- "spsv2-store",
- "spsv2-types",
+ "sps2-audit",
+ "sps2-builder",
+ "sps2-config",
+ "sps2-errors",
+ "sps2-events",
+ "sps2-hash",
+ "sps2-index",
+ "sps2-install",
+ "sps2-manifest",
+ "sps2-net",
+ "sps2-ops",
+ "sps2-package",
+ "sps2-resolver",
+ "sps2-root",
+ "sps2-state",
+ "sps2-store",
+ "sps2-types",
  "sqlx",
  "tempfile",
  "tokio",
@@ -3628,23 +3628,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "spsv2-manifest"
+name = "sps2-manifest"
 version = "0.1.0"
 dependencies = [
  "chrono",
  "semver",
  "serde",
- "spsv2-config",
- "spsv2-errors",
- "spsv2-hash",
- "spsv2-types",
+ "sps2-config",
+ "sps2-errors",
+ "sps2-hash",
+ "sps2-types",
  "tempfile",
  "tokio",
  "toml",
 ]
 
 [[package]]
-name = "spsv2-net"
+name = "sps2-net"
 version = "0.1.0"
 dependencies = [
  "blake3",
@@ -3652,50 +3652,50 @@ dependencies = [
  "futures",
  "httpmock",
  "reqwest",
- "spsv2-errors",
- "spsv2-events",
- "spsv2-hash",
- "spsv2-types",
+ "sps2-errors",
+ "sps2-events",
+ "sps2-hash",
+ "sps2-types",
  "tempfile",
  "tokio",
  "url",
 ]
 
 [[package]]
-name = "spsv2-ops"
+name = "sps2-ops"
 version = "0.1.0"
 dependencies = [
  "chrono",
  "serde",
  "serde_json",
- "spsv2-audit",
- "spsv2-builder",
- "spsv2-errors",
- "spsv2-events",
- "spsv2-index",
- "spsv2-install",
- "spsv2-net",
- "spsv2-package",
- "spsv2-resolver",
- "spsv2-state",
- "spsv2-store",
- "spsv2-types",
+ "sps2-audit",
+ "sps2-builder",
+ "sps2-errors",
+ "sps2-events",
+ "sps2-index",
+ "sps2-install",
+ "sps2-net",
+ "sps2-package",
+ "sps2-resolver",
+ "sps2-state",
+ "sps2-store",
+ "sps2-types",
  "tempfile",
  "tokio",
  "uuid",
 ]
 
 [[package]]
-name = "spsv2-package"
+name = "sps2-package"
 version = "0.1.0"
 dependencies = [
  "allocative",
  "anyhow",
  "num_cpus",
  "serde",
- "spsv2-errors",
- "spsv2-hash",
- "spsv2-types",
+ "sps2-errors",
+ "sps2-hash",
+ "sps2-types",
  "starlark",
  "starlark_derive",
  "tempfile",
@@ -3703,7 +3703,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "spsv2-resolver"
+name = "sps2-resolver"
 version = "0.1.0"
 dependencies = [
  "crossbeam",
@@ -3711,39 +3711,39 @@ dependencies = [
  "scopeguard",
  "semver",
  "serde",
- "spsv2-errors",
- "spsv2-index",
- "spsv2-manifest",
- "spsv2-types",
+ "sps2-errors",
+ "sps2-index",
+ "sps2-manifest",
+ "sps2-types",
  "tempfile",
  "tokio",
  "uuid",
 ]
 
 [[package]]
-name = "spsv2-root"
+name = "sps2-root"
 version = "0.1.0"
 dependencies = [
  "libc",
- "spsv2-errors",
- "spsv2-types",
+ "sps2-errors",
+ "sps2-types",
  "tempfile",
  "tokio",
 ]
 
 [[package]]
-name = "spsv2-state"
+name = "sps2-state"
 version = "0.1.0"
 dependencies = [
  "chrono",
  "serde",
  "serde_json",
- "spsv2-errors",
- "spsv2-events",
- "spsv2-hash",
- "spsv2-resolver",
- "spsv2-root",
- "spsv2-types",
+ "sps2-errors",
+ "sps2-events",
+ "sps2-hash",
+ "sps2-resolver",
+ "sps2-root",
+ "sps2-types",
  "sqlx",
  "tempfile",
  "tokio",
@@ -3751,15 +3751,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "spsv2-store"
+name = "sps2-store"
 version = "0.1.0"
 dependencies = [
  "async-compression",
- "spsv2-errors",
- "spsv2-hash",
- "spsv2-manifest",
- "spsv2-root",
- "spsv2-types",
+ "sps2-errors",
+ "sps2-hash",
+ "sps2-manifest",
+ "sps2-root",
+ "sps2-types",
  "tar",
  "tempfile",
  "tokio",
@@ -3767,7 +3767,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "spsv2-types"
+name = "sps2-types"
 version = "0.1.0"
 dependencies = [
  "chrono",
@@ -3776,7 +3776,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
- "spsv2-errors",
+ "sps2-errors",
  "thiserror 2.0.12",
  "uuid",
 ]

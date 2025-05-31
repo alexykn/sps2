@@ -3,11 +3,11 @@
 // InstallContext import removed as it's not used in this module
 use crossbeam::queue::SegQueue;
 use dashmap::DashMap;
-use spsv2_errors::{Error, InstallError};
-use spsv2_events::{Event, EventSender};
-use spsv2_net::NetClient;
-use spsv2_resolver::{ExecutionPlan, NodeAction, PackageId, ResolvedNode};
-use spsv2_store::PackageStore;
+use sps2_errors::{Error, InstallError};
+use sps2_events::{Event, EventSender};
+use sps2_net::NetClient;
+use sps2_resolver::{ExecutionPlan, NodeAction, PackageId, ResolvedNode};
+use sps2_store::PackageStore;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
@@ -421,7 +421,7 @@ mod tests {
         // Test event sending (should not panic)
         context.send_event(Event::PackageDownloaded {
             name: "test".to_string(),
-            version: spsv2_types::Version::parse("1.0.0").unwrap(),
+            version: sps2_types::Version::parse("1.0.0").unwrap(),
         });
     }
 

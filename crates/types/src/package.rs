@@ -46,7 +46,7 @@ impl PackageSpec {
     ///
     /// This function may panic if the input string contains malformed version
     /// constraints that cannot be parsed.
-    pub fn parse(s: &str) -> Result<Self, spsv2_errors::VersionError> {
+    pub fn parse(s: &str) -> Result<Self, sps2_errors::VersionError> {
         // Find the first constraint operator
         let operators = ["==", ">=", "<=", "!=", "~=", ">", "<"];
         let mut split_pos = None;
@@ -69,7 +69,7 @@ impl PackageSpec {
         };
 
         if name.is_empty() {
-            return Err(spsv2_errors::VersionError::InvalidConstraint {
+            return Err(sps2_errors::VersionError::InvalidConstraint {
                 input: s.to_string(),
             });
         }

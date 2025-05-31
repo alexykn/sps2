@@ -5,9 +5,7 @@
   "documentNamespace": "https://example.com/spdx/hello-world-1.0.0",
   "creationInfo": {
     "created": "2024-01-15T10:30:00Z",
-    "creators": [
-      "Tool: spsv2-builder"
-    ]
+    "creators": ["Tool: sps2-builder"]
   },
   "packages": [
     {

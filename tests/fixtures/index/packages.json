@@ -18,7 +18,7 @@
           "download_url": "https://repo.example.com/packages/hello-world-1.0.0-1.aarch64.sp",
           "checksum": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
           "size": 4096,
-          "signature": "trusted comment: signature from spsv2 key\nRWSGWHlw..."
+          "signature": "trusted comment: signature from sps2 key\nRWSGWHlw..."
         }
       }
     },
@@ -45,7 +45,7 @@
           "download_url": "https://repo.example.com/packages/complex-app-2.0.0-1.aarch64.sp",
           "checksum": "a665a45920422f9d417e4867efdc4fb8a04a1f3cbc663dda3c5c0c0c1b7e84c4",
           "size": 45678901,
-          "signature": "trusted comment: signature from spsv2 key\nRWSGWHlw..."
+          "signature": "trusted comment: signature from sps2 key\nRWSGWHlw..."
         },
         "2.1.3": {
           "version": "2.1.3",
@@ -66,7 +66,7 @@
           "download_url": "https://repo.example.com/packages/complex-app-2.1.3-2.aarch64.sp",
           "checksum": "a665a45920422f9d417e4867efdc4fb8a04a1f3cbc663dda3c5c0c0c1b7e84c5",
           "size": 52428800,
-          "signature": "trusted comment: signature from spsv2 key\nRWSGWHlw..."
+          "signature": "trusted comment: signature from sps2 key\nRWSGWHlw..."
         }
       }
     },
@@ -88,7 +88,7 @@
           "download_url": "https://repo.example.com/packages/libssl-1.1.1w-1.aarch64.sp",
           "checksum": "b665a45920422f9d417e4867efdc4fb8a04a1f3cbc663dda3c5c0c0c1b7e84c5",
           "size": 8388608,
-          "signature": "trusted comment: signature from spsv2 key\nRWSGWHlw..."
+          "signature": "trusted comment: signature from sps2 key\nRWSGWHlw..."
         }
       }
     },
@@ -108,7 +108,7 @@
           "download_url": "https://repo.example.com/packages/zlib-1.2.11-1.aarch64.sp",
           "checksum": "c665a45920422f9d417e4867efdc4fb8a04a1f3cbc663dda3c5c0c0c1b7e84c5",
           "size": 262144,
-          "signature": "trusted comment: signature from spsv2 key\nRWSGWHlw..."
+          "signature": "trusted comment: signature from sps2 key\nRWSGWHlw..."
         }
       }
     },
@@ -128,7 +128,7 @@
           "download_url": "https://repo.example.com/packages/sqlite-3.36.0-1.aarch64.sp",
           "checksum": "d665a45920422f9d417e4867efdc4fb8a04a1f3cbc663dda3c5c0c0c1b7e84c5",
           "size": 1048576,
-          "signature": "trusted comment: signature from spsv2 key\nRWSGWHlw..."
+          "signature": "trusted comment: signature from sps2 key\nRWSGWHlw..."
         }
       }
     },
@@ -150,7 +150,7 @@
           "download_url": "https://repo.example.com/packages/curl-7.85.0-1.aarch64.sp",
           "checksum": "e665a45920422f9d417e4867efdc4fb8a04a1f3cbc663dda3c5c0c0c1b7e84c5",
           "size": 524288,
-          "signature": "trusted comment: signature from spsv2 key\nRWSGWHlw..."
+          "signature": "trusted comment: signature from sps2 key\nRWSGWHlw..."
         }
       }
     }

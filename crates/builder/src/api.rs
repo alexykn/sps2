@@ -1,9 +1,9 @@
 //! Builder API for Starlark recipes
 
 use crate::{BuildCommandResult, BuildEnvironment};
-use spsv2_errors::{BuildError, Error};
-use spsv2_hash::Hash;
-use spsv2_net::{NetClient, NetConfig};
+use sps2_errors::{BuildError, Error};
+use sps2_hash::Hash;
+use sps2_net::{NetClient, NetConfig};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::fs;

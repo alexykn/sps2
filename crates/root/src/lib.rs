@@ -1,12 +1,12 @@
 #![deny(clippy::pedantic)]
 #![allow(clippy::module_name_repetitions, unused_variables)]
 
-//! Filesystem operations for spsv2
+//! Filesystem operations for sps2
 //!
 //! This crate provides APFS-optimized filesystem operations including
 //! atomic renames, clonefile support, and directory management.
 
-use spsv2_errors::{Error, StorageError};
+use sps2_errors::{Error, StorageError};
 use std::ffi::CString;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;

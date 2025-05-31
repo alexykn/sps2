@@ -1,7 +1,7 @@
 #![deny(clippy::pedantic, unsafe_code)]
 #![allow(clippy::module_name_repetitions)]
 
-//! Content-addressed storage for spsv2
+//! Content-addressed storage for sps2
 //!
 //! This crate manages the `/opt/pm/store/` directory where packages
 //! are stored by their content hash. Each package is immutable and
@@ -13,9 +13,9 @@ mod package;
 pub use archive::{create_package, extract_package};
 pub use package::StoredPackage;
 
-use spsv2_errors::{Error, StorageError};
-use spsv2_hash::{content_path, Hash};
-use spsv2_root::{create_dir_all, exists, remove_dir_all, set_compression, size};
+use sps2_errors::{Error, StorageError};
+use sps2_hash::{content_path, Hash};
+use sps2_root::{create_dir_all, exists, remove_dir_all, set_compression, size};
 use std::path::{Path, PathBuf};
 
 /// Store manager for content-addressed packages
@@ -133,7 +133,7 @@ impl PackageStore {
     pub async fn get_package_sbom(
         &self,
         package_name: &str,
-        package_version: &spsv2_types::Version,
+        package_version: &sps2_types::Version,
     ) -> Result<Vec<u8>, Error> {
         // Get the package path (this is a simplified implementation)
         let package_path = self.get_package_path(package_name, package_version)?;
@@ -176,13 +176,13 @@ impl PackageStore {
     pub fn get_package_path(
         &self,
         package_name: &str,
-        package_version: &spsv2_types::Version,
+        package_version: &sps2_types::Version,
     ) -> Result<std::path::PathBuf, Error> {
         // This is a simplified implementation - in reality we'd need to
         // look up the package hash from name/version
         // For now, create a dummy hash from name and version
         let dummy_content = format!("{package_name}-{package_version}");
-        let hash = spsv2_hash::Hash::from_data(dummy_content.as_bytes());
+        let hash = sps2_hash::Hash::from_data(dummy_content.as_bytes());
         Ok(self.package_path(&hash))
     }
 
@@ -316,7 +316,7 @@ impl PackageStore {
     pub fn verify_integrity(&self) -> Result<(), Error> {
         // Basic verification - check if base path exists and is accessible
         if !self.base_path.exists() {
-            return Err(spsv2_errors::StorageError::DirectoryNotFound {
+            return Err(sps2_errors::StorageError::DirectoryNotFound {
                 path: self.base_path.clone(),
             }
             .into());
@@ -333,7 +333,7 @@ impl PackageStore {
     pub fn get_package_size(
         &self,
         _package_name: &str,
-        _package_version: &spsv2_types::Version,
+        _package_version: &sps2_types::Version,
     ) -> Result<u64, Error> {
         // TODO: Implement lookup by package name/version
         // For now, return 0 as placeholder
@@ -349,7 +349,7 @@ impl PackageStore {
         &self,
         file_path: &std::path::Path,
         _package_name: &str,
-        _package_version: &spsv2_types::Version,
+        _package_version: &sps2_types::Version,
     ) -> Result<StoredPackage, Error> {
         // For now, just delegate to add_package
         self.add_package(file_path).await

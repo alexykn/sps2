@@ -1,7 +1,7 @@
 #![deny(clippy::pedantic, unsafe_code)]
 #![allow(clippy::module_name_repetitions)]
 
-//! Dependency resolution for spsv2
+//! Dependency resolution for sps2
 //!
 //! This crate provides deterministic, parallel dependency resolution
 //! for both installation and building operations. It implements a
@@ -15,7 +15,7 @@ pub use execution::ExecutionPlan;
 pub use graph::{DepEdge, DepKind, NodeAction, PackageId, ResolvedNode};
 pub use resolver::Resolver;
 
-use spsv2_types::package::PackageSpec;
+use sps2_types::package::PackageSpec;
 use std::collections::HashMap;
 use std::path::PathBuf;
 

@@ -2,12 +2,12 @@
 
 #[cfg(test)]
 mod tests {
-    use spsv2_index::{DependencyInfo, Index, IndexManager, VersionEntry};
-    use spsv2_install::*;
-    use spsv2_resolver::Resolver;
-    use spsv2_state::StateManager;
-    use spsv2_store::PackageStore;
-    use spsv2_types::{PackageSpec, StateInfo, Version};
+    use sps2_index::{DependencyInfo, Index, IndexManager, VersionEntry};
+    use sps2_install::*;
+    use sps2_resolver::Resolver;
+    use sps2_state::StateManager;
+    use sps2_store::PackageStore;
+    use sps2_types::{PackageSpec, StateInfo, Version};
     use tempfile::tempdir;
     use uuid::Uuid;
 
@@ -130,7 +130,7 @@ mod tests {
         assert_eq!(result.total_changes(), 0);
 
         let package_id =
-            spsv2_resolver::PackageId::new("curl".to_string(), Version::parse("8.5.0").unwrap());
+            sps2_resolver::PackageId::new("curl".to_string(), Version::parse("8.5.0").unwrap());
 
         result.add_installed(package_id.clone());
         assert_eq!(result.total_changes(), 1);

@@ -1,6 +1,6 @@
 //! Integration tests for the audit crate
 
-use spsv2_audit::{
+use sps2_audit::{
     AuditScanner, AuditSystem, Component, ComponentIdentifier, SbomParser, ScanOptions, Severity,
     VulnDbManager, VulnerabilityDatabase,
 };
@@ -15,7 +15,7 @@ async fn insert_mock_vulnerabilities(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Insert a critical vulnerability for lodash
     sqlx::query(
-        "INSERT INTO vulnerabilities (cve_id, summary, severity, cvss_score, published, modified) 
+        "INSERT INTO vulnerabilities (cve_id, summary, severity, cvss_score, published, modified)
          VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind("CVE-2021-23337")
@@ -34,7 +34,7 @@ async fn insert_mock_vulnerabilities(
 
     // Add affected package info
     sqlx::query(
-        "INSERT INTO affected_packages (vulnerability_id, package_name, package_type, affected_version, fixed_version, purl) 
+        "INSERT INTO affected_packages (vulnerability_id, package_name, package_type, affected_version, fixed_version, purl)
          VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(vuln_id)
@@ -48,7 +48,7 @@ async fn insert_mock_vulnerabilities(
 
     // Insert a high severity vulnerability for express
     sqlx::query(
-        "INSERT INTO vulnerabilities (cve_id, summary, severity, cvss_score, published, modified) 
+        "INSERT INTO vulnerabilities (cve_id, summary, severity, cvss_score, published, modified)
          VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind("CVE-2022-24999")
@@ -66,7 +66,7 @@ async fn insert_mock_vulnerabilities(
         .get::<i64, _>("id");
 
     sqlx::query(
-        "INSERT INTO affected_packages (vulnerability_id, package_name, package_type, affected_version, fixed_version, purl, cpe) 
+        "INSERT INTO affected_packages (vulnerability_id, package_name, package_type, affected_version, fixed_version, purl, cpe)
          VALUES (?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(vuln_id)
@@ -81,7 +81,7 @@ async fn insert_mock_vulnerabilities(
 
     // Insert a medium severity vulnerability with multiple affected versions
     sqlx::query(
-        "INSERT INTO vulnerabilities (cve_id, summary, severity, cvss_score, published, modified) 
+        "INSERT INTO vulnerabilities (cve_id, summary, severity, cvss_score, published, modified)
          VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind("CVE-2023-12345")
@@ -101,7 +101,7 @@ async fn insert_mock_vulnerabilities(
     // Add multiple affected versions
     for version in &["1.0.0", "1.0.1", "1.0.2"] {
         sqlx::query(
-            "INSERT INTO affected_packages (vulnerability_id, package_name, package_type, affected_version, fixed_version) 
+            "INSERT INTO affected_packages (vulnerability_id, package_name, package_type, affected_version, fixed_version)
              VALUES (?, ?, ?, ?, ?)",
         )
         .bind(vuln_id)
@@ -115,7 +115,7 @@ async fn insert_mock_vulnerabilities(
 
     // Insert a low severity vulnerability
     sqlx::query(
-        "INSERT INTO vulnerabilities (cve_id, summary, severity, cvss_score, published, modified) 
+        "INSERT INTO vulnerabilities (cve_id, summary, severity, cvss_score, published, modified)
          VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind("CVE-2023-99999")
@@ -133,7 +133,7 @@ async fn insert_mock_vulnerabilities(
         .get::<i64, _>("id");
 
     sqlx::query(
-        "INSERT INTO affected_packages (vulnerability_id, package_name, package_type, affected_version) 
+        "INSERT INTO affected_packages (vulnerability_id, package_name, package_type, affected_version)
          VALUES (?, ?, ?, ?)",
     )
     .bind(vuln_id)
@@ -167,7 +167,7 @@ async fn insert_mock_vulnerabilities(
             .get::<i64, _>("id");
 
         sqlx::query(
-            "INSERT INTO vulnerability_references (vulnerability_id, url, reference_type) 
+            "INSERT INTO vulnerability_references (vulnerability_id, url, reference_type)
              VALUES (?, ?, ?)",
         )
         .bind(vuln_id)
@@ -467,8 +467,8 @@ async fn test_vulnerability_matching() -> Result<(), Box<dyn std::error::Error>>
 
 #[tokio::test]
 async fn test_audit_report_generation() -> Result<(), Box<dyn std::error::Error>> {
-    use spsv2_audit::{AuditReport, PackageAudit};
-    use spsv2_types::Version;
+    use sps2_audit::{AuditReport, PackageAudit};
+    use sps2_types::Version;
 
     let temp_dir = TempDir::new()?;
     let db_path = temp_dir.path().join("test_vulndb.sqlite");
@@ -735,7 +735,7 @@ async fn test_version_matching_logic() -> Result<(), Box<dyn std::error::Error>>
 
     // Insert a vulnerability with specific version range
     sqlx::query(
-        "INSERT INTO vulnerabilities (cve_id, summary, severity, published, modified) 
+        "INSERT INTO vulnerabilities (cve_id, summary, severity, published, modified)
          VALUES (?, ?, ?, ?, ?)",
     )
     .bind("CVE-2024-TEST")
@@ -753,7 +753,7 @@ async fn test_version_matching_logic() -> Result<(), Box<dyn std::error::Error>>
 
     // Add affected versions
     sqlx::query(
-        "INSERT INTO affected_packages (vulnerability_id, package_name, package_type, affected_version, fixed_version) 
+        "INSERT INTO affected_packages (vulnerability_id, package_name, package_type, affected_version, fixed_version)
          VALUES (?, ?, ?, ?, ?)",
     )
     .bind(vuln_id)

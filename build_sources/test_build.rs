@@ -1,11 +1,11 @@
-use spsv2_builder::{BuildConfig, BuildContext, Builder};
-use spsv2_types::Version;
+use sps2_builder::{BuildConfig, BuildContext, Builder};
+use sps2_types::Version;
 use std::path::PathBuf;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Testing spsv2 builder with hello package...");
-    
+    println!("Testing sps2 builder with hello package...");
+
     // Create build context
     let context = BuildContext::new(
         "hello".to_string(),
@@ -13,11 +13,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         PathBuf::from("hello.star"),
         PathBuf::from("."),
     );
-    
+
     // Create builder with network enabled (for file:// URLs)
     let config = BuildConfig::with_network();
     let builder = Builder::with_config(config);
-    
+
     // Build the package
     match builder.build(context).await {
         Ok(result) => {
@@ -29,6 +29,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Err(e.into());
         }
     }
-    
+
     Ok(())
 }

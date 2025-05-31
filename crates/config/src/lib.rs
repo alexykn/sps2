@@ -1,17 +1,17 @@
 #![deny(clippy::pedantic, unsafe_code)]
 #![allow(clippy::module_name_repetitions)]
 
-//! Configuration management for spsv2
+//! Configuration management for sps2
 //!
 //! This crate handles loading and merging configuration from:
 //! - Default values (hard-coded)
-//! - Configuration file (~/.config/spsv2/config.toml)
+//! - Configuration file (~/.config/sps2/config.toml)
 //! - Environment variables
 //! - CLI flags
 
 use serde::{Deserialize, Serialize};
-use spsv2_errors::{ConfigError, Error};
-use spsv2_types::{ColorChoice, OutputFormat};
+use sps2_errors::{ConfigError, Error};
+use sps2_types::{ColorChoice, OutputFormat};
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
@@ -134,7 +134,7 @@ impl Config {
         let config_dir = dirs::config_dir().ok_or_else(|| ConfigError::NotFound {
             path: "config directory".to_string(),
         })?;
-        Ok(config_dir.join("spsv2").join("config.toml"))
+        Ok(config_dir.join("sps2").join("config.toml"))
     }
 
     /// Load configuration from file
@@ -195,15 +195,15 @@ impl Config {
     /// Returns an error if environment variables contain invalid values
     /// that cannot be parsed into the expected types.
     pub fn merge_env(&mut self) -> Result<(), Error> {
-        // SPSV2_OUTPUT
-        if let Ok(output) = std::env::var("SPSV2_OUTPUT") {
+        // SPS2_OUTPUT
+        if let Ok(output) = std::env::var("SPS2_OUTPUT") {
             self.general.default_output = match output.as_str() {
                 "plain" => OutputFormat::Plain,
                 "tty" => OutputFormat::Tty,
                 "json" => OutputFormat::Json,
                 _ => {
                     return Err(ConfigError::InvalidValue {
-                        field: "SPSV2_OUTPUT".to_string(),
+                        field: "SPS2_OUTPUT".to_string(),
                         value: output,
                     }
                     .into())
@@ -211,15 +211,15 @@ impl Config {
             };
         }
 
-        // SPSV2_COLOR
-        if let Ok(color) = std::env::var("SPSV2_COLOR") {
+        // SPS2_COLOR
+        if let Ok(color) = std::env::var("SPS2_COLOR") {
             self.general.color = match color.as_str() {
                 "always" => ColorChoice::Always,
                 "auto" => ColorChoice::Auto,
                 "never" => ColorChoice::Never,
                 _ => {
                     return Err(ConfigError::InvalidValue {
-                        field: "SPSV2_COLOR".to_string(),
+                        field: "SPS2_COLOR".to_string(),
                         value: color,
                     }
                     .into())

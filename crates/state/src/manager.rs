@@ -4,11 +4,11 @@ use crate::{
     models::{Package, PackageRef, State, StoreRef},
     queries,
 };
-use spsv2_errors::{Error, StateError};
-use spsv2_events::{Event, EventSender, EventSenderExt};
-use spsv2_hash::Hash;
-use spsv2_root;
-use spsv2_types::StateId;
+use sps2_errors::{Error, StateError};
+use sps2_events::{Event, EventSender, EventSenderExt};
+use sps2_hash::Hash;
+use sps2_root;
+use sps2_types::StateId;
 use sqlx::{Pool, Sqlite};
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -109,7 +109,7 @@ impl StateManager {
             operation: "Cloning current state".to_string(),
         });
 
-        spsv2_root::clone_directory(&self.live_path, &staging_path).await?;
+        sps2_root::clone_directory(&self.live_path, &staging_path).await?;
 
         Ok(StateTransition {
             from: current_state,
@@ -192,7 +192,7 @@ impl StateManager {
 
         // Atomic filesystem swap
         let old_live_backup = self.state_path.join(transition.from.to_string());
-        spsv2_root::atomic_rename(&self.live_path, &transition.staging_path).await?;
+        sps2_root::atomic_rename(&self.live_path, &transition.staging_path).await?;
 
         // Update active state
         queries::set_active_state(&mut tx, &transition.to).await?;
@@ -201,8 +201,8 @@ impl StateManager {
         tx.commit().await?;
 
         // Archive old state
-        if spsv2_root::exists(&old_live_backup).await {
-            spsv2_root::remove_dir_all(&old_live_backup).await?;
+        if sps2_root::exists(&old_live_backup).await {
+            sps2_root::remove_dir_all(&old_live_backup).await?;
         }
         tokio::fs::rename(&transition.staging_path, &old_live_backup).await?;
 
@@ -253,7 +253,7 @@ impl StateManager {
         // Perform rollback
         let target_path = self.state_path.join(target.to_string());
 
-        if !spsv2_root::exists(&target_path).await {
+        if !sps2_root::exists(&target_path).await {
             return Err(StateError::StateNotFound {
                 id: target.to_string(),
             }
@@ -261,7 +261,7 @@ impl StateManager {
         }
 
         // Atomic swap
-        spsv2_root::atomic_rename(&target_path, &self.live_path).await?;
+        sps2_root::atomic_rename(&target_path, &self.live_path).await?;
 
         // Update database
         let mut tx = self.pool.begin().await?;
@@ -323,9 +323,9 @@ impl StateManager {
         // Remove state directories
         for state_id in &states_to_remove {
             let state_path = self.state_path.join(state_id);
-            if spsv2_root::exists(&state_path).await {
-                space_freed += spsv2_root::size(&state_path).await?;
-                spsv2_root::remove_dir_all(&state_path).await?;
+            if sps2_root::exists(&state_path).await {
+                space_freed += sps2_root::size(&state_path).await?;
+                sps2_root::remove_dir_all(&state_path).await?;
             }
         }
 
@@ -336,8 +336,8 @@ impl StateManager {
             if let Some(name_str) = name.to_str() {
                 if name_str.starts_with("staging-") {
                     let path = entry.path();
-                    space_freed += spsv2_root::size(&path).await?;
-                    spsv2_root::remove_dir_all(&path).await?;
+                    space_freed += sps2_root::size(&path).await?;
+                    sps2_root::remove_dir_all(&path).await?;
                 }
             }
         }
@@ -363,7 +363,7 @@ impl StateManager {
     /// Returns an error if the database query fails.
     pub async fn get_package_dependents(
         &self,
-        package_id: &spsv2_resolver::PackageId,
+        package_id: &sps2_resolver::PackageId,
     ) -> Result<Vec<String>, Error> {
         let mut tx = self.pool.begin().await?;
         let dependents = queries::get_package_dependents(&mut tx, &package_id.name).await?;
@@ -424,7 +424,7 @@ impl StateManager {
     /// Currently does not fail, but returns `Result` for API consistency.
     pub fn get_state_path(
         &self,
-        state_id: spsv2_types::StateId,
+        state_id: sps2_types::StateId,
     ) -> Result<std::path::PathBuf, Error> {
         Ok(self.state_path.join(state_id.to_string()))
     }
@@ -434,7 +434,7 @@ impl StateManager {
     /// # Errors
     ///
     /// Returns an error if the database update fails.
-    pub async fn set_active_state(&self, state_id: spsv2_types::StateId) -> Result<(), Error> {
+    pub async fn set_active_state(&self, state_id: sps2_types::StateId) -> Result<(), Error> {
         let mut tx = self.pool.begin().await?;
         queries::set_active_state(&mut tx, &state_id).await?;
         tx.commit().await?;
@@ -449,7 +449,7 @@ impl StateManager {
     pub async fn set_active_state_with_tx(
         &self,
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-        state_id: spsv2_types::StateId,
+        state_id: sps2_types::StateId,
     ) -> Result<(), Error> {
         queries::set_active_state(tx, &state_id).await?;
         Ok(())
@@ -460,7 +460,7 @@ impl StateManager {
     /// # Errors
     ///
     /// Returns an error if the database query fails.
-    pub async fn state_exists(&self, state_id: &spsv2_types::StateId) -> Result<bool, Error> {
+    pub async fn state_exists(&self, state_id: &sps2_types::StateId) -> Result<bool, Error> {
         let mut tx = self.pool.begin().await?;
         let exists = queries::state_exists(&mut tx, state_id).await?;
         tx.commit().await?;
@@ -472,7 +472,7 @@ impl StateManager {
     /// # Errors
     ///
     /// Returns an error if the database query fails.
-    pub async fn list_states(&self) -> Result<Vec<spsv2_types::StateId>, Error> {
+    pub async fn list_states(&self) -> Result<Vec<sps2_types::StateId>, Error> {
         let mut tx = self.pool.begin().await?;
         let states = queries::list_states(&mut tx).await?;
         tx.commit().await?;
@@ -498,7 +498,7 @@ impl StateManager {
     /// Returns an error if the database query fails.
     pub async fn get_state_packages(
         &self,
-        state_id: &spsv2_types::StateId,
+        state_id: &sps2_types::StateId,
     ) -> Result<Vec<String>, Error> {
         let mut tx = self.pool.begin().await?;
         let packages = queries::get_state_package_names(&mut tx, state_id).await?;
@@ -514,7 +514,7 @@ impl StateManager {
     pub async fn cleanup_old_states(
         &self,
         keep_count: usize,
-    ) -> Result<Vec<spsv2_types::StateId>, Error> {
+    ) -> Result<Vec<sps2_types::StateId>, Error> {
         let mut tx = self.pool.begin().await?;
         let cutoff_time = chrono::Utc::now().timestamp() - (30 * 24 * 60 * 60); // 30 days ago
         let states = queries::get_states_for_cleanup(&mut tx, keep_count, cutoff_time).await?;
@@ -533,11 +533,11 @@ impl StateManager {
     /// # Errors
     ///
     /// Returns an error if the database query fails.
-    pub async fn get_current_state_id(&self) -> Result<spsv2_types::StateId, Error> {
+    pub async fn get_current_state_id(&self) -> Result<sps2_types::StateId, Error> {
         self.get_active_state().await
     }
 
-    /// Begin transaction (placeholder implementation)  
+    /// Begin transaction (placeholder implementation)
     ///
     /// # Errors
     ///
@@ -554,8 +554,8 @@ impl StateManager {
     pub async fn create_state_with_tx(
         &self,
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-        state_id: &spsv2_types::StateId,
-        parent_id: Option<&spsv2_types::StateId>,
+        state_id: &sps2_types::StateId,
+        parent_id: Option<&sps2_types::StateId>,
         operation: &str,
     ) -> Result<(), Error> {
         queries::create_state(tx, state_id, parent_id, operation).await
@@ -568,8 +568,8 @@ impl StateManager {
     /// Returns an error if database operations fail.
     pub async fn get_parent_state_id(
         &self,
-        state_id: &spsv2_types::StateId,
-    ) -> Result<Option<spsv2_types::StateId>, Error> {
+        state_id: &sps2_types::StateId,
+    ) -> Result<Option<sps2_types::StateId>, Error> {
         let mut tx = self.pool.begin().await?;
         let parent_id = queries::get_parent_state_id(&mut tx, state_id).await?;
         tx.commit().await?;

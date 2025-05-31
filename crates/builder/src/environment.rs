@@ -1,12 +1,12 @@
 //! Build environment management
 
 use crate::BuildContext;
-use spsv2_errors::{BuildError, Error};
-use spsv2_events::Event;
-use spsv2_install::Installer;
-use spsv2_resolver::{ResolutionContext, Resolver};
-use spsv2_store::PackageStore;
-use spsv2_types::{package::PackageSpec, Version};
+use sps2_errors::{BuildError, Error};
+use sps2_events::Event;
+use sps2_install::Installer;
+use sps2_resolver::{ResolutionContext, Resolver};
+use sps2_store::PackageStore;
+use sps2_types::{package::PackageSpec, Version};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -510,7 +510,7 @@ impl BuildEnvironment {
     /// Returns an error if the installer or store is not configured, or if installation fails.
     async fn install_build_dependency(
         &self,
-        node: &spsv2_resolver::ResolvedNode,
+        node: &sps2_resolver::ResolvedNode,
     ) -> Result<(), Error> {
         let Some(_installer) = &self.installer else {
             return Err(BuildError::MissingBuildDep {
@@ -534,7 +534,7 @@ impl BuildEnvironment {
         // Install the build dependency to the isolated deps prefix
         // This extracts the package contents to the build environment
         match &node.action {
-            spsv2_resolver::NodeAction::Download => {
+            sps2_resolver::NodeAction::Download => {
                 if let Some(url) = &node.url {
                     self.send_event(Event::DownloadStarted {
                         url: url.clone(),
@@ -574,7 +574,7 @@ impl BuildEnvironment {
                     });
                 }
             }
-            spsv2_resolver::NodeAction::Local => {
+            sps2_resolver::NodeAction::Local => {
                 if let Some(path) = &node.path {
                     // Extract local .sp file to deps prefix
                     self.extract_sp_package(path, &self.deps_prefix).await?;
@@ -719,7 +719,7 @@ impl BuildResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use spsv2_types::Version;
+    use sps2_types::Version;
     use tempfile::tempdir;
 
     #[tokio::test]

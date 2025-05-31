@@ -1,6 +1,6 @@
 //! GitHub Security Advisory source implementation
 
-use spsv2_errors::{AuditError, Error};
+use sps2_errors::{AuditError, Error};
 use sqlx::SqlitePool;
 
 /// Update from GitHub Security Advisories
@@ -18,7 +18,7 @@ pub(crate) async fn update_from_github(pool: &SqlitePool) -> Result<usize, Error
 
         let response = client
             .post(url)
-            .header("User-Agent", "spsv2-package-manager")
+            .header("User-Agent", "sps2-package-manager")
             .header("Accept", "application/vnd.github.v4+json")
             .json(&serde_json::json!({ "query": query }))
             .send()
@@ -120,7 +120,7 @@ async fn insert_github_advisory(
 
     // Insert vulnerability
     let result = sqlx::query(
-        "INSERT OR REPLACE INTO vulnerabilities (cve_id, summary, severity, cvss_score, published, modified) 
+        "INSERT OR REPLACE INTO vulnerabilities (cve_id, summary, severity, cvss_score, published, modified)
          VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(ghsa_id)
@@ -177,8 +177,8 @@ async fn process_github_vulnerabilities(
                 .unwrap_or("");
 
             sqlx::query(
-                "INSERT OR IGNORE INTO affected_packages 
-                 (vulnerability_id, package_name, package_type, affected_version, fixed_version) 
+                "INSERT OR IGNORE INTO affected_packages
+                 (vulnerability_id, package_name, package_type, affected_version, fixed_version)
                  VALUES (?, ?, ?, ?, ?)",
             )
             .bind(vuln_id)
@@ -207,7 +207,7 @@ async fn process_github_references(
         for reference in references {
             if let Some(url) = reference.get("url").and_then(|v| v.as_str()) {
                 sqlx::query(
-                    "INSERT OR IGNORE INTO vulnerability_references (vulnerability_id, url, reference_type) 
+                    "INSERT OR IGNORE INTO vulnerability_references (vulnerability_id, url, reference_type)
                      VALUES (?, ?, ?)",
                 )
                 .bind(vuln_id)

@@ -1,14 +1,14 @@
 #![deny(clippy::pedantic, unsafe_code)]
 #![allow(clippy::module_name_repetitions)]
 
-//! BLAKE3 content addressing for spsv2
+//! BLAKE3 content addressing for sps2
 //!
 //! This crate provides hashing functionality for content-addressed storage
 //! and integrity verification.
 
 use blake3::Hasher;
 use serde::{Deserialize, Serialize};
-use spsv2_errors::{Error, StorageError};
+use sps2_errors::{Error, StorageError};
 use std::fmt;
 use std::path::Path;
 use tokio::fs::File;

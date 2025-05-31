@@ -4,9 +4,9 @@
 mod tests {
     use httpmock::prelude::*;
     use httpmock::Method::HEAD;
-    use spsv2_events::channel;
-    use spsv2_hash::Hash;
-    use spsv2_net::*;
+    use sps2_events::channel;
+    use sps2_hash::Hash;
+    use sps2_net::*;
     use tempfile::tempdir;
 
     #[tokio::test]
@@ -48,8 +48,8 @@ mod tests {
 
         while let Ok(event) = rx.try_recv() {
             match event {
-                spsv2_events::Event::DownloadStarted { .. } => saw_start = true,
-                spsv2_events::Event::DownloadCompleted { .. } => saw_complete = true,
+                sps2_events::Event::DownloadStarted { .. } => saw_start = true,
+                sps2_events::Event::DownloadCompleted { .. } => saw_complete = true,
                 _ => {}
             }
         }
@@ -93,7 +93,7 @@ mod tests {
 
         assert!(matches!(
             error,
-            spsv2_errors::Error::Network(spsv2_errors::NetworkError::ChecksumMismatch { .. })
+            sps2_errors::Error::Network(sps2_errors::NetworkError::ChecksumMismatch { .. })
         ));
     }
 
@@ -133,7 +133,7 @@ mod tests {
         let error = fetch_text(&client, &url, &tx).await.unwrap_err();
         assert!(matches!(
             error,
-            spsv2_errors::Error::Network(spsv2_errors::NetworkError::HttpError { status: 404, .. })
+            sps2_errors::Error::Network(sps2_errors::NetworkError::HttpError { status: 404, .. })
         ));
     }
 

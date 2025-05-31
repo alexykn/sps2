@@ -2,9 +2,9 @@
 
 #[cfg(test)]
 mod tests {
-    use spsv2_index::{DependencyInfo, Index, IndexManager, VersionEntry};
-    use spsv2_ops::*;
-    use spsv2_types::PackageSpec;
+    use sps2_index::{DependencyInfo, Index, IndexManager, VersionEntry};
+    use sps2_ops::*;
+    use sps2_types::PackageSpec;
     use tempfile::tempdir;
 
     async fn create_test_context() -> OpsCtx {
@@ -32,15 +32,15 @@ mod tests {
 
         index.add_version("curl".to_string(), "8.5.0".to_string(), curl_entry);
 
-        let store = spsv2_store::PackageStore::new(temp.path().to_path_buf());
-        let state = spsv2_state::StateManager::new(temp.path()).await.unwrap();
+        let store = sps2_store::PackageStore::new(temp.path().to_path_buf());
+        let state = sps2_state::StateManager::new(temp.path()).await.unwrap();
         let mut index_manager = IndexManager::new(temp.path());
         let json = index.to_json().unwrap();
         index_manager.load(Some(&json)).await.unwrap();
 
-        let net = spsv2_net::NetClient::with_defaults().unwrap();
-        let resolver = spsv2_resolver::Resolver::new(index_manager.clone());
-        let builder = spsv2_builder::Builder::new();
+        let net = sps2_net::NetClient::with_defaults().unwrap();
+        let resolver = sps2_resolver::Resolver::new(index_manager.clone());
+        let builder = sps2_builder::Builder::new();
 
         OpsCtx::new(store, state, index_manager, net, resolver, builder, tx)
     }
@@ -58,12 +58,12 @@ mod tests {
         let temp = tempdir().unwrap();
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
 
-        let store = spsv2_store::PackageStore::new(temp.path().to_path_buf());
-        let state = spsv2_state::StateManager::new(temp.path()).await.unwrap();
+        let store = sps2_store::PackageStore::new(temp.path().to_path_buf());
+        let state = sps2_state::StateManager::new(temp.path()).await.unwrap();
         let index = IndexManager::new(temp.path());
-        let net = spsv2_net::NetClient::with_defaults().unwrap();
-        let resolver = spsv2_resolver::Resolver::new(index.clone());
-        let builder = spsv2_builder::Builder::new();
+        let net = sps2_net::NetClient::with_defaults().unwrap();
+        let resolver = sps2_resolver::Resolver::new(index.clone());
+        let builder = sps2_builder::Builder::new();
 
         let _ctx = OpsContextBuilder::new()
             .with_store(store)
@@ -151,7 +151,7 @@ mod tests {
     fn test_operation_result_serialization() {
         let package_info = PackageInfo {
             name: "curl".to_string(),
-            version: Some(spsv2_types::Version::parse("8.5.0").unwrap()),
+            version: Some(sps2_types::Version::parse("8.5.0").unwrap()),
             available_version: None,
             description: Some("HTTP client".to_string()),
             homepage: None,
@@ -221,7 +221,7 @@ mod tests {
             change_type: ChangeType::Install,
             package: "curl".to_string(),
             old_version: None,
-            new_version: Some(spsv2_types::Version::parse("8.5.0").unwrap()),
+            new_version: Some(sps2_types::Version::parse("8.5.0").unwrap()),
         }];
 
         let report = OpReport::success(

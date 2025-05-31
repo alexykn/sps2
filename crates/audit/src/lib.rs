@@ -12,7 +12,7 @@
 #![allow(clippy::missing_panics_doc)]
 #![allow(clippy::too_many_lines)]
 
-//! CVE audit system for spsv2 (Future Implementation)
+//! CVE audit system for sps2 (Future Implementation)
 //!
 //! This crate provides offline CVE scanning using embedded SBOMs.
 //! Currently implements a foundation with placeholder functionality
@@ -31,10 +31,10 @@ pub use types::{
 };
 pub use vulndb::{DatabaseStatistics, VulnDbManager, VulnerabilityDatabase};
 
-use spsv2_errors::Error;
-use spsv2_events::EventSender;
-use spsv2_state::StateManager;
-use spsv2_store::PackageStore;
+use sps2_errors::Error;
+use sps2_events::EventSender;
+use sps2_state::StateManager;
+use sps2_store::PackageStore;
 
 /// Audit system for CVE scanning
 pub struct AuditSystem {
@@ -76,7 +76,7 @@ impl AuditSystem {
         let installed_packages = state_manager.get_installed_packages().await?;
 
         if let Some(sender) = &event_sender {
-            let _ = sender.send(spsv2_events::Event::AuditStarting {
+            let _ = sender.send(sps2_events::Event::AuditStarting {
                 package_count: installed_packages.len(),
             });
         }
@@ -93,7 +93,7 @@ impl AuditSystem {
             package_audits.push(audit);
 
             if let Some(sender) = &event_sender {
-                let _ = sender.send(spsv2_events::Event::AuditPackageCompleted {
+                let _ = sender.send(sps2_events::Event::AuditPackageCompleted {
                     package: package.name.clone(),
                     vulnerabilities_found: vuln_count,
                 });
@@ -103,7 +103,7 @@ impl AuditSystem {
         let report = AuditReport::new(package_audits);
 
         if let Some(sender) = &event_sender {
-            let _ = sender.send(spsv2_events::Event::AuditCompleted {
+            let _ = sender.send(sps2_events::Event::AuditCompleted {
                 packages_scanned: installed_packages.len(),
                 vulnerabilities_found: report.total_vulnerabilities(),
                 critical_count: report.critical_count(),
@@ -117,7 +117,7 @@ impl AuditSystem {
     pub async fn scan_package(
         &self,
         package_name: &str,
-        package_version: &spsv2_types::Version,
+        package_version: &sps2_types::Version,
         store: &PackageStore,
         options: &ScanOptions,
     ) -> Result<PackageAudit, Error> {

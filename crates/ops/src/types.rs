@@ -1,7 +1,7 @@
 //! Types for operations and results
 
 use serde::{Deserialize, Serialize};
-use spsv2_types::{PackageSpec, Version};
+use sps2_types::{PackageSpec, Version};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use uuid::Uuid;

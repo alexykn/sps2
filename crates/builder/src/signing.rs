@@ -1,7 +1,7 @@
 //! Package signing with Minisign
 
 use minisign::{sign, KeyPair, PublicKey, SecretKey, SecretKeyBox, SignatureBox};
-use spsv2_errors::{BuildError, Error};
+use sps2_errors::{BuildError, Error};
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use tokio::fs;
@@ -24,7 +24,7 @@ impl Default for SigningConfig {
         Self {
             private_key_path: None,
             key_password: None,
-            trusted_comment: Some("spsv2 package signature".to_string()),
+            trusted_comment: Some("sps2 package signature".to_string()),
             enabled: false, // Disabled by default for development
         }
     }
@@ -145,9 +145,9 @@ impl PackageSigner {
             .config
             .trusted_comment
             .as_deref()
-            .unwrap_or("spsv2 package signature");
+            .unwrap_or("sps2 package signature");
         let untrusted_comment = format!(
-            "signature from spsv2 for {}",
+            "signature from sps2 for {}",
             package_path
                 .file_name()
                 .unwrap_or_default()

@@ -1,15 +1,15 @@
 #![deny(clippy::pedantic, unsafe_code)]
 #![allow(clippy::module_name_repetitions)]
 
-//! Package manifest handling for spsv2
+//! Package manifest handling for sps2
 //!
 //! This crate defines the manifest.toml format and provides
 //! serialization/deserialization for package metadata.
 
 use serde::{Deserialize, Serialize};
-use spsv2_errors::{Error, PackageError};
-use spsv2_hash::Hash;
-use spsv2_types::{package::PackageSpec, Arch, Version};
+use sps2_errors::{Error, PackageError};
+use sps2_hash::Hash;
+use sps2_types::{package::PackageSpec, Arch, Version};
 use std::path::Path;
 
 /// Package manifest (manifest.toml contents)
@@ -79,7 +79,7 @@ impl Manifest {
     /// Returns an error if the version string is not a valid semantic version.
     pub fn version(&self) -> Result<Version, Error> {
         Version::parse(&self.package.version).map_err(|_e| {
-            spsv2_errors::VersionError::InvalidVersion {
+            sps2_errors::VersionError::InvalidVersion {
                 input: self.package.version.clone(),
             }
             .into()
@@ -143,7 +143,7 @@ impl Manifest {
     pub fn set_sbom(&mut self, spdx_hash: &Hash, cyclonedx_hash: Option<&Hash>) {
         self.sbom = Some(SbomInfo {
             spdx: spdx_hash.to_hex(),
-            cyclonedx: cyclonedx_hash.map(spsv2_hash::Hash::to_hex),
+            cyclonedx: cyclonedx_hash.map(sps2_hash::Hash::to_hex),
         });
     }
 

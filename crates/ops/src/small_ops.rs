@@ -4,8 +4,8 @@ use crate::{
     ChangeType, ComponentHealth, HealthCheck, HealthIssue, HealthStatus, IssueSeverity, OpChange,
     OpsCtx, PackageInfo, PackageStatus, SearchResult, StateInfo, VulnDbStats,
 };
-use spsv2_errors::{Error, OpsError};
-use spsv2_events::Event;
+use sps2_errors::{Error, OpsError};
+use sps2_events::Event;
 use std::collections::HashMap;
 use std::time::Instant;
 use uuid::Uuid;
@@ -47,13 +47,13 @@ pub async fn reposync(ctx: &OpsCtx) -> Result<String, Error> {
         .ok();
 
     // 1. Download latest index.json and signature
-    let index_json = spsv2_net::fetch_text(&ctx.net, &index_url, &ctx.tx)
+    let index_json = sps2_net::fetch_text(&ctx.net, &index_url, &ctx.tx)
         .await
         .map_err(|e| OpsError::RepoSyncFailed {
             message: format!("Failed to download index.json: {e}"),
         })?;
 
-    let index_signature = spsv2_net::fetch_text(&ctx.net, &index_sig_url, &ctx.tx)
+    let index_signature = sps2_net::fetch_text(&ctx.net, &index_sig_url, &ctx.tx)
         .await
         .map_err(|e| OpsError::RepoSyncFailed {
             message: format!("Failed to download index.json.minisig: {e}"),
@@ -152,7 +152,7 @@ pub async fn list_packages(ctx: &OpsCtx) -> Result<Vec<PackageInfo>, Error> {
                 .and_then(|versions| {
                     versions
                         .first()
-                        .and_then(|entry| spsv2_types::Version::parse(&entry.version()).ok())
+                        .and_then(|entry| sps2_types::Version::parse(&entry.version()).ok())
                 });
 
         let status = match &available_version {
@@ -204,7 +204,7 @@ pub async fn package_info(ctx: &OpsCtx, package_name: &str) -> Result<PackageInf
     let installed_version = installed_packages
         .iter()
         .find(|pkg| pkg.name == package_name)
-        .map(spsv2_state::Package::version);
+        .map(sps2_state::Package::version);
 
     // Get available versions from index
     let versions = ctx
@@ -218,7 +218,7 @@ pub async fn package_info(ctx: &OpsCtx, package_name: &str) -> Result<PackageInf
         package: package_name.to_string(),
     })?;
 
-    let available_version = spsv2_types::Version::parse(&latest_entry.version())?;
+    let available_version = sps2_types::Version::parse(&latest_entry.version())?;
 
     let status = match &installed_version {
         Some(installed) => {
@@ -274,7 +274,7 @@ pub async fn search_packages(ctx: &OpsCtx, query: &str) -> Result<Vec<SearchResu
     for package_name in package_names {
         if let Some(versions) = ctx.index.get_package_versions(package_name) {
             if let Some(latest) = versions.first() {
-                if let Ok(version) = spsv2_types::Version::parse(&latest.version()) {
+                if let Ok(version) = sps2_types::Version::parse(&latest.version()) {
                     let installed = installed_packages
                         .iter()
                         .any(|pkg| pkg.name == package_name);
@@ -378,7 +378,7 @@ pub async fn rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<StateI
 
     // Perform rollback using atomic installer
     let mut atomic_installer =
-        spsv2_install::AtomicInstaller::new(ctx.state.clone(), ctx.store.clone());
+        sps2_install::AtomicInstaller::new(ctx.state.clone(), ctx.store.clone());
 
     atomic_installer.rollback(target_id).await?;
 
@@ -620,7 +620,7 @@ async fn get_state_info(ctx: &OpsCtx, state_id: Uuid) -> Result<StateInfo, Error
 /// Returns an error if the vulnerability database update fails.
 pub async fn update_vulndb(_ctx: &OpsCtx) -> Result<String, Error> {
     // Initialize vulnerability database manager
-    let mut vulndb = spsv2_audit::VulnDbManager::new(spsv2_audit::VulnDbManager::default_path())?;
+    let mut vulndb = sps2_audit::VulnDbManager::new(sps2_audit::VulnDbManager::default_path())?;
 
     // Initialize if needed
     vulndb.initialize().await?;
@@ -638,7 +638,7 @@ pub async fn update_vulndb(_ctx: &OpsCtx) -> Result<String, Error> {
 /// Returns an error if the vulnerability database cannot be accessed.
 pub async fn vulndb_stats(_ctx: &OpsCtx) -> Result<VulnDbStats, Error> {
     // Initialize vulnerability database manager
-    let mut vulndb = spsv2_audit::VulnDbManager::new(spsv2_audit::VulnDbManager::default_path())?;
+    let mut vulndb = sps2_audit::VulnDbManager::new(sps2_audit::VulnDbManager::default_path())?;
 
     // Initialize if needed
     vulndb.initialize().await?;
@@ -650,7 +650,7 @@ pub async fn vulndb_stats(_ctx: &OpsCtx) -> Result<VulnDbStats, Error> {
     let stats = db.get_statistics().await?;
 
     // Get database file size
-    let db_path = spsv2_audit::VulnDbManager::default_path();
+    let db_path = sps2_audit::VulnDbManager::default_path();
     let metadata = tokio::fs::metadata(&db_path).await?;
     let database_size = metadata.len();
 
@@ -671,13 +671,13 @@ pub async fn audit(
     ctx: &OpsCtx,
     package_name: Option<&str>,
     fail_on_critical: bool,
-    severity_threshold: spsv2_audit::Severity,
-) -> Result<spsv2_audit::AuditReport, Error> {
+    severity_threshold: sps2_audit::Severity,
+) -> Result<sps2_audit::AuditReport, Error> {
     // Create audit system
-    let audit_system = spsv2_audit::AuditSystem::new(spsv2_audit::VulnDbManager::default_path())?;
+    let audit_system = sps2_audit::AuditSystem::new(sps2_audit::VulnDbManager::default_path())?;
 
     // Configure scan options
-    let scan_options = spsv2_audit::ScanOptions::new()
+    let scan_options = sps2_audit::ScanOptions::new()
         .with_fail_on_critical(fail_on_critical)
         .with_severity_threshold(severity_threshold);
 
@@ -706,7 +706,7 @@ pub async fn audit(
             })
             .ok();
 
-        let report = spsv2_audit::AuditReport::new(vec![package_audit]);
+        let report = sps2_audit::AuditReport::new(vec![package_audit]);
 
         ctx.tx
             .send(Event::AuditCompleted {
@@ -729,9 +729,9 @@ pub async fn audit(
 
 /// Fetch and verify signing keys with rotation support
 async fn fetch_and_verify_keys(
-    net_client: &spsv2_net::NetClient,
+    net_client: &sps2_net::NetClient,
     keys_url: &str,
-    tx: &spsv2_events::EventSender,
+    tx: &sps2_events::EventSender,
 ) -> Result<Vec<String>, Error> {
     // For simulation, we'll use a hardcoded bootstrap key
     // In real implementation, this would:
@@ -741,7 +741,7 @@ async fn fetch_and_verify_keys(
     // 4. Update local trusted keys in /opt/pm/keys/
 
     // Simulate fetching keys.json (would normally parse and verify)
-    let _keys_response = spsv2_net::fetch_text(net_client, keys_url, tx).await;
+    let _keys_response = sps2_net::fetch_text(net_client, keys_url, tx).await;
 
     // Return simulated trusted key for now
     let bootstrap_key = "RWRzQJ6bootstrap-key-simulation".to_string();
@@ -866,7 +866,7 @@ async fn update_gc_timestamp() -> Result<(), Error> {
 
     tokio::fs::write(timestamp_path, now.to_string())
         .await
-        .map_err(|e| spsv2_errors::Error::internal(format!("Failed to write GC timestamp: {e}")))?;
+        .map_err(|e| sps2_errors::Error::internal(format!("Failed to write GC timestamp: {e}")))?;
 
     Ok(())
 }
@@ -874,7 +874,7 @@ async fn update_gc_timestamp() -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use spsv2_index::Index;
+    use sps2_index::Index;
     use tempfile::tempdir;
 
     async fn create_test_context() -> OpsCtx {
@@ -888,10 +888,10 @@ mod tests {
 
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
 
-        let store = spsv2_store::PackageStore::new(base_path.join("store"));
+        let store = sps2_store::PackageStore::new(base_path.join("store"));
 
         // Create StateManager with explicit error handling
-        let state = match spsv2_state::StateManager::new(base_path).await {
+        let state = match sps2_state::StateManager::new(base_path).await {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("Failed to create StateManager at {base_path:?}: {e}");
@@ -906,14 +906,14 @@ mod tests {
                 panic!("StateManager creation failed: {e}");
             }
         };
-        let mut index = spsv2_index::IndexManager::new(base_path);
+        let mut index = sps2_index::IndexManager::new(base_path);
         let empty_index = Index::new();
         let json = empty_index.to_json().unwrap();
         index.load(Some(&json)).await.unwrap();
 
-        let net = spsv2_net::NetClient::with_defaults().unwrap();
-        let resolver = spsv2_resolver::Resolver::new(index.clone());
-        let builder = spsv2_builder::Builder::new();
+        let net = sps2_net::NetClient::with_defaults().unwrap();
+        let resolver = sps2_resolver::Resolver::new(index.clone());
+        let builder = sps2_builder::Builder::new();
 
         OpsCtx::new(store, state, index, net, resolver, builder, tx)
     }
@@ -993,7 +993,7 @@ mod tests {
         let ctx = create_test_context().await;
 
         // Audit needs an active state to check installed packages
-        let result = audit(&ctx, None, false, spsv2_audit::Severity::Low).await;
+        let result = audit(&ctx, None, false, sps2_audit::Severity::Low).await;
 
         // For now, we expect this to fail with ActiveStateMissing
         assert!(result.is_err());

@@ -4,12 +4,12 @@ use crate::{
     AtomicInstaller, ExecutionContext, InstallContext, InstallResult, ParallelExecutor,
     UninstallContext, UpdateContext,
 };
-use spsv2_errors::{Error, InstallError};
-use spsv2_events::Event;
-use spsv2_resolver::{PackageId, ResolutionContext, Resolver};
-use spsv2_state::{manager::StateTransition, StateManager};
-use spsv2_store::PackageStore;
-use spsv2_types::PackageSpec;
+use sps2_errors::{Error, InstallError};
+use sps2_events::Event;
+use sps2_resolver::{PackageId, ResolutionContext, Resolver};
+use sps2_state::{manager::StateTransition, StateManager};
+use sps2_store::PackageStore;
+use sps2_types::PackageSpec;
 // HashMap import removed as it's not used in this module
 
 /// Install operation
@@ -106,7 +106,7 @@ impl InstallOperation {
     async fn resolve_dependencies(
         &self,
         context: &InstallContext,
-    ) -> Result<spsv2_resolver::ResolutionResult, Error> {
+    ) -> Result<sps2_resolver::ResolutionResult, Error> {
         let mut resolution_context = ResolutionContext::new();
 
         // Add requested packages as runtime dependencies
@@ -135,7 +135,7 @@ impl InstallOperation {
             context,
             Event::DependencyResolved {
                 package: "multiple".to_string(),
-                version: spsv2_types::Version::new(1, 0, 0), // Placeholder version
+                version: sps2_types::Version::new(1, 0, 0), // Placeholder version
                 count: resolution.nodes.len(),
             },
         );
@@ -201,7 +201,7 @@ impl UninstallOperation {
         if !context.force {
             for package in &packages_to_remove {
                 let package_id =
-                    spsv2_resolver::PackageId::new(package.name.clone(), package.version());
+                    sps2_resolver::PackageId::new(package.name.clone(), package.version());
                 let dependents = self
                     .state_manager
                     .get_package_dependents(&package_id)
@@ -220,16 +220,16 @@ impl UninstallOperation {
             let mut result = InstallResult::new(uuid::Uuid::new_v4());
             for package in &packages_to_remove {
                 let package_id =
-                    spsv2_resolver::PackageId::new(package.name.clone(), package.version());
+                    sps2_resolver::PackageId::new(package.name.clone(), package.version());
                 result.add_removed(package_id);
             }
             return Ok(result);
         }
 
         // Perform atomic uninstallation
-        let package_ids: Vec<spsv2_resolver::PackageId> = packages_to_remove
+        let package_ids: Vec<sps2_resolver::PackageId> = packages_to_remove
             .iter()
-            .map(|pkg| spsv2_resolver::PackageId::new(pkg.name.clone(), pkg.version()))
+            .map(|pkg| sps2_resolver::PackageId::new(pkg.name.clone(), pkg.version()))
             .collect();
 
         let result = self.remove_packages(&package_ids, &context).await?;
@@ -272,7 +272,7 @@ impl UninstallOperation {
 
         // Create new state record
         let new_state_id = transition.to;
-        spsv2_state::queries::create_state(
+        sps2_state::queries::create_state(
             &mut tx,
             &new_state_id,
             Some(&transition.from),
@@ -282,7 +282,7 @@ impl UninstallOperation {
 
         // Copy all existing packages to new state except the ones being removed
         let current_packages =
-            spsv2_state::queries::get_state_packages(&mut tx, &transition.from).await?;
+            sps2_state::queries::get_state_packages(&mut tx, &transition.from).await?;
 
         let mut result = InstallResult::new(new_state_id);
 
@@ -293,18 +293,18 @@ impl UninstallOperation {
 
             if should_remove {
                 // Mark as removed and decrement store references
-                let package_id = spsv2_resolver::PackageId::new(
+                let package_id = sps2_resolver::PackageId::new(
                     package.name.clone(),
-                    spsv2_types::Version::parse(&package.version)
+                    sps2_types::Version::parse(&package.version)
                         .map_err(|e| Error::internal(format!("invalid version: {e}")))?,
                 );
                 result.add_removed(package_id);
 
                 // Decrement store reference for the package hash
-                spsv2_state::queries::decrement_store_ref(&mut tx, &package.hash).await?;
+                sps2_state::queries::decrement_store_ref(&mut tx, &package.hash).await?;
             } else {
                 // Add to new state
-                spsv2_state::queries::add_package(
+                sps2_state::queries::add_package(
                     &mut tx,
                     &new_state_id,
                     &package.name,
@@ -347,7 +347,7 @@ impl UninstallOperation {
                 let staging_file = transition.staging_path.join(&file_path);
                 if staging_file.exists() {
                     tokio::fs::remove_file(&staging_file).await.map_err(|e| {
-                        spsv2_errors::InstallError::FilesystemError {
+                        sps2_errors::InstallError::FilesystemError {
                             operation: "remove_file".to_string(),
                             path: staging_file.display().to_string(),
                             message: e.to_string(),
@@ -494,7 +494,7 @@ impl UpdateOperation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use spsv2_index::{Index, IndexManager};
+    use sps2_index::{Index, IndexManager};
     use tempfile::tempdir;
 
     async fn create_test_setup() -> (Resolver, StateManager, PackageStore) {

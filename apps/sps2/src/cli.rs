@@ -1,7 +1,7 @@
 //! Command line interface definition
 
 use clap::{Parser, Subcommand};
-use spsv2_types::ColorChoice;
+use sps2_types::ColorChoice;
 use std::path::PathBuf;
 use uuid::Uuid;
 

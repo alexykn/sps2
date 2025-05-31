@@ -1,5 +1,5 @@
 [package]
-name = "spsv2-store"
+name = "sps2-store"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -8,11 +8,11 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-spsv2-errors = { path = "../errors" }
-spsv2-types = { path = "../types" }
-spsv2-hash = { path = "../hash" }
-spsv2-root = { path = "../root" }
-spsv2-manifest = { path = "../manifest" }
+sps2-errors = { path = "../errors" }
+sps2-types = { path = "../types" }
+sps2-hash = { path = "../hash" }
+sps2-root = { path = "../root" }
+sps2-manifest = { path = "../manifest" }
 tokio = { workspace = true, features = ["fs", "io-util"] }
 tar = "0.4.44"
 async-compression = { version = "0.4.23", features = ["tokio", "zstd"] }
