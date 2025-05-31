@@ -187,7 +187,7 @@ impl Builder {
         Ok(BuildResult::new(package_path))
     }
 
-    /// Execute the Rhai recipe
+    /// Execute the Starlark recipe
     async fn execute_recipe(
         &self,
         context: &BuildContext,

@@ -1,0 +1,13 @@
+[package]
+name = "hello-world"
+version = "1.0.0"
+revision = 1
+arch = "arm64"
+description = "Simple hello world program"
+homepage = "https://example.com/hello-world"
+license = "MIT"
+
+[dependencies]
+
+[sbom]
+spdx = "35e79b264eee23fee97af17c7b68af0151471ccf51bd4683ca2cce6c219fb3f7"

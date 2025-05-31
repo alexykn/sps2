@@ -22,7 +22,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["fs", "process"] }
 reqwest = { workspace = true }
-# rhai = { workspace = true }  # Removed - handled via sps2-package now
+# Starlark execution handled via sps2-package
 tempfile = { workspace = true }
 num_cpus = "1.17.0"
 toml = { workspace = true }
@@ -33,3 +33,4 @@ async-compression = { version = "0.4.23", features = ["tokio", "zstd"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+sps2-index = { path = "../index" }

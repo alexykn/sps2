@@ -16,8 +16,8 @@ tests/
     │   ├── hello-world-1.0.0.toml
     │   └── complex-app-2.1.3.toml
     ├── recipes/           # Sample build recipes
-    │   ├── hello-world.rhai
-    │   └── complex-build.rhai
+    │   ├── hello-world.star
+    │   └── complex-build.star
     ├── sboms/             # Sample Software Bills of Materials
     │   ├── hello-world-spdx.json
     │   └── complex-app-cyclonedx.json
@@ -63,8 +63,8 @@ cargo test --test integration
 - `complex-app-2.1.3.toml`: Complex package with multiple dependencies
 
 ### Build Recipes
-- `hello-world.rhai`: Simple C compilation recipe
-- `complex-build.rhai`: Complex CMake-based build with dependencies
+- `hello-world.star`: Simple C compilation recipe
+- `complex-build.star`: Complex CMake-based build with dependencies
 
 ### SBOM Files
 - `hello-world-spdx.json`: SPDX 2.3 format SBOM

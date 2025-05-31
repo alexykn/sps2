@@ -3,7 +3,7 @@
 
 //! Package building with SBOM generation for sps2
 //!
-//! This crate handles building packages from Rhai recipes with
+//! This crate handles building packages from Starlark recipes with
 //! isolated environments, dependency management, and SBOM generation.
 
 mod api;

@@ -29,6 +29,7 @@ use std::cell::RefCell;
 use std::fmt::{self, Display};
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 /// Trait for actual build operations that can be implemented by the builder crate
@@ -265,7 +266,7 @@ impl<'v> UnpackValue<'v> for BuildMethodFunction {
 #[derive(Debug, Clone, ProvidesStaticType, NoSerialize, Allocative)]
 pub struct BuildContext {
     #[allocative(skip)]
-    pub steps: RefCell<Vec<BuildStep>>,
+    pub steps: Rc<RefCell<Vec<BuildStep>>>,
     pub prefix: String,
     pub jobs: i32,
     #[allocative(skip)]
@@ -282,7 +283,7 @@ impl BuildContext {
     #[must_use]
     pub fn new(prefix: String, jobs: i32) -> Self {
         Self {
-            steps: RefCell::new(Vec::new()),
+            steps: Rc::new(RefCell::new(Vec::new())),
             prefix,
             jobs,
             network_allowed: RefCell::new(false),
@@ -300,7 +301,7 @@ impl BuildContext {
         executor: Arc<tokio::sync::Mutex<dyn BuildExecutor>>,
     ) -> Self {
         Self {
-            steps: RefCell::new(Vec::new()),
+            steps: Rc::new(RefCell::new(Vec::new())),
             prefix,
             jobs,
             network_allowed: RefCell::new(false),

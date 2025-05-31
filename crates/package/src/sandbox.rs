@@ -144,14 +144,16 @@ impl RecipeEngine {
         };
 
         // Allocate the context in the build module's heap
-        let context_value = build_module.heap().alloc(context.clone());
+        // IMPORTANT: We need to extract steps from the context that Starlark actually uses
+        let starlark_context = context.clone();
+        let context_value = build_module.heap().alloc(starlark_context.clone());
 
         build_eval
             .eval_function(build_fn.value(), &[context_value], &[])
             .map_err(|e| format_build_error(&e.to_string()))?;
 
-        // Extract build steps
-        let build_steps = context.steps.into_inner();
+        // Extract build steps from the shared Rc<RefCell<>> - now both contexts share the same steps
+        let build_steps = starlark_context.steps.borrow().clone();
 
         // Validate results
         if metadata.name.is_empty() {
