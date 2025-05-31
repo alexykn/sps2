@@ -10,7 +10,6 @@ use sps2_store::PackageStore;
 use sps2_types::{package::PackageSpec, Version};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use tokio::fs;
 use tokio::process::Command;
 
@@ -42,8 +41,8 @@ impl BuildEnvironment {
     /// # Errors
     ///
     /// Returns an error if the build environment cannot be initialized.
-    pub fn new(context: BuildContext) -> Result<Self, Error> {
-        let build_prefix = Self::get_build_prefix_path(&context.name, &context.version);
+    pub fn new(context: BuildContext, build_root: &Path) -> Result<Self, Error> {
+        let build_prefix = Self::get_build_prefix_path(build_root, &context.name, &context.version);
         let deps_prefix = build_prefix.join("deps");
         let staging_dir = build_prefix.join("stage");
 
@@ -102,10 +101,24 @@ impl BuildEnvironment {
             operation: format!("Building {} {}", self.context.name, self.context.version),
         });
 
-        // Create build directories
-        fs::create_dir_all(&self.build_prefix).await?;
-        fs::create_dir_all(&self.deps_prefix).await?;
-        fs::create_dir_all(&self.staging_dir).await?;
+        // Create build directories with better error reporting
+        fs::create_dir_all(&self.build_prefix).await.map_err(|e| {
+            sps2_errors::BuildError::Failed {
+                message: format!("Failed to create build prefix {}: {}", self.build_prefix.display(), e),
+            }
+        })?;
+        
+        fs::create_dir_all(&self.deps_prefix).await.map_err(|e| {
+            sps2_errors::BuildError::Failed {
+                message: format!("Failed to create deps prefix {}: {}", self.deps_prefix.display(), e),
+            }
+        })?;
+        
+        fs::create_dir_all(&self.staging_dir).await.map_err(|e| {
+            sps2_errors::BuildError::Failed {
+                message: format!("Failed to create staging dir {}: {}", self.staging_dir.display(), e),
+            }
+        })?;
 
         // Set up environment variables
         self.setup_environment();
@@ -167,6 +180,9 @@ impl BuildEnvironment {
         args: &[&str],
         working_dir: Option<&Path>,
     ) -> Result<BuildCommandResult, Error> {
+        use std::process::Stdio;
+        use tokio::io::{AsyncBufReadExt, BufReader};
+
         let mut cmd = Command::new(program);
         cmd.args(args);
         cmd.envs(&self.env_vars);
@@ -184,20 +200,82 @@ impl BuildEnvironment {
             package: self.context.name.clone(),
         });
 
-        let output = cmd.output().await.map_err(|e| BuildError::CompileFailed {
+        // Send command info event to show what's running
+        self.send_event(Event::DebugLog {
+            message: format!("Executing: {program} {}", args.join(" ")),
+            context: std::collections::HashMap::from([
+                ("working_dir".to_string(), working_dir.map_or_else(|| self.build_prefix.display().to_string(), |p| p.display().to_string())),
+            ]),
+        });
+
+        let mut child = cmd.spawn().map_err(|e| BuildError::CompileFailed {
             message: format!("{program}: {e}"),
         })?;
 
+        let stdout = child.stdout.take().unwrap();
+        let stderr = child.stderr.take().unwrap();
+
+        let mut stdout_reader = BufReader::new(stdout).lines();
+        let mut stderr_reader = BufReader::new(stderr).lines();
+
+        let mut stdout_lines = Vec::new();
+        let mut stderr_lines = Vec::new();
+
+        // Read output in real-time and print directly to stdout/stderr
+        loop {
+            tokio::select! {
+                line = stdout_reader.next_line() => {
+                    match line {
+                        Ok(Some(line)) => {
+                            // Print build output directly to stdout
+                            println!("{}", line);
+                            stdout_lines.push(line);
+                        }
+                        Ok(None) => break,
+                        Err(e) => {
+                            return Err(BuildError::CompileFailed {
+                                message: format!("Failed to read stdout: {e}"),
+                            }.into());
+                        }
+                    }
+                }
+                line = stderr_reader.next_line() => {
+                    match line {
+                        Ok(Some(line)) => {
+                            // Print build errors directly to stderr
+                            eprintln!("{}", line);
+                            stderr_lines.push(line);
+                        }
+                        Ok(None) => continue,
+                        Err(e) => {
+                            return Err(BuildError::CompileFailed {
+                                message: format!("Failed to read stderr: {e}"),
+                            }.into());
+                        }
+                    }
+                }
+            }
+        }
+
+        let status = child.wait().await.map_err(|e| BuildError::CompileFailed {
+            message: format!("Failed to wait for {program}: {e}"),
+        })?;
+
         let result = BuildCommandResult {
-            success: output.status.success(),
-            exit_code: output.status.code(),
-            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            success: status.success(),
+            exit_code: status.code(),
+            stdout: stdout_lines.join("\n"),
+            stderr: stderr_lines.join("\n"),
         };
 
         if !result.success {
             return Err(BuildError::CompileFailed {
-                message: format!("{program} {} failed: {}", args.join(" "), result.stderr),
+                message: format!(
+                    "{program} {} failed with exit code {:?}: {}", 
+                    args.join(" "), 
+                    result.exit_code,
+                    result.stderr
+                ),
             }
             .into());
         }
@@ -352,8 +430,8 @@ impl BuildEnvironment {
 
     /// Get build prefix path for package
     #[must_use]
-    fn get_build_prefix_path(name: &str, version: &Version) -> PathBuf {
-        PathBuf::from("/opt/pm/build")
+    fn get_build_prefix_path(build_root: &Path, name: &str, version: &Version) -> PathBuf {
+        build_root
             .join(name)
             .join(version.to_string())
     }
@@ -627,25 +705,28 @@ impl BuildEnvironment {
         );
         let temp_tar_path = temp_dir.join(&tar_filename);
 
-        // Decompress with zstd
-        let zstd_output = Command::new("zstd")
-            .args([
-                "--decompress",
-                "--output",
-                &temp_tar_path.display().to_string(),
-                &sp_path.display().to_string(),
-            ])
-            .output()
-            .await?;
+        // Decompress with zstd using async-compression crate
+        {
+            use async_compression::tokio::bufread::ZstdDecoder;
+            use tokio::fs::File;
+            use tokio::io::{AsyncWriteExt, BufReader, BufWriter};
 
-        if !zstd_output.status.success() {
-            return Err(BuildError::ExtractionFailed {
-                message: format!(
-                    "zstd decompression failed: {}",
-                    String::from_utf8_lossy(&zstd_output.stderr)
-                ),
-            }
-            .into());
+            let input_file = File::open(sp_path).await?;
+            let output_file = File::create(&temp_tar_path).await?;
+            
+            // Create zstd decoder
+            let mut decoder = ZstdDecoder::new(BufReader::new(input_file));
+            
+            // Copy decompressed data to output file
+            let mut writer = BufWriter::new(output_file);
+            tokio::io::copy(&mut decoder, &mut writer).await.map_err(|e| {
+                BuildError::ExtractionFailed {
+                    message: format!("zstd decompression failed: {e}"),
+                }
+            })?;
+            
+            // Ensure all data is written
+            writer.flush().await?;
         }
 
         // Extract tar archive, only extracting the 'files/' directory to preserve package structure
@@ -750,7 +831,8 @@ mod tests {
             temp.path().to_path_buf(),
         );
 
-        let env = BuildEnvironment::new(context).unwrap();
+        let build_root = temp.path(); // Use temp directory as build root for test
+        let env = BuildEnvironment::new(context, build_root).unwrap();
 
         assert_eq!(env.context.name, "test-pkg");
         assert!(env.env_vars.contains_key("PREFIX"));
@@ -767,7 +849,8 @@ mod tests {
             temp.path().to_path_buf(),
         );
 
-        let env = BuildEnvironment::new(context).unwrap();
+        let build_root = temp.path(); // Use temp directory as build root for test
+        let env = BuildEnvironment::new(context, build_root).unwrap();
 
         // This would normally require /opt/pm/build to exist
         // For testing, just verify the structure
@@ -797,7 +880,8 @@ mod tests {
             temp.path().to_path_buf(),
         );
 
-        let mut env = BuildEnvironment::new(context).unwrap();
+        let build_root = temp.path(); // Use temp directory as build root for test
+        let mut env = BuildEnvironment::new(context, build_root).unwrap();
         env.initialize().await.unwrap();
 
         // Verify isolation setup
@@ -837,7 +921,8 @@ mod tests {
             temp.path().to_path_buf(),
         );
 
-        let mut env = BuildEnvironment::new(context).unwrap();
+        let build_root = temp.path(); // Use temp directory as build root for test
+        let mut env = BuildEnvironment::new(context, build_root).unwrap();
 
         // Set some potentially harmful environment variables in the process
         std::env::set_var("LDFLAGS", "-L/some/bad/path");

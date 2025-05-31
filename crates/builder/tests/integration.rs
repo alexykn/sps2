@@ -190,7 +190,8 @@ fn build(b) {
             temp.path().to_path_buf(),
         );
 
-        let env = BuildEnvironment::new(context).unwrap();
+        let build_root = temp.path(); // Use temp directory as build root for test
+        let env = BuildEnvironment::new(context, build_root).unwrap();
 
         // Verify environment setup
         assert!(env.env_vars().contains_key("PREFIX"));

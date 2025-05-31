@@ -39,10 +39,10 @@ impl BuilderApi {
             allow_network: false,
             auto_sbom: true,
             sbom_excludes: vec![
-                "*.dSYM".to_string(),
-                "*.pdb".to_string(),
-                "*.a".to_string(),
-                "*.la".to_string(),
+                "./*.dSYM".to_string(),
+                "./*.pdb".to_string(),
+                "./*.a".to_string(),
+                "./*.la".to_string(),
             ],
         })
     }

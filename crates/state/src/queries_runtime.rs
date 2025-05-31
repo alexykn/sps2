@@ -348,11 +348,12 @@ pub async fn get_states_for_cleanup(
         r"
         SELECT id FROM states
         WHERE id NOT IN (
-            SELECT state_id FROM active_state
-            UNION
             SELECT id FROM states ORDER BY created_at DESC LIMIT ?1
         )
         AND created_at < ?2
+        AND id NOT IN (
+            SELECT state_id FROM active_state WHERE id = 1
+        )
         AND success = 1
         ORDER BY created_at ASC
         ",

@@ -102,6 +102,16 @@ impl EventHandler {
                     package, version, error
                 ));
             }
+            Event::BuildStepStarted { package, step } => {
+                self.show_status(&format!("🔧 {} > {}", package, step));
+            }
+            Event::BuildStepOutput { package: _, line: _ } => {
+                // Build output is now printed directly to stdout/stderr
+                // This event is kept for compatibility but not displayed
+            }
+            Event::BuildStepCompleted { package, step } => {
+                self.show_status(&format!("✅ {} > {} completed", package, step));
+            }
             Event::BuildCommand { package, command } => {
                 self.show_status(&format!("🔧 {} > {}", package, command));
             }
@@ -302,6 +312,13 @@ impl EventHandler {
             Event::OperationStarted { operation } => {
                 self.show_status(&format!("🔄 {}", operation));
             }
+            Event::OperationCompleted { operation, success } => {
+                if success {
+                    self.show_status(&format!("✅ {}", operation));
+                } else {
+                    self.show_status(&format!("⚠️  {}", operation));
+                }
+            }
             Event::OperationFailed { operation, error } => {
                 self.show_error(&format!("❌ {} failed: {}", operation, error));
             }
@@ -331,6 +348,21 @@ impl EventHandler {
                     self.show_error(&format!("❌ {}: {}", message, details));
                 } else {
                     self.show_error(&format!("❌ {}", message));
+                }
+            }
+
+            // Debug events (only show if debug mode enabled)
+            Event::DebugLog { message, context } => {
+                // For now, always show debug logs during builds to help troubleshoot
+                if context.is_empty() {
+                    self.show_status(&format!("🐛 {}", message));
+                } else {
+                    let context_str = context
+                        .iter()
+                        .map(|(k, v)| format!("{}={}", k, v))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    self.show_status(&format!("🐛 {} ({})", message, context_str));
                 }
             }
 
@@ -398,6 +430,7 @@ impl EventHandler {
         // Use multi_progress to avoid interfering with progress bars
         self.multi_progress.println(message).unwrap_or(());
     }
+
 }
 
 #[cfg(test)]

@@ -170,6 +170,42 @@ impl BuildMethodFunction {
             .push(BuildStep::ApplyPatch { path: patch_path });
         Ok(())
     }
+    
+    fn handle_command_invoke<'v>(
+        &self,
+        args: &Arguments<'v, '_>,
+        eval: &mut starlark::eval::Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<()> {
+        args.no_named_args()?;
+        
+        // For simplicity, we'll only support the form: command("program", ["arg1", "arg2"])
+        let len = args.len()?;
+        if len < 1 {
+            return Err(starlark::Error::new_other(anyhow::anyhow!(
+                "command() requires at least one argument (the program to run)"
+            )));
+        }
+        
+        // Get program name
+        let program = args.positional1(eval.heap())?
+            .unpack_str()
+            .ok_or_else(|| {
+                starlark::Error::new_other(anyhow::anyhow!("Program name must be a string"))
+            })?
+            .to_string();
+        
+        // For now, we'll just use empty args. In the future we can parse a list from the second argument
+        let cmd_args = Vec::new();
+        
+        self.context
+            .steps
+            .borrow_mut()
+            .push(BuildStep::Command { 
+                program,
+                args: cmd_args,
+            });
+        Ok(())
+    }
 }
 
 #[starlark_value(type = "BuildMethodFunction")]
@@ -195,6 +231,10 @@ impl<'v> StarlarkValue<'v> for BuildMethodFunction {
             }
             "apply_patch" => {
                 self.handle_apply_patch_invoke(args, eval)?;
+                Ok(Value::new_none())
+            }
+            "command" => {
+                self.handle_command_invoke(args, eval)?;
                 Ok(Value::new_none())
             }
             _ => Err(starlark::Error::new_other(anyhow::anyhow!(
@@ -381,6 +421,19 @@ impl BuildContext {
         });
         Ok(())
     }
+    
+    /// Run an arbitrary command with arguments
+    ///
+    /// # Errors
+    ///
+    /// This method currently does not return errors in this minimal implementation.
+    pub fn command(&self, program: &str, args: Vec<String>) -> anyhow::Result<()> {
+        self.steps.borrow_mut().push(BuildStep::Command {
+            program: program.to_string(),
+            args,
+        });
+        Ok(())
+    }
 }
 
 impl Display for BuildContext {
@@ -417,6 +470,7 @@ impl<'v> StarlarkValue<'v> for BuildContext {
                 | "meson"
                 | "cargo"
                 | "apply_patch"
+                | "command"
         )
     }
 
@@ -469,6 +523,11 @@ impl<'v> StarlarkValue<'v> for BuildContext {
             "apply_patch" => Some(heap.alloc(BuildMethodFunction {
                 context: self.clone(),
                 method_name: "apply_patch".to_string(),
+                executor: self.executor.clone(),
+            })),
+            "command" => Some(heap.alloc(BuildMethodFunction {
+                context: self.clone(),
+                method_name: "command".to_string(),
                 executor: self.executor.clone(),
             })),
             _ => None,

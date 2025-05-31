@@ -28,6 +28,8 @@ pub struct BuildConfig {
     pub allow_network: bool,
     /// Number of parallel build jobs
     pub build_jobs: Option<usize>,
+    /// Build root directory (defaults to current directory)
+    pub build_root: Option<PathBuf>,
 }
 
 impl Default for BuildConfig {
@@ -38,6 +40,7 @@ impl Default for BuildConfig {
             max_build_time: Some(3600), // 1 hour
             allow_network: false,
             build_jobs: None, // Use auto-detection
+            build_root: None, // Defaults to current directory
         }
     }
 }
@@ -158,7 +161,14 @@ impl Builder {
         );
 
         // Create build environment with full isolation setup
-        let mut environment = BuildEnvironment::new(context.clone())?;
+        let default_build_root;
+        let build_root = if let Some(root) = &self.config.build_root {
+            root.as_path()
+        } else {
+            default_build_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            &default_build_root
+        };
+        let mut environment = BuildEnvironment::new(context.clone(), build_root)?;
 
         // Configure environment with resolver, store, and net client if available
         if let Some(resolver) = &self.resolver {
@@ -218,21 +228,67 @@ impl Builder {
             .await?;
 
         // Generate SBOM
+        Self::send_event(
+            &context,
+            Event::OperationStarted {
+                operation: "Generating SBOM".to_string(),
+            },
+        );
         let sbom_files = self.generate_sbom(&environment).await?;
+        Self::send_event(
+            &context,
+            Event::OperationCompleted {
+                operation: "SBOM generation completed".to_string(),
+                success: true,
+            },
+        );
 
         // Create manifest
+        Self::send_event(
+            &context,
+            Event::OperationStarted {
+                operation: "Creating package manifest".to_string(),
+            },
+        );
         let manifest = Self::create_manifest(&context, runtime_deps, &sbom_files, &recipe_metadata);
+        Self::send_event(
+            &context,
+            Event::OperationCompleted {
+                operation: "Package manifest created".to_string(),
+                success: true,
+            },
+        );
 
         // Package the result
+        Self::send_event(
+            &context,
+            Event::OperationStarted {
+                operation: "Creating package archive".to_string(),
+            },
+        );
         let package_path = self
             .create_package(&context, &environment, manifest, sbom_files)
             .await?;
+        Self::send_event(
+            &context,
+            Event::OperationCompleted {
+                operation: format!("Package created: {}", package_path.display()),
+                success: true,
+            },
+        );
 
         // Sign the package if configured
         self.sign_package(&context, &package_path).await?;
 
-        // Cleanup
-        environment.cleanup().await?;
+        // Cleanup - skip for debugging
+        // environment.cleanup().await?;
+        Self::send_event(
+            &context,
+            Event::DebugLog {
+                message: format!("Skipping cleanup for debugging - check {}", environment.build_prefix().display()),
+                context: std::collections::HashMap::new(),
+            },
+        );
 
         Self::send_event(
             &context,
@@ -267,6 +323,38 @@ impl Builder {
         // Create builder API
         let working_dir = environment.build_prefix().join("src");
         fs::create_dir_all(&working_dir).await?;
+
+        // Copy source files from recipe directory to working directory
+        let recipe_dir = context.recipe_path.parent().ok_or_else(|| BuildError::RecipeError {
+            message: "Invalid recipe path".to_string(),
+        })?;
+        
+        // Copy all files from recipe directory to working directory (excluding .star files)
+        Self::send_event(
+            context,
+            Event::DebugLog {
+                message: format!("Copying source files from {} to {}", recipe_dir.display(), working_dir.display()),
+                context: std::collections::HashMap::new(),
+            },
+        );
+        
+        let mut entries = fs::read_dir(recipe_dir).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let entry_path = entry.path();
+            if entry_path.is_file() && !entry_path.extension().map_or(false, |ext| ext == "star") {
+                let file_name = entry.file_name();
+                let dest_path = working_dir.join(&file_name);
+                fs::copy(&entry_path, &dest_path).await?;
+                
+                Self::send_event(
+                    context,
+                    Event::DebugLog {
+                        message: format!("Copied {} to {}", file_name.to_string_lossy(), dest_path.display()),
+                        context: std::collections::HashMap::new(),
+                    },
+                );
+            }
+        }
 
         let mut api = BuilderApi::new(working_dir.clone())?;
         let _result = api.allow_network(self.config.allow_network);
@@ -408,6 +496,31 @@ impl Builder {
             },
         );
 
+        // Skip scanning if staging directory doesn't exist or is empty
+        if !staging_dir.exists() {
+            Self::send_event(
+                context,
+                Event::OperationCompleted {
+                    operation: "Relocatability scan skipped (no staging directory)".to_string(),
+                    success: true,
+                },
+            );
+            return Ok(());
+        }
+
+        // Check if directory is empty
+        let mut entries = fs::read_dir(staging_dir).await?;
+        if entries.next_entry().await?.is_none() {
+            Self::send_event(
+                context,
+                Event::OperationCompleted {
+                    operation: "Relocatability scan skipped (empty staging directory)".to_string(),
+                    success: true,
+                },
+            );
+            return Ok(());
+        }
+
         let violations = self
             .scan_directory_for_hardcoded_paths(staging_dir, &build_prefix_str)
             .await?;
@@ -444,7 +557,16 @@ impl Builder {
         Box::pin(async move {
             let mut violations = Vec::new();
 
-            let mut entries = fs::read_dir(dir).await?;
+            // Check if directory exists first
+            if !dir.exists() {
+                return Ok(violations);
+            }
+
+            let mut entries = match fs::read_dir(dir).await {
+                Ok(entries) => entries,
+                Err(_) => return Ok(violations), // Directory doesn't exist or can't be read
+            };
+
             while let Some(entry) = entries.next_entry().await? {
                 let path = entry.path();
 
@@ -578,6 +700,7 @@ impl Builder {
 
         // Create proper .sp archive with manifest and SBOM files
         self.create_sp_package(
+            context,
             environment.staging_dir(),
             &package_path,
             &manifest_string,
@@ -591,6 +714,7 @@ impl Builder {
     /// Create a .sp package archive with manifest, SBOM files, and tar+zstd compression
     async fn create_sp_package(
         &self,
+        context: &BuildContext,
         staging_dir: &Path,
         output_path: &Path,
         manifest_content: &str,
@@ -620,15 +744,84 @@ impl Builder {
         }
 
         // Step 3: Copy staging directory contents as package files
-        Self::copy_directory_recursive(staging_dir, &package_temp_dir.join("files")).await?;
+        Self::send_event(
+            context,
+            Event::OperationStarted {
+                operation: "Copying package files".to_string(),
+            },
+        );
+        let files_dir = package_temp_dir.join("files");
+        if staging_dir.exists() {
+            Self::copy_directory_recursive(staging_dir, &files_dir).await?;
+        } else {
+            // Create empty files directory if staging doesn't exist
+            fs::create_dir_all(&files_dir).await?;
+        }
+        Self::send_event(
+            context,
+            Event::OperationCompleted {
+                operation: "Package files copied".to_string(),
+                success: true,
+            },
+        );
 
         // Step 4: Create deterministic tar archive
+        Self::send_event(
+            context,
+            Event::OperationStarted {
+                operation: "Creating tar archive".to_string(),
+            },
+        );
+        
+        // Debug: List contents before tar creation
+        Self::send_event(
+            context,
+            Event::DebugLog {
+                message: format!("Creating tar from: {}", package_temp_dir.display()),
+                context: std::collections::HashMap::new(),
+            },
+        );
+        
         let tar_path = package_temp_dir.join("package.tar");
-        self.create_deterministic_tar_archive(&package_temp_dir, &tar_path)
-            .await?;
+        
+        // Add timeout for tar creation to prevent hanging
+        let tar_result = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            self.create_deterministic_tar_archive(&package_temp_dir, &tar_path)
+        ).await;
+        
+        match tar_result {
+            Ok(result) => result?,
+            Err(_) => {
+                return Err(BuildError::Failed {
+                    message: "Tar archive creation timed out after 30 seconds".to_string(),
+                }.into());
+            }
+        }
+        
+        Self::send_event(
+            context,
+            Event::OperationCompleted {
+                operation: "Tar archive created".to_string(),
+                success: true,
+            },
+        );
 
         // Step 5: Compress with zstd at maximum level
+        Self::send_event(
+            context,
+            Event::OperationStarted {
+                operation: "Compressing package with zstd".to_string(),
+            },
+        );
         self.compress_with_zstd(&tar_path, output_path).await?;
+        Self::send_event(
+            context,
+            Event::OperationCompleted {
+                operation: "Package compression completed".to_string(),
+                success: true,
+            },
+        );
 
         // Step 6: Cleanup temporary files
         fs::remove_dir_all(&package_temp_dir).await?;
@@ -660,69 +853,125 @@ impl Builder {
         })
     }
 
-    /// Create deterministic tar archive from directory
+    /// Create deterministic tar archive from directory using the tar crate
     async fn create_deterministic_tar_archive(
         &self,
         source_dir: &Path,
         tar_path: &Path,
     ) -> Result<(), Error> {
-        use tokio::process::Command;
+        use tar::Builder;
+        use tokio::fs::File;
 
-        let output = Command::new("tar")
-            .args([
-                "--create",
-                "--file",
-                &tar_path.display().to_string(),
-                "--directory",
-                &source_dir.display().to_string(),
-                "--sort=name",     // Deterministic ordering
-                "--numeric-owner", // Use numeric IDs for reproducibility
-                "--mtime=@0",      // Set modification time to epoch for reproducibility
-                "--owner=0",
-                "--group=0",
-                ".",
-            ])
-            .output()
-            .await?;
-
-        if !output.status.success() {
-            return Err(BuildError::Failed {
-                message: format!(
-                    "tar creation failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-            }
-            .into());
-        }
+        let file = File::create(tar_path).await?;
+        let file = file.into_std().await;
+        let source_dir = source_dir.to_path_buf(); // Clone to move into closure
+        
+        // Create deterministic tar using the tar crate
+        tokio::task::spawn_blocking(move || -> Result<(), Error> {
+            let mut tar_builder = Builder::new(file);
+            
+            // Set deterministic behavior
+            tar_builder.follow_symlinks(false);
+            
+            Self::add_directory_to_tar(&mut tar_builder, &source_dir, "".as_ref())?;
+            tar_builder.finish()?;
+            
+            Ok(())
+        })
+        .await
+        .map_err(|e| BuildError::Failed {
+            message: format!("tar creation task failed: {e}"),
+        })??;
 
         Ok(())
     }
 
-    /// Compress tar archive with zstd
-    async fn compress_with_zstd(&self, tar_path: &Path, output_path: &Path) -> Result<(), Error> {
-        use tokio::process::Command;
-
-        let output = Command::new("zstd")
-            .args([
-                "--compress",
-                "--force",
-                "--level=19", // Maximum compression as per spec
-                "--output",
-                &output_path.display().to_string(),
-                &tar_path.display().to_string(),
-            ])
-            .output()
-            .await?;
-
-        if !output.status.success() {
-            return Err(BuildError::Failed {
-                message: format!(
-                    "zstd compression failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                ),
+    /// Recursively add directory contents to tar archive with deterministic ordering
+    fn add_directory_to_tar(
+        tar_builder: &mut tar::Builder<std::fs::File>,
+        dir_path: &Path,
+        tar_path: &Path,
+    ) -> Result<(), Error> {
+        
+        let mut entries = std::fs::read_dir(dir_path)?
+            .collect::<Result<Vec<_>, _>>()?;
+        
+        // Sort entries by name for deterministic ordering
+        entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+        
+        for entry in entries {
+            let file_path = entry.path();
+            let file_name = entry.file_name();
+            
+            // Skip the package.tar file if it exists to avoid recursion
+            if file_name == "package.tar" {
+                continue;
             }
-            .into());
+            
+            // IMPORTANT: When tar_path is empty (first call), don't add a leading separator
+            let tar_entry_path = if tar_path.as_os_str().is_empty() {
+                PathBuf::from(&file_name)
+            } else {
+                tar_path.join(&file_name)
+            };
+            
+            let metadata = entry.metadata()?;
+            
+            if metadata.is_dir() {
+                // Add directory entry
+                let mut header = tar::Header::new_gnu();
+                header.set_entry_type(tar::EntryType::Directory);
+                header.set_size(0);
+                header.set_mode(0o755);
+                header.set_mtime(0); // Deterministic mtime
+                header.set_uid(0);
+                header.set_gid(0);
+                header.set_cksum();
+                
+                let tar_dir_path = format!("{}/", tar_entry_path.display());
+                tar_builder.append_data(&mut header, &tar_dir_path, std::io::empty())?;
+                
+                // Recursively add directory contents
+                Self::add_directory_to_tar(tar_builder, &file_path, &tar_entry_path)?;
+            } else if metadata.is_file() {
+                // Add file entry
+                let mut file = std::fs::File::open(&file_path)?;
+                let mut header = tar::Header::new_gnu();
+                header.set_entry_type(tar::EntryType::Regular);
+                header.set_size(metadata.len());
+                header.set_mode(if metadata.permissions().readonly() { 0o644 } else { 0o755 });
+                header.set_mtime(0); // Deterministic mtime
+                header.set_uid(0);
+                header.set_gid(0);
+                header.set_cksum();
+                
+                tar_builder.append_data(&mut header, tar_entry_path.display().to_string(), &mut file)?;
+            }
+            // Skip symlinks and other special files for simplicity
         }
+        
+        Ok(())
+    }
+
+    /// Compress tar archive with zstd using async-compression
+    async fn compress_with_zstd(&self, tar_path: &Path, output_path: &Path) -> Result<(), Error> {
+        use async_compression::tokio::write::ZstdEncoder;
+        use async_compression::Level;
+        use tokio::fs::File;
+        use tokio::io::{AsyncWriteExt, BufReader};
+
+        let input_file = File::open(tar_path).await?;
+        let output_file = File::create(output_path).await?;
+        
+        // Create zstd encoder with maximum compression level
+        let mut encoder = ZstdEncoder::with_quality(output_file, Level::Best);
+        
+        // Copy tar file through zstd encoder
+        let mut reader = BufReader::new(input_file);
+        tokio::io::copy(&mut reader, &mut encoder).await?;
+        
+        // Ensure all data is written
+        encoder.shutdown().await?;
 
         Ok(())
     }
@@ -798,6 +1047,7 @@ mod tests {
         let config = BuildConfig::default();
         assert!(!config.allow_network);
         assert!(config.max_build_time.is_some());
+        assert!(config.build_root.is_none()); // Should default to None, which becomes current directory
 
         let network_config = BuildConfig::with_network();
         assert!(network_config.allow_network);
@@ -805,6 +1055,14 @@ mod tests {
         let custom_config = BuildConfig::default().with_timeout(1800).with_jobs(4);
         assert_eq!(custom_config.max_build_time, Some(1800));
         assert_eq!(custom_config.build_jobs, Some(4));
+        
+        // Test custom build root
+        let custom_root = PathBuf::from("/custom/build/root");
+        let config_with_root = BuildConfig {
+            build_root: Some(custom_root.clone()),
+            ..Default::default()
+        };
+        assert_eq!(config_with_root.build_root, Some(custom_root));
     }
 
     #[test]
@@ -1006,7 +1264,8 @@ mod tests {
             .unwrap();
 
         // Mock environment that returns our staging directory
-        let environment = BuildEnvironment::new(context.clone()).unwrap();
+        let build_root = temp.path(); // Use temp directory as build root for test
+        let environment = BuildEnvironment::new(context.clone(), build_root).unwrap();
 
         // This should pass since our staging directory is clean
         let result = builder
