@@ -37,6 +37,9 @@ impl StateManager {
         let pool = crate::create_pool(&db_path).await?;
         crate::run_migrations(&pool).await?;
 
+        // Check if we need to create an initial state
+        Self::ensure_initial_state(&pool).await?;
+
         // Create event channel (events will be ignored for now)
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
 
@@ -676,6 +679,43 @@ impl StateManager {
         let mut tx = self.pool.begin().await?;
         // Basic verification - check if we can query the database
         let _active_state = queries::get_active_state(&mut tx).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Ensure an initial state exists, creating one if necessary
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations fail.
+    async fn ensure_initial_state(pool: &Pool<Sqlite>) -> Result<(), Error> {
+        let mut tx = pool.begin().await?;
+
+        // Check if any states exist
+        let state_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM states")
+            .fetch_one(&mut *tx)
+            .await?;
+
+        // If no states exist, create initial state
+        if state_count == 0 {
+            let initial_id = uuid::Uuid::new_v4();
+            let now = chrono::Utc::now().timestamp();
+
+            // Create initial state
+            sqlx::query("INSERT INTO states (id, parent_id, created_at, operation, success) VALUES (?, NULL, ?, 'initial', 1)")
+                .bind(initial_id.to_string())
+                .bind(now)
+                .execute(&mut *tx)
+                .await?;
+
+            // Set as active state
+            sqlx::query("INSERT INTO active_state (id, state_id, updated_at) VALUES (1, ?, ?)")
+                .bind(initial_id.to_string())
+                .bind(now)
+                .execute(&mut *tx)
+                .await?;
+        }
+
         tx.commit().await?;
         Ok(())
     }

@@ -24,16 +24,19 @@ use tracing::{error, info};
 
 #[tokio::main]
 async fn main() {
-    // Initialize tracing first
-    init_tracing();
-
-    // Parse command line arguments
+    // Parse command line arguments first to check for JSON mode
     let cli = Cli::parse();
+    let json_mode = cli.global.json;
+
+    // Initialize tracing with JSON awareness
+    init_tracing(json_mode);
 
     // Run the application and handle errors
     if let Err(e) = run(cli).await {
         error!("Application error: {}", e);
-        eprintln!("Error: {}", e);
+        if !json_mode {
+            eprintln!("Error: {}", e);
+        }
         process::exit(1);
     }
 }
@@ -274,12 +277,38 @@ async fn build_ops_context(
 }
 
 /// Initialize tracing/logging
-fn init_tracing() {
+fn init_tracing(json_mode: bool) {
     // Check if debug logging is enabled
     let debug_enabled =
         std::env::var("RUST_LOG").is_ok() || std::env::args().any(|arg| arg == "--debug");
 
-    if debug_enabled {
+    if json_mode {
+        // JSON mode: suppress all console output to avoid contaminating JSON
+        if debug_enabled {
+            // In debug mode with JSON, still log to file
+            let log_dir = std::path::Path::new("/opt/pm/logs");
+            if std::fs::create_dir_all(log_dir).is_ok() {
+                let log_file = log_dir.join(format!(
+                    "sps2-{}.log",
+                    chrono::Utc::now().format("%Y%m%d-%H%M%S")
+                ));
+
+                if let Ok(file) = std::fs::File::create(&log_file) {
+                    tracing_subscriber::fmt()
+                        .json()
+                        .with_writer(file)
+                        .with_env_filter("sps2=debug,sps2=debug")
+                        .init();
+                    return;
+                }
+            }
+        }
+        // Fallback: disable all logging in JSON mode
+        tracing_subscriber::fmt()
+            .with_writer(std::io::sink)
+            .with_env_filter("off")
+            .init();
+    } else if debug_enabled {
         // Debug mode: structured JSON logs to file
         let log_dir = std::path::Path::new("/opt/pm/logs");
         if let Err(e) = std::fs::create_dir_all(log_dir) {
