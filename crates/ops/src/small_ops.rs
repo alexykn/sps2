@@ -650,23 +650,29 @@ mod tests {
     async fn create_test_context() -> OpsCtx {
         let temp = tempdir().unwrap();
         let base_path = temp.path();
-        
+
         // Create necessary directories
         std::fs::create_dir_all(base_path.join("store")).unwrap();
         std::fs::create_dir_all(base_path.join("states")).unwrap();
         std::fs::create_dir_all(base_path.join("live")).unwrap();
-        
+
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
 
         let store = spsv2_store::PackageStore::new(base_path.join("store"));
-        
+
         // Create StateManager with explicit error handling
         let state = match spsv2_state::StateManager::new(base_path).await {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("Failed to create StateManager at {:?}: {}", base_path, e);
                 eprintln!("Directory exists: {}", base_path.exists());
-                eprintln!("Directory is writable: {}", base_path.metadata().map(|m| !m.permissions().readonly()).unwrap_or(false));
+                eprintln!(
+                    "Directory is writable: {}",
+                    base_path
+                        .metadata()
+                        .map(|m| !m.permissions().readonly())
+                        .unwrap_or(false)
+                );
                 panic!("StateManager creation failed: {}", e);
             }
         };
@@ -680,10 +686,10 @@ mod tests {
         let builder = spsv2_builder::Builder::new();
 
         let ops_ctx = OpsCtx::new(store, state, index, net, resolver, builder, tx);
-        
+
         // Create initial state for tests that need it
         // We'll create it inside each test that needs an active state
-        
+
         ops_ctx
     }
 
@@ -697,52 +703,52 @@ mod tests {
     #[tokio::test]
     async fn test_list_packages() {
         let ctx = create_test_context().await;
-        
+
         // In a fresh system, there's no active state, so list_packages will fail
         let result = list_packages(&ctx).await;
-        
+
         // For now, we expect this to fail with ActiveStateMissing
         assert!(result.is_err());
-        
+
         // TODO: Once we have state creation in tests, update this test
     }
 
     #[tokio::test]
     async fn test_search_packages() {
         let ctx = create_test_context().await;
-        
+
         // Search needs an active state to check installed packages
         let result = search_packages(&ctx, "test").await;
-        
+
         // For now, we expect this to fail with ActiveStateMissing
         assert!(result.is_err());
-        
+
         // TODO: Once we have state creation and a populated index in tests, update this test
     }
 
     #[tokio::test]
     async fn test_cleanup() {
         let ctx = create_test_context().await;
-        
+
         // Cleanup also needs an active state
         let result = cleanup(&ctx).await;
-        
+
         // For now, we expect this to fail with ActiveStateMissing
         assert!(result.is_err());
-        
+
         // TODO: Once we have state creation in tests, update this test
     }
 
     #[tokio::test]
     async fn test_history() {
         let ctx = create_test_context().await;
-        
+
         // History needs an active state to determine which is current
         let result = history(&ctx).await;
-        
+
         // For now, we expect this to fail with ActiveStateMissing
         assert!(result.is_err());
-        
+
         // TODO: Once we have state creation in tests, update this test
     }
 
@@ -763,10 +769,10 @@ mod tests {
 
         // Audit needs an active state to check installed packages
         let result = audit(&ctx, None, false, spsv2_audit::Severity::Low).await;
-        
+
         // For now, we expect this to fail with ActiveStateMissing
         assert!(result.is_err());
-        
+
         // TODO: Once we have state creation in tests, update this test
     }
 }

@@ -467,7 +467,7 @@ impl VulnerabilityDatabase {
         let severity_counts = sqlx::query(
             r"SELECT severity, COUNT(*) as count 
               FROM vulnerabilities 
-              GROUP BY severity"
+              GROUP BY severity",
         )
         .fetch_all(&self.pool)
         .await?;

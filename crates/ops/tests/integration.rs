@@ -91,7 +91,7 @@ mod tests {
     #[tokio::test]
     async fn test_list_packages_operation() {
         let ctx = create_test_context().await;
-        
+
         // list_packages needs an active state
         let result = list_packages(&ctx).await;
         assert!(result.is_err()); // Should fail without active state
@@ -100,7 +100,7 @@ mod tests {
     #[tokio::test]
     async fn test_package_info_operation() {
         let ctx = create_test_context().await;
-        
+
         // package_info needs an active state to check if package is installed
         let result = package_info(&ctx, "curl").await;
         assert!(result.is_err()); // Should fail without active state
@@ -109,7 +109,7 @@ mod tests {
     #[tokio::test]
     async fn test_search_packages_operation() {
         let ctx = create_test_context().await;
-        
+
         // search_packages needs an active state to check installed packages
         let result = search_packages(&ctx, "cur").await;
         assert!(result.is_err()); // Should fail without active state
@@ -118,7 +118,7 @@ mod tests {
     #[tokio::test]
     async fn test_cleanup_operation() {
         let ctx = create_test_context().await;
-        
+
         // cleanup needs an active state
         let result = cleanup(&ctx).await;
         assert!(result.is_err()); // Should fail without active state
@@ -127,7 +127,7 @@ mod tests {
     #[tokio::test]
     async fn test_history_operation() {
         let ctx = create_test_context().await;
-        
+
         // history needs an active state to determine current
         let result = history(&ctx).await;
         assert!(result.is_err()); // Should fail without active state

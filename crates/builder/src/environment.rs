@@ -737,7 +737,10 @@ mod tests {
         // Setup build deps environment to get PKG_CONFIG_PATH
         env.setup_build_deps_environment();
         let pkg_config = env.env_vars.get("PKG_CONFIG_PATH").unwrap();
-        assert_eq!(pkg_config, &format!("{}/lib/pkgconfig", env.deps_prefix.display()));
+        assert_eq!(
+            pkg_config,
+            &format!("{}/lib/pkgconfig", env.deps_prefix.display())
+        );
 
         // Clean up test environment variables
         std::env::remove_var("LDFLAGS");

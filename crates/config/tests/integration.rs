@@ -5,7 +5,11 @@ mod tests {
     use spsv2_config::*;
     use spsv2_types::{ColorChoice, OutputFormat};
     use std::io::Write;
+    use std::sync::Mutex;
     use tempfile::NamedTempFile;
+
+    // Mutex to ensure env var tests don't run concurrently
+    static ENV_TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     #[tokio::test]
     async fn test_load_config_from_file() {
@@ -41,10 +45,12 @@ index_max_age_days = 7
 
     #[test]
     fn test_merge_env() {
+        let _guard = ENV_TEST_MUTEX.lock().unwrap();
+
         // Clean up any existing env vars first
         std::env::remove_var("SPSV2_OUTPUT");
         std::env::remove_var("SPSV2_COLOR");
-        
+
         std::env::set_var("SPSV2_OUTPUT", "json");
         std::env::set_var("SPSV2_COLOR", "always");
 
@@ -61,10 +67,12 @@ index_max_age_days = 7
 
     #[test]
     fn test_invalid_env_value() {
+        let _guard = ENV_TEST_MUTEX.lock().unwrap();
+
         // Clean up any existing env vars first
         std::env::remove_var("SPSV2_OUTPUT");
         std::env::remove_var("SPSV2_COLOR");
-        
+
         std::env::set_var("SPSV2_OUTPUT", "invalid");
 
         let mut config = Config::default();

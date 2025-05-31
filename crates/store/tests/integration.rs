@@ -12,7 +12,7 @@ mod tests {
     async fn create_test_package(dir: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
         // Create the directory first
         fs::create_dir_all(dir).await?;
-        
+
         // Create manifest
         let manifest = ManifestBuilder::new(
             "test-pkg".to_string(),

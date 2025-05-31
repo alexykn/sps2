@@ -249,15 +249,19 @@ impl PackageSigner {
     /// # Errors
     ///
     /// Returns an error if key pair generation fails.
-    pub fn generate_encrypted_keypair(password: Option<String>) -> Result<(SecretKeyBox, PublicKey), Error> {
+    pub fn generate_encrypted_keypair(
+        password: Option<String>,
+    ) -> Result<(SecretKeyBox, PublicKey), Error> {
         let KeyPair { pk, sk } =
             KeyPair::generate_unencrypted_keypair().map_err(|e| BuildError::SigningError {
                 message: format!("Failed to generate key pair: {e}"),
             })?;
 
-        let sk_box = sk.to_box(password.as_deref()).map_err(|e| BuildError::SigningError {
-            message: format!("Failed to encrypt secret key: {e}"),
-        })?;
+        let sk_box = sk
+            .to_box(password.as_deref())
+            .map_err(|e| BuildError::SigningError {
+                message: format!("Failed to encrypt secret key: {e}"),
+            })?;
 
         Ok((sk_box, pk))
     }
@@ -292,10 +296,7 @@ impl PackageSigner {
     /// # Errors
     ///
     /// Returns an error if file writing fails.
-    pub async fn save_secret_key_box(
-        sk_box: &SecretKeyBox,
-        path: &Path,
-    ) -> Result<(), Error> {
+    pub async fn save_secret_key_box(sk_box: &SecretKeyBox, path: &Path) -> Result<(), Error> {
         fs::write(path, sk_box.to_string())
             .await
             .map_err(|e| BuildError::SigningError {
@@ -374,11 +375,11 @@ mod tests {
         assert!(result.is_none());
     }
 
-    #[tokio::test] 
+    #[tokio::test]
     async fn test_signing_disabled_by_default() {
         let temp = tempdir().unwrap();
         let package_path = temp.path().join("test.sp");
-        
+
         // Create test package
         fs::write(&package_path, b"test package data")
             .await
@@ -387,12 +388,12 @@ mod tests {
         // Test that signing is disabled by default
         let config = SigningConfig::default();
         assert!(!config.enabled);
-        
+
         let signer = PackageSigner::new(config);
         let result = signer.sign_package(&package_path).await.unwrap();
         assert!(result.is_none());
     }
-    
+
     #[tokio::test]
     async fn test_signing_config_builder() {
         // Test the config builder pattern
@@ -400,7 +401,7 @@ mod tests {
             .with_private_key("/path/to/key")
             .with_password("test")
             .with_comment("custom comment");
-            
+
         assert!(config.enabled);
         assert_eq!(config.private_key_path, Some(PathBuf::from("/path/to/key")));
         assert_eq!(config.key_password, Some("test".to_string()));
@@ -437,7 +438,7 @@ mod tests {
             .to_string()
             .contains("Private key file not found"));
 
-        // Test nonexistent private key file  
+        // Test nonexistent private key file
         let config = SigningConfig::enabled().with_private_key(&nonexistent_key);
         let signer = PackageSigner::new(config);
         let result = signer.sign_package(&package_path).await;
@@ -452,7 +453,7 @@ mod tests {
         // and just test the early validation
         let fake_key_path = temp.path().join("fake.key");
         fs::write(&fake_key_path, "fake key content").await.unwrap();
-        
+
         let config = SigningConfig::enabled().with_private_key(&fake_key_path);
         let signer = PackageSigner::new(config);
         let nonexistent_package = temp.path().join("nonexistent.sp");

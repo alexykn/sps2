@@ -126,7 +126,7 @@ async fn test_system_initialization() -> Result<(), Box<dyn std::error::Error>> 
     // In a fresh system, there's no active state yet
     let active_state_result = env.ops_ctx.state.get_active_state().await;
     assert!(active_state_result.is_err()); // Should fail with no active state
-    
+
     // List of states should be empty
     let states = env.ops_ctx.state.list_states().await?;
     assert!(states.is_empty());
