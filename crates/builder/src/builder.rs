@@ -716,7 +716,14 @@ impl Builder {
             },
         );
         let files_dir = package_temp_dir.join("files");
-        if staging_dir.exists() {
+        
+        // The staging directory contains the full /opt/pm/live structure
+        // We need to extract only the final installation contents to make them relative
+        let live_dir = staging_dir.join("opt").join("pm").join("live");
+        if live_dir.exists() {
+            Self::copy_directory_recursive(&live_dir, &files_dir).await?;
+        } else if staging_dir.exists() {
+            // Fallback: copy staging dir directly if /opt/pm/live structure doesn't exist
             Self::copy_directory_recursive(staging_dir, &files_dir).await?;
         } else {
             // Create empty files directory if staging doesn't exist

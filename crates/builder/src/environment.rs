@@ -491,9 +491,9 @@ impl BuildEnvironment {
             self.staging_dir.display().to_string(),
         );
 
-        // Set build prefix explicitly
+        // Set build prefix to final installation location (not staging dir)
         self.env_vars
-            .insert("PREFIX".to_string(), self.staging_dir.display().to_string());
+            .insert("PREFIX".to_string(), "/opt/pm/live".to_string());
 
         // Number of parallel jobs
         self.env_vars

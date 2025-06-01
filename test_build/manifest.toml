@@ -1,3 +1,8 @@
+[format_version]
+major = 1
+minor = 0
+patch = 0
+
 [package]
 name = "hello-world"
 version = "1.0.0"
@@ -7,7 +12,10 @@ description = "Simple hello world program"
 homepage = "https://example.com/hello-world"
 license = "MIT"
 
+[package.compression]
+format = "legacy"
+
 [dependencies]
 
 [sbom]
-spdx = "83dd96655529ff2dce2d534545dc0634dc5ba4faf8aefde54d6bcb95e740eb24"
+spdx = "680bafacdf4006431b6d72d79e08d74117fa5081b0b7da4987d6cfc1e436d104"

@@ -147,12 +147,11 @@ impl BuilderApi {
 
         // Run ./configure with PREFIX automatically added
         let mut configure_args = args.to_vec();
-        let staging_dir = env.staging_dir().display().to_string();
         if !configure_args
             .iter()
             .any(|arg| arg.starts_with("--prefix="))
         {
-            configure_args.insert(0, format!("--prefix={staging_dir}"));
+            configure_args.insert(0, "--prefix=/opt/pm/live".to_string());
         }
 
         env.execute_command(
@@ -195,11 +194,10 @@ impl BuilderApi {
 
         // Run cmake with CMAKE_INSTALL_PREFIX
         let mut cmake_args = vec!["..".to_string()];
-        let staging_dir = env.staging_dir().display().to_string();
 
         // Add CMAKE_INSTALL_PREFIX if not already specified
         if !args.iter().any(|arg| arg.contains("CMAKE_INSTALL_PREFIX")) {
-            cmake_args.push(format!("-DCMAKE_INSTALL_PREFIX={staging_dir}"));
+            cmake_args.push("-DCMAKE_INSTALL_PREFIX=/opt/pm/live".to_string());
         }
         cmake_args.extend(args.iter().cloned());
 
@@ -236,13 +234,12 @@ impl BuilderApi {
 
         // Setup meson
         let build_dir = self.working_dir.join("build");
-        let staging_dir = env.staging_dir().display().to_string();
 
         let mut setup_args = vec!["setup".to_string(), build_dir.display().to_string()];
 
         // Add prefix if not already specified
         if !args.iter().any(|arg| arg.contains("--prefix")) {
-            setup_args.push(format!("--prefix={staging_dir}"));
+            setup_args.push("--prefix=/opt/pm/live".to_string());
         }
         setup_args.extend(args.iter().cloned());
 
@@ -323,12 +320,11 @@ impl BuilderApi {
 
         // Add prefix if not already specified
         let mut configure_args = args.to_vec();
-        let staging_dir = env.staging_dir().display().to_string();
         if !configure_args
             .iter()
             .any(|arg| arg.starts_with("--prefix="))
         {
-            configure_args.insert(0, format!("--prefix={staging_dir}"));
+            configure_args.insert(0, "--prefix=/opt/pm/live".to_string());
         }
 
         env.execute_command(

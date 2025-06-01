@@ -422,6 +422,32 @@ impl StateTransition {
         #[cfg(target_os = "macos")]
         {
             if live_path.exists() {
+                // Ensure parent directory exists for staging path
+                if let Some(parent) = self.staging_path.parent() {
+                    tokio::task::block_in_place(|| {
+                        std::fs::create_dir_all(parent).map_err(|e| {
+                            InstallError::FilesystemError {
+                                operation: "create_staging_parent".to_string(),
+                                path: parent.display().to_string(),
+                                message: e.to_string(),
+                            }
+                        })
+                    })?;
+                }
+                
+                // Remove staging directory if it already exists (clonefile requires destination to not exist)
+                if self.staging_path.exists() {
+                    tokio::task::block_in_place(|| {
+                        std::fs::remove_dir_all(&self.staging_path).map_err(|e| {
+                            InstallError::FilesystemError {
+                                operation: "remove_existing_staging".to_string(),
+                                path: self.staging_path.display().to_string(),
+                                message: e.to_string(),
+                            }
+                        })
+                    })?;
+                }
+                
                 // Use APFS clonefile for instant, space-efficient copy
                 Self::apfs_clonefile(live_path, &self.staging_path)?;
             } else {
@@ -471,9 +497,10 @@ impl StateTransition {
         use std::ffi::CString;
         use std::os::unix::ffi::OsStrExt;
 
-        // macOS clonefile syscall number
-        const SYS_CLONEFILE: libc::c_int = 462;
-
+        // macOS clonefile flags
+        const CLONE_NOFOLLOW: u32 = 0x0001;
+        const CLONE_NOOWNERCOPY: u32 = 0x0002;
+        
         let source_c = CString::new(source.as_os_str().as_bytes()).map_err(|_| {
             InstallError::FilesystemError {
                 operation: "clonefile".to_string(),
@@ -490,27 +517,29 @@ impl StateTransition {
             }
         })?;
 
-        // Call clonefile system call
+        // Use the proper clonefile function from libc, not syscall
         let result = unsafe {
-            libc::syscall(
-                SYS_CLONEFILE,
+            libc::clonefile(
                 source_c.as_ptr(),
                 dest_c.as_ptr(),
-                0i32, // flags
+                CLONE_NOFOLLOW | CLONE_NOOWNERCOPY,
             )
         };
 
         if result != 0 {
+            let errno = unsafe { *libc::__error() };
             return Err(InstallError::FilesystemError {
                 operation: "clonefile".to_string(),
-                path: source.display().to_string(),
-                message: format!("clonefile failed with code {result}"),
+                path: format!("{} -> {}", source.display(), dest.display()),
+                message: format!("clonefile failed with code {result}, errno: {errno} ({})", 
+                    std::io::Error::from_raw_os_error(errno)),
             }
             .into());
         }
 
         Ok(())
     }
+
 
     /// Fallback directory copy for non-APFS filesystems
     #[allow(dead_code)] // Will be used for non-APFS filesystem support
