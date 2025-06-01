@@ -131,7 +131,30 @@ impl InstallOperation {
             },
         );
 
-        let resolution = self.resolver.resolve(resolution_context).await?;
+        let resolution = match self.resolver.resolve(resolution_context).await {
+            Ok(result) => result,
+            Err(e) => {
+                // Emit helpful error event for resolution failures
+                Self::send_event(
+                    self,
+                    context,
+                    Event::Error {
+                        message: "Package resolution failed".to_string(),
+                        details: Some(format!(
+                            "Error: {e}. \n\nPossible reasons:\n\
+                            • Package name or version typo.\n\
+                            • Package not available in the current repositories.\n\
+                            • Version constraints are unsatisfiable.\n\
+                            \nSuggested solutions:\n\
+                            • Double-check package name and version specs.\n\
+                            • Run 'sps2 search <package_name>' to find available packages.\n\
+                            • Run 'sps2 reposync' to update your package index."
+                        )),
+                    },
+                );
+                return Err(e);
+            }
+        };
 
         Self::send_event(
             self,

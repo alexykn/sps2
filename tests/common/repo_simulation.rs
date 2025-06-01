@@ -8,7 +8,6 @@ use sps2_index::{DependencyInfo, Index, VersionEntry};
 use std::collections::HashMap;
 use std::path::Path;
 use tokio::fs;
-use uuid::Uuid;
 
 /// Mock repository server for testing
 pub struct MockRepository {
@@ -31,6 +30,7 @@ impl MockRepository {
     }
 
     /// Create a new mock repository with custom base URL
+    #[allow(dead_code)] // Used by tests
     pub fn with_base_url(base_url: String) -> Self {
         Self {
             index: Index::new(),
@@ -84,13 +84,19 @@ impl MockRepository {
         version: &str,
         dependencies: Vec<&str>,
     ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        // Create a temporary directory for package creation
-        let temp_dir = std::env::temp_dir().join(format!("mock_package_{}", Uuid::new_v4()));
-        fs::create_dir_all(&temp_dir).await?;
+        // Create a minimal tar archive in memory for testing
+        use async_compression::tokio::write::ZstdEncoder;
+        use std::io::Cursor;
+        use tokio::io::AsyncWriteExt;
 
-        // Create manifest.toml
-        let manifest_content = format!(
-            r#"[package]
+        // First create the tar archive
+        let mut tar_buffer = Vec::new();
+        {
+            let mut builder = tar::Builder::new(&mut tar_buffer);
+
+            // Add manifest.toml
+            let manifest_content = format!(
+                r#"[package]
 name = "{}"
 version = "{}"
 revision = 1
@@ -103,80 +109,62 @@ build = []
 [sbom]
 spdx = "mock_spdx_hash_{}_{}"
 "#,
-            name,
-            version,
-            dependencies
-                .iter()
-                .map(|d| format!("\"{}\"", d))
-                .collect::<Vec<_>>()
-                .join(", "),
-            name,
-            version
-        );
+                name,
+                version,
+                dependencies
+                    .iter()
+                    .map(|d| format!("\"{}\"", d))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                name,
+                version
+            );
 
-        let manifest_path = temp_dir.join("manifest.toml");
-        fs::write(&manifest_path, manifest_content).await?;
+            let mut header = tar::Header::new_gnu();
+            header.set_path("manifest.toml")?;
+            header.set_size(manifest_content.len() as u64);
+            header.set_cksum();
+            builder.append(&header, Cursor::new(manifest_content.as_bytes()))?;
 
-        // Create a simple binary file
-        let bin_dir = temp_dir.join("bin");
-        fs::create_dir_all(&bin_dir).await?;
-        let bin_path = bin_dir.join(name);
-        fs::write(
-            &bin_path,
-            format!("#!/bin/sh\necho 'Mock {} v{}'\n", name, version),
-        )
-        .await?;
+            // Add files/ directory entry (required by builder structure)
+            let mut header = tar::Header::new_gnu();
+            header.set_path("files/")?;
+            header.set_size(0);
+            header.set_entry_type(tar::EntryType::Directory);
+            header.set_mode(0o755);
+            header.set_cksum();
+            builder.append(&header, std::io::empty())?;
 
-        // Create tar archive
-        let tar_path = temp_dir.join("package.tar");
-        let tar_output = tokio::process::Command::new("tar")
-            .args([
-                "--create",
-                "--file",
-                &tar_path.display().to_string(),
-                "--directory",
-                &temp_dir.display().to_string(),
-                "manifest.toml",
-                "bin",
-            ])
-            .output()
-            .await?;
+            // Add bin/ directory inside files/
+            let mut header = tar::Header::new_gnu();
+            header.set_path("files/bin/")?;
+            header.set_size(0);
+            header.set_entry_type(tar::EntryType::Directory);
+            header.set_mode(0o755);
+            header.set_cksum();
+            builder.append(&header, std::io::empty())?;
 
-        if !tar_output.status.success() {
-            return Err(format!(
-                "tar failed: {}",
-                String::from_utf8_lossy(&tar_output.stderr)
-            )
-            .into());
+            // Add a simple binary file in proper location
+            let bin_content = format!("#!/bin/sh\necho 'Mock {} v{}'\n", name, version);
+            let mut header = tar::Header::new_gnu();
+            header.set_path(format!("files/bin/{}", name))?;
+            header.set_size(bin_content.len() as u64);
+            header.set_mode(0o755); // executable
+            header.set_cksum();
+            builder.append(&header, Cursor::new(bin_content.as_bytes()))?;
+
+            builder.finish()?;
         }
 
-        // Compress with zstd
-        let sp_path = temp_dir.join("package.sp");
-        let zstd_output = tokio::process::Command::new("zstd")
-            .args([
-                "--compress",
-                "-o",
-                &sp_path.display().to_string(),
-                &tar_path.display().to_string(),
-            ])
-            .output()
-            .await?;
-
-        if !zstd_output.status.success() {
-            return Err(format!(
-                "zstd failed: {}",
-                String::from_utf8_lossy(&zstd_output.stderr)
-            )
-            .into());
+        // Compress with zstd to create proper .sp format
+        let mut compressed_buffer = Vec::new();
+        {
+            let mut encoder = ZstdEncoder::new(&mut compressed_buffer);
+            encoder.write_all(&tar_buffer).await?;
+            encoder.shutdown().await?;
         }
 
-        // Read the compressed package
-        let package_data = fs::read(&sp_path).await?;
-
-        // Cleanup
-        let _ = fs::remove_dir_all(&temp_dir).await;
-
-        Ok(package_data)
+        Ok(compressed_buffer)
     }
 
     /// Get the repository index as JSON
@@ -276,7 +264,7 @@ mod tests {
         // Package data should not be empty
         assert!(!package_data.is_empty());
 
-        // Should be compressed (zstd magic number)
+        // Should be compressed with zstd (zstd magic number)
         assert_eq!(&package_data[0..4], b"\x28\xb5\x2f\xfd");
     }
 }

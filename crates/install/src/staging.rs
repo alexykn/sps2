@@ -32,8 +32,8 @@ impl StagingManager {
     /// # Errors
     ///
     /// Returns an error if the staging base directory cannot be created
-    pub async fn new(store: PackageStore) -> Result<Self, Error> {
-        let base_path = PathBuf::from("/opt/pm/staging");
+    pub async fn new(store: PackageStore, base_staging_path: PathBuf) -> Result<Self, Error> {
+        let base_path = base_staging_path;
 
         // Create staging base directory if it doesn't exist
         fs::create_dir_all(&base_path)
@@ -840,12 +840,10 @@ mod tests {
 
         // Create staging manager with custom base path for testing
         let staging_base = temp.path().join("staging");
-        fs::create_dir_all(&staging_base).await.unwrap();
 
-        let manager = StagingManager {
-            base_path: staging_base.clone(),
-            store,
-        };
+        let manager = StagingManager::new(store, staging_base.clone())
+            .await
+            .unwrap();
 
         let package_id = PackageId::new(
             "test-pkg".to_string(),
@@ -897,12 +895,8 @@ mod tests {
         let store = PackageStore::new(temp.path().to_path_buf());
 
         let staging_base = temp.path().join("staging");
-        fs::create_dir_all(&staging_base).await.unwrap();
 
-        let manager = StagingManager {
-            base_path: staging_base,
-            store,
-        };
+        let manager = StagingManager::new(store, staging_base).await.unwrap();
 
         // Create test directory structure
         let test_dir = temp.path().join("test");
@@ -930,12 +924,8 @@ mod tests {
         let store = PackageStore::new(temp.path().to_path_buf());
 
         let staging_base = temp.path().join("staging");
-        fs::create_dir_all(&staging_base).await.unwrap();
 
-        let manager = StagingManager {
-            base_path: staging_base,
-            store,
-        };
+        let manager = StagingManager::new(store, staging_base).await.unwrap();
 
         // Test valid structure
         let valid_dir = temp.path().join("valid");

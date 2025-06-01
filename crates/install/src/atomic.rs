@@ -30,7 +30,9 @@ impl AtomicInstaller {
     ///
     /// Returns an error if staging manager initialization fails
     pub async fn new(state_manager: StateManager, store: PackageStore) -> Result<Self, Error> {
-        let staging_manager = StagingManager::new(store.clone()).await?;
+        // Derive staging base path from StateManager's state path for test isolation
+        let staging_base_path = state_manager.state_path().join("staging");
+        let staging_manager = StagingManager::new(store.clone(), staging_base_path).await?;
         let live_path = state_manager.live_path().to_path_buf();
 
         Ok(Self {
@@ -576,6 +578,35 @@ impl StateTransition {
             .state_path()
             .join(self.parent_id.unwrap_or_default().to_string());
 
+        // Ensure parent directories exist before any rename operations
+        if let Some(state_parent) = self.state_manager.state_path().parent() {
+            fs::create_dir_all(state_parent)
+                .await
+                .map_err(|e| InstallError::FilesystemError {
+                    operation: "create_state_parent_dir".to_string(),
+                    path: state_parent.display().to_string(),
+                    message: e.to_string(),
+                })?;
+        }
+        fs::create_dir_all(self.state_manager.state_path())
+            .await
+            .map_err(|e| InstallError::FilesystemError {
+                operation: "create_state_dir".to_string(),
+                path: self.state_manager.state_path().display().to_string(),
+                message: e.to_string(),
+            })?;
+
+        // Ensure parent directory of live_path exists for first install
+        if let Some(live_parent) = live_path.parent() {
+            fs::create_dir_all(live_parent)
+                .await
+                .map_err(|e| InstallError::FilesystemError {
+                    operation: "create_live_parent_dir".to_string(),
+                    path: live_parent.display().to_string(),
+                    message: e.to_string(),
+                })?;
+        }
+
         // True atomic swap using sps2_root::atomic_swap
         // This uses macOS renamex_np with RENAME_SWAP for single OS-level atomic operation
         if live_path.exists() {
@@ -589,10 +620,22 @@ impl StateTransition {
                 })?;
 
             // Move the old live directory (now in staging_path) to archived location
-            fs::rename(&self.staging_path, &old_live_path).await?;
+            fs::rename(&self.staging_path, &old_live_path)
+                .await
+                .map_err(|e| InstallError::FilesystemError {
+                    operation: "archive_old_live".to_string(),
+                    path: old_live_path.display().to_string(),
+                    message: e.to_string(),
+                })?;
         } else {
             // If live doesn't exist, just move staging to live (first install)
-            fs::rename(&self.staging_path, live_path).await?;
+            fs::rename(&self.staging_path, live_path)
+                .await
+                .map_err(|e| InstallError::FilesystemError {
+                    operation: "first_install_move".to_string(),
+                    path: live_path.display().to_string(),
+                    message: e.to_string(),
+                })?;
         }
 
         // Update active state pointer

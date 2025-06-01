@@ -198,6 +198,7 @@ async fn extract_zstd_tar_file(
     let temp_path_for_task = temp_path.clone();
     let dest = dest.to_path_buf();
 
+    // Keep the temp_file alive until after the blocking operation completes
     tokio::task::spawn_blocking(move || {
         use std::fs::File;
 
@@ -219,6 +220,9 @@ async fn extract_zstd_tar_file(
     })
     .await
     .map_err(|e| Error::internal(format!("zstd extract task failed: {e}")))??;
+
+    // Now we can safely drop the temp_file
+    drop(temp_file);
 
     // Send decompression completed event
     if let Some(sender) = event_sender {
@@ -325,7 +329,8 @@ async fn list_zstd_tar_contents(file_path: &Path) -> Result<Vec<String>, Error> 
     // Now list the decompressed tar file contents
     let temp_path_for_task = temp_path.clone();
 
-    tokio::task::spawn_blocking(move || -> Result<Vec<String>, Error> {
+    // Keep temp_file alive until after the blocking operation completes
+    let result = tokio::task::spawn_blocking(move || -> Result<Vec<String>, Error> {
         use std::fs::File;
 
         let file = File::open(&temp_path_for_task)?;
@@ -342,7 +347,12 @@ async fn list_zstd_tar_contents(file_path: &Path) -> Result<Vec<String>, Error> 
         Ok(files)
     })
     .await
-    .map_err(|e| Error::internal(format!("zstd list task failed: {e}")))?
+    .map_err(|e| Error::internal(format!("zstd list task failed: {e}")))?;
+
+    // Now we can safely drop the temp_file
+    drop(temp_file);
+
+    result
 }
 
 /// List contents of a plain tar file

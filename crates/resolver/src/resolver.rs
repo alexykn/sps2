@@ -189,8 +189,9 @@ impl Resolver {
             // Find resolved dependency in graph and add edge (FIXED: single resolution)
             if let Some(dep_node) = graph.nodes.values().find(|n| n.name == edge.name) {
                 let dep_id = dep_node.package_id();
-                // FIXED: Correct edge direction - package_id depends on dep_id
-                graph.add_edge(&package_id, &dep_id);
+                // Edge direction: dep_id -> package_id (dependency points to dependent)
+                // If curl depends on openssl, edge is from openssl to curl
+                graph.add_edge(&dep_id, &package_id);
             }
 
             // Check for cycles after each dependency addition

@@ -193,7 +193,11 @@ impl PipelineMaster {
     /// # Errors
     ///
     /// Returns an error if initialization of underlying components fails.
-    pub async fn new(config: PipelineConfig, store: PackageStore) -> Result<Self, Error> {
+    pub async fn new(
+        config: PipelineConfig,
+        store: PackageStore,
+        staging_base_path: PathBuf,
+    ) -> Result<Self, Error> {
         // Configure downloader for optimal parallel performance
         let download_config = PackageDownloadConfig {
             max_concurrent: config.max_downloads,
@@ -202,7 +206,8 @@ impl PipelineMaster {
         };
 
         let downloader = PackageDownloader::new(download_config)?;
-        let staging_manager = Arc::new(StagingManager::new(store.clone()).await?);
+        let staging_manager =
+            Arc::new(StagingManager::new(store.clone(), staging_base_path).await?);
         let progress_manager = Arc::new(ProgressManager::new());
 
         // Initialize semaphores for resource control
@@ -1145,8 +1150,11 @@ mod tests {
         let temp = tempdir().unwrap();
         let store = PackageStore::new(temp.path().to_path_buf());
         let config = PipelineConfig::default();
+        let staging_base_path = temp.path().join("staging");
 
-        let pipeline = PipelineMaster::new(config, store).await.unwrap();
+        let pipeline = PipelineMaster::new(config, store, staging_base_path)
+            .await
+            .unwrap();
         assert_eq!(pipeline.config.max_downloads, 4);
         assert_eq!(pipeline.config.max_decompressions, 2);
         assert!(pipeline.config.enable_streaming);

@@ -119,12 +119,18 @@ impl StateManager {
         let staging_id = Uuid::new_v4();
         let staging_path = self.state_path.join(format!("staging-{staging_id}"));
 
-        // Clone current state to staging
-        self.tx.emit(Event::OperationStarted {
-            operation: "Cloning current state".to_string(),
-        });
-
-        sps2_root::clone_directory(&self.live_path, &staging_path).await?;
+        // Clone current state to staging (or create empty staging for first install)
+        if sps2_root::exists(&self.live_path).await {
+            self.tx.emit(Event::OperationStarted {
+                operation: "Cloning current state".to_string(),
+            });
+            sps2_root::clone_directory(&self.live_path, &staging_path).await?;
+        } else {
+            self.tx.emit(Event::OperationStarted {
+                operation: "Creating initial staging directory".to_string(),
+            });
+            sps2_root::create_dir_all(&staging_path).await?;
+        }
 
         Ok(StateTransition {
             from: current_state,
@@ -207,6 +213,14 @@ impl StateManager {
 
         // Archive current live state before swapping
         let old_live_backup = self.state_path.join(transition.from.to_string());
+
+        // Ensure state_path directory exists before creating backup paths
+        tokio::fs::create_dir_all(&self.state_path).await?;
+
+        // Ensure parent directory of live_path exists
+        if let Some(live_parent) = self.live_path.parent() {
+            tokio::fs::create_dir_all(live_parent).await?;
+        }
 
         // Remove old backup if it exists
         if sps2_root::exists(&old_live_backup).await {

@@ -567,14 +567,16 @@ async fn install_remote_packages_parallel(
     specs: &[PackageSpec],
 ) -> Result<sps2_install::InstallResult, Error> {
     use sps2_events::{ProgressManager, ProgressPhase};
+    use sps2_state::PackageRef;
 
     // Create unified progress tracker for the entire install operation
     let progress_manager = ProgressManager::new();
     let install_phases = vec![
         ProgressPhase::new("resolve", "Resolving dependencies").with_weight(0.1),
-        ProgressPhase::new("download", "Downloading packages").with_weight(0.6),
+        ProgressPhase::new("download", "Downloading packages").with_weight(0.5),
         ProgressPhase::new("validate", "Validating packages").with_weight(0.15),
-        ProgressPhase::new("install", "Installing packages").with_weight(0.15),
+        ProgressPhase::new("stage", "Staging packages").with_weight(0.15),
+        ProgressPhase::new("commit", "Committing state").with_weight(0.1),
     ];
 
     let progress_id = progress_manager.start_operation(
@@ -593,9 +595,10 @@ async fn install_remote_packages_parallel(
             total: Some(specs.len() as u64),
             phases: vec![
                 ProgressPhase::new("resolve", "Resolving dependencies").with_weight(0.1),
-                ProgressPhase::new("download", "Downloading packages").with_weight(0.6),
+                ProgressPhase::new("download", "Downloading packages").with_weight(0.5),
                 ProgressPhase::new("validate", "Validating packages").with_weight(0.15),
-                ProgressPhase::new("install", "Installing packages").with_weight(0.15),
+                ProgressPhase::new("stage", "Staging packages").with_weight(0.15),
+                ProgressPhase::new("commit", "Committing state").with_weight(0.1),
             ],
         })
         .ok();
@@ -612,7 +615,37 @@ async fn install_remote_packages_parallel(
         resolution_context = resolution_context.add_runtime_dep(spec.clone());
     }
 
-    let resolution_result = ctx.resolver.resolve(resolution_context).await?;
+    let resolution_result = match ctx.resolver.resolve(resolution_context).await {
+        Ok(result) => result,
+        Err(e) => {
+            // Emit helpful error event for resolution failures
+            ctx.tx
+                .send(Event::Error {
+                    message: "Package resolution failed".to_string(),
+                    details: Some(format!(
+                        "Error: {e}. \n\nPossible reasons:\n\
+                        • Package name or version typo.\n\
+                        • Package not available in the current repositories.\n\
+                        • Version constraints are unsatisfiable.\n\
+                        \nSuggested solutions:\n\
+                        • Double-check package name and version specs.\n\
+                        • Run 'sps2 search <package_name>' to find available packages.\n\
+                        • Run 'sps2 reposync' to update your package index."
+                    )),
+                })
+                .ok();
+
+            // Mark progress as failed
+            ctx.tx
+                .send(Event::ProgressFailed {
+                    id: progress_id.clone(),
+                    error: e.to_string(),
+                })
+                .ok();
+
+            return Err(e);
+        }
+    };
     let execution_plan = resolution_result.execution_plan;
     let resolved_packages = resolution_result.nodes;
 
@@ -620,7 +653,7 @@ async fn install_remote_packages_parallel(
     progress_manager.update_progress(&progress_id, 1, Some(specs.len() as u64), &ctx.tx);
     progress_manager.change_phase(&progress_id, 1, &ctx.tx);
 
-    // Phase 2-4: Pipeline execution (download, validate, install)
+    // Phase 2-4: Pipeline execution (download, validate, stage)
     let pipeline_config = PipelineConfig {
         max_downloads: 4,                // Conservative default
         max_decompressions: 2,           // CPU intensive
@@ -631,7 +664,10 @@ async fn install_remote_packages_parallel(
         ..PipelineConfig::default()
     };
 
-    let pipeline = PipelineMaster::new(pipeline_config, ctx.store.clone()).await?;
+    // Derive staging base path from StateManager for test isolation
+    let staging_base_path = ctx.state.state_path().join("staging");
+    let pipeline =
+        PipelineMaster::new(pipeline_config, ctx.store.clone(), staging_base_path).await?;
 
     // Execute pipeline with comprehensive error handling
     let batch_result = match pipeline
@@ -662,6 +698,78 @@ async fn install_remote_packages_parallel(
             return Err(e);
         }
     };
+
+    // Phase 5: State management integration
+    progress_manager.change_phase(&progress_id, 4, &ctx.tx);
+
+    ctx.tx
+        .send(Event::DebugLog {
+            message: "DEBUG: Starting state management integration".to_string(),
+            context: std::collections::HashMap::from([
+                (
+                    "successful_packages".to_string(),
+                    batch_result.successful_packages.len().to_string(),
+                ),
+                (
+                    "failed_packages".to_string(),
+                    batch_result.failed_packages.len().to_string(),
+                ),
+            ]),
+        })
+        .ok();
+
+    // Begin state transition
+    let transition = ctx.state.begin_transition("install packages").await?;
+    let new_state_id = transition.to;
+
+    // Create package references for all successfully installed packages
+    let mut packages_added = Vec::new();
+    for package_id in &batch_result.successful_packages {
+        // For now, use placeholder hash and size - these should be retrieved from the store
+        // In a future enhancement, the pipeline should return the actual hashes
+        let package_ref = PackageRef {
+            state_id: new_state_id,
+            package_id: package_id.clone(),
+            hash: sps2_hash::Hash::from_data(
+                format!("{}-{}", package_id.name, package_id.version).as_bytes(),
+            )
+            .to_hex(), // Temporary hash based on name-version
+            size: 1024 * 1024, // Placeholder 1MB size
+        };
+        packages_added.push(package_ref);
+    }
+
+    ctx.tx
+        .send(Event::DebugLog {
+            message: format!(
+                "DEBUG: Committing state transition with {} packages",
+                packages_added.len()
+            ),
+            context: std::collections::HashMap::from([
+                ("new_state_id".to_string(), new_state_id.to_string()),
+                (
+                    "packages_count".to_string(),
+                    packages_added.len().to_string(),
+                ),
+            ]),
+        })
+        .ok();
+
+    // Commit the state transition with the installed packages
+    ctx.state
+        .commit_transition(
+            transition,
+            packages_added,
+            Vec::new(), // No packages removed
+        )
+        .await?;
+
+    ctx.tx
+        .send(Event::DebugLog {
+            message: "DEBUG: State transition committed successfully".to_string(),
+            context: std::collections::HashMap::new(),
+        })
+        .ok();
 
     // Complete progress tracking
     progress_manager.complete_operation(&progress_id, &ctx.tx);
@@ -696,12 +804,12 @@ async fn install_remote_packages_parallel(
         })
         .ok();
 
-    // Convert batch result to install result
+    // Convert batch result to install result with actual state ID
     Ok(sps2_install::InstallResult {
         installed_packages: batch_result.successful_packages,
         updated_packages: Vec::new(), // Pipeline doesn't track updates separately
         removed_packages: Vec::new(), // No packages removed during install
-        state_id: uuid::Uuid::new_v4(), // TODO: Get actual state ID from state manager
+        state_id: new_state_id,
     })
 }
 
