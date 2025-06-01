@@ -93,4 +93,10 @@ pub enum InstallError {
 
     #[error("temporary file error: {message}")]
     TempFileError { message: String },
+
+    #[error("operation timeout: {message}")]
+    OperationTimeout { message: String },
+
+    #[error("no progress detected: {message}")]
+    NoProgress { message: String },
 }

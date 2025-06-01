@@ -79,6 +79,18 @@ impl StateManager {
         Ok(state_id)
     }
 
+    /// Get the live path for this state manager
+    #[must_use]
+    pub fn live_path(&self) -> &std::path::Path {
+        &self.live_path
+    }
+
+    /// Get the state path for this state manager
+    #[must_use]
+    pub fn state_path(&self) -> &std::path::Path {
+        &self.state_path
+    }
+
     /// Get all installed packages in current state
     ///
     /// # Errors

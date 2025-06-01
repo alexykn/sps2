@@ -14,7 +14,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tokio::task::JoinHandle;
-use tokio::time::{timeout, Duration};
+use tokio::time::{timeout, Duration, Instant};
 
 /// Parallel executor for package operations
 pub struct ParallelExecutor {
@@ -99,8 +99,37 @@ impl ParallelExecutor {
             }
         }
 
-        // Process packages until completion
+        // Process packages until completion with overall timeout
+        let overall_timeout = Duration::from_secs(1800); // 30 minutes total
+        let start_time = Instant::now();
+        let mut no_progress_iterations = 0;
+        let mut last_completed_count = 0;
+
         while !execution_plan.is_complete() || !inflight.is_empty() {
+            // Check overall timeout
+            if start_time.elapsed() > overall_timeout {
+                return Err(InstallError::OperationTimeout {
+                    message: "Overall installation timeout exceeded (30 minutes)".to_string(),
+                }
+                .into());
+            }
+
+            // Track progress to detect infinite loops
+            let current_completed = execution_plan.completed_count();
+            if current_completed == last_completed_count {
+                no_progress_iterations += 1;
+                if no_progress_iterations > 600 {
+                    // 60 seconds of no progress (100 * 10ms sleep)
+                    return Err(InstallError::NoProgress {
+                        message: "No progress made in package installation for 60 seconds"
+                            .to_string(),
+                    }
+                    .into());
+                }
+            } else {
+                no_progress_iterations = 0;
+                last_completed_count = current_completed;
+            }
             // Try to start new tasks from ready queue
             while let Some(package_id) = ready_queue.pop() {
                 if inflight.contains_key(&package_id) {
@@ -342,7 +371,18 @@ impl ParallelExecutor {
         &self,
         inflight: &DashMap<PackageId, JoinHandle<Result<PackageId, Error>>>,
     ) -> Result<PackageId, Error> {
+        let timeout_duration = Duration::from_secs(300); // 5 minutes per task
+        let start_time = Instant::now();
+
         loop {
+            // Check if overall timeout exceeded
+            if start_time.elapsed() > timeout_duration {
+                return Err(InstallError::TaskError {
+                    message: "Task completion timeout exceeded (5 minutes)".to_string(),
+                }
+                .into());
+            }
+
             // Check for completed tasks
             let mut completed = None;
 

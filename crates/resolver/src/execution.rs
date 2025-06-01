@@ -189,6 +189,15 @@ impl ExecutionPlan {
     pub fn is_complete(&self) -> bool {
         self.metadata.values().all(|meta| meta.in_degree() == 0)
     }
+
+    /// Get count of completed packages (packages with `in_degree` 0)
+    #[must_use]
+    pub fn completed_count(&self) -> usize {
+        self.metadata
+            .values()
+            .filter(|meta| meta.in_degree() == 0)
+            .count()
+    }
 }
 
 /// Execution statistics

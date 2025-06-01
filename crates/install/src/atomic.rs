@@ -31,12 +31,13 @@ impl AtomicInstaller {
     /// Returns an error if staging manager initialization fails
     pub async fn new(state_manager: StateManager, store: PackageStore) -> Result<Self, Error> {
         let staging_manager = StagingManager::new(store.clone()).await?;
+        let live_path = state_manager.live_path().to_path_buf();
 
         Ok(Self {
             state_manager,
             store,
             staging_manager,
-            live_path: PathBuf::from("/opt/pm/live"),
+            live_path,
         })
     }
 
@@ -52,7 +53,7 @@ impl AtomicInstaller {
         resolved_packages: &HashMap<PackageId, ResolvedNode>,
     ) -> Result<InstallResult, Error> {
         // Create new state transition
-        let transition = StateTransition::new(&self.state_manager).await?;
+        let mut transition = StateTransition::new(&self.state_manager).await?;
 
         if let Some(sender) = &context.event_sender {
             let _ = sender.send(Event::StateCreating {
@@ -67,7 +68,7 @@ impl AtomicInstaller {
         let mut result = InstallResult::new(transition.staging_id);
 
         for (package_id, node) in resolved_packages {
-            self.install_package_to_staging(&transition, package_id, node, &mut result)
+            self.install_package_to_staging(&mut transition, package_id, node, &mut result)
                 .await?;
         }
 
@@ -94,7 +95,7 @@ impl AtomicInstaller {
     /// Install a single package to staging directory
     async fn install_package_to_staging(
         &self,
-        transition: &StateTransition,
+        transition: &mut StateTransition,
         package_id: &PackageId,
         node: &ResolvedNode,
         result: &mut InstallResult,
@@ -124,7 +125,7 @@ impl AtomicInstaller {
     /// Install a local package using the staging system
     async fn install_local_package_with_staging(
         &self,
-        transition: &StateTransition,
+        transition: &mut StateTransition,
         local_path: &Path,
         package_id: &PackageId,
     ) -> Result<(), Error> {
@@ -161,7 +162,7 @@ impl AtomicInstaller {
     /// Link validated staging directory contents to state transition
     async fn link_validated_staging_to_transition(
         &self,
-        transition: &StateTransition,
+        transition: &mut StateTransition,
         staging_dir: &crate::StagingDirectory,
         package_id: &PackageId,
     ) -> Result<(), Error> {
@@ -180,36 +181,24 @@ impl AtomicInstaller {
             .await?;
         }
 
-        // Begin database transaction to record package and files
-        let mut tx = self.state_manager.begin_transaction().await?;
-
-        // Update package references in database
-        // TODO: Get actual hash and size from staging or store
+        // Store package reference to be added during commit
         let package_ref = PackageRef {
             state_id: transition.staging_id,
             package_id: package_id.clone(),
             hash: "placeholder-hash".to_string(), // TODO: Get from staging validation
             size: 0,                              // TODO: Calculate from staging
         };
-        self.state_manager
-            .add_package_ref_with_tx(&mut tx, &package_ref)
-            .await?;
+        transition.package_refs.push(package_ref);
 
-        // Record all linked files in the package_files table
+        // Store file information to be added during commit
         for (file_path, is_directory) in file_paths {
-            sps2_state::queries::add_package_file(
-                &mut tx,
-                &transition.staging_id,
-                &package_id.name,
-                &package_id.version.to_string(),
-                &file_path,
+            transition.package_files.push((
+                package_id.name.clone(),
+                package_id.version.to_string(),
+                file_path,
                 is_directory,
-            )
-            .await?;
+            ));
         }
-
-        // Commit the transaction
-        tx.commit().await?;
 
         Ok(())
     }
@@ -217,7 +206,7 @@ impl AtomicInstaller {
     /// Link package from store to staging directory
     async fn link_package_to_staging(
         &self,
-        transition: &StateTransition,
+        transition: &mut StateTransition,
         store_path: &Path,
         package_id: &PackageId,
     ) -> Result<(), Error> {
@@ -234,36 +223,24 @@ impl AtomicInstaller {
         )
         .await?;
 
-        // Begin database transaction to record package and files
-        let mut tx = self.state_manager.begin_transaction().await?;
-
-        // Update package references in database
-        // TODO: Get actual hash and size from resolved node or store
+        // Store package reference to be added during commit
         let package_ref = PackageRef {
             state_id: transition.staging_id,
             package_id: package_id.clone(),
             hash: "placeholder-hash".to_string(), // TODO: Get from ResolvedNode
             size: 0,                              // TODO: Get from ResolvedNode
         };
-        self.state_manager
-            .add_package_ref_with_tx(&mut tx, &package_ref)
-            .await?;
+        transition.package_refs.push(package_ref);
 
-        // Record all linked files in the package_files table
+        // Store file information to be added during commit
         for (file_path, is_directory) in file_paths {
-            sps2_state::queries::add_package_file(
-                &mut tx,
-                &transition.staging_id,
-                &package_id.name,
-                &package_id.version.to_string(),
-                &file_path,
+            transition.package_files.push((
+                package_id.name.clone(),
+                package_id.version.to_string(),
+                file_path,
                 is_directory,
-            )
-            .await?;
+            ));
         }
-
-        // Commit the transaction
-        tx.commit().await?;
 
         Ok(())
     }
@@ -405,6 +382,10 @@ pub struct StateTransition {
     pub staging_path: PathBuf,
     /// State manager reference
     state_manager: StateManager,
+    /// Package references to be added during commit
+    package_refs: Vec<PackageRef>,
+    /// Package files to be added during commit
+    package_files: Vec<(String, String, String, bool)>, // (package_name, package_version, file_path, is_directory)
 }
 
 impl StateTransition {
@@ -416,13 +397,17 @@ impl StateTransition {
     pub async fn new(state_manager: &StateManager) -> Result<Self, Error> {
         let staging_id = Uuid::new_v4();
         let parent_id = state_manager.get_current_state_id().await?;
-        let staging_path = PathBuf::from(format!("/opt/pm/states/staging-{staging_id}"));
+        let staging_path = state_manager
+            .state_path()
+            .join(format!("staging-{staging_id}"));
 
         Ok(Self {
             staging_id,
             parent_id: Some(parent_id),
             staging_path,
             state_manager: state_manager.clone(),
+            package_refs: Vec::new(),
+            package_files: Vec::new(),
         })
     }
 
@@ -434,9 +419,47 @@ impl StateTransition {
     pub fn create_staging(&self, live_path: &Path) -> Result<(), Error> {
         #[cfg(target_os = "macos")]
         {
-            // Use APFS clonefile for instant, space-efficient copy
-            Self::apfs_clonefile(live_path, &self.staging_path)?;
+            if live_path.exists() {
+                // Use APFS clonefile for instant, space-efficient copy
+                Self::apfs_clonefile(live_path, &self.staging_path)?;
+            } else {
+                // Create empty staging directory for fresh installation
+                std::fs::create_dir_all(&self.staging_path).map_err(|e| {
+                    InstallError::FilesystemError {
+                        operation: "create_staging_dir".to_string(),
+                        path: self.staging_path.display().to_string(),
+                        message: e.to_string(),
+                    }
+                })?;
+            }
         }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            if live_path.exists() {
+                // Fallback recursive copy
+                tokio::task::block_in_place(|| {
+                    std::fs::create_dir_all(&self.staging_path).map_err(|e| {
+                        InstallError::FilesystemError {
+                            operation: "create_staging_dir".to_string(),
+                            path: self.staging_path.display().to_string(),
+                            message: e.to_string(),
+                        }
+                    })
+                })?;
+                // TODO: implement recursive copy
+            } else {
+                // Create empty staging directory for fresh installation
+                std::fs::create_dir_all(&self.staging_path).map_err(|e| {
+                    InstallError::FilesystemError {
+                        operation: "create_staging_dir".to_string(),
+                        path: self.staging_path.display().to_string(),
+                        message: e.to_string(),
+                    }
+                })?;
+            }
+        }
+
         Ok(())
     }
 
@@ -527,11 +550,31 @@ impl StateTransition {
             )
             .await?;
 
+        // Add all stored package references to the database
+        for package_ref in &self.package_refs {
+            self.state_manager
+                .add_package_ref_with_tx(&mut tx, package_ref)
+                .await?;
+        }
+
+        // Add all stored package files to the database
+        for (package_name, package_version, file_path, is_directory) in &self.package_files {
+            sps2_state::queries::add_package_file(
+                &mut tx,
+                &self.staging_id,
+                package_name,
+                package_version,
+                file_path,
+                *is_directory,
+            )
+            .await?;
+        }
+
         // Prepare archived path for current live directory
-        let old_live_path = PathBuf::from(format!(
-            "/opt/pm/states/{}",
-            self.parent_id.unwrap_or_default()
-        ));
+        let old_live_path = self
+            .state_manager
+            .state_path()
+            .join(self.parent_id.unwrap_or_default().to_string());
 
         // True atomic swap using sps2_root::atomic_swap
         // This uses macOS renamex_np with RENAME_SWAP for single OS-level atomic operation

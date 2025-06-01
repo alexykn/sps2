@@ -38,45 +38,56 @@ impl Resolver {
     /// - Version parsing fails
     /// - Package specifications are invalid
     pub async fn resolve(&self, context: ResolutionContext) -> Result<ResolutionResult, Error> {
-        let mut graph = DependencyGraph::new();
-        let mut visited = HashSet::new();
+        use tokio::time::{timeout, Duration};
 
-        // Process runtime dependencies
-        for spec in &context.runtime_deps {
-            self.resolve_package(spec, DepKind::Runtime, &mut graph, &mut visited)
-                .await?;
-        }
+        // Add overall timeout for dependency resolution
+        let resolution_timeout = Duration::from_secs(120); // 2 minutes
 
-        // Process build dependencies
-        for spec in &context.build_deps {
-            self.resolve_package(spec, DepKind::Build, &mut graph, &mut visited)
-                .await?;
-        }
+        timeout(resolution_timeout, async {
+            let mut graph = DependencyGraph::new();
+            let mut visited = HashSet::new();
 
-        // Process local files
-        for path in &context.local_files {
-            Self::resolve_local_file(path, &mut graph).await?;
-        }
-
-        // Check for cycles
-        if graph.has_cycles() {
-            return Err(PackageError::DependencyCycle {
-                package: "unknown".to_string(),
+            // Process runtime dependencies
+            for spec in &context.runtime_deps {
+                self.resolve_package(spec, DepKind::Runtime, &mut graph, &mut visited)
+                    .await?;
             }
-            .into());
-        }
 
-        // Create execution plan
-        let sorted = graph.topological_sort()?;
-        let execution_plan = ExecutionPlan::from_sorted_packages(&sorted, &graph);
+            // Process build dependencies
+            for spec in &context.build_deps {
+                self.resolve_package(spec, DepKind::Build, &mut graph, &mut visited)
+                    .await?;
+            }
 
-        Ok(ResolutionResult {
-            nodes: graph.nodes,
-            execution_plan,
+            // Process local files
+            for path in &context.local_files {
+                Self::resolve_local_file(path, &mut graph).await?;
+            }
+
+            // Check for cycles
+            if graph.has_cycles() {
+                return Err(PackageError::DependencyCycle {
+                    package: "unknown".to_string(),
+                }
+                .into());
+            }
+
+            // Create execution plan
+            let sorted = graph.topological_sort()?;
+            let execution_plan = ExecutionPlan::from_sorted_packages(&sorted, &graph);
+
+            Ok(ResolutionResult {
+                nodes: graph.nodes,
+                execution_plan,
+            })
         })
+        .await
+        .map_err(|_| PackageError::ResolutionTimeout {
+            message: "Dependency resolution timed out after 2 minutes".to_string(),
+        })?
     }
 
-    /// Resolve a single package and its dependencies
+    /// Resolve a single package and its dependencies with depth limiting
     async fn resolve_package(
         &self,
         spec: &PackageSpec,
@@ -84,6 +95,27 @@ impl Resolver {
         graph: &mut DependencyGraph,
         visited: &mut HashSet<PackageId>,
     ) -> Result<(), Error> {
+        self.resolve_package_with_depth(spec, dep_kind, graph, visited, 0)
+            .await
+    }
+
+    /// Resolve a single package and its dependencies with recursion depth limit
+    async fn resolve_package_with_depth(
+        &self,
+        spec: &PackageSpec,
+        dep_kind: DepKind,
+        graph: &mut DependencyGraph,
+        visited: &mut HashSet<PackageId>,
+        depth: usize,
+    ) -> Result<(), Error> {
+        const MAX_RECURSION_DEPTH: usize = 100;
+
+        if depth > MAX_RECURSION_DEPTH {
+            return Err(PackageError::DependencyCycle {
+                package: format!("depth limit exceeded for {}", spec.name),
+            }
+            .into());
+        }
         // Find best version matching the spec
         let (version_str, version_entry) = self
             .index
@@ -145,20 +177,29 @@ impl Resolver {
                 version_spec: edge.spec.clone(),
             };
 
-            Box::pin(self.resolve_package(&dep_spec, edge.kind, graph, visited)).await?;
+            Box::pin(self.resolve_package_with_depth(
+                &dep_spec,
+                edge.kind,
+                graph,
+                visited,
+                depth + 1,
+            ))
+            .await?;
 
-            // Add edge to graph
-            let (dep_version_str, _dep_version) = self
-                .index
-                .find_best_version_with_string(&dep_spec)
-                .ok_or_else(|| PackageError::NotFound {
-                    name: dep_spec.name.clone(),
-                })?;
+            // Find resolved dependency in graph and add edge (FIXED: single resolution)
+            if let Some(dep_node) = graph.nodes.values().find(|n| n.name == edge.name) {
+                let dep_id = dep_node.package_id();
+                // FIXED: Correct edge direction - package_id depends on dep_id
+                graph.add_edge(&package_id, &dep_id);
+            }
 
-            let dep_version_parsed = Version::parse(dep_version_str)?;
-            let dep_id = PackageId::new(edge.name.clone(), dep_version_parsed);
-
-            graph.add_edge(&dep_id, &package_id);
+            // Check for cycles after each dependency addition
+            if graph.has_cycles() {
+                return Err(PackageError::DependencyCycle {
+                    package: package_id.name.clone(),
+                }
+                .into());
+            }
         }
 
         Ok(())

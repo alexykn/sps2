@@ -43,4 +43,10 @@ pub enum PackageError {
 
     #[error("incompatible package format version {version}: {reason}")]
     IncompatibleFormat { version: String, reason: String },
+
+    #[error("resolution timeout: {message}")]
+    ResolutionTimeout { message: String },
+
+    #[error("source not available: {package}")]
+    SourceNotAvailable { package: String },
 }
