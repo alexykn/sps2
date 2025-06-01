@@ -716,7 +716,7 @@ impl Builder {
             },
         );
         let files_dir = package_temp_dir.join("files");
-        
+
         // The staging directory contains the full /opt/pm/live structure
         // We need to extract only the final installation contents to make them relative
         let live_dir = staging_dir.join("opt").join("pm").join("live");
