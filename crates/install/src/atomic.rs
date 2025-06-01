@@ -459,33 +459,6 @@ impl StateTransition {
                 })?;
             }
         }
-
-        #[cfg(not(target_os = "macos"))]
-        {
-            if live_path.exists() {
-                // Fallback recursive copy
-                tokio::task::block_in_place(|| {
-                    std::fs::create_dir_all(&self.staging_path).map_err(|e| {
-                        InstallError::FilesystemError {
-                            operation: "create_staging_dir".to_string(),
-                            path: self.staging_path.display().to_string(),
-                            message: e.to_string(),
-                        }
-                    })
-                })?;
-                // TODO: implement recursive copy
-            } else {
-                // Create empty staging directory for fresh installation
-                std::fs::create_dir_all(&self.staging_path).map_err(|e| {
-                    InstallError::FilesystemError {
-                        operation: "create_staging_dir".to_string(),
-                        path: self.staging_path.display().to_string(),
-                        message: e.to_string(),
-                    }
-                })?;
-            }
-        }
-
         Ok(())
     }
 
