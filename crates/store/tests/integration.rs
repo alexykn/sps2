@@ -148,4 +148,78 @@ mod tests {
         // Test verification
         stored.verify().await.unwrap();
     }
+
+    #[tokio::test]
+    async fn test_full_extraction() {
+        let temp = tempdir().unwrap();
+        let pkg_dir = temp.path().join("pkg");
+        let sp_file = temp.path().join("test.sp");
+        let extract_dir = temp.path().join("extracted");
+
+        // Create test package
+        create_test_package(&pkg_dir).await.unwrap();
+        create_package(&pkg_dir, &sp_file).await.unwrap();
+
+        // Extract full package
+        extract_package(&sp_file, &extract_dir).await.unwrap();
+
+        // Verify all expected files exist
+        assert!(extract_dir.join("manifest.toml").exists());
+        assert!(extract_dir.join("files").exists());
+
+        // Verify manifest content is correct
+        let manifest_content = fs::read_to_string(extract_dir.join("manifest.toml"))
+            .await
+            .unwrap();
+        assert!(manifest_content.contains("test-pkg"));
+        assert!(manifest_content.contains("1.0.0"));
+    }
+
+    #[tokio::test]
+    async fn test_list_package_contents() {
+        let temp = tempdir().unwrap();
+        let pkg_dir = temp.path().join("pkg");
+        let sp_file = temp.path().join("test.sp");
+
+        // Create test package
+        create_test_package(&pkg_dir).await.unwrap();
+        create_package(&pkg_dir, &sp_file).await.unwrap();
+
+        // List contents
+        let contents = list_package_contents(&sp_file).await.unwrap();
+
+        // Verify expected files are listed
+        assert!(!contents.is_empty());
+        assert!(contents.iter().any(|f| f.contains("manifest.toml")));
+        assert!(contents.iter().any(|f| f.contains("files/")));
+    }
+
+    #[tokio::test]
+    async fn test_format_detection_plain_tar() {
+        let temp = tempdir().unwrap();
+        let pkg_dir = temp.path().join("pkg");
+        let sp_file = temp.path().join("test.sp");
+
+        // Create test package (plain tar format)
+        create_test_package(&pkg_dir).await.unwrap();
+        create_package(&pkg_dir, &sp_file).await.unwrap();
+
+        // Test that our extraction methods handle plain tar gracefully
+        // The current create_package creates plain tar, not zstd
+        extract_package(&sp_file, &temp.path().join("extracted"))
+            .await
+            .unwrap();
+
+        // Should work fine with existing functionality
+        let contents = list_package_contents(&sp_file).await.unwrap();
+        assert!(!contents.is_empty());
+    }
+
+    // Note: To properly test seekable decompression, we would need:
+    // 1. The builder crate to create seekable zstd packages
+    // 2. Test packages in both formats
+    // 3. Performance benchmarks comparing the two approaches
+    //
+    // For now, these tests verify the API structure and basic functionality
+    // with plain tar files, ensuring graceful fallback behavior.
 }

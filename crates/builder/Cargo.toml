@@ -34,3 +34,5 @@ async-compression = { version = "0.4.23", features = ["tokio", "zstd"] }
 [dev-dependencies]
 tempfile = { workspace = true }
 sps2-index = { path = "../index" }
+filetime = "0.2.25"
+zstd = "0.13.2"

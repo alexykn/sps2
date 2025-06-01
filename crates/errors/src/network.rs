@@ -31,4 +31,22 @@ pub enum NetworkError {
 
     #[error("rate limited: retry after {seconds} seconds")]
     RateLimited { seconds: u64 },
+
+    #[error("partial content not supported for resumable download")]
+    PartialContentNotSupported,
+
+    #[error("content length mismatch: expected {expected}, got {actual}")]
+    ContentLengthMismatch { expected: u64, actual: u64 },
+
+    #[error("range request failed: {message}")]
+    RangeRequestFailed { message: String },
+
+    #[error("file size exceeds limit: {size} bytes > {limit} bytes")]
+    FileSizeExceeded { size: u64, limit: u64 },
+
+    #[error("stream interrupted after {bytes} bytes")]
+    StreamInterrupted { bytes: u64 },
+
+    #[error("unsupported protocol: {protocol}")]
+    UnsupportedProtocol { protocol: String },
 }

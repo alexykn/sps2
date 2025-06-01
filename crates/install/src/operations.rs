@@ -1,8 +1,8 @@
 //! High-level installation operations
 
 use crate::{
-    AtomicInstaller, ExecutionContext, InstallContext, InstallResult, ParallelExecutor,
-    UninstallContext, UpdateContext,
+    validate_sp_file, AtomicInstaller, ExecutionContext, InstallContext, InstallResult,
+    ParallelExecutor, UninstallContext, UpdateContext,
 };
 use sps2_errors::{Error, InstallError};
 use sps2_events::Event;
@@ -63,6 +63,9 @@ impl InstallOperation {
             },
         );
 
+        // Validate local .sp files before processing
+        self.validate_local_packages(&context).await?;
+
         // Resolve dependencies
         let resolution = self.resolve_dependencies(&context).await?;
 
@@ -80,7 +83,7 @@ impl InstallOperation {
 
         // Perform atomic installation
         let mut atomic_installer =
-            AtomicInstaller::new(self.state_manager.clone(), self.store.clone());
+            AtomicInstaller::new(self.state_manager.clone(), self.store.clone()).await?;
 
         let result = atomic_installer
             .install(&context, &resolution.nodes)
@@ -141,6 +144,53 @@ impl InstallOperation {
         );
 
         Ok(resolution)
+    }
+
+    /// Validate local .sp package files
+    async fn validate_local_packages(&self, context: &InstallContext) -> Result<(), Error> {
+        for local_file in &context.local_files {
+            // Check if file exists
+            if !local_file.exists() {
+                return Err(InstallError::LocalPackageNotFound {
+                    path: local_file.display().to_string(),
+                }
+                .into());
+            }
+
+            // Validate the .sp file
+            let validation_result =
+                validate_sp_file(local_file, context.event_sender.as_ref()).await?;
+
+            if !validation_result.is_valid {
+                return Err(InstallError::InvalidPackageFile {
+                    path: local_file.display().to_string(),
+                    message: "package validation failed".to_string(),
+                }
+                .into());
+            }
+
+            // Send warnings as events
+            if let Some(sender) = &context.event_sender {
+                for warning in &validation_result.warnings {
+                    let _ = sender.send(Event::Warning {
+                        message: warning.clone(),
+                        context: Some(format!("validating {}", local_file.display())),
+                    });
+                }
+            }
+
+            // Log validation success
+            Self::send_event(
+                self,
+                context,
+                Event::OperationCompleted {
+                    operation: format!("Validated package {}", local_file.display()),
+                    success: true,
+                },
+            );
+        }
+
+        Ok(())
     }
 
     /// Send event if context has event sender

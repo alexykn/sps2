@@ -4,13 +4,19 @@ use crate::{BuildReport, InstallReport, InstallRequest, OpsCtx};
 use sps2_builder::BuildContext;
 use sps2_errors::{Error, OpsError};
 use sps2_events::Event;
-use sps2_install::{InstallConfig, InstallContext, Installer, UninstallContext, UpdateContext};
+use sps2_install::{
+    InstallConfig, InstallContext, Installer, PipelineConfig, PipelineMaster, UninstallContext,
+    UpdateContext,
+};
 use sps2_package::{execute_recipe, load_recipe};
 use sps2_types::{PackageSpec, Version};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-/// Install packages (delegates to install crate)
+/// Install packages using the high-performance parallel pipeline
+///
+/// This function provides a unified installation workflow that seamlessly handles
+/// both local .sp files and remote packages with optimal performance.
 ///
 /// # Errors
 ///
@@ -18,6 +24,7 @@ use std::time::Instant;
 /// - No packages are specified
 /// - Package specifications cannot be parsed
 /// - Installation fails
+#[allow(clippy::too_many_lines)]
 pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallReport, Error> {
     let start = Instant::now();
 
@@ -25,49 +32,109 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
         return Err(OpsError::NoPackagesSpecified.into());
     }
 
-    // Parse install requests
-    let install_requests = parse_install_requests(package_specs)?;
-
     ctx.tx
         .send(Event::InstallStarting {
             packages: package_specs.iter().map(ToString::to_string).collect(),
         })
         .ok();
 
-    // Create installer with configuration
-    let config = InstallConfig::default();
-    let mut installer = Installer::new(
-        config,
-        ctx.resolver.clone(),
-        ctx.state.clone(),
-        ctx.store.clone(),
-    );
-
-    // Build install context
-    let mut install_context = InstallContext::new().with_event_sender(ctx.tx.clone());
+    // Parse install requests and separate local files from remote packages
+    let install_requests = parse_install_requests(package_specs)?;
+    let mut remote_specs = Vec::new();
+    let mut local_files = Vec::new();
 
     for request in install_requests {
         match request {
             InstallRequest::Remote(spec) => {
-                install_context = install_context.add_package(spec);
+                remote_specs.push(spec);
             }
             InstallRequest::LocalFile(path) => {
-                install_context = install_context.add_local_file(path);
+                local_files.push(path);
             }
         }
     }
 
-    // Get currently installed packages before install to track from_version for updates
+    // Get currently installed packages before install to track changes
     let installed_before = ctx.state.get_installed_packages().await?;
     let installed_map: std::collections::HashMap<String, Version> = installed_before
         .iter()
         .map(|pkg| (pkg.name.clone(), pkg.version()))
         .collect();
 
-    // Execute installation
-    let result = installer.install(install_context).await?;
+    // Use different strategies based on the mix of packages with enhanced error handling
+    let result = if !remote_specs.is_empty() && local_files.is_empty() {
+        // All remote packages - use high-performance parallel pipeline
+        match install_remote_packages_parallel(ctx, &remote_specs).await {
+            Ok(result) => result,
+            Err(e) => {
+                // Provide specific guidance for remote package failures
+                ctx.tx
+                    .send(Event::Error {
+                        message: format!(
+                            "Failed to install {} remote packages",
+                            remote_specs.len()
+                        ),
+                        details: Some(format!(
+                            "Error: {e}. \n\nSuggested solutions:\n\
+                            • Check your internet connection\n\
+                            • Run 'sps2 reposync' to update package index\n\
+                            • Verify package names with 'sps2 search <package>'\n\
+                            • For version constraints, use format: package>=1.0.0"
+                        )),
+                    })
+                    .ok();
+                return Err(e);
+            }
+        }
+    } else if remote_specs.is_empty() && !local_files.is_empty() {
+        // All local files - use local installer
+        match install_local_packages(ctx, &local_files).await {
+            Ok(result) => result,
+            Err(e) => {
+                // Provide specific guidance for local file failures
+                ctx.tx
+                    .send(Event::Error {
+                        message: format!("Failed to install {} local packages", local_files.len()),
+                        details: Some(format!(
+                            "Error: {e}. \n\nSuggested solutions:\n\
+                            • Verify file paths are correct and files exist\n\
+                            • Check file permissions (must be readable)\n\
+                            • Ensure .sp files are not corrupted\n\
+                            • Use absolute paths or './' prefix for current directory"
+                        )),
+                    })
+                    .ok();
+                return Err(e);
+            }
+        }
+    } else {
+        // Mixed local and remote - use hybrid approach
+        match install_mixed_packages(ctx, &remote_specs, &local_files).await {
+            Ok(result) => result,
+            Err(e) => {
+                // Provide guidance for mixed installation failures
+                ctx.tx
+                    .send(Event::Error {
+                        message: format!(
+                            "Failed to install mixed packages ({} remote, {} local)",
+                            remote_specs.len(),
+                            local_files.len()
+                        ),
+                        details: Some(format!(
+                            "Error: {e}. \n\nSuggested solutions:\n\
+                            • Try installing remote and local packages separately\n\
+                            • Check both network connectivity and local file access\n\
+                            • Run with --debug flag for detailed error information\n\
+                            • Consider using 'sps2 install package1 package2' for remote-only"
+                        )),
+                    })
+                    .ok();
+                return Err(e);
+            }
+        }
+    };
 
-    // Convert to report format
+    // Convert to report format with proper change tracking
     let report = InstallReport {
         installed: result
             .installed_packages
@@ -77,7 +144,7 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
                     name: pkg.name.clone(),
                     from_version: None,
                     to_version: Some(pkg.version.clone()),
-                    size: None, // TODO: Get size from store
+                    size: None, // TODO: Get size from store when available
                 }
             })
             .collect(),
@@ -491,6 +558,206 @@ pub async fn build(
         .ok();
 
     Ok(report)
+}
+
+/// Install remote packages using the high-performance parallel pipeline
+#[allow(clippy::too_many_lines)]
+async fn install_remote_packages_parallel(
+    ctx: &OpsCtx,
+    specs: &[PackageSpec],
+) -> Result<sps2_install::InstallResult, Error> {
+    use sps2_events::{ProgressManager, ProgressPhase};
+
+    // Create unified progress tracker for the entire install operation
+    let progress_manager = ProgressManager::new();
+    let install_phases = vec![
+        ProgressPhase::new("resolve", "Resolving dependencies").with_weight(0.1),
+        ProgressPhase::new("download", "Downloading packages").with_weight(0.6),
+        ProgressPhase::new("validate", "Validating packages").with_weight(0.15),
+        ProgressPhase::new("install", "Installing packages").with_weight(0.15),
+    ];
+
+    let progress_id = progress_manager.start_operation(
+        "install",
+        "Installing packages",
+        Some(specs.len() as u64),
+        install_phases,
+        ctx.tx.clone(),
+    );
+
+    // Send overall progress start event
+    ctx.tx
+        .send(Event::ProgressStarted {
+            id: progress_id.clone(),
+            operation: format!("Installing {} packages", specs.len()),
+            total: Some(specs.len() as u64),
+            phases: vec![
+                ProgressPhase::new("resolve", "Resolving dependencies").with_weight(0.1),
+                ProgressPhase::new("download", "Downloading packages").with_weight(0.6),
+                ProgressPhase::new("validate", "Validating packages").with_weight(0.15),
+                ProgressPhase::new("install", "Installing packages").with_weight(0.15),
+            ],
+        })
+        .ok();
+
+    // Phase 1: Dependency resolution
+    ctx.tx
+        .send(Event::ResolvingDependencies {
+            package: "batch".to_string(),
+        })
+        .ok();
+
+    let mut resolution_context = sps2_resolver::ResolutionContext::new();
+    for spec in specs {
+        resolution_context = resolution_context.add_runtime_dep(spec.clone());
+    }
+
+    let resolution_result = ctx.resolver.resolve(resolution_context).await?;
+    let execution_plan = resolution_result.execution_plan;
+    let resolved_packages = resolution_result.nodes;
+
+    // Update progress - resolution complete
+    progress_manager.update_progress(&progress_id, 1, Some(specs.len() as u64), &ctx.tx);
+    progress_manager.change_phase(&progress_id, 1, &ctx.tx);
+
+    // Phase 2-4: Pipeline execution (download, validate, install)
+    let pipeline_config = PipelineConfig {
+        max_downloads: 4,                // Conservative default
+        max_decompressions: 2,           // CPU intensive
+        max_validations: 3,              // I/O and compute
+        enable_streaming: true,          // Enable streaming optimization
+        buffer_size: 256 * 1024,         // 256KB buffers
+        memory_limit: 100 * 1024 * 1024, // 100MB memory limit
+        ..PipelineConfig::default()
+    };
+
+    let pipeline = PipelineMaster::new(pipeline_config, ctx.store.clone()).await?;
+
+    // Execute pipeline with comprehensive error handling
+    let batch_result = match pipeline
+        .execute_batch(&execution_plan, &resolved_packages, &ctx.tx)
+        .await
+    {
+        Ok(result) => result,
+        Err(e) => {
+            // Send helpful error context
+            ctx.tx
+                .send(Event::Error {
+                    message: "Installation failed during download/validation phase".to_string(),
+                    details: Some(format!(
+                        "Error: {e}. This may be due to network issues, package corruption, or insufficient disk space. \
+                        Try running 'sps2 cleanup' to free space or check your network connection."
+                    )),
+                })
+                .ok();
+
+            // Mark progress as failed
+            ctx.tx
+                .send(Event::ProgressFailed {
+                    id: progress_id,
+                    error: e.to_string(),
+                })
+                .ok();
+
+            return Err(e);
+        }
+    };
+
+    // Complete progress tracking
+    progress_manager.complete_operation(&progress_id, &ctx.tx);
+
+    // Send comprehensive completion metrics
+    ctx.tx
+        .send(Event::DebugLog {
+            message: format!(
+                "Install completed: {} packages, {:.1} MB/s avg speed, {:.1}% efficiency",
+                batch_result.stats.total_packages,
+                batch_result.stats.avg_download_speed / (1024.0 * 1024.0),
+                batch_result.stats.concurrency_efficiency * 100.0
+            ),
+            context: std::collections::HashMap::from([
+                (
+                    "total_downloaded".to_string(),
+                    batch_result.stats.total_downloaded.to_string(),
+                ),
+                (
+                    "peak_memory".to_string(),
+                    batch_result.peak_memory_usage.to_string(),
+                ),
+                (
+                    "duration_ms".to_string(),
+                    batch_result.duration.as_millis().to_string(),
+                ),
+                (
+                    "rollback_performed".to_string(),
+                    batch_result.rollback_performed.to_string(),
+                ),
+            ]),
+        })
+        .ok();
+
+    // Convert batch result to install result
+    Ok(sps2_install::InstallResult {
+        installed_packages: batch_result.successful_packages,
+        updated_packages: Vec::new(), // Pipeline doesn't track updates separately
+        removed_packages: Vec::new(), // No packages removed during install
+        state_id: uuid::Uuid::new_v4(), // TODO: Get actual state ID from state manager
+    })
+}
+
+/// Install local packages using the regular installer
+async fn install_local_packages(
+    ctx: &OpsCtx,
+    files: &[PathBuf],
+) -> Result<sps2_install::InstallResult, Error> {
+    // Create installer for local files
+    let config = InstallConfig::default();
+    let mut installer = Installer::new(
+        config,
+        ctx.resolver.clone(),
+        ctx.state.clone(),
+        ctx.store.clone(),
+    );
+
+    // Build install context for local files
+    let mut install_context = InstallContext::new().with_event_sender(ctx.tx.clone());
+    for file in files {
+        install_context = install_context.add_local_file(file.clone());
+    }
+
+    // Execute installation
+    installer.install(install_context).await
+}
+
+/// Install mixed local and remote packages using hybrid approach
+async fn install_mixed_packages(
+    ctx: &OpsCtx,
+    remote_specs: &[PackageSpec],
+    local_files: &[PathBuf],
+) -> Result<sps2_install::InstallResult, Error> {
+    // For mixed installs, use the regular installer for now
+    // TODO: Optimize this by using pipeline for remote and merging results
+    let config = InstallConfig::default();
+    let mut installer = Installer::new(
+        config,
+        ctx.resolver.clone(),
+        ctx.state.clone(),
+        ctx.store.clone(),
+    );
+
+    // Build install context with both remote and local
+    let mut install_context = InstallContext::new().with_event_sender(ctx.tx.clone());
+
+    for spec in remote_specs {
+        install_context = install_context.add_package(spec.clone());
+    }
+
+    for file in local_files {
+        install_context = install_context.add_local_file(file.clone());
+    }
+
+    // Execute installation
+    installer.install(install_context).await
 }
 
 /// Parse install requests from string specifications

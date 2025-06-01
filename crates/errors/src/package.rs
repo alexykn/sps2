@@ -40,4 +40,7 @@ pub enum PackageError {
 
     #[error("dependency cycle detected: {package}")]
     DependencyCycle { package: String },
+
+    #[error("incompatible package format version {version}: {reason}")]
+    IncompatibleFormat { version: String, reason: String },
 }

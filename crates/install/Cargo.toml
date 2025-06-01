@@ -17,8 +17,9 @@ sps2-root = { path = "../root" }
 sps2-state = { path = "../state" }
 sps2-store = { path = "../store" }
 sps2-audit = { path = "../audit" }
+sps2-manifest = { path = "../manifest" }
 serde = { workspace = true }
-tokio = { workspace = true, features = ["fs", "process"] }
+tokio = { workspace = true, features = ["fs", "process", "io-util", "time"] }
 uuid = { workspace = true }
 sqlx = { workspace = true }
 dashmap = { workspace = true }
@@ -26,6 +27,11 @@ crossbeam = { workspace = true }
 chrono = { workspace = true }
 tempfile = { workspace = true }
 libc = "0.2.172"
+toml = { workspace = true }
+async-compression = { version = "0.4.17", features = ["tokio", "zstd"] }
+tar = { workspace = true }
+futures = { workspace = true }
+blake3 = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -68,6 +68,9 @@ crossbeam = "0.8.4"
 # CLI
 clap = { version = "4.5.39", features = ["derive", "env"] }
 
+# Archive handling
+tar = "0.4.43"
+
 # Testing
 tempfile = "3.20.0"
 proptest = "1.6.0"

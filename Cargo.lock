@@ -3494,6 +3494,7 @@ version = "0.1.0"
 dependencies = [
  "async-compression",
  "async-trait",
+ "filetime",
  "minisign",
  "num_cpus",
  "reqwest",
@@ -3514,6 +3515,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "toml",
+ "zstd 0.13.3",
 ]
 
 [[package]]
@@ -3587,15 +3589,19 @@ dependencies = [
 name = "sps2-install"
 version = "0.1.0"
 dependencies = [
+ "async-compression",
+ "blake3",
  "chrono",
  "crossbeam",
  "dashmap",
+ "futures",
  "libc",
  "serde",
  "sps2-audit",
  "sps2-errors",
  "sps2-events",
  "sps2-index",
+ "sps2-manifest",
  "sps2-net",
  "sps2-resolver",
  "sps2-root",
@@ -3603,8 +3609,10 @@ dependencies = [
  "sps2-store",
  "sps2-types",
  "sqlx",
+ "tar",
  "tempfile",
  "tokio",
+ "toml",
  "uuid",
 ]
 
@@ -3612,7 +3620,12 @@ dependencies = [
 name = "sps2-integration-tests"
 version = "0.1.0"
 dependencies = [
+ "async-compression",
+ "blake3",
  "futures",
+ "httpmock",
+ "rand",
+ "reqwest",
  "serde_json",
  "sps2-audit",
  "sps2-builder",
@@ -3632,9 +3645,11 @@ dependencies = [
  "sps2-store",
  "sps2-types",
  "sqlx",
+ "tar",
  "tempfile",
  "tokio",
  "toml",
+ "uuid",
 ]
 
 [[package]]
@@ -3661,6 +3676,7 @@ dependencies = [
  "bytes",
  "futures",
  "httpmock",
+ "rand",
  "reqwest",
  "sps2-errors",
  "sps2-events",
@@ -3770,8 +3786,10 @@ version = "0.1.0"
 dependencies = [
  "async-compression",
  "sps2-errors",
+ "sps2-events",
  "sps2-hash",
  "sps2-manifest",
+ "sps2-resolver",
  "sps2-root",
  "sps2-types",
  "tar",

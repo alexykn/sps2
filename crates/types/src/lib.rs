@@ -6,11 +6,17 @@
 //! This crate provides fundamental types used throughout the system,
 //! including version specifications, package information, and common data structures.
 
+pub mod format;
 pub mod package;
 pub mod state;
 pub mod version;
 
 // Re-export commonly used types
+pub use format::{
+    CompressionFormatType, PackageFormatChecker, PackageFormatCompatibility,
+    PackageFormatMigration, PackageFormatValidationResult, PackageFormatVersion,
+    PackageFormatVersionError,
+};
 pub use package::{DepKind, PackageId, PackageInfo, PackageSpec, SearchResult};
 pub use semver::Version;
 pub use state::{StateId, StateInfo};

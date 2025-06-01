@@ -9,12 +9,17 @@
 use serde::{Deserialize, Serialize};
 use sps2_errors::{Error, PackageError};
 use sps2_hash::Hash;
-use sps2_types::{package::PackageSpec, Arch, Version};
+use sps2_types::{
+    format::CompressionFormatType, package::PackageSpec, Arch, PackageFormatVersion, Version,
+};
 use std::path::Path;
 
 /// Package manifest (manifest.toml contents)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
+    /// Package format version for compatibility checking
+    #[serde(default = "PackageFormatVersion::default")]
+    pub format_version: PackageFormatVersion,
     pub package: PackageInfo,
     pub dependencies: Dependencies,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -34,6 +39,8 @@ pub struct PackageInfo {
     pub homepage: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compression: Option<CompressionInfo>,
 }
 
 /// Dependencies section
@@ -53,11 +60,25 @@ pub struct SbomInfo {
     pub cyclonedx: Option<String>, // BLAKE3 hash
 }
 
+/// Compression information section
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompressionInfo {
+    /// Compression format type
+    pub format: CompressionFormatType,
+    /// Frame size for seekable compression (in bytes)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frame_size: Option<usize>,
+    /// Number of frames (seekable format only)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frame_count: Option<usize>,
+}
+
 impl Manifest {
     /// Create a new manifest
     #[must_use]
     pub fn new(name: String, version: &Version, revision: u32, arch: &Arch) -> Self {
         Self {
+            format_version: PackageFormatVersion::CURRENT,
             package: PackageInfo {
                 name,
                 version: version.to_string(),
@@ -66,6 +87,7 @@ impl Manifest {
                 description: None,
                 homepage: None,
                 license: None,
+                compression: None,
             },
             dependencies: Dependencies::default(),
             sbom: None,
@@ -147,6 +169,24 @@ impl Manifest {
         });
     }
 
+    /// Set compression information for legacy format
+    pub fn set_compression_legacy(&mut self) {
+        self.package.compression = Some(CompressionInfo {
+            format: CompressionFormatType::Legacy,
+            frame_size: None,
+            frame_count: None,
+        });
+    }
+
+    /// Set compression information for seekable format
+    pub fn set_compression_seekable(&mut self, frame_size: usize, frame_count: Option<usize>) {
+        self.package.compression = Some(CompressionInfo {
+            format: CompressionFormatType::Seekable,
+            frame_size: Some(frame_size),
+            frame_count,
+        });
+    }
+
     /// Load manifest from TOML string
     ///
     /// # Errors
@@ -205,6 +245,29 @@ impl Manifest {
         })
     }
 
+    /// Get the package format version
+    #[must_use]
+    pub fn format_version(&self) -> &PackageFormatVersion {
+        &self.format_version
+    }
+
+    /// Set the package format version
+    pub fn set_format_version(&mut self, version: PackageFormatVersion) {
+        self.format_version = version;
+    }
+
+    /// Check if this manifest is compatible with a specific format version
+    #[must_use]
+    pub fn is_compatible_with(&self, other_version: &PackageFormatVersion) -> bool {
+        self.format_version.is_compatible_with(other_version)
+    }
+
+    /// Check if this manifest requires migration to be compatible with a version
+    #[must_use]
+    pub fn requires_migration_to(&self, target_version: &PackageFormatVersion) -> bool {
+        self.format_version.requires_migration_from(target_version)
+    }
+
     /// Validate manifest fields
     ///
     /// # Errors
@@ -228,6 +291,18 @@ impl Manifest {
         // Validate dependencies
         self.runtime_deps()?;
         self.build_deps()?;
+
+        // Validate format version compatibility
+        let current_version = PackageFormatVersion::CURRENT;
+        if !self.format_version.is_compatible_with(&current_version) {
+            return Err(PackageError::InvalidManifest {
+                message: format!(
+                    "Package format version {} is incompatible with current version {}",
+                    self.format_version, current_version
+                ),
+            }
+            .into());
+        }
 
         Ok(())
     }
@@ -254,6 +329,13 @@ impl ManifestBuilder {
         Self {
             manifest: Manifest::new(name, version, 1, arch),
         }
+    }
+
+    /// Set package format version
+    #[must_use]
+    pub fn format_version(mut self, version: PackageFormatVersion) -> Self {
+        self.manifest.format_version = version;
+        self
     }
 
     /// Set revision
@@ -375,6 +457,7 @@ mod tests {
     #[test]
     fn test_manifest_validation() {
         let manifest = Manifest {
+            format_version: PackageFormatVersion::CURRENT,
             package: PackageInfo {
                 name: String::new(), // Invalid: empty name
                 version: "1.0.0".to_string(),
@@ -383,6 +466,7 @@ mod tests {
                 description: None,
                 homepage: None,
                 license: None,
+                compression: None,
             },
             dependencies: Dependencies::default(),
             sbom: None,
@@ -401,5 +485,180 @@ mod tests {
         );
 
         assert_eq!(manifest.filename(), "vim-9.0.0-2.arm64.sp");
+    }
+
+    #[test]
+    fn test_compression_info_legacy() {
+        let mut manifest = Manifest::new(
+            "test".to_string(),
+            &Version::parse("1.0.0").unwrap(),
+            1,
+            &Arch::Arm64,
+        );
+
+        manifest.set_compression_legacy();
+
+        assert!(manifest.package.compression.is_some());
+        let compression = manifest.package.compression.unwrap();
+        assert_eq!(compression.format, CompressionFormatType::Legacy);
+        assert!(compression.frame_size.is_none());
+        assert!(compression.frame_count.is_none());
+    }
+
+    #[test]
+    fn test_compression_info_seekable() {
+        let mut manifest = Manifest::new(
+            "test".to_string(),
+            &Version::parse("1.0.0").unwrap(),
+            1,
+            &Arch::Arm64,
+        );
+
+        manifest.set_compression_seekable(1024 * 1024, Some(5));
+
+        assert!(manifest.package.compression.is_some());
+        let compression = manifest.package.compression.unwrap();
+        assert_eq!(compression.format, CompressionFormatType::Seekable);
+        assert_eq!(compression.frame_size, Some(1024 * 1024));
+        assert_eq!(compression.frame_count, Some(5));
+    }
+
+    #[test]
+    fn test_compression_info_toml_serialization() {
+        let mut manifest = Manifest::new(
+            "test".to_string(),
+            &Version::parse("1.0.0").unwrap(),
+            1,
+            &Arch::Arm64,
+        );
+
+        manifest.set_compression_seekable(1024 * 1024, Some(3));
+
+        let toml = manifest.to_toml().unwrap();
+        let parsed = Manifest::from_toml(&toml).unwrap();
+
+        assert_eq!(
+            parsed.package.compression.as_ref().unwrap().format,
+            CompressionFormatType::Seekable
+        );
+        assert_eq!(
+            parsed.package.compression.as_ref().unwrap().frame_size,
+            Some(1024 * 1024)
+        );
+        assert_eq!(
+            parsed.package.compression.as_ref().unwrap().frame_count,
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn test_format_version_default() {
+        let manifest = Manifest::new(
+            "test".to_string(),
+            &Version::parse("1.0.0").unwrap(),
+            1,
+            &Arch::Arm64,
+        );
+
+        assert_eq!(manifest.format_version, PackageFormatVersion::CURRENT);
+        assert_eq!(manifest.format_version().major, 1);
+        assert_eq!(manifest.format_version().minor, 0);
+        assert_eq!(manifest.format_version().patch, 0);
+    }
+
+    #[test]
+    fn test_format_version_compatibility() {
+        let manifest = Manifest::new(
+            "test".to_string(),
+            &Version::parse("1.0.0").unwrap(),
+            1,
+            &Arch::Arm64,
+        );
+
+        // Same version should be compatible
+        assert!(manifest.is_compatible_with(&PackageFormatVersion::new(1, 0, 0)));
+
+        // Different minor/patch within same major should be compatible
+        assert!(manifest.is_compatible_with(&PackageFormatVersion::new(1, 1, 0)));
+        assert!(manifest.is_compatible_with(&PackageFormatVersion::new(1, 0, 1)));
+
+        // Different major version should be incompatible
+        assert!(!manifest.is_compatible_with(&PackageFormatVersion::new(2, 0, 0)));
+    }
+
+    #[test]
+    fn test_format_version_migration_requirements() {
+        let manifest = Manifest::new(
+            "test".to_string(),
+            &Version::parse("1.0.0").unwrap(),
+            1,
+            &Arch::Arm64,
+        );
+
+        // Same major version should not require migration
+        assert!(!manifest.requires_migration_to(&PackageFormatVersion::new(1, 1, 0)));
+
+        // Different major version should require migration
+        assert!(manifest.requires_migration_to(&PackageFormatVersion::new(2, 0, 0)));
+    }
+
+    #[test]
+    fn test_format_version_setting() {
+        let mut manifest = Manifest::new(
+            "test".to_string(),
+            &Version::parse("1.0.0").unwrap(),
+            1,
+            &Arch::Arm64,
+        );
+
+        let new_version = PackageFormatVersion::new(1, 1, 0);
+        manifest.set_format_version(new_version.clone());
+        assert_eq!(manifest.format_version, new_version);
+    }
+
+    #[test]
+    fn test_format_version_builder() {
+        let manifest = ManifestBuilder::new(
+            "test".to_string(),
+            &Version::parse("1.0.0").unwrap(),
+            &Arch::Arm64,
+        )
+        .format_version(PackageFormatVersion::new(1, 2, 3))
+        .build()
+        .unwrap();
+
+        assert_eq!(manifest.format_version, PackageFormatVersion::new(1, 2, 3));
+    }
+
+    #[test]
+    fn test_format_version_toml_serialization() {
+        let manifest = Manifest::new(
+            "test".to_string(),
+            &Version::parse("1.0.0").unwrap(),
+            1,
+            &Arch::Arm64,
+        );
+
+        let toml = manifest.to_toml().unwrap();
+        let parsed = Manifest::from_toml(&toml).unwrap();
+
+        assert_eq!(parsed.format_version, manifest.format_version);
+        assert_eq!(parsed.format_version, PackageFormatVersion::CURRENT);
+    }
+
+    #[test]
+    fn test_format_version_validation_incompatible() {
+        let mut manifest = Manifest::new(
+            "test".to_string(),
+            &Version::parse("1.0.0").unwrap(),
+            1,
+            &Arch::Arm64,
+        );
+
+        // Set an incompatible version (major version 999)
+        manifest.set_format_version(PackageFormatVersion::new(999, 0, 0));
+
+        // Validation should fail
+        assert!(manifest.validate().is_err());
     }
 }

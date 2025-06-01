@@ -55,7 +55,7 @@ impl Resolver {
 
         // Process local files
         for path in &context.local_files {
-            Self::resolve_local_file(path, &mut graph)?;
+            Self::resolve_local_file(path, &mut graph).await?;
         }
 
         // Check for cycles
@@ -128,11 +128,11 @@ impl Resolver {
             }
         }
 
-        // Create resolved node
+        // Create resolved node with URL resolution
         let node = ResolvedNode::download(
             spec.name.clone(),
             version,
-            version_entry.download_url.clone(),
+            Self::resolve_download_url(&version_entry.download_url)?,
             deps.clone(),
         );
 
@@ -165,9 +165,9 @@ impl Resolver {
     }
 
     /// Resolve a local package file
-    fn resolve_local_file(path: &Path, graph: &mut DependencyGraph) -> Result<(), Error> {
+    async fn resolve_local_file(path: &Path, graph: &mut DependencyGraph) -> Result<(), Error> {
         // Load manifest from local .sp file
-        let manifest = Self::load_local_manifest(path)?;
+        let manifest = Self::load_local_manifest(path).await?;
 
         let version = Version::parse(&manifest.package.version)?;
         let _package_id = PackageId::new(manifest.package.name.clone(), version.clone());
@@ -196,16 +196,7 @@ impl Resolver {
     }
 
     /// Load manifest from local .sp file
-    fn load_local_manifest(path: &Path) -> Result<Manifest, Error> {
-        // Use async version to handle the file operations
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current()
-                .block_on(async { Self::load_local_manifest_async(path).await })
-        })
-    }
-
-    /// Async helper for loading manifest from local .sp file
-    async fn load_local_manifest_async(path: &Path) -> Result<Manifest, Error> {
+    async fn load_local_manifest(path: &Path) -> Result<Manifest, Error> {
         use tokio::fs;
         use tokio::process::Command;
 
@@ -226,7 +217,7 @@ impl Resolver {
         let zstd_output = Command::new("zstd")
             .args([
                 "--decompress",
-                "--output",
+                "-o",
                 &tar_path.display().to_string(),
                 &path.display().to_string(),
             ])
@@ -315,6 +306,38 @@ impl Resolver {
     #[must_use]
     pub fn find_best_version(&self, spec: &PackageSpec) -> Option<&VersionEntry> {
         self.index.find_best_version(spec)
+    }
+
+    /// Resolve download URL with repository integration
+    ///
+    /// This is currently a pass-through but will be enhanced for:
+    /// - Mirror failover
+    /// - CDN optimization
+    /// - Repository URL resolution
+    fn resolve_download_url(url: &str) -> Result<String, Error> {
+        // For now, pass through the URL as-is
+        // Future enhancements:
+        // - Check for repository URL patterns and resolve to CDN
+        // - Support mirror failover
+        // - Handle repository index entries
+
+        // Basic URL validation
+        if url.is_empty() {
+            return Err(PackageError::InvalidFormat {
+                message: "empty download URL".to_string(),
+            }
+            .into());
+        }
+
+        // Ensure HTTPS for security (skip in test mode or when explicitly disabled)
+        // Allow HTTP in test environments
+        let allow_http = std::env::var("SPS2_ALLOW_HTTP").is_ok();
+
+        if !allow_http && url.starts_with("http://") {
+            return Ok(url.replace("http://", "https://"));
+        }
+
+        Ok(url.to_string())
     }
 }
 

@@ -1,9 +1,14 @@
 //! Package archive handling (.sp files)
+//!
+//! This module provides support for .sp package archives using zstd compression.
 
+use async_compression::tokio::bufread::ZstdDecoder as AsyncZstdReader;
 use sps2_errors::{Error, PackageError, StorageError};
+use sps2_events::{Event, EventSender};
 use sps2_root::{create_dir_all, exists};
 use std::path::Path;
 use tar::Archive;
+use tokio::io::{AsyncWriteExt, BufReader};
 
 /// Extract a .sp package file to a directory
 ///
@@ -14,8 +19,30 @@ use tar::Archive;
 /// - The extracted package is missing manifest.toml
 /// - I/O operations fail
 pub async fn extract_package(sp_file: &Path, dest: &Path) -> Result<(), Error> {
-    // For now, use simple tar extraction (can add zstd later)
-    extract_tar_file(sp_file, dest).await?;
+    extract_package_with_events(sp_file, dest, None).await
+}
+
+/// Extract a .sp package file to a directory with optional event reporting
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Tar extraction fails
+/// - The extracted package is missing manifest.toml
+/// - I/O operations fail
+pub async fn extract_package_with_events(
+    sp_file: &Path,
+    dest: &Path,
+    event_sender: Option<&EventSender>,
+) -> Result<(), Error> {
+    // Try zstd extraction first, fall back to plain tar if it fails
+    match extract_zstd_tar_file(sp_file, dest, event_sender).await {
+        Ok(()) => {}
+        Err(_) => {
+            // Fall back to plain tar
+            extract_plain_tar_file(sp_file, dest, event_sender).await?;
+        }
+    }
 
     // Verify manifest exists
     let manifest_path = dest.join("manifest.toml");
@@ -27,6 +54,21 @@ pub async fn extract_package(sp_file: &Path, dest: &Path) -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+/// List the contents of a .sp package without extracting
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Archive reading fails
+/// - I/O operations fail
+pub async fn list_package_contents(sp_file: &Path) -> Result<Vec<String>, Error> {
+    // Try zstd-compressed listing first, fall back to plain tar
+    match list_zstd_tar_contents(sp_file).await {
+        Ok(contents) => Ok(contents),
+        Err(_) => list_plain_tar_contents(sp_file).await,
+    }
 }
 
 /// Create a .sp package file from a directory
@@ -58,12 +100,20 @@ pub async fn create_package(src: &Path, sp_file: &Path) -> Result<(), Error> {
     let sp_file = sp_file.to_path_buf();
 
     tokio::task::spawn_blocking(move || {
-        use std::fs::File;
-        use std::io::BufWriter;
+        use std::fs::OpenOptions;
+        use std::io::Write;
 
-        let file = File::create(&sp_file)?;
-        let buf_writer = BufWriter::new(file);
-        let mut builder = tar::Builder::new(buf_writer);
+        // Open file with create and write permissions
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&sp_file)
+            .map_err(|e| StorageError::IoError {
+                message: format!("failed to create file: {e}"),
+            })?;
+
+        let mut builder = tar::Builder::new(file);
 
         // Set options for deterministic output
         builder.mode(tar::HeaderMode::Deterministic);
@@ -72,8 +122,21 @@ pub async fn create_package(src: &Path, sp_file: &Path) -> Result<(), Error> {
         // Add all files from the source directory
         add_dir_to_tar(&mut builder, &src, Path::new(""))?;
 
-        // Finish the archive
+        // Finish the archive - this writes the tar EOF blocks
         builder.finish()?;
+
+        // Get the file back and ensure it's synced
+        let mut file = builder.into_inner().map_err(|e| StorageError::IoError {
+            message: format!("failed to get file from tar builder: {e}"),
+        })?;
+
+        file.flush().map_err(|e| StorageError::IoError {
+            message: format!("failed to flush file: {e}"),
+        })?;
+
+        file.sync_all().map_err(|e| StorageError::IoError {
+            message: format!("failed to sync file: {e}"),
+        })?;
 
         Ok::<(), Error>(())
     })
@@ -83,8 +146,105 @@ pub async fn create_package(src: &Path, sp_file: &Path) -> Result<(), Error> {
     Ok(())
 }
 
-/// Extract a tar archive from a file
-async fn extract_tar_file(file_path: &Path, dest: &Path) -> Result<(), Error> {
+/// Extract a zstd-compressed tar archive using temporary file
+async fn extract_zstd_tar_file(
+    file_path: &Path,
+    dest: &Path,
+    event_sender: Option<&EventSender>,
+) -> Result<(), Error> {
+    // Create destination directory
+    create_dir_all(dest).await?;
+
+    // Create a temporary file to decompress to, then extract with tar
+    let temp_file = tempfile::NamedTempFile::new().map_err(|e| StorageError::IoError {
+        message: format!("failed to create temp file: {e}"),
+    })?;
+
+    let temp_path = temp_file.path().to_path_buf();
+
+    // Decompress the zstd file to temporary location
+    {
+        use tokio::fs::File;
+
+        let input_file = File::open(file_path)
+            .await
+            .map_err(|e| StorageError::IoError {
+                message: format!("failed to open compressed file: {e}"),
+            })?;
+
+        let mut output_file =
+            File::create(&temp_path)
+                .await
+                .map_err(|e| StorageError::IoError {
+                    message: format!("failed to create temp output file: {e}"),
+                })?;
+
+        let mut decoder = AsyncZstdReader::new(BufReader::new(input_file));
+        tokio::io::copy(&mut decoder, &mut output_file)
+            .await
+            .map_err(|e| StorageError::IoError {
+                message: format!("failed to decompress zstd file: {e}"),
+            })?;
+
+        output_file
+            .flush()
+            .await
+            .map_err(|e| StorageError::IoError {
+                message: format!("failed to flush temp file: {e}"),
+            })?;
+    }
+
+    // Now extract the decompressed tar file using blocking operations
+    let temp_path_for_task = temp_path.clone();
+    let dest = dest.to_path_buf();
+
+    tokio::task::spawn_blocking(move || {
+        use std::fs::File;
+
+        let file = File::open(&temp_path_for_task).map_err(|e| StorageError::IoError {
+            message: format!("failed to open decompressed temp file: {e}"),
+        })?;
+
+        let mut archive = Archive::new(file);
+
+        // Set options for security
+        archive.set_preserve_permissions(true);
+        archive.set_preserve_mtime(true);
+        archive.set_unpack_xattrs(false); // Don't unpack extended attributes
+
+        // Extract all entries with security checks
+        extract_archive_entries(&mut archive, &dest)?;
+
+        Ok::<(), Error>(())
+    })
+    .await
+    .map_err(|e| Error::internal(format!("zstd extract task failed: {e}")))??;
+
+    // Send decompression completed event
+    if let Some(sender) = event_sender {
+        let _ = sender.send(Event::OperationCompleted {
+            operation: "Zstd decompression completed".to_string(),
+            success: true,
+        });
+    }
+
+    // Send overall extraction completed event
+    if let Some(sender) = event_sender {
+        let _ = sender.send(Event::OperationCompleted {
+            operation: format!("Package extraction completed: {}", file_path.display()),
+            success: true,
+        });
+    }
+
+    Ok(())
+}
+
+/// Extract a plain (uncompressed) tar archive
+async fn extract_plain_tar_file(
+    file_path: &Path,
+    dest: &Path,
+    event_sender: Option<&EventSender>,
+) -> Result<(), Error> {
     // Create destination directory
     create_dir_all(dest).await?;
 
@@ -102,32 +262,139 @@ async fn extract_tar_file(file_path: &Path, dest: &Path) -> Result<(), Error> {
         archive.set_preserve_mtime(true);
         archive.set_unpack_xattrs(false); // Don't unpack extended attributes
 
-        // Extract all entries
-        for entry in archive.entries()? {
-            let mut entry = entry?;
-
-            // Get the path
-            let path = entry.path()?;
-
-            // Security check: ensure path doesn't escape destination
-            if path
-                .components()
-                .any(|c| c == std::path::Component::ParentDir)
-            {
-                return Err(PackageError::InvalidFormat {
-                    message: "archive contains path traversal".to_string(),
-                }
-                .into());
-            }
-
-            // Unpack the entry
-            entry.unpack_in(&dest)?;
-        }
+        // Extract all entries with security checks
+        extract_archive_entries(&mut archive, &dest)?;
 
         Ok::<(), Error>(())
     })
     .await
-    .map_err(|e| Error::internal(format!("extract task failed: {e}")))??;
+    .map_err(|e| Error::internal(format!("plain tar extract task failed: {e}")))??;
+
+    // Send extraction completed event
+    if let Some(sender) = event_sender {
+        let _ = sender.send(Event::OperationCompleted {
+            operation: "Plain tar extraction completed".to_string(),
+            success: true,
+        });
+    }
+
+    Ok(())
+}
+
+/// List contents of a zstd-compressed tar archive
+async fn list_zstd_tar_contents(file_path: &Path) -> Result<Vec<String>, Error> {
+    // Create a temporary file to decompress to, then list contents
+    let temp_file = tempfile::NamedTempFile::new().map_err(|e| StorageError::IoError {
+        message: format!("failed to create temp file: {e}"),
+    })?;
+
+    let temp_path = temp_file.path().to_path_buf();
+
+    // Decompress the zstd file to temporary location
+    {
+        use tokio::fs::File;
+
+        let input_file = File::open(file_path)
+            .await
+            .map_err(|e| StorageError::IoError {
+                message: format!("failed to open compressed file: {e}"),
+            })?;
+
+        let mut output_file =
+            File::create(&temp_path)
+                .await
+                .map_err(|e| StorageError::IoError {
+                    message: format!("failed to create temp output file: {e}"),
+                })?;
+
+        let mut decoder = AsyncZstdReader::new(BufReader::new(input_file));
+        tokio::io::copy(&mut decoder, &mut output_file)
+            .await
+            .map_err(|e| StorageError::IoError {
+                message: format!("failed to decompress zstd file: {e}"),
+            })?;
+
+        output_file
+            .flush()
+            .await
+            .map_err(|e| StorageError::IoError {
+                message: format!("failed to flush temp file: {e}"),
+            })?;
+    }
+
+    // Now list the decompressed tar file contents
+    let temp_path_for_task = temp_path.clone();
+
+    tokio::task::spawn_blocking(move || -> Result<Vec<String>, Error> {
+        use std::fs::File;
+
+        let file = File::open(&temp_path_for_task)?;
+        let mut archive = Archive::new(file);
+        let mut files = Vec::new();
+
+        for entry in archive.entries()? {
+            let entry = entry?;
+            let path = entry.path()?;
+            files.push(path.to_string_lossy().to_string());
+        }
+
+        files.sort();
+        Ok(files)
+    })
+    .await
+    .map_err(|e| Error::internal(format!("zstd list task failed: {e}")))?
+}
+
+/// List contents of a plain tar file
+async fn list_plain_tar_contents(file_path: &Path) -> Result<Vec<String>, Error> {
+    let file_path = file_path.to_path_buf();
+
+    tokio::task::spawn_blocking(move || -> Result<Vec<String>, Error> {
+        use std::fs::File;
+
+        let file = File::open(&file_path)?;
+        let mut archive = Archive::new(file);
+        let mut files = Vec::new();
+
+        for entry in archive.entries()? {
+            let entry = entry?;
+            let path = entry.path()?;
+            files.push(path.to_string_lossy().to_string());
+        }
+
+        files.sort();
+        Ok(files)
+    })
+    .await
+    .map_err(|e| Error::internal(format!("plain tar list task failed: {e}")))?
+}
+
+/// Extract entries from a tar archive with security checks
+fn extract_archive_entries<R: std::io::Read>(
+    archive: &mut Archive<R>,
+    dest: &Path,
+) -> Result<(), Error> {
+    // Extract all entries
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+
+        // Get the path
+        let path = entry.path()?;
+
+        // Security check: ensure path doesn't escape destination
+        if path
+            .components()
+            .any(|c| c == std::path::Component::ParentDir)
+        {
+            return Err(PackageError::InvalidFormat {
+                message: "archive contains path traversal".to_string(),
+            }
+            .into());
+        }
+
+        // Unpack the entry
+        entry.unpack_in(dest)?;
+    }
 
     Ok(())
 }

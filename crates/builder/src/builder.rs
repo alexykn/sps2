@@ -1,8 +1,8 @@
-//! Main builder implementation
+//! Main builder implementation with deterministic TAR archive creation for reproducible builds
 
 use crate::{
-    BuildContext, BuildEnvironment, BuildResult, BuilderApi, PackageSigner, SbomConfig, SbomFiles,
-    SbomGenerator, SigningConfig,
+    BuildContext, BuildEnvironment, BuildResult, BuilderApi, CompressionConfig, PackageSigner,
+    SbomConfig, SbomFiles, SbomGenerator, SigningConfig,
 };
 use sps2_errors::{BuildError, Error};
 use sps2_events::Event;
@@ -14,6 +14,12 @@ use sps2_store::PackageStore;
 use sps2_types::package::PackageSpec;
 use std::path::{Path, PathBuf};
 use tokio::fs;
+
+/// Default deterministic timestamp (Unix epoch) for reproducible builds
+const DETERMINISTIC_TIMESTAMP: u64 = 0;
+
+/// Environment variable for `SOURCE_DATE_EPOCH` (standard for reproducible builds)
+const SOURCE_DATE_EPOCH_VAR: &str = "SOURCE_DATE_EPOCH";
 
 /// Package builder configuration
 #[derive(Clone, Debug)]
@@ -30,6 +36,8 @@ pub struct BuildConfig {
     pub build_jobs: Option<usize>,
     /// Build root directory (defaults to current directory)
     pub build_root: Option<PathBuf>,
+    /// Compression configuration for package archives
+    pub compression_config: CompressionConfig,
 }
 
 impl Default for BuildConfig {
@@ -41,6 +49,7 @@ impl Default for BuildConfig {
             allow_network: false,
             build_jobs: None, // Use auto-detection
             build_root: None, // Defaults to current directory
+            compression_config: CompressionConfig::default(),
         }
     }
 }
@@ -81,6 +90,56 @@ impl BuildConfig {
     pub fn with_jobs(mut self, jobs: usize) -> Self {
         self.build_jobs = Some(jobs);
         self
+    }
+
+    /// Set compression configuration
+    #[must_use]
+    pub fn with_compression_config(mut self, config: CompressionConfig) -> Self {
+        self.compression_config = config;
+        self
+    }
+
+    /// Set compression level
+    #[must_use]
+    pub fn with_compression_level(mut self, level: crate::CompressionLevel) -> Self {
+        self.compression_config.level = level;
+        self
+    }
+
+    /// Enable fast compression for development builds
+    #[must_use]
+    pub fn with_fast_compression() -> Self {
+        Self {
+            compression_config: CompressionConfig::fast(),
+            ..Default::default()
+        }
+    }
+
+    /// Enable balanced compression (default)
+    #[must_use]
+    pub fn with_balanced_compression() -> Self {
+        Self {
+            compression_config: CompressionConfig::balanced(),
+            ..Default::default()
+        }
+    }
+
+    /// Enable maximum compression for production builds
+    #[must_use]
+    pub fn with_maximum_compression() -> Self {
+        Self {
+            compression_config: CompressionConfig::maximum(),
+            ..Default::default()
+        }
+    }
+
+    /// Enable custom compression level
+    #[must_use]
+    pub fn with_custom_compression(level: u8) -> Self {
+        Self {
+            compression_config: CompressionConfig::custom(level),
+            ..Default::default()
+        }
     }
 }
 
@@ -553,7 +612,8 @@ impl Builder {
         sbom_files: &SbomFiles,
         recipe_metadata: &sps2_package::RecipeMetadata,
     ) -> Manifest {
-        use sps2_manifest::{Dependencies, PackageInfo, SbomInfo};
+        use sps2_manifest::{CompressionInfo, Dependencies, PackageInfo, SbomInfo};
+        use sps2_types::format::CompressionFormatType;
 
         // Create SBOM info if files are available
         let sbom_info = sbom_files.spdx_hash.as_ref().map(|spdx_hash| SbomInfo {
@@ -561,7 +621,15 @@ impl Builder {
             cyclonedx: sbom_files.cyclonedx_hash.clone(),
         });
 
+        // Create compression info
+        let compression_info = Some(CompressionInfo {
+            format: CompressionFormatType::Legacy,
+            frame_size: None,
+            frame_count: None,
+        });
+
         Manifest {
+            format_version: sps2_types::PackageFormatVersion::CURRENT,
             package: PackageInfo {
                 name: context.name.clone(),
                 version: context.version.to_string(),
@@ -570,6 +638,7 @@ impl Builder {
                 description: recipe_metadata.description.clone(),
                 homepage: recipe_metadata.homepage.clone(),
                 license: recipe_metadata.license.clone(),
+                compression: compression_info,
             },
             dependencies: Dependencies {
                 runtime: runtime_deps,
@@ -752,10 +821,29 @@ impl Builder {
     }
 
     /// Create deterministic tar archive from directory using the tar crate
+    /// Ensures identical input produces identical compressed output for reproducible builds
     async fn create_deterministic_tar_archive(
         &self,
         source_dir: &Path,
         tar_path: &Path,
+    ) -> Result<(), Error> {
+        // Use the global deterministic timestamp
+        let deterministic_timestamp = Self::get_deterministic_timestamp();
+        self.create_deterministic_tar_archive_with_timestamp(
+            source_dir,
+            tar_path,
+            deterministic_timestamp,
+        )
+        .await
+    }
+
+    /// Create deterministic tar archive with explicit timestamp (for testing)
+    /// Ensures identical input produces identical compressed output for reproducible builds
+    async fn create_deterministic_tar_archive_with_timestamp(
+        &self,
+        source_dir: &Path,
+        tar_path: &Path,
+        timestamp: u64,
     ) -> Result<(), Error> {
         use tar::Builder;
         use tokio::fs::File;
@@ -771,7 +859,12 @@ impl Builder {
             // Set deterministic behavior
             tar_builder.follow_symlinks(false);
 
-            Self::add_directory_to_tar(&mut tar_builder, &source_dir, "".as_ref())?;
+            Self::add_directory_to_tar_with_timestamp(
+                &mut tar_builder,
+                &source_dir,
+                "".as_ref(),
+                timestamp,
+            )?;
             tar_builder.finish()?;
 
             Ok(())
@@ -785,15 +878,23 @@ impl Builder {
     }
 
     /// Recursively add directory contents to tar archive with deterministic ordering
-    fn add_directory_to_tar(
+    /// This is the enhanced deterministic version with improved file ordering and metadata normalization
+    /// for reproducible builds
+    fn add_directory_to_tar_with_timestamp(
         tar_builder: &mut tar::Builder<std::fs::File>,
         dir_path: &Path,
         tar_path: &Path,
+        deterministic_timestamp: u64,
     ) -> Result<(), Error> {
         let mut entries = std::fs::read_dir(dir_path)?.collect::<Result<Vec<_>, _>>()?;
 
-        // Sort entries by name for deterministic ordering
-        entries.sort_by_key(std::fs::DirEntry::file_name);
+        // Enhanced deterministic sorting for optimal compression:
+        // 1. Sort all entries lexicographically by filename (case-sensitive, locale-independent)
+        // 2. This ensures consistent ordering across different filesystems and locales
+        entries.sort_by(|a, b| {
+            // Use OS string comparison for consistent, locale-independent ordering
+            a.file_name().cmp(&b.file_name())
+        });
 
         for entry in entries {
             let file_path = entry.path();
@@ -804,7 +905,7 @@ impl Builder {
                 continue;
             }
 
-            // IMPORTANT: When tar_path is empty (first call), don't add a leading separator
+            // Construct tar entry path - avoid leading separators for root entries
             let tar_entry_path = if tar_path.as_os_str().is_empty() {
                 PathBuf::from(&file_name)
             } else {
@@ -814,35 +915,44 @@ impl Builder {
             let metadata = entry.metadata()?;
 
             if metadata.is_dir() {
-                // Add directory entry
+                // Add directory entry with fully normalized metadata
                 let mut header = tar::Header::new_gnu();
                 header.set_entry_type(tar::EntryType::Directory);
                 header.set_size(0);
-                header.set_mode(0o755);
-                header.set_mtime(0); // Deterministic mtime
-                header.set_uid(0);
-                header.set_gid(0);
+                header.set_mode(Self::normalize_file_permissions(&metadata));
+                header.set_mtime(deterministic_timestamp);
+                header.set_uid(0); // Normalized ownership
+                header.set_gid(0); // Normalized ownership
+                header.set_username("root")?; // Consistent username
+                header.set_groupname("root")?; // Consistent group name
+                header.set_device_major(0)?; // Clear device numbers
+                header.set_device_minor(0)?; // Clear device numbers
                 header.set_cksum();
 
                 let tar_dir_path = format!("{}/", tar_entry_path.display());
                 tar_builder.append_data(&mut header, &tar_dir_path, std::io::empty())?;
 
                 // Recursively add directory contents
-                Self::add_directory_to_tar(tar_builder, &file_path, &tar_entry_path)?;
+                Self::add_directory_to_tar_with_timestamp(
+                    tar_builder,
+                    &file_path,
+                    &tar_entry_path,
+                    deterministic_timestamp,
+                )?;
             } else if metadata.is_file() {
-                // Add file entry
+                // Add file entry with fully normalized metadata
                 let mut file = std::fs::File::open(&file_path)?;
                 let mut header = tar::Header::new_gnu();
                 header.set_entry_type(tar::EntryType::Regular);
                 header.set_size(metadata.len());
-                header.set_mode(if metadata.permissions().readonly() {
-                    0o644
-                } else {
-                    0o755
-                });
-                header.set_mtime(0); // Deterministic mtime
-                header.set_uid(0);
-                header.set_gid(0);
+                header.set_mode(Self::normalize_file_permissions(&metadata));
+                header.set_mtime(deterministic_timestamp);
+                header.set_uid(0); // Normalized ownership
+                header.set_gid(0); // Normalized ownership
+                header.set_username("root")?; // Consistent username
+                header.set_groupname("root")?; // Consistent group name
+                header.set_device_major(0)?; // Clear device numbers
+                header.set_device_minor(0)?; // Clear device numbers
                 header.set_cksum();
 
                 tar_builder.append_data(
@@ -850,11 +960,89 @@ impl Builder {
                     tar_entry_path.display().to_string(),
                     &mut file,
                 )?;
+            } else if metadata.is_symlink() {
+                // Handle symlinks deterministically
+                let target = std::fs::read_link(&file_path)?;
+                let mut header = tar::Header::new_gnu();
+                header.set_entry_type(tar::EntryType::Symlink);
+                header.set_size(0);
+                header.set_mode(0o777); // Standard symlink permissions
+                header.set_mtime(deterministic_timestamp);
+                header.set_uid(0); // Normalized ownership
+                header.set_gid(0); // Normalized ownership
+                header.set_username("root")?; // Consistent username
+                header.set_groupname("root")?; // Consistent group name
+                header.set_link_name(&target)?;
+                header.set_device_major(0)?; // Clear device numbers
+                header.set_device_minor(0)?; // Clear device numbers
+                header.set_cksum();
+
+                tar_builder.append_data(
+                    &mut header,
+                    tar_entry_path.display().to_string(),
+                    std::io::empty(),
+                )?;
             }
-            // Skip symlinks and other special files for simplicity
+            // Skip other special files (device nodes, fifos, etc.) for security and consistency
         }
 
         Ok(())
+    }
+
+    /// Legacy deterministic method - redirects to timestamped version
+    #[allow(dead_code)]
+    fn add_directory_to_tar_deterministic(
+        tar_builder: &mut tar::Builder<std::fs::File>,
+        dir_path: &Path,
+        tar_path: &Path,
+    ) -> Result<(), Error> {
+        let deterministic_timestamp = Self::get_deterministic_timestamp();
+        Self::add_directory_to_tar_with_timestamp(
+            tar_builder,
+            dir_path,
+            tar_path,
+            deterministic_timestamp,
+        )
+    }
+
+    /// Legacy method for backward compatibility - redirects to deterministic version
+    #[allow(dead_code)]
+    fn add_directory_to_tar(
+        tar_builder: &mut tar::Builder<std::fs::File>,
+        dir_path: &Path,
+        tar_path: &Path,
+    ) -> Result<(), Error> {
+        Self::add_directory_to_tar_deterministic(tar_builder, dir_path, tar_path)
+    }
+
+    /// Get deterministic timestamp for reproducible builds
+    /// Uses `SOURCE_DATE_EPOCH` if set, otherwise uses epoch (0)
+    fn get_deterministic_timestamp() -> u64 {
+        std::env::var(SOURCE_DATE_EPOCH_VAR)
+            .ok()
+            .and_then(|val| val.parse::<u64>().ok())
+            .unwrap_or(DETERMINISTIC_TIMESTAMP)
+    }
+
+    /// Normalize file permissions for deterministic output
+    /// Ensures consistent permissions across different filesystems and umask settings
+    fn normalize_file_permissions(metadata: &std::fs::Metadata) -> u32 {
+        use std::os::unix::fs::PermissionsExt;
+
+        let current_mode = metadata.permissions().mode();
+
+        if metadata.is_dir() {
+            0o755 // Directories: rwxr-xr-x
+        } else if metadata.is_file() {
+            // Files: check if any execute bit is set
+            if current_mode & 0o111 != 0 {
+                0o755 // Executable files: rwxr-xr-x
+            } else {
+                0o644 // Regular files: rw-r--r--
+            }
+        } else {
+            0o644 // Default for other file types
+        }
     }
 
     /// Compress tar archive with zstd using async-compression
@@ -867,8 +1055,10 @@ impl Builder {
         let input_file = File::open(tar_path).await?;
         let output_file = File::create(output_path).await?;
 
-        // Create zstd encoder with maximum compression level
-        let mut encoder = ZstdEncoder::with_quality(output_file, Level::Best);
+        // Create zstd encoder with specified compression level
+        let compression_level = self.config.compression_config.level.zstd_level();
+        let level = Level::Precise(compression_level);
+        let mut encoder = ZstdEncoder::with_quality(output_file, level);
 
         // Copy tar file through zstd encoder
         let mut reader = BufReader::new(input_file);
@@ -1136,6 +1326,7 @@ impl Default for Builder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CompressionLevel;
     use sps2_types::Version;
     use tempfile::tempdir;
 
@@ -1382,5 +1573,364 @@ mod tests {
                 println!("Expected test environment behavior: {e}");
             }
         }
+    }
+
+    #[test]
+    fn test_get_deterministic_timestamp() {
+        // Test default behavior (no SOURCE_DATE_EPOCH set)
+        std::env::remove_var(SOURCE_DATE_EPOCH_VAR);
+        assert_eq!(
+            Builder::get_deterministic_timestamp(),
+            DETERMINISTIC_TIMESTAMP
+        );
+
+        // Test with SOURCE_DATE_EPOCH set
+        std::env::set_var(SOURCE_DATE_EPOCH_VAR, "1640995200"); // 2022-01-01 00:00:00 UTC
+        assert_eq!(Builder::get_deterministic_timestamp(), 1_640_995_200);
+
+        // Test with invalid SOURCE_DATE_EPOCH (should fall back to default)
+        std::env::set_var(SOURCE_DATE_EPOCH_VAR, "invalid");
+        assert_eq!(
+            Builder::get_deterministic_timestamp(),
+            DETERMINISTIC_TIMESTAMP
+        );
+
+        // Cleanup
+        std::env::remove_var(SOURCE_DATE_EPOCH_VAR);
+    }
+
+    #[test]
+    fn test_normalize_file_permissions() {
+        use std::fs::File;
+        use std::os::unix::fs::PermissionsExt;
+        use tempfile::tempdir;
+
+        let temp = tempdir().unwrap();
+
+        // Test regular file permissions
+        let regular_file = temp.path().join("regular.txt");
+        File::create(&regular_file).unwrap();
+        let metadata = regular_file.metadata().unwrap();
+        assert_eq!(Builder::normalize_file_permissions(&metadata), 0o644);
+
+        // Test executable file permissions
+        let exec_file = temp.path().join("executable.sh");
+        File::create(&exec_file).unwrap();
+        let mut perms = exec_file.metadata().unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&exec_file, perms).unwrap();
+        let metadata = exec_file.metadata().unwrap();
+        assert_eq!(Builder::normalize_file_permissions(&metadata), 0o755);
+
+        // Test directory permissions
+        let dir = temp.path().join("testdir");
+        std::fs::create_dir(&dir).unwrap();
+        let metadata = dir.metadata().unwrap();
+        assert_eq!(Builder::normalize_file_permissions(&metadata), 0o755);
+    }
+
+    #[tokio::test]
+    async fn test_deterministic_tar_creation_simple() {
+        use tempfile::tempdir;
+
+        // Use explicit deterministic timestamp to avoid race conditions with environment variables
+        const TEST_TIMESTAMP: u64 = 0;
+
+        let temp = tempdir().unwrap();
+        let builder = Builder::new();
+
+        // Create a simple test directory structure without modifying timestamps
+        let source_dir = temp.path().join("source");
+        fs::create_dir_all(&source_dir).await.unwrap();
+
+        // Create one simple file
+        let file1 = source_dir.join("test.txt");
+        fs::write(&file1, "deterministic content").await.unwrap();
+
+        // Create first tar archive
+        let tar1_path = temp.path().join("test1.tar");
+        builder
+            .create_deterministic_tar_archive_with_timestamp(
+                &source_dir,
+                &tar1_path,
+                TEST_TIMESTAMP,
+            )
+            .await
+            .unwrap();
+
+        // Create second tar archive immediately (no timestamp modification)
+        let tar2_path = temp.path().join("test2.tar");
+        builder
+            .create_deterministic_tar_archive_with_timestamp(
+                &source_dir,
+                &tar2_path,
+                TEST_TIMESTAMP,
+            )
+            .await
+            .unwrap();
+
+        // Read tar contents
+        let tar1_content = fs::read(&tar1_path).await.unwrap();
+        let tar2_content = fs::read(&tar2_path).await.unwrap();
+
+        assert_eq!(
+            tar1_content, tar2_content,
+            "Deterministic tar archives should be identical for the same input"
+        );
+
+        // Verify files exist and have expected sizes
+        assert!(!tar1_content.is_empty(), "Tar archive should not be empty");
+        assert!(!tar2_content.is_empty(), "Tar archive should not be empty");
+    }
+
+    #[tokio::test]
+    async fn test_deterministic_tar_creation_with_timestamp_modification() {
+        use std::os::unix::fs::PermissionsExt;
+        use tempfile::tempdir;
+
+        // Use explicit deterministic timestamp to avoid race conditions with environment variables
+        const TEST_TIMESTAMP: u64 = 0;
+
+        let temp = tempdir().unwrap();
+        let builder = Builder::new();
+
+        // Create a test directory structure (simpler for debugging)
+        let source_dir = temp.path().join("source");
+        fs::create_dir_all(&source_dir).await.unwrap();
+
+        // Create files in alphabetical order to be deterministic
+        let file1 = source_dir.join("a_file.txt");
+        fs::write(&file1, "content1").await.unwrap();
+
+        let file2 = source_dir.join("b_file.sh");
+        fs::write(&file2, "#!/bin/bash\necho hello").await.unwrap();
+        let mut perms = file2.metadata().unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&file2, perms).unwrap();
+
+        // Create first tar archive
+        let tar1_path = temp.path().join("test1.tar");
+        builder
+            .create_deterministic_tar_archive_with_timestamp(
+                &source_dir,
+                &tar1_path,
+                TEST_TIMESTAMP,
+            )
+            .await
+            .unwrap();
+
+        // Sleep briefly to ensure different filesystem timestamps
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Modify file timestamps (this shouldn't affect the output)
+        let now = std::time::SystemTime::now();
+        let later = now + std::time::Duration::from_secs(3600);
+        let later_file_time = filetime::FileTime::from_system_time(later);
+        filetime::set_file_times(&file1, later_file_time, later_file_time).unwrap();
+
+        // Create second tar archive
+        let tar2_path = temp.path().join("test2.tar");
+        builder
+            .create_deterministic_tar_archive_with_timestamp(
+                &source_dir,
+                &tar2_path,
+                TEST_TIMESTAMP,
+            )
+            .await
+            .unwrap();
+
+        // Read tar contents
+        let tar1_content = fs::read(&tar1_path).await.unwrap();
+        let tar2_content = fs::read(&tar2_path).await.unwrap();
+
+        // If they differ, let's see the hex dump for debugging
+        if tar1_content != tar2_content {
+            println!("TAR 1 length: {}", tar1_content.len());
+            println!("TAR 2 length: {}", tar2_content.len());
+
+            // Find first difference
+            for (i, (a, b)) in tar1_content.iter().zip(tar2_content.iter()).enumerate() {
+                if a != b {
+                    println!("First difference at byte {i}: {a} vs {b}");
+
+                    // Print context around the difference
+                    let start = i.saturating_sub(10);
+                    let end = (i + 10).min(tar1_content.len());
+                    println!(
+                        "TAR 1 bytes {}..{}: {:?}",
+                        start,
+                        end,
+                        &tar1_content[start..end]
+                    );
+                    println!(
+                        "TAR 2 bytes {}..{}: {:?}",
+                        start,
+                        end,
+                        &tar2_content[start..end]
+                    );
+                    break;
+                }
+            }
+        }
+
+        assert_eq!(
+            tar1_content, tar2_content,
+            "Deterministic tar archives should be identical regardless of filesystem timestamps"
+        );
+
+        // Verify files exist and have expected sizes
+        assert!(!tar1_content.is_empty(), "Tar archive should not be empty");
+        assert!(!tar2_content.is_empty(), "Tar archive should not be empty");
+    }
+
+    #[tokio::test]
+    async fn test_deterministic_tar_with_source_date_epoch() {
+        use tempfile::tempdir;
+
+        let temp = tempdir().unwrap();
+        let builder = Builder::new();
+
+        // Create a simple test directory
+        let source_dir = temp.path().join("source");
+        fs::create_dir_all(&source_dir).await.unwrap();
+        fs::write(source_dir.join("test.txt"), "test content")
+            .await
+            .unwrap();
+
+        // Set SOURCE_DATE_EPOCH
+        std::env::set_var(SOURCE_DATE_EPOCH_VAR, "1640995200"); // 2022-01-01
+
+        // Create tar archive with SOURCE_DATE_EPOCH
+        let tar1_path = temp.path().join("test_epoch.tar");
+        builder
+            .create_deterministic_tar_archive(&source_dir, &tar1_path)
+            .await
+            .unwrap();
+
+        // Change SOURCE_DATE_EPOCH to a different value
+        std::env::set_var(SOURCE_DATE_EPOCH_VAR, "1609459200"); // 2021-01-01
+
+        // Create second tar archive
+        let tar2_path = temp.path().join("test_epoch2.tar");
+        builder
+            .create_deterministic_tar_archive(&source_dir, &tar2_path)
+            .await
+            .unwrap();
+
+        // Cleanup environment
+        std::env::remove_var(SOURCE_DATE_EPOCH_VAR);
+
+        // Verify that the tar files are different (different timestamps)
+        let tar1_content = fs::read(&tar1_path).await.unwrap();
+        let tar2_content = fs::read(&tar2_path).await.unwrap();
+
+        assert_ne!(
+            tar1_content, tar2_content,
+            "Tar archives with different SOURCE_DATE_EPOCH should be different"
+        );
+    }
+
+    #[test]
+    fn test_compression_config_default() {
+        let config = CompressionConfig::default();
+        assert_eq!(config.level, CompressionLevel::Balanced);
+    }
+
+    #[test]
+    fn test_build_config_compression_methods() {
+        // Test default compression config
+        let config = BuildConfig::default();
+        assert_eq!(config.compression_config, CompressionConfig::default());
+
+        // Test fast compression
+        let fast_config = BuildConfig::with_fast_compression();
+        assert_eq!(fast_config.compression_config.level, CompressionLevel::Fast);
+
+        // Test balanced compression
+        let balanced_config = BuildConfig::with_balanced_compression();
+        assert_eq!(
+            balanced_config.compression_config.level,
+            CompressionLevel::Balanced
+        );
+
+        // Test maximum compression
+        let max_config = BuildConfig::with_maximum_compression();
+        assert_eq!(
+            max_config.compression_config.level,
+            CompressionLevel::Maximum
+        );
+
+        // Test custom compression level
+        let custom_config = BuildConfig::with_custom_compression(15);
+        assert_eq!(
+            custom_config.compression_config.level,
+            CompressionLevel::Custom(15)
+        );
+
+        // Test compression config setting
+        let custom_compression_config = CompressionConfig::fast();
+        let config_with_custom =
+            BuildConfig::default().with_compression_config(custom_compression_config.clone());
+        assert_eq!(
+            config_with_custom.compression_config,
+            custom_compression_config
+        );
+    }
+
+    #[tokio::test]
+    async fn test_zstd_compression() {
+        use tempfile::tempdir;
+
+        let temp = tempdir().unwrap();
+        let builder = Builder::with_config(BuildConfig::default());
+
+        // Create a test tar file
+        let tar_path = temp.path().join("test.tar");
+        let content = b"Test content for zstd compression";
+        fs::write(&tar_path, content).await.unwrap();
+
+        // Compress with zstd format
+        let compressed_path = temp.path().join("test.sp");
+        builder
+            .compress_with_zstd(&tar_path, &compressed_path)
+            .await
+            .unwrap();
+
+        // Verify the compressed file was created
+        assert!(compressed_path.exists());
+
+        // The compressed file should be valid zstd
+        let compressed_data = fs::read(&compressed_path).await.unwrap();
+        assert!(!compressed_data.is_empty());
+
+        // Should be able to decompress back to original
+        let decompressed = zstd::decode_all(&compressed_data[..]).unwrap();
+        assert_eq!(decompressed, content);
+    }
+
+    #[tokio::test]
+    async fn test_zstd_decompression() {
+        use tempfile::tempdir;
+
+        let temp = tempdir().unwrap();
+
+        // Create a test package
+        let content = b"Test content for decompression";
+
+        // Compress with zstd
+        let builder = Builder::with_config(BuildConfig::default());
+        let tar_path = temp.path().join("test.tar");
+        let sp_path = temp.path().join("test.sp");
+        fs::write(&tar_path, content).await.unwrap();
+        builder
+            .compress_with_zstd(&tar_path, &sp_path)
+            .await
+            .unwrap();
+
+        // Should decompress to the same content using standard zstd
+        let compressed_data = fs::read(&sp_path).await.unwrap();
+        let decompressed = zstd::decode_all(&compressed_data[..]).unwrap();
+
+        assert_eq!(decompressed, content);
     }
 }

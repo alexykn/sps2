@@ -431,7 +431,7 @@ pub async fn rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<StateI
 
     // Perform rollback using atomic installer
     let mut atomic_installer =
-        sps2_install::AtomicInstaller::new(ctx.state.clone(), ctx.store.clone());
+        sps2_install::AtomicInstaller::new(ctx.state.clone(), ctx.store.clone()).await?;
 
     atomic_installer.rollback(target_id).await?;
 

@@ -6,10 +6,23 @@
 //! This crate provides the event types and channel aliases used for
 //! communication between crates. All output goes through events - no
 //! direct logging or printing is allowed outside the CLI.
+//!
+//! ## Progress Tracking
+//!
+//! This crate includes sophisticated progress tracking algorithms with:
+//! - Speed calculation with smoothing and outlier detection
+//! - Accurate ETA calculations with adaptive windows
+//! - Phase-aware progress for multi-stage operations
+//! - Memory-efficient data structures (<1KB per tracker)
+
+pub mod progress;
+
+pub use progress::*;
 
 use serde::{Deserialize, Serialize};
 use sps2_types::{StateId, Version};
 use std::collections::HashMap;
+use std::time::Duration;
 
 /// Type alias for event sender
 pub type EventSender = tokio::sync::mpsc::UnboundedSender<Event>;
@@ -43,6 +56,16 @@ pub enum Event {
     },
     DownloadFailed {
         url: String,
+        error: String,
+    },
+    DownloadResuming {
+        url: String,
+        offset: u64,
+        total_size: Option<u64>,
+    },
+    DownloadInterrupted {
+        url: String,
+        bytes_downloaded: u64,
         error: String,
     },
 
@@ -210,6 +233,35 @@ pub enum Event {
         issues: Vec<String>,
     },
 
+    // Advanced Progress Tracking
+    ProgressStarted {
+        id: String,
+        operation: String,
+        total: Option<u64>,
+        phases: Vec<ProgressPhase>,
+    },
+    ProgressUpdated {
+        id: String,
+        current: u64,
+        total: Option<u64>,
+        phase: Option<usize>,
+        speed: Option<f64>,
+        eta: Option<Duration>,
+    },
+    ProgressPhaseChanged {
+        id: String,
+        phase: usize,
+        phase_name: String,
+    },
+    ProgressCompleted {
+        id: String,
+        duration: Duration,
+    },
+    ProgressFailed {
+        id: String,
+        error: String,
+    },
+
     // Audit operations
     AuditStarting {
         package_count: usize,
@@ -262,6 +314,11 @@ pub enum Event {
     },
 
     // Package download events
+    PackageDownloadStarted {
+        name: String,
+        version: Version,
+        url: String,
+    },
     PackageDownloaded {
         name: String,
         version: Version,
@@ -270,6 +327,11 @@ pub enum Event {
         name: String,
         version: Version,
         path: String,
+    },
+    PackageSignatureDownloaded {
+        name: String,
+        version: Version,
+        verified: bool,
     },
 
     // Dependency resolution

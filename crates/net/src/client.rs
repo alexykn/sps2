@@ -105,6 +105,41 @@ impl NetClient {
         .await
     }
 
+    /// Execute a GET request with Range header for partial content
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails after all retry attempts, including
+    /// network timeouts, connection failures, or server errors.
+    pub async fn get_range(
+        &self,
+        url: &str,
+        start_byte: u64,
+        end_byte: Option<u64>,
+    ) -> Result<Response, Error> {
+        let range_value = match end_byte {
+            Some(end) => format!("bytes={start_byte}-{end}"),
+            None => format!("bytes={start_byte}-"),
+        };
+
+        self.get_with_headers(url, &[("Range", &range_value)]).await
+    }
+
+    /// Check if server supports range requests
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the HEAD request fails.
+    pub async fn supports_range_requests(&self, url: &str) -> Result<bool, Error> {
+        let response = self.head(url).await?;
+
+        Ok(response
+            .headers()
+            .get("accept-ranges")
+            .and_then(|v| v.to_str().ok())
+            == Some("bytes"))
+    }
+
     /// Execute a HEAD request with retries
     ///
     /// # Errors

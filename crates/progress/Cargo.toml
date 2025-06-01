@@ -1,0 +1,26 @@
+[package]
+name = "spsv2_progress"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.86.0"
+description = "Progress tracking and reporting for sps2 package manager"
+license = "MIT"
+
+[dependencies]
+# Core dependencies
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.0", features = ["sync", "time", "macros"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# Internal dependencies 
+spsv2-errors = { path = "../errors" }
+spsv2-events = { path = "../events" }
+spsv2-types = { path = "../types" }
+
+# Progress tracking and math
+dashmap = "5.5"
+crossbeam = "0.8"
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.8"

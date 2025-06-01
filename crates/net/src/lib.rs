@@ -8,9 +8,14 @@
 
 mod client;
 mod download;
+mod package_download;
 
 pub use client::{DownloadProgress, NetClient, NetConfig};
 pub use download::{Download, DownloadResult};
+pub use package_download::{
+    PackageDownloadConfig, PackageDownloadRequest, PackageDownloadResult, PackageDownloader,
+    RetryConfig,
+};
 
 use sps2_errors::{Error, NetworkError};
 use sps2_events::{Event, EventSender, EventSenderExt};

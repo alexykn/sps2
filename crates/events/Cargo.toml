@@ -13,7 +13,7 @@ sps2-types = { path = "../types" }
 tokio = { workspace = true, features = ["sync"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
-uuid = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
 semver = { workspace = true }
 
 [dev-dependencies]

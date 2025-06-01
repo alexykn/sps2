@@ -8,6 +8,14 @@ publish = false
 name = "integration"
 path = "integration.rs"
 
+[[test]]
+name = "download_tests"
+path = "download_tests.rs"
+
+[[test]]
+name = "integration_install"
+path = "integration_install.rs"
+
 [dependencies]
 # Internal crates
 sps2-audit = { path = "../crates/audit" }
@@ -40,3 +48,10 @@ sqlx = { version = "0.8.6", features = [
     "macros",
     "migrate",
 ] }
+async-compression = { version = "0.4.20", features = ["tokio", "zstd"] }
+tar = "0.4.43"
+httpmock = "0.7.0"
+rand = "0.8"
+uuid = { version = "1.11.0", features = ["v4"] }
+blake3 = "1.5.5"
+reqwest = "0.12"

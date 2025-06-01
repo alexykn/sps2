@@ -23,6 +23,7 @@ index_max_age_days = 1
 [build]
 build_jobs = 2
 network_access = true
+compression_level = "balanced"
 
 [state]
 retention_count = 5

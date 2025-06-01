@@ -204,6 +204,10 @@ async fn execute_command(
             output_dir,
             network,
             jobs,
+            compression_level: _,
+            fast: _,
+            max: _,
+            legacy: _,
         } => {
             let output_path = output_dir.as_deref();
             let report = sps2_ops::build(&ctx, &recipe, output_path, network, jobs).await?;
@@ -435,6 +439,10 @@ mod tests {
             output_dir: None,
             network: true,
             jobs: Some(8),
+            compression_level: None,
+            fast: false,
+            max: false,
+            legacy: false,
         };
 
         apply_cli_config(&mut config, &global_args, &command).unwrap();

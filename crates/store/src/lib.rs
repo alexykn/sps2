@@ -8,9 +8,13 @@
 //! can be hard-linked into multiple state directories.
 
 mod archive;
+mod format_detection;
 mod package;
 
-pub use archive::{create_package, extract_package};
+pub use archive::{
+    create_package, extract_package, extract_package_with_events, list_package_contents,
+};
+pub use format_detection::{PackageFormatDetector, PackageFormatInfo, StoreFormatValidator};
 pub use package::StoredPackage;
 
 use sps2_errors::{Error, StorageError};
@@ -22,13 +26,28 @@ use std::path::{Path, PathBuf};
 #[derive(Clone)]
 pub struct PackageStore {
     base_path: PathBuf,
+    format_validator: StoreFormatValidator,
 }
 
 impl PackageStore {
     /// Create a new store instance
     #[must_use]
     pub fn new(base_path: PathBuf) -> Self {
-        Self { base_path }
+        Self {
+            base_path,
+            format_validator: StoreFormatValidator::new(),
+        }
+    }
+
+    /// Create a new store instance that allows incompatible package formats
+    ///
+    /// This is useful for migration tools that need to work with older package formats
+    #[must_use]
+    pub fn new_with_migration_support(base_path: PathBuf) -> Self {
+        Self {
+            base_path,
+            format_validator: StoreFormatValidator::allow_incompatible(),
+        }
     }
 
     /// Get the path for a package hash
@@ -53,13 +72,38 @@ impl PackageStore {
     /// - Package extraction fails
     /// - Package hash computation fails
     /// - Directory creation fails
+    /// - Package format is incompatible
     pub async fn add_package(&self, sp_file: &Path) -> Result<StoredPackage, Error> {
+        // Validate package format before processing
+        #[allow(unused_variables)] // Used in debug assertions
+        let format_info = self
+            .format_validator
+            .validate_before_storage(sp_file)
+            .await?;
+
+        // Log format information for debugging
+        #[cfg(debug_assertions)]
+        eprintln!(
+            "Adding package with format version {} (detected from {})",
+            format_info.version,
+            if format_info.from_header {
+                "header"
+            } else {
+                "manifest"
+            }
+        );
+
         // Compute hash of the .sp file
         let hash = Hash::hash_file(sp_file).await?;
 
         // Check if already exists
         let dest_path = self.package_path(&hash);
         if exists(&dest_path).await {
+            // Validate existing package format too
+            let _existing_format = self
+                .format_validator
+                .validate_stored_package(&dest_path)
+                .await?;
             return StoredPackage::load(&dest_path).await;
         }
 
@@ -324,6 +368,51 @@ impl PackageStore {
         Ok(())
     }
 
+    /// Get package format information from a .sp file
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if format detection fails
+    pub async fn get_package_format_info(
+        &self,
+        sp_file: &Path,
+    ) -> Result<PackageFormatInfo, Error> {
+        let detector = PackageFormatDetector::new();
+        detector.detect_format(sp_file).await
+    }
+
+    /// Get package format information from a stored package
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the package is not found or format detection fails
+    pub async fn get_stored_package_format_info(
+        &self,
+        hash: &Hash,
+    ) -> Result<PackageFormatInfo, Error> {
+        let package_path = self.package_path(hash);
+        if !exists(&package_path).await {
+            return Err(StorageError::PackageNotFound {
+                hash: hash.to_hex(),
+            }
+            .into());
+        }
+
+        self.format_validator
+            .validate_stored_package(&package_path)
+            .await
+    }
+
+    /// Check if a stored package is compatible with the current format version
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the package is not found or format detection fails
+    pub async fn is_package_compatible(&self, hash: &Hash) -> Result<bool, Error> {
+        let format_info = self.get_stored_package_format_info(hash).await?;
+        Ok(format_info.is_compatible)
+    }
+
     /// Get package size by name and version
     ///
     /// # Errors
@@ -353,6 +442,105 @@ impl PackageStore {
     ) -> Result<StoredPackage, Error> {
         // For now, just delegate to add_package
         self.add_package(file_path).await
+    }
+
+    /// Add package from staging directory
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if staging directory processing fails
+    pub async fn add_package_from_staging(
+        &self,
+        staging_path: &std::path::Path,
+        _package_id: &sps2_resolver::PackageId,
+    ) -> Result<StoredPackage, Error> {
+        // Read manifest to get package info
+        let manifest_path = staging_path.join("manifest.toml");
+        let _manifest_content = tokio::fs::read_to_string(&manifest_path)
+            .await
+            .map_err(|e| StorageError::IoError {
+                message: format!("failed to read manifest from staging: {e}"),
+            })?;
+
+        // Compute hash of staging directory contents
+        let hash = self.compute_staging_hash(staging_path).await?;
+
+        // Check if already exists
+        let dest_path = self.package_path(&hash);
+        if exists(&dest_path).await {
+            return StoredPackage::load(&dest_path).await;
+        }
+
+        // Create parent directory
+        if let Some(parent) = dest_path.parent() {
+            create_dir_all(parent).await?;
+        }
+
+        // Copy staging directory to store
+        self.copy_staging_to_store(staging_path, &dest_path).await?;
+
+        // Set compression on macOS
+        set_compression(&dest_path)?;
+
+        StoredPackage::load(&dest_path).await
+    }
+
+    /// Compute hash of staging directory contents
+    async fn compute_staging_hash(&self, staging_path: &Path) -> Result<Hash, Error> {
+        // For now, use a simple approach - hash the manifest content
+        let manifest_path = staging_path.join("manifest.toml");
+        Hash::hash_file(&manifest_path).await
+    }
+
+    /// Copy staging directory to store location
+    async fn copy_staging_to_store(
+        &self,
+        staging_path: &Path,
+        dest_path: &Path,
+    ) -> Result<(), Error> {
+        // Create destination directory
+        create_dir_all(dest_path).await?;
+
+        // Copy all files from staging to destination
+        let mut entries =
+            tokio::fs::read_dir(staging_path)
+                .await
+                .map_err(|e| StorageError::IoError {
+                    message: format!("failed to read staging directory: {e}"),
+                })?;
+
+        while let Some(entry) = entries
+            .next_entry()
+            .await
+            .map_err(|e| StorageError::IoError {
+                message: format!("failed to read staging entry: {e}"),
+            })?
+        {
+            let entry_path = entry.path();
+            let file_name = entry.file_name();
+            let dest_file = dest_path.join(&file_name);
+
+            if entry
+                .file_type()
+                .await
+                .map_err(|e| StorageError::IoError {
+                    message: format!("failed to get file type: {e}"),
+                })?
+                .is_dir()
+            {
+                // Recursively copy directory
+                Box::pin(self.copy_staging_to_store(&entry_path, &dest_file)).await?;
+            } else {
+                // Copy file
+                tokio::fs::copy(&entry_path, &dest_file)
+                    .await
+                    .map_err(|e| StorageError::IoError {
+                        message: format!("failed to copy file {}: {e}", entry_path.display()),
+                    })?;
+            }
+        }
+
+        Ok(())
     }
 }
 

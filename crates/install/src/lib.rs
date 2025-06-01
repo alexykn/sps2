@@ -10,11 +10,19 @@ mod atomic;
 mod installer;
 mod operations;
 mod parallel;
+mod pipeline;
+mod staging;
+mod validation;
 
 pub use atomic::{AtomicInstaller, StateTransition};
 pub use installer::{InstallConfig, Installer};
 pub use operations::{InstallOperation, UninstallOperation, UpdateOperation};
 pub use parallel::{ExecutionContext, ParallelExecutor};
+pub use pipeline::{BatchResult, BatchStats, PipelineConfig, PipelineMaster};
+pub use staging::{StagingDirectory, StagingGuard, StagingManager};
+pub use validation::{
+    validate_sp_file, validate_tar_archive_content, PackageFormat, ValidationResult,
+};
 
 // Removed unused imports: Error, EventSender, ResolutionResult, Version, HashMap
 // These will be imported where needed in future implementations

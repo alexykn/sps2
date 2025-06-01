@@ -1,6 +1,6 @@
 //! Atomic installation operations using APFS clonefile and state transitions
 
-use crate::{InstallContext, InstallResult};
+use crate::{InstallContext, InstallResult, StagingManager};
 use sps2_errors::{Error, InstallError};
 use sps2_events::Event;
 use sps2_resolver::{PackageId, ResolvedNode};
@@ -17,19 +17,27 @@ pub struct AtomicInstaller {
     state_manager: StateManager,
     /// Package store
     store: PackageStore,
+    /// Staging manager for secure extraction
+    staging_manager: StagingManager,
     /// Live prefix path
     live_path: PathBuf,
 }
 
 impl AtomicInstaller {
     /// Create new atomic installer
-    #[must_use]
-    pub fn new(state_manager: StateManager, store: PackageStore) -> Self {
-        Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if staging manager initialization fails
+    pub async fn new(state_manager: StateManager, store: PackageStore) -> Result<Self, Error> {
+        let staging_manager = StagingManager::new(store.clone()).await?;
+
+        Ok(Self {
             state_manager,
             store,
+            staging_manager,
             live_path: PathBuf::from("/opt/pm/live"),
-        }
+        })
     }
 
     /// Perform atomic installation
@@ -102,15 +110,107 @@ impl AtomicInstaller {
             }
             sps2_resolver::NodeAction::Local => {
                 if let Some(local_path) = &node.path {
-                    // Extract local package to store and link
-                    let store_path = self.store.add_local_package(local_path).await?;
-                    self.link_package_to_staging(transition, &store_path, package_id)
+                    // Use the new staging system for local packages
+                    self.install_local_package_with_staging(transition, local_path, package_id)
                         .await?;
                 }
             }
         }
 
         result.add_installed(package_id.clone());
+        Ok(())
+    }
+
+    /// Install a local package using the staging system
+    async fn install_local_package_with_staging(
+        &self,
+        transition: &StateTransition,
+        local_path: &Path,
+        package_id: &PackageId,
+    ) -> Result<(), Error> {
+        // Extract to staging directory with validation
+        let staging_dir = self
+            .staging_manager
+            .extract_to_staging(local_path, package_id, None)
+            .await?;
+
+        // Create staging guard for automatic cleanup on failure
+        let mut staging_guard = crate::StagingGuard::new(staging_dir);
+
+        // Get the validated staging directory
+        let staging_dir =
+            staging_guard
+                .staging_dir()
+                .ok_or_else(|| InstallError::AtomicOperationFailed {
+                    message: "staging directory unavailable".to_string(),
+                })?;
+
+        // Add package to store from staging directory
+        let _stored_package = self.store.add_package(local_path).await?;
+
+        // Link package contents from staging to final location
+        self.link_validated_staging_to_transition(transition, staging_dir, package_id)
+            .await?;
+
+        // Successfully processed - prevent cleanup
+        let _staging_dir = staging_guard.take()?;
+
+        Ok(())
+    }
+
+    /// Link validated staging directory contents to state transition
+    async fn link_validated_staging_to_transition(
+        &self,
+        transition: &StateTransition,
+        staging_dir: &crate::StagingDirectory,
+        package_id: &PackageId,
+    ) -> Result<(), Error> {
+        let staging_files_path = staging_dir.files_path();
+        let staging_prefix = &transition.staging_path;
+        let mut file_paths = Vec::new();
+
+        // Link files from validated staging to transition staging
+        if staging_files_path.exists() {
+            self.create_hardlinks_recursive_with_tracking(
+                &staging_files_path,
+                staging_prefix,
+                &staging_files_path,
+                &mut file_paths,
+            )
+            .await?;
+        }
+
+        // Begin database transaction to record package and files
+        let mut tx = self.state_manager.begin_transaction().await?;
+
+        // Update package references in database
+        // TODO: Get actual hash and size from staging or store
+        let package_ref = PackageRef {
+            state_id: transition.staging_id,
+            package_id: package_id.clone(),
+            hash: "placeholder-hash".to_string(), // TODO: Get from staging validation
+            size: 0,                              // TODO: Calculate from staging
+        };
+        self.state_manager
+            .add_package_ref_with_tx(&mut tx, &package_ref)
+            .await?;
+
+        // Record all linked files in the package_files table
+        for (file_path, is_directory) in file_paths {
+            sps2_state::queries::add_package_file(
+                &mut tx,
+                &transition.staging_id,
+                &package_id.name,
+                &package_id.version.to_string(),
+                &file_path,
+                is_directory,
+            )
+            .await?;
+        }
+
+        // Commit the transaction
+        tx.commit().await?;
+
         Ok(())
     }
 

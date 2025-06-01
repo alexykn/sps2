@@ -181,7 +181,7 @@ impl Installer {
 
         // Create atomic installer for rollback
         let mut atomic_installer =
-            AtomicInstaller::new(self.state_manager.clone(), self.store.clone());
+            AtomicInstaller::new(self.state_manager.clone(), self.store.clone()).await?;
 
         // Perform rollback
         atomic_installer.rollback(target_state_id).await?;

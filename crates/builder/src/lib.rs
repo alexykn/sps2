@@ -8,14 +8,18 @@
 
 mod api;
 mod builder;
+mod compression;
 mod environment;
+mod format;
 mod sbom;
 mod signing;
 mod starlark_bridge;
 
 pub use api::BuilderApi;
 pub use builder::{BuildConfig, Builder};
+pub use compression::{CompressionConfig, CompressionLevel};
 pub use environment::{BuildCommandResult, BuildEnvironment, BuildResult};
+pub use format::{detect_compression_format, CompressionFormatInfo};
 pub use sbom::{SbomConfig, SbomFiles, SbomGenerator};
 pub use signing::{PackageSigner, SigningConfig};
 pub use starlark_bridge::StarlarkBridge;

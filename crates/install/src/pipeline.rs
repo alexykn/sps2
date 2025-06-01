@@ -291,7 +291,7 @@ impl PipelineMaster {
             Some(resolved_packages.len() as u64),
             phases,
             tx.clone(),
-        ).await;
+        );
 
         // Execute the batch pipeline
         let batch_result = match self
@@ -347,7 +347,7 @@ impl PipelineMaster {
         };
 
         // Complete progress tracking
-        self.progress_manager.complete_operation(&progress_id, tx).await;
+        self.progress_manager.complete_operation(&progress_id, tx);
 
         tx.emit(Event::OperationCompleted {
             operation: format!(
@@ -377,7 +377,7 @@ impl PipelineMaster {
 
         // Phase 1: Parallel Downloads with Dependency Ordering
         let download_start = Instant::now();
-        self.progress_manager.change_phase(progress_id, 0, tx).await;
+        self.progress_manager.change_phase(progress_id, 0, tx);
 
         let download_results = self
             .execute_parallel_downloads(execution_plan, resolved_packages, progress_id, tx)
@@ -387,7 +387,7 @@ impl PipelineMaster {
 
         // Phase 2: Streaming Decompress + Validation Pipeline
         let decompress_start = Instant::now();
-        self.progress_manager.change_phase(progress_id, 1, tx).await;
+        self.progress_manager.change_phase(progress_id, 1, tx);
 
         let decompress_results = if self.config.enable_streaming {
             self.execute_streaming_decompress_validate(&download_results, progress_id, tx)
@@ -401,11 +401,27 @@ impl PipelineMaster {
 
         // Phase 3: Staging and Installation
         let install_start = Instant::now();
-        self.progress_manager.change_phase(progress_id, 3, tx).await;
+        self.progress_manager.change_phase(progress_id, 3, tx);
+
+        tx.emit(Event::DebugLog {
+            message: format!(
+                "DEBUG: Starting staging/installation phase with {} packages",
+                decompress_results.len()
+            ),
+            context: std::collections::HashMap::new(),
+        });
 
         let install_results = self
             .execute_parallel_staging_install(&decompress_results, progress_id, tx)
             .await?;
+
+        tx.emit(Event::DebugLog {
+            message: format!(
+                "DEBUG: Staging/installation completed with {} results",
+                install_results.len()
+            ),
+            context: std::collections::HashMap::new(),
+        });
 
         stage_timings.insert("install".to_string(), install_start.elapsed());
 
@@ -510,7 +526,7 @@ impl PipelineMaster {
                     completed.len() as u64,
                     Some(resolved_packages.len() as u64),
                     tx,
-                ).await;
+                );
             }
 
             // Small delay to prevent busy waiting
@@ -821,7 +837,28 @@ impl PipelineMaster {
                     message: "failed to acquire validation semaphore".to_string(),
                 })?;
 
-        let validation_result = validate_sp_file(&temp_path, Some(tx)).await?;
+        tx.emit(Event::DebugLog {
+            message: format!(
+                "DEBUG: About to validate decompressed tar file: {}",
+                temp_path.display()
+            ),
+            context: std::collections::HashMap::new(),
+        });
+
+        // Validate the decompressed tar content, not as a .sp file
+        let mut validation_result = crate::ValidationResult::new(crate::PackageFormat::PlainTar);
+        crate::validate_tar_archive_content(&temp_path, &mut validation_result).await?;
+        validation_result.mark_valid();
+
+        tx.emit(Event::DebugLog {
+            message: format!(
+                "DEBUG: Validation result: valid={}, file_count={}, size={}",
+                validation_result.is_valid,
+                validation_result.file_count,
+                validation_result.extracted_size
+            ),
+            context: std::collections::HashMap::new(),
+        });
 
         if !validation_result.is_valid {
             return Err(InstallError::InvalidPackageFile {
@@ -874,7 +911,7 @@ impl PipelineMaster {
                 results.len() as u64,
                 Some(download_results.len() as u64),
                 tx,
-            ).await;
+            );
         }
 
         Ok(results)
@@ -941,24 +978,66 @@ impl PipelineMaster {
         store: &PackageStore,
         tx: &EventSender,
     ) -> Result<PackageId, Error> {
+        tx.emit(Event::DebugLog {
+            message: format!(
+                "DEBUG: Starting staging/install for package: {}",
+                decompress_result.package_id.name
+            ),
+            context: std::collections::HashMap::new(),
+        });
+
         // Extract to staging directory
+        tx.emit(Event::DebugLog {
+            message: format!(
+                "DEBUG: Extracting to staging directory from: {}",
+                decompress_result.decompressed_path.display()
+            ),
+            context: std::collections::HashMap::new(),
+        });
+
         let staging_dir = staging_manager
-            .extract_to_staging(
+            .extract_validated_tar_to_staging(
                 &decompress_result.decompressed_path,
                 &decompress_result.package_id,
                 Some(tx),
             )
             .await?;
 
+        tx.emit(Event::DebugLog {
+            message: format!(
+                "DEBUG: Extracted to staging directory: {}",
+                staging_dir.path().display()
+            ),
+            context: std::collections::HashMap::new(),
+        });
+
         // Install from staging directory
+        tx.emit(Event::DebugLog {
+            message: "DEBUG: Adding package to store from staging".to_string(),
+            context: std::collections::HashMap::new(),
+        });
+
         store
             .add_package_from_staging(staging_dir.path(), &decompress_result.package_id)
             .await?;
+
+        tx.emit(Event::DebugLog {
+            message: "DEBUG: Package added to store successfully".to_string(),
+            context: std::collections::HashMap::new(),
+        });
 
         tx.emit(Event::PackageInstalled {
             name: decompress_result.package_id.name.clone(),
             version: decompress_result.package_id.version.clone(),
             path: staging_dir.path().display().to_string(),
+        });
+
+        tx.emit(Event::DebugLog {
+            message: format!(
+                "DEBUG: Package installation completed: {}",
+                decompress_result.package_id.name
+            ),
+            context: std::collections::HashMap::new(),
         });
 
         Ok(decompress_result.package_id.clone())

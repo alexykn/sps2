@@ -37,6 +37,9 @@ pub enum StorageError {
 
     #[error("atomic rename failed: {message}")]
     AtomicRenameFailed { message: String },
+
+    #[error("package not found: {hash}")]
+    PackageNotFound { hash: String },
 }
 
 impl From<std::io::Error> for StorageError {

@@ -933,6 +933,7 @@ impl Default for Config {
             build: BuildConfig {
                 build_jobs: 0,  // 0 = num_cpus::get()
                 network_access: false,
+                compression_level: "balanced".to_string(),
             },
             security: SecurityConfig {
                 verify_signatures: true,
@@ -958,6 +959,7 @@ parallel_downloads = 4
 [build]
 build_jobs = 0          # 0 = auto-detect from CPU count
 network_access = false  # Allow network during builds
+compression_level = "balanced"  # Options: "fast", "balanced", "maximum", or "1"-"22"
 
 [security]
 verify_signatures = true
