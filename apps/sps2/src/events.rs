@@ -48,37 +48,37 @@ impl EventHandler {
 
             // Package events
             Event::PackageInstalling { name, version } => {
-                self.show_status(&format!("📦 Installing {} {}", name, version));
+                self.show_status(&format!("Installing {} {}", name, version));
             }
             Event::PackageInstalled {
                 name,
                 version,
                 path: _,
             } => {
-                self.show_status(&format!("✅ Installed {} {}", name, version));
+                self.show_status(&format!("Installed {} {}", name, version));
             }
             Event::PackageDownloaded { name, version } => {
-                self.show_status(&format!("📥 Downloaded {} {}", name, version));
+                self.show_status(&format!("Downloaded {} {}", name, version));
             }
             Event::PackageBuilding { name, version } => {
-                self.show_status(&format!("🔨 Building {} {}", name, version));
+                self.show_status(&format!("Building {} {}", name, version));
             }
 
             // State events
             Event::StateCreating { state_id } => {
-                self.show_status(&format!("🔄 Creating state {}", state_id));
+                self.show_status(&format!("Creating state {}", state_id));
             }
             Event::StateTransition {
                 from,
                 to,
                 operation: _,
             } => {
-                self.show_status(&format!("🔄 State transition {} → {}", from, to));
+                self.show_status(&format!("State transition {} -> {}", from, to));
             }
 
             // Build events
             Event::BuildStarting { package, version } => {
-                self.show_status(&format!("🔨 Starting build of {} {}", package, version));
+                self.show_status(&format!("Starting build of {} {}", package, version));
             }
             Event::BuildCompleted {
                 package,
@@ -86,7 +86,7 @@ impl EventHandler {
                 path,
             } => {
                 self.show_status(&format!(
-                    "✅ Built {} {} → {}",
+                    "Built {} {} -> {}",
                     package,
                     version,
                     path.display()
@@ -98,12 +98,12 @@ impl EventHandler {
                 error,
             } => {
                 self.show_error(&format!(
-                    "❌ Build failed for {} {}: {}",
+                    "Build failed for {} {}: {}",
                     package, version, error
                 ));
             }
             Event::BuildStepStarted { package, step } => {
-                self.show_status(&format!("🔧 {} > {}", package, step));
+                self.show_status(&format!("{} > {}", package, step));
             }
             Event::BuildStepOutput {
                 package: _,
@@ -113,21 +113,21 @@ impl EventHandler {
                 // This event is kept for compatibility but not displayed
             }
             Event::BuildStepCompleted { package, step } => {
-                self.show_status(&format!("✅ {} > {} completed", package, step));
+                self.show_status(&format!("{} > {} completed", package, step));
             }
             Event::BuildCommand { package, command } => {
-                self.show_status(&format!("🔧 {} > {}", package, command));
+                self.show_status(&format!("{} > {}", package, command));
             }
             Event::BuildCleaned { package } => {
-                self.show_status(&format!("🧹 Cleaned build for {}", package));
+                self.show_status(&format!("Cleaned build for {}", package));
             }
 
             // Resolver events
             Event::DependencyResolving { package, count } => {
                 if count == 1 {
-                    self.show_status(&format!("🔍 Resolving dependencies for {}", package));
+                    self.show_status(&format!("Resolving dependencies for {}", package));
                 } else {
-                    self.show_status(&format!("🔍 Resolving dependencies for {} packages", count));
+                    self.show_status(&format!("Resolving dependencies for {} packages", count));
                 }
             }
             Event::DependencyResolved {
@@ -136,29 +136,26 @@ impl EventHandler {
                 count,
             } => {
                 if count == 1 {
-                    self.show_status(&format!("✅ Resolved dependencies for {}", package));
+                    self.show_status(&format!("Resolved dependencies for {}", package));
                 } else {
-                    self.show_status(&format!("✅ Resolved {} dependencies", count));
+                    self.show_status(&format!("Resolved {} dependencies", count));
                 }
             }
 
             // Operation events
             Event::InstallStarting { packages } => {
                 if packages.len() == 1 {
-                    self.show_status(&format!("📦 Installing {}", packages[0]));
+                    self.show_status(&format!("Installing {}", packages[0]));
                 } else {
-                    self.show_status(&format!("📦 Installing {} packages", packages.len()));
+                    self.show_status(&format!("Installing {} packages", packages.len()));
                 }
             }
             Event::InstallCompleted { packages, state_id } => {
                 if packages.len() == 1 {
-                    self.show_status(&format!(
-                        "✅ Installed {} (state: {})",
-                        packages[0], state_id
-                    ));
+                    self.show_status(&format!("Installed {} (state: {})", packages[0], state_id));
                 } else {
                     self.show_status(&format!(
-                        "✅ Installed {} packages (state: {})",
+                        "Installed {} packages (state: {})",
                         packages.len(),
                         state_id
                     ));
@@ -166,20 +163,20 @@ impl EventHandler {
             }
             Event::UninstallStarting { packages } => {
                 if packages.len() == 1 {
-                    self.show_status(&format!("🗑️  Uninstalling {}", packages[0]));
+                    self.show_status(&format!("Uninstalling {}", packages[0]));
                 } else {
-                    self.show_status(&format!("🗑️  Uninstalling {} packages", packages.len()));
+                    self.show_status(&format!("Uninstalling {} packages", packages.len()));
                 }
             }
             Event::UninstallCompleted { packages, state_id } => {
                 if packages.len() == 1 {
                     self.show_status(&format!(
-                        "✅ Uninstalled {} (state: {})",
+                        "Uninstalled {} (state: {})",
                         packages[0], state_id
                     ));
                 } else {
                     self.show_status(&format!(
-                        "✅ Uninstalled {} packages (state: {})",
+                        "Uninstalled {} packages (state: {})",
                         packages.len(),
                         state_id
                     ));
@@ -187,21 +184,21 @@ impl EventHandler {
             }
             Event::UpdateStarting { packages } => {
                 if packages.len() == 1 && packages[0] == "all" {
-                    self.show_status("🔄 Updating all packages");
+                    self.show_status("Updating all packages");
                 } else if packages.len() == 1 {
-                    self.show_status(&format!("🔄 Updating {}", packages[0]));
+                    self.show_status(&format!("Updating {}", packages[0]));
                 } else {
-                    self.show_status(&format!("🔄 Updating {} packages", packages.len()));
+                    self.show_status(&format!("Updating {} packages", packages.len()));
                 }
             }
             Event::UpdateCompleted { packages, state_id } => {
                 if packages.is_empty() {
-                    self.show_status(&format!("ℹ️  No updates available (state: {})", state_id));
+                    self.show_status(&format!("No updates available (state: {})", state_id));
                 } else if packages.len() == 1 {
-                    self.show_status(&format!("✅ Updated {} (state: {})", packages[0], state_id));
+                    self.show_status(&format!("Updated {} (state: {})", packages[0], state_id));
                 } else {
                     self.show_status(&format!(
-                        "✅ Updated {} packages (state: {})",
+                        "Updated {} packages (state: {})",
                         packages.len(),
                         state_id
                     ));
@@ -209,24 +206,21 @@ impl EventHandler {
             }
             Event::UpgradeStarting { packages } => {
                 if packages.len() == 1 && packages[0] == "all" {
-                    self.show_status("⬆️  Upgrading all packages");
+                    self.show_status("Upgrading all packages");
                 } else if packages.len() == 1 {
-                    self.show_status(&format!("⬆️  Upgrading {}", packages[0]));
+                    self.show_status(&format!("Upgrading {}", packages[0]));
                 } else {
-                    self.show_status(&format!("⬆️  Upgrading {} packages", packages.len()));
+                    self.show_status(&format!("Upgrading {} packages", packages.len()));
                 }
             }
             Event::UpgradeCompleted { packages, state_id } => {
                 if packages.is_empty() {
-                    self.show_status(&format!("ℹ️  No upgrades available (state: {})", state_id));
+                    self.show_status(&format!("No upgrades available (state: {})", state_id));
                 } else if packages.len() == 1 {
-                    self.show_status(&format!(
-                        "✅ Upgraded {} (state: {})",
-                        packages[0], state_id
-                    ));
+                    self.show_status(&format!("Upgraded {} (state: {})", packages[0], state_id));
                 } else {
                     self.show_status(&format!(
-                        "✅ Upgraded {} packages (state: {})",
+                        "Upgraded {} packages (state: {})",
                         packages.len(),
                         state_id
                     ));
@@ -235,20 +229,17 @@ impl EventHandler {
 
             // Repository events
             Event::RepoSyncStarting => {
-                self.show_status("🔄 Syncing repository index");
+                self.show_status("Syncing repository index");
             }
             Event::RepoSyncCompleted {
                 packages_updated,
                 duration_ms,
             } => {
                 if packages_updated == 0 {
-                    self.show_status(&format!(
-                        "ℹ️  Repository index up to date ({}ms)",
-                        duration_ms
-                    ));
+                    self.show_status(&format!("Repository index up to date ({}ms)", duration_ms));
                 } else {
                     self.show_status(&format!(
-                        "✅ Updated {} packages ({}ms)",
+                        "Updated {} packages ({}ms)",
                         packages_updated, duration_ms
                     ));
                 }
@@ -256,23 +247,23 @@ impl EventHandler {
 
             // Search events
             Event::SearchStarting { query } => {
-                self.show_status(&format!("🔍 Searching for '{}'", query));
+                self.show_status(&format!("Searching for '{}'", query));
             }
             Event::SearchCompleted { query: _, count } => {
-                self.show_status(&format!("✅ Found {} packages", count));
+                self.show_status(&format!("Found {} packages", count));
             }
 
             // List events
             Event::ListStarting => {
-                self.show_status("📋 Listing installed packages");
+                self.show_status("Listing installed packages");
             }
             Event::ListCompleted { count } => {
-                self.show_status(&format!("✅ Found {} installed packages", count));
+                self.show_status(&format!("Found {} installed packages", count));
             }
 
             // Cleanup events
             Event::CleanupStarting => {
-                self.show_status("🧹 Cleaning up system");
+                self.show_status("Cleaning up system");
             }
             Event::CleanupCompleted {
                 states_removed,
@@ -280,77 +271,76 @@ impl EventHandler {
                 duration_ms,
             } => {
                 self.show_status(&format!(
-                    "✅ Cleaned {} states and {} packages ({}ms)",
+                    "Cleaned {} states and {} packages ({}ms)",
                     states_removed, packages_removed, duration_ms
                 ));
             }
 
             // Rollback events
             Event::RollbackStarting { target_state } => {
-                self.show_status(&format!("⏪ Rolling back to state {}", target_state));
+                self.show_status(&format!("Rolling back to state {}", target_state));
             }
             Event::RollbackCompleted {
                 target_state,
                 duration_ms,
             } => {
                 self.show_status(&format!(
-                    "✅ Rolled back to {} ({}ms)",
+                    "Rolled back to {} ({}ms)",
                     target_state, duration_ms
                 ));
             }
 
             // Health check events
             Event::HealthCheckStarting => {
-                self.show_status("🔍 Checking system health");
+                self.show_status("Checking system health");
             }
             Event::HealthCheckCompleted { healthy, issues } => {
                 if healthy {
-                    self.show_status("✅ System healthy");
+                    self.show_status("System healthy");
                 } else {
-                    self.show_status(&format!("⚠️  {} issues found", issues.len()));
+                    self.show_status(&format!("{} issues found", issues.len()));
                 }
             }
 
             // Operation events
             Event::OperationStarted { operation } => {
-                self.show_status(&format!("🔄 {}", operation));
+                self.show_status(&operation);
             }
-            Event::OperationCompleted { operation, success } => {
-                if success {
-                    self.show_status(&format!("✅ {}", operation));
-                } else {
-                    self.show_status(&format!("⚠️  {}", operation));
-                }
+            Event::OperationCompleted {
+                operation,
+                success: _,
+            } => {
+                self.show_status(&operation);
             }
             Event::OperationFailed { operation, error } => {
-                self.show_error(&format!("❌ {} failed: {}", operation, error));
+                self.show_error(&format!("{} failed: {}", operation, error));
             }
 
             // Index events
             Event::IndexUpdateStarting { url } => {
-                self.show_status(&format!("📥 Updating index from {}", url));
+                self.show_status(&format!("Updating index from {}", url));
             }
             Event::IndexUpdateCompleted {
                 packages_added,
                 packages_updated,
             } => {
                 self.show_status(&format!(
-                    "✅ Index updated: {} added, {} updated",
+                    "Index updated: {} added, {} updated",
                     packages_added, packages_updated
                 ));
             }
 
             // State rollback event
             Event::StateRollback { from, to } => {
-                self.show_status(&format!("⏪ Rolled back from {} to {}", from, to));
+                self.show_status(&format!("Rolled back from {} to {}", from, to));
             }
 
             // Error events
             Event::Error { message, details } => {
                 if let Some(details) = details {
-                    self.show_error(&format!("❌ {}: {}", message, details));
+                    self.show_error(&format!("{}: {}", message, details));
                 } else {
-                    self.show_error(&format!("❌ {}", message));
+                    self.show_error(&message);
                 }
             }
 
@@ -358,14 +348,14 @@ impl EventHandler {
             Event::DebugLog { message, context } => {
                 // For now, always show debug logs during builds to help troubleshoot
                 if context.is_empty() {
-                    self.show_status(&format!("🐛 {}", message));
+                    self.show_status(&format!("[DEBUG] {}", message));
                 } else {
                     let context_str = context
                         .iter()
                         .map(|(k, v)| format!("{}={}", k, v))
                         .collect::<Vec<_>>()
                         .join(", ");
-                    self.show_status(&format!("🐛 {} ({})", message, context_str));
+                    self.show_status(&format!("[DEBUG] {} ({})", message, context_str));
                 }
             }
 

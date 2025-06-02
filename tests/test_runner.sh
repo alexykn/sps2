@@ -111,7 +111,7 @@ if ! cargo doc --all --no-deps; then
     exit 1
 fi
 
-print_status "All tests passed! ✅"
+print_status "All tests passed!"
 
 # Optional: Check binary size
 if [ -f "target/release/sps2" ]; then

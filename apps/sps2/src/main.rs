@@ -355,7 +355,7 @@ fn show_path_reminder_if_needed() {
     let path = std::env::var("PATH").unwrap_or_default();
     if !path.contains("/opt/pm/live/bin") {
         eprintln!();
-        eprintln!("📝 Add /opt/pm/live/bin to your PATH to use installed packages:");
+        eprintln!("Add /opt/pm/live/bin to your PATH to use installed packages:");
         eprintln!("   echo 'export PATH=\"/opt/pm/live/bin:$PATH\"' >> ~/.zshrc");
         eprintln!("   source ~/.zshrc");
         eprintln!();

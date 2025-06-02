@@ -109,7 +109,7 @@ impl OutputRenderer {
 
     /// Render package information
     fn render_package_info(&self, info: &PackageInfo) -> io::Result<()> {
-        println!("📦 {}", self.style_package_name(&info.name));
+        println!("{}", self.style_package_name(&info.name));
         println!();
 
         // Basic information
@@ -205,11 +205,11 @@ impl OutputRenderer {
         }
 
         // Summary
-        println!("📦 Installation Summary");
+        println!("Installation Summary");
         println!();
 
         if !report.installed.is_empty() {
-            println!("✅ Installed ({}):", report.installed.len());
+            println!("Installed ({}):", report.installed.len());
             for change in &report.installed {
                 let version = change
                     .to_version
@@ -222,7 +222,7 @@ impl OutputRenderer {
         }
 
         if !report.updated.is_empty() {
-            println!("🔄 Updated ({}):", report.updated.len());
+            println!("Updated ({}):", report.updated.len());
             for change in &report.updated {
                 let from = change
                     .from_version
@@ -240,7 +240,7 @@ impl OutputRenderer {
         }
 
         if !report.removed.is_empty() {
-            println!("🗑️  Removed ({}):", report.removed.len());
+            println!("Removed ({}):", report.removed.len());
             for change in &report.removed {
                 let version = change
                     .from_version
@@ -252,15 +252,15 @@ impl OutputRenderer {
             println!();
         }
 
-        println!("⏱️  Completed in {}ms", report.duration_ms);
-        println!("🔄 State: {}", report.state_id);
+        println!("Completed in {}ms", report.duration_ms);
+        println!("State: {}", report.state_id);
 
         Ok(())
     }
 
     /// Render build report
     fn render_build_report(&self, report: &BuildReport) -> io::Result<()> {
-        println!("🔨 Build Summary");
+        println!("Build Summary");
         println!();
         println!("Package:  {} {}", report.package, report.version);
         println!("Output:   {}", report.output_path.display());
@@ -275,7 +275,7 @@ impl OutputRenderer {
 
     /// Render state information
     fn render_state_info(&self, info: &StateInfo) -> io::Result<()> {
-        println!("🔄 State Information");
+        println!("State Information");
         println!();
         println!("ID:       {}", info.id);
         println!("Current:  {}", if info.current { "Yes" } else { "No" });
@@ -373,7 +373,7 @@ impl OutputRenderer {
 
     /// Render health check results
     fn render_health_check(&self, health: &HealthCheck) -> io::Result<()> {
-        let overall_icon = if health.healthy { "✅" } else { "❌" };
+        let overall_icon = if health.healthy { "[OK]" } else { "[ERROR]" };
         println!("{overall_icon} System Health Check");
         println!();
 
@@ -410,14 +410,14 @@ impl OutputRenderer {
         // Issues
         if !health.issues.is_empty() {
             println!();
-            println!("🔍 Issues Found:");
+            println!("Issues Found:");
 
             for issue in &health.issues {
                 let severity_icon = match issue.severity {
-                    IssueSeverity::Low => "ℹ️",
-                    IssueSeverity::Medium => "⚠️",
-                    IssueSeverity::High => "🚨",
-                    IssueSeverity::Critical => "💥",
+                    IssueSeverity::Low => "[INFO]",
+                    IssueSeverity::Medium => "[WARN]",
+                    IssueSeverity::High => "[HIGH]",
+                    IssueSeverity::Critical => "[CRITICAL]",
                 };
 
                 println!(
@@ -428,7 +428,7 @@ impl OutputRenderer {
                 );
 
                 if let Some(suggestion) = &issue.suggestion {
-                    println!("   💡 {suggestion}");
+                    println!("   {suggestion}");
                 }
                 println!();
             }
@@ -439,13 +439,13 @@ impl OutputRenderer {
 
     /// Render success message
     fn render_success_message(&self, message: &str) -> io::Result<()> {
-        println!("✅ {message}");
+        println!("{message}");
         Ok(())
     }
 
     /// Render operation report
     fn render_op_report(&self, report: &sps2_ops::OpReport) -> io::Result<()> {
-        let icon = if report.success { "✅" } else { "❌" };
+        let icon = if report.success { "[OK]" } else { "[ERROR]" };
         println!("{icon} {} Report", report.operation);
         println!();
         println!("Summary: {}", report.summary);
@@ -506,10 +506,10 @@ impl OutputRenderer {
     /// Format package status as text
     fn format_package_status_text(&self, status: &PackageStatus) -> String {
         match status {
-            PackageStatus::Installed => "✅ Installed".to_string(),
-            PackageStatus::Outdated => "🔄 Update available".to_string(),
-            PackageStatus::Available => "📦 Available".to_string(),
-            PackageStatus::Local => "🏠 Local".to_string(),
+            PackageStatus::Installed => "Installed".to_string(),
+            PackageStatus::Outdated => "Update available".to_string(),
+            PackageStatus::Available => "Available".to_string(),
+            PackageStatus::Local => "Local".to_string(),
         }
     }
 
@@ -533,7 +533,7 @@ impl OutputRenderer {
 
     /// Render vulnerability database statistics
     fn render_vulndb_stats(&self, stats: &VulnDbStats) -> io::Result<()> {
-        println!("🔒 Vulnerability Database Statistics");
+        println!("Vulnerability Database Statistics");
         println!();
         println!("Total Vulnerabilities: {}", stats.vulnerability_count);
 
@@ -556,10 +556,10 @@ impl OutputRenderer {
             for severity in &severities {
                 if let Some(count) = stats.severity_breakdown.get(*severity) {
                     let icon = match *severity {
-                        "critical" => "💥",
-                        "high" => "🚨",
-                        "medium" => "⚠️",
-                        "low" => "ℹ️",
+                        "critical" => "[CRITICAL]",
+                        "high" => "[HIGH]",
+                        "medium" => "[WARN]",
+                        "low" => "[INFO]",
                         _ => "•",
                     };
                     println!("  {icon} {severity:8}: {count:6}");
@@ -572,7 +572,7 @@ impl OutputRenderer {
 
     /// Render audit report
     fn render_audit_report(&self, report: &AuditReport) -> io::Result<()> {
-        println!("🔍 Security Audit Report");
+        println!("Security Audit Report");
         println!();
         println!(
             "Scan Time:     {}",
@@ -584,10 +584,10 @@ impl OutputRenderer {
         if report.summary.total_vulnerabilities > 0 {
             println!();
             println!("Severity Breakdown:");
-            println!("  💥 Critical: {}", report.summary.critical_count);
-            println!("  🚨 High:     {}", report.summary.high_count);
-            println!("  ⚠️  Medium:   {}", report.summary.medium_count);
-            println!("  ℹ️  Low:      {}", report.summary.low_count);
+            println!("  Critical: {}", report.summary.critical_count);
+            println!("  High:     {}", report.summary.high_count);
+            println!("  Medium:   {}", report.summary.medium_count);
+            println!("  Low:      {}", report.summary.low_count);
 
             println!();
             println!(
@@ -599,7 +599,7 @@ impl OutputRenderer {
                 if !audit.vulnerabilities.is_empty() {
                     println!();
                     println!(
-                        "📦 {} v{}",
+                        "{} v{}",
                         self.style_package_name(&audit.package_name),
                         audit.package_version
                     );
@@ -621,10 +621,10 @@ impl OutputRenderer {
 
                     // Display vulnerabilities by severity
                     for (severity, icon, vulns) in [
-                        ("CRITICAL", "💥", critical_vulns),
-                        ("HIGH", "🚨", high_vulns),
-                        ("MEDIUM", "⚠️", medium_vulns),
-                        ("LOW", "ℹ️", low_vulns),
+                        ("CRITICAL", "[CRITICAL]", critical_vulns),
+                        ("HIGH", "[HIGH]", high_vulns),
+                        ("MEDIUM", "[WARN]", medium_vulns),
+                        ("LOW", "[INFO]", low_vulns),
                     ] {
                         for vuln_match in vulns {
                             let vuln = &vuln_match.vulnerability;
@@ -646,7 +646,7 @@ impl OutputRenderer {
             }
         } else {
             println!();
-            println!("✅ No vulnerabilities found!");
+            println!("No vulnerabilities found!");
         }
 
         Ok(())
