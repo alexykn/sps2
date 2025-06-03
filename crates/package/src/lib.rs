@@ -1,7 +1,8 @@
 #![deny(clippy::pedantic)]
 #![allow(unsafe_code)] // Required for Starlark trait implementations
 #![allow(clippy::module_name_repetitions)]
-#![allow(clippy::elidable_lifetime_names)] // False positive from Starlark derive macros
+#![allow(unknown_lints)] // For CI compatibility across clippy versions
+#![allow(clippy::elidable_lifetime_names)] // False positive from Starlark ProvidesStaticType derive macro
 
 //! Starlark recipe handling for sps2
 //!
