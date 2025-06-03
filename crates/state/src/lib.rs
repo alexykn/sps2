@@ -13,8 +13,6 @@ pub mod models;
 pub mod queries {
     pub use crate::queries_runtime::*;
 }
-#[cfg(not(feature = "runtime-queries"))]
-pub mod queries;
 
 #[cfg(feature = "runtime-queries")]
 mod queries_runtime;
