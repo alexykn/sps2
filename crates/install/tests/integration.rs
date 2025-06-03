@@ -153,11 +153,14 @@ mod tests {
 
         let state_info = StateInfo {
             id: state_id,
-            timestamp,
             parent: Some(parent_id),
+            parent_id: Some(parent_id),
+            timestamp,
             operation: "install".to_string(),
+            current: false,
             package_count: 5,
             total_size: 1024 * 1024 * 100, // 100 MB
+            changes: vec![],
         };
 
         // Test state has parent
@@ -168,11 +171,14 @@ mod tests {
         // Test root state
         let root_state = StateInfo {
             id: state_id,
-            timestamp,
             parent: None,
+            parent_id: None,
+            timestamp,
             operation: "initial".to_string(),
+            current: true,
             package_count: 0,
             total_size: 0,
+            changes: vec![],
         };
 
         assert!(root_state.parent.is_none());

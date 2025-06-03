@@ -94,22 +94,57 @@ impl fmt::Display for PackageSpec {
 /// Package information for installed packages
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageInfo {
+    /// Package name
     pub name: String,
-    pub version: Version,
+    /// Installed version
+    pub version: Option<Version>,
+    /// Available version
+    pub available_version: Option<Version>,
+    /// Description
     pub description: Option<String>,
+    /// Homepage URL
+    pub homepage: Option<String>,
+    /// License
+    pub license: Option<String>,
+    /// Installation status
+    pub status: PackageStatus,
+    /// Dependencies (as strings for simplicity)
+    pub dependencies: Vec<String>,
+    /// Size on disk (bytes)
+    pub size: Option<u64>,
+    /// Architecture
+    pub arch: Option<Arch>,
+    /// Whether package is installed
     pub installed: bool,
-    pub size: u64,
-    pub arch: Arch,
-    pub dependencies: Vec<PackageSpec>,
+}
+
+/// Package installation status
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PackageStatus {
+    /// Not installed
+    Available,
+    /// Installed and up to date
+    Installed,
+    /// Installed but update available
+    Outdated,
+    /// Installed from local file
+    Local,
 }
 
 /// Search result from package index
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResult {
+    /// Package name
     pub name: String,
+    /// Latest version
     pub version: Version,
-    pub description: String,
+    /// Description
+    pub description: Option<String>,
+    /// Homepage URL
     pub homepage: Option<String>,
+    /// Whether package is installed
+    pub installed: bool,
 }
 
 /// Dependency kind

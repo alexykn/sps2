@@ -179,7 +179,6 @@ impl BuildMethodFunction {
     ) -> starlark::Result<()> {
         args.no_named_args()?;
 
-        // For simplicity, we'll only support the form: command("program", ["arg1", "arg2"])
         let len = args.len()?;
         if len < 1 {
             return Err(starlark::Error::new_other(anyhow::anyhow!(
@@ -187,23 +186,49 @@ impl BuildMethodFunction {
             )));
         }
 
-        // Get program name
-        let program = args
-            .positional1(eval.heap())?
-            .unpack_str()
-            .ok_or_else(|| {
-                starlark::Error::new_other(anyhow::anyhow!("Program name must be a string"))
-            })?
-            .to_string();
+        // Handle different argument patterns
+        match len {
+            1 => {
+                // command("program") or command("program args")
+                let full_command = args
+                    .positional1(eval.heap())?
+                    .unpack_str()
+                    .ok_or_else(|| {
+                        starlark::Error::new_other(anyhow::anyhow!("Command must be a string"))
+                    })?
+                    .to_string();
 
-        // For now, we'll just use empty args. In the future we can parse a list from the second argument
-        let cmd_args = Vec::new();
+                // Split the command into program and arguments
+                let parts: Vec<&str> = full_command.split_whitespace().collect();
+                if parts.is_empty() {
+                    return Err(starlark::Error::new_other(anyhow::anyhow!(
+                        "Command cannot be empty"
+                    )));
+                }
+                let program = parts[0].to_string();
+                let cmd_args: Vec<String> = parts[1..].iter().map(ToString::to_string).collect();
 
-        self.context.steps.borrow_mut().push(BuildStep::Command {
-            program,
-            args: cmd_args,
-        });
-        Ok(())
+                self.context.steps.borrow_mut().push(BuildStep::Command {
+                    program,
+                    args: cmd_args,
+                });
+                Ok(())
+            }
+            2 => {
+                // command("program", "arg") - program name and single argument
+                // Since we can't easily extract multiple positional args, we'll use a different approach
+                // We'll try to extract all arguments as a tuple/list
+                Err(starlark::Error::new_other(anyhow::anyhow!(
+                    "command() with 2 arguments is not yet fully implemented. Please use command(\"program arg\") format for now."
+                )))
+            }
+            _ => {
+                Err(starlark::Error::new_other(anyhow::anyhow!(
+                    "command() currently supports 1 argument only, got {}. Use command(\"program arg\") format.",
+                    len
+                )))
+            }
+        }
     }
 }
 

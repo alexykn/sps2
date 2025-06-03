@@ -1,10 +1,11 @@
 //! Types for operations and results
 
 use serde::{Deserialize, Serialize};
-use sps2_types::{PackageSpec, Version};
+use sps2_events::HealthStatus;
+use sps2_types::{OpChange, PackageSpec};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use uuid::Uuid;
+// No longer needed - uuid::Uuid imported from sps2_types
 
 /// Operation report for complex operations
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -52,99 +53,15 @@ impl OpReport {
     }
 }
 
-/// Operation change
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct OpChange {
-    /// Change type
-    pub change_type: ChangeType,
-    /// Package name
-    pub package: String,
-    /// Old version (for updates/removals)
-    pub old_version: Option<Version>,
-    /// New version (for installs/updates)
-    pub new_version: Option<Version>,
-}
+// OpChange and ChangeType are now imported from sps2_types
 
-/// Type of operation change
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ChangeType {
-    /// Package was installed
-    Install,
-    /// Package was updated
-    Update,
-    /// Package was removed
-    Remove,
-    /// Package was downgraded
-    Downgrade,
-}
+// PackageInfo is now imported from sps2_types
 
-/// Package information for display
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PackageInfo {
-    /// Package name
-    pub name: String,
-    /// Installed version
-    pub version: Option<Version>,
-    /// Available version
-    pub available_version: Option<Version>,
-    /// Description
-    pub description: Option<String>,
-    /// Homepage URL
-    pub homepage: Option<String>,
-    /// License
-    pub license: Option<String>,
-    /// Installation status
-    pub status: PackageStatus,
-    /// Dependencies
-    pub dependencies: Vec<String>,
-    /// Size on disk (bytes)
-    pub size: Option<u64>,
-}
+// PackageStatus is now imported from sps2_types
 
-/// Package installation status
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum PackageStatus {
-    /// Not installed
-    Available,
-    /// Installed and up to date
-    Installed,
-    /// Installed but update available
-    Outdated,
-    /// Installed from local file
-    Local,
-}
+// SearchResult is now imported from sps2_types
 
-/// Search result
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SearchResult {
-    /// Package name
-    pub name: String,
-    /// Latest version
-    pub version: Version,
-    /// Description
-    pub description: Option<String>,
-    /// Whether package is installed
-    pub installed: bool,
-}
-
-/// State information
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StateInfo {
-    /// State ID
-    pub id: Uuid,
-    /// Creation timestamp
-    pub timestamp: chrono::DateTime<chrono::Utc>,
-    /// Parent state ID
-    pub parent_id: Option<Uuid>,
-    /// Whether this is the current state
-    pub current: bool,
-    /// Number of packages
-    pub package_count: usize,
-    /// Summary of changes from parent
-    pub changes: Vec<OpChange>,
-}
+// StateInfo is now imported from sps2_types
 
 /// Health check results
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -178,17 +95,7 @@ pub struct ComponentHealth {
     pub check_duration_ms: u64,
 }
 
-/// Health status
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum HealthStatus {
-    /// Component is healthy
-    Healthy,
-    /// Component has warnings
-    Warning,
-    /// Component is unhealthy
-    Error,
-}
+// HealthStatus is now imported from sps2_events
 
 /// Health issue
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -226,48 +133,11 @@ pub enum InstallRequest {
     LocalFile(PathBuf),
 }
 
-/// Installation report
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct InstallReport {
-    /// Packages that were installed
-    pub installed: Vec<PackageChange>,
-    /// Packages that were updated
-    pub updated: Vec<PackageChange>,
-    /// Packages that were removed
-    pub removed: Vec<PackageChange>,
-    /// New state ID
-    pub state_id: Uuid,
-    /// Total execution time
-    pub duration_ms: u64,
-}
+// InstallReport is now imported from sps2_types
 
-/// Package change for reports
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PackageChange {
-    /// Package name
-    pub name: String,
-    /// Previous version
-    pub from_version: Option<Version>,
-    /// New version
-    pub to_version: Option<Version>,
-    /// Size in bytes
-    pub size: Option<u64>,
-}
+// PackageChange is now imported from sps2_types
 
-/// Build report
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct BuildReport {
-    /// Package that was built
-    pub package: String,
-    /// Version that was built
-    pub version: Version,
-    /// Output file path
-    pub output_path: PathBuf,
-    /// Build duration
-    pub duration_ms: u64,
-    /// Whether SBOM was generated
-    pub sbom_generated: bool,
-}
+// BuildReport is now imported from sps2_types
 
 /// Vulnerability database statistics
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -285,6 +155,7 @@ pub struct VulnDbStats {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sps2_types::{ChangeType, PackageInfo, PackageStatus, Version};
 
     #[test]
     fn test_op_report() {
@@ -319,11 +190,14 @@ mod tests {
             status: PackageStatus::Outdated,
             dependencies: vec!["openssl>=3.0.0".to_string()],
             size: Some(1_024_000),
+            arch: None,
+            installed: true,
         };
 
         assert_eq!(info.name, "curl");
         assert!(matches!(info.status, PackageStatus::Outdated));
         assert_eq!(info.dependencies.len(), 1);
+        assert!(info.installed);
     }
 
     #[test]

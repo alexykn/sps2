@@ -132,10 +132,13 @@ pub async fn history(ctx: &OpsCtx) -> Result<Vec<StateInfo>, Error> {
 
         let state_info = StateInfo {
             id: state_id,
-            timestamp: state.timestamp(),
+            parent: parent_id,
             parent_id,
+            timestamp: state.timestamp(),
+            operation: "unknown".to_string(), // TODO: Get actual operation
             current: Some(current_id) == Some(state_id),
             package_count,
+            total_size: 0, // TODO: Calculate actual size
             changes,
         };
 
@@ -176,10 +179,13 @@ async fn get_state_info(ctx: &OpsCtx, state_id: Uuid) -> Result<StateInfo, Error
 
     Ok(StateInfo {
         id: state_id,
-        timestamp: state.timestamp(),
+        parent: parent_id,
         parent_id,
+        timestamp: state.timestamp(),
+        operation: "unknown".to_string(), // TODO: Get actual operation
         current: Some(current_id) == Some(state_id),
         package_count,
+        total_size: 0, // TODO: Calculate actual size
         changes,
     })
 }

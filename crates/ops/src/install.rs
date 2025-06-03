@@ -1,14 +1,12 @@
-//! Large operations that delegate to specialized crates
+//! Install command implementation
+//!
+//! Handles package installation with support for both local .sp files and remote packages.
+//! Delegates to `sps2_install` crate for the actual installation logic.
 
-use crate::{BuildReport, InstallReport, InstallRequest, OpsCtx};
-use sps2_builder::BuildContext;
+use crate::{InstallReport, InstallRequest, OpsCtx};
 use sps2_errors::{Error, OpsError};
 use sps2_events::Event;
-use sps2_install::{
-    InstallConfig, InstallContext, Installer, PipelineConfig, PipelineMaster, UninstallContext,
-    UpdateContext,
-};
-use sps2_package::{execute_recipe, load_recipe};
+use sps2_install::{InstallConfig, InstallContext, Installer, PipelineConfig, PipelineMaster};
 use sps2_types::{PackageSpec, Version};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -140,7 +138,7 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
             .installed_packages
             .iter()
             .map(|pkg| {
-                crate::types::PackageChange {
+                crate::PackageChange {
                     name: pkg.name.clone(),
                     from_version: None,
                     to_version: Some(pkg.version.clone()),
@@ -151,7 +149,7 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
         updated: result
             .updated_packages
             .iter()
-            .map(|pkg| crate::types::PackageChange {
+            .map(|pkg| crate::PackageChange {
                 name: pkg.name.clone(),
                 from_version: installed_map.get(&pkg.name).cloned(),
                 to_version: Some(pkg.version.clone()),
@@ -161,7 +159,7 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
         removed: result
             .removed_packages
             .iter()
-            .map(|pkg| crate::types::PackageChange {
+            .map(|pkg| crate::PackageChange {
                 name: pkg.name.clone(),
                 from_version: Some(pkg.version.clone()),
                 to_version: None,
@@ -180,380 +178,6 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
                 .map(|pkg| pkg.name.clone())
                 .collect(),
             state_id: result.state_id,
-        })
-        .ok();
-
-    Ok(report)
-}
-
-/// Update packages (delegates to install crate)
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - No packages are installed or specified
-/// - Update resolution fails
-/// - Installation of updates fails
-pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallReport, Error> {
-    let start = Instant::now();
-
-    ctx.tx
-        .send(Event::UpdateStarting {
-            packages: if package_names.is_empty() {
-                vec!["all".to_string()]
-            } else {
-                package_names.to_vec()
-            },
-        })
-        .ok();
-
-    // Create installer
-    let config = InstallConfig::default();
-    let mut installer = Installer::new(
-        config,
-        ctx.resolver.clone(),
-        ctx.state.clone(),
-        ctx.store.clone(),
-    );
-
-    // Build update context
-    let mut update_context = UpdateContext::new()
-        .with_upgrade(false) // Update mode (respect upper bounds)
-        .with_event_sender(ctx.tx.clone());
-
-    for package_name in package_names {
-        update_context = update_context.add_package(package_name.clone());
-    }
-
-    // Get currently installed packages before update to track from_version
-    let installed_before = ctx.state.get_installed_packages().await?;
-    let installed_map: std::collections::HashMap<String, Version> = installed_before
-        .iter()
-        .map(|pkg| (pkg.name.clone(), pkg.version()))
-        .collect();
-
-    // Execute update
-    let result = installer.update(update_context).await?;
-
-    // Convert to report format
-    let report = InstallReport {
-        installed: result
-            .installed_packages
-            .iter()
-            .map(|pkg| crate::types::PackageChange {
-                name: pkg.name.clone(),
-                from_version: None,
-                to_version: Some(pkg.version.clone()),
-                size: None,
-            })
-            .collect(),
-        updated: result
-            .updated_packages
-            .iter()
-            .map(|pkg| crate::types::PackageChange {
-                name: pkg.name.clone(),
-                from_version: installed_map.get(&pkg.name).cloned(),
-                to_version: Some(pkg.version.clone()),
-                size: None,
-            })
-            .collect(),
-        removed: result
-            .removed_packages
-            .iter()
-            .map(|pkg| crate::types::PackageChange {
-                name: pkg.name.clone(),
-                from_version: Some(pkg.version.clone()),
-                to_version: None,
-                size: None,
-            })
-            .collect(),
-        state_id: result.state_id,
-        duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
-    };
-
-    ctx.tx
-        .send(Event::UpdateCompleted {
-            packages: result
-                .updated_packages
-                .iter()
-                .map(|pkg| pkg.name.clone())
-                .collect(),
-            state_id: result.state_id,
-        })
-        .ok();
-
-    Ok(report)
-}
-
-/// Upgrade packages (delegates to install crate)
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - No packages are installed or specified
-/// - Upgrade resolution fails
-/// - Installation of upgrades fails
-pub async fn upgrade(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallReport, Error> {
-    let start = Instant::now();
-
-    ctx.tx
-        .send(Event::UpgradeStarting {
-            packages: if package_names.is_empty() {
-                vec!["all".to_string()]
-            } else {
-                package_names.to_vec()
-            },
-        })
-        .ok();
-
-    // Create installer
-    let config = InstallConfig::default();
-    let mut installer = Installer::new(
-        config,
-        ctx.resolver.clone(),
-        ctx.state.clone(),
-        ctx.store.clone(),
-    );
-
-    // Build update context with upgrade mode
-    let mut update_context = UpdateContext::new()
-        .with_upgrade(true) // Upgrade mode (ignore upper bounds)
-        .with_event_sender(ctx.tx.clone());
-
-    for package_name in package_names {
-        update_context = update_context.add_package(package_name.clone());
-    }
-
-    // Get currently installed packages before upgrade to track from_version
-    let installed_before = ctx.state.get_installed_packages().await?;
-    let installed_map: std::collections::HashMap<String, Version> = installed_before
-        .iter()
-        .map(|pkg| (pkg.name.clone(), pkg.version()))
-        .collect();
-
-    // Execute upgrade
-    let result = installer.update(update_context).await?;
-
-    // Convert to report format
-    let report = InstallReport {
-        installed: result
-            .installed_packages
-            .iter()
-            .map(|pkg| crate::types::PackageChange {
-                name: pkg.name.clone(),
-                from_version: None,
-                to_version: Some(pkg.version.clone()),
-                size: None,
-            })
-            .collect(),
-        updated: result
-            .updated_packages
-            .iter()
-            .map(|pkg| crate::types::PackageChange {
-                name: pkg.name.clone(),
-                from_version: installed_map.get(&pkg.name).cloned(),
-                to_version: Some(pkg.version.clone()),
-                size: None,
-            })
-            .collect(),
-        removed: result
-            .removed_packages
-            .iter()
-            .map(|pkg| crate::types::PackageChange {
-                name: pkg.name.clone(),
-                from_version: Some(pkg.version.clone()),
-                to_version: None,
-                size: None,
-            })
-            .collect(),
-        state_id: result.state_id,
-        duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
-    };
-
-    ctx.tx
-        .send(Event::UpgradeCompleted {
-            packages: result
-                .updated_packages
-                .iter()
-                .map(|pkg| pkg.name.clone())
-                .collect(),
-            state_id: result.state_id,
-        })
-        .ok();
-
-    Ok(report)
-}
-
-/// Uninstall packages (delegates to install crate)
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - No packages are specified
-/// - Package removal would break dependencies
-/// - Uninstallation fails
-pub async fn uninstall(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallReport, Error> {
-    let start = Instant::now();
-
-    if package_names.is_empty() {
-        return Err(OpsError::NoPackagesSpecified.into());
-    }
-
-    ctx.tx
-        .send(Event::UninstallStarting {
-            packages: package_names.to_vec(),
-        })
-        .ok();
-
-    // Create installer
-    let config = InstallConfig::default();
-    let mut installer = Installer::new(
-        config,
-        ctx.resolver.clone(),
-        ctx.state.clone(),
-        ctx.store.clone(),
-    );
-
-    // Build uninstall context
-    let mut uninstall_context = UninstallContext::new().with_event_sender(ctx.tx.clone());
-
-    for package_name in package_names {
-        uninstall_context = uninstall_context.add_package(package_name.clone());
-    }
-
-    // Execute uninstallation
-    let result = installer.uninstall(uninstall_context).await?;
-
-    // Convert to report format
-    let report = InstallReport {
-        installed: Vec::new(), // No packages installed during uninstall
-        updated: Vec::new(),   // No packages updated during uninstall
-        removed: result
-            .removed_packages
-            .iter()
-            .map(|pkg| crate::types::PackageChange {
-                name: pkg.name.clone(),
-                from_version: Some(pkg.version.clone()),
-                to_version: None,
-                size: None,
-            })
-            .collect(),
-        state_id: result.state_id,
-        duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
-    };
-
-    ctx.tx
-        .send(Event::UninstallCompleted {
-            packages: result
-                .removed_packages
-                .iter()
-                .map(|pkg| pkg.name.clone())
-                .collect(),
-            state_id: result.state_id,
-        })
-        .ok();
-
-    Ok(report)
-}
-
-/// Build package from recipe (delegates to builder crate)
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - Recipe file doesn't exist or has invalid extension
-/// - Recipe cannot be loaded or executed
-/// - Build process fails
-pub async fn build(
-    ctx: &OpsCtx,
-    recipe_path: &Path,
-    output_dir: Option<&Path>,
-    network: bool,
-    jobs: Option<usize>,
-) -> Result<BuildReport, Error> {
-    let start = Instant::now();
-
-    if !recipe_path.exists() {
-        return Err(OpsError::RecipeNotFound {
-            path: recipe_path.display().to_string(),
-        }
-        .into());
-    }
-
-    if recipe_path.extension().is_none_or(|ext| ext != "star") {
-        return Err(OpsError::InvalidRecipe {
-            path: recipe_path.display().to_string(),
-            reason: "recipe must have .star extension".to_string(),
-        }
-        .into());
-    }
-
-    ctx.tx
-        .send(Event::BuildStarting {
-            package: "unknown".to_string(), // Will be determined from recipe
-            version: Version::parse("0.0.0").unwrap_or_else(|_| Version::new(0, 0, 0)),
-        })
-        .ok();
-
-    // Load and execute recipe to get package metadata
-    let recipe = load_recipe(recipe_path).await?;
-    let recipe_result = execute_recipe(&recipe)?;
-
-    let package_name = recipe_result.metadata.name.clone();
-    let package_version = Version::parse(&recipe_result.metadata.version)?;
-
-    // Send updated build starting event with correct info
-    ctx.tx
-        .send(Event::BuildStarting {
-            package: package_name.clone(),
-            version: package_version.clone(),
-        })
-        .ok();
-
-    // Create build context
-    let output_directory = output_dir.map_or_else(
-        || std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-        PathBuf::from,
-    );
-
-    let build_context = BuildContext::new(
-        package_name.clone(),
-        package_version.clone(),
-        recipe_path.to_path_buf(),
-        output_directory,
-    )
-    .with_event_sender(ctx.tx.clone());
-
-    // Configure builder with network and jobs options
-    let mut builder_config = sps2_builder::BuildConfig::default();
-    if network {
-        builder_config.allow_network = true;
-    }
-    if let Some(job_count) = jobs {
-        builder_config.build_jobs = Some(job_count);
-    }
-
-    // Create builder with custom configuration
-    let builder = sps2_builder::Builder::with_config(builder_config)
-        .with_resolver(ctx.resolver.clone())
-        .with_store(ctx.store.clone());
-
-    // Use the builder with custom configuration
-    let result = builder.build(build_context).await?;
-
-    let report = BuildReport {
-        package: package_name,
-        version: package_version,
-        output_path: result.package_path,
-        duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
-        sbom_generated: !result.sbom_files.is_empty(),
-    };
-
-    ctx.tx
-        .send(Event::BuildCompleted {
-            package: report.package.clone(),
-            version: report.version.clone(),
-            path: report.output_path.clone(),
         })
         .ok();
 

@@ -66,6 +66,8 @@ pub async fn list_packages(ctx: &OpsCtx) -> Result<Vec<PackageInfo>, Error> {
             status,
             dependencies,
             size,
+            arch: None, // TODO: Get actual architecture
+            installed: true,
         };
 
         package_infos.push(package_info);
@@ -130,7 +132,7 @@ pub async fn package_info(ctx: &OpsCtx, package_name: &str) -> Result<PackageInf
 
     let package_info = PackageInfo {
         name: package_name.to_string(),
-        version: installed_version,
+        version: installed_version.clone(),
         available_version: Some(available_version),
         description: latest_entry.description.clone(),
         homepage: latest_entry.homepage.clone(),
@@ -138,6 +140,8 @@ pub async fn package_info(ctx: &OpsCtx, package_name: &str) -> Result<PackageInf
         status,
         dependencies: latest_entry.dependencies.runtime.clone(),
         size,
+        arch: None, // TODO: Get actual architecture
+        installed: installed_version.is_some(),
     };
 
     Ok(package_info)
@@ -173,6 +177,7 @@ pub async fn search_packages(ctx: &OpsCtx, query: &str) -> Result<Vec<SearchResu
                         name: package_name.to_string(),
                         version,
                         description: latest.description.clone(),
+                        homepage: latest.homepage.clone(),
                         installed,
                     });
                 }

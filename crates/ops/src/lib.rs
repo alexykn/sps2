@@ -9,7 +9,6 @@
 
 mod context;
 mod keys;
-mod large_ops;
 mod small_ops;
 
 // Import modularized operations
@@ -21,19 +20,36 @@ mod security;
 mod self_update;
 mod types;
 
+// Import command modules
+mod build;
+mod install;
+mod uninstall;
+mod update;
+mod upgrade;
+
 pub use context::{OpsContextBuilder, OpsCtx};
+// Re-export consolidated types from sps2_types
+pub use sps2_types::{
+    BuildReport, ChangeType, InstallReport, OpChange, PackageChange, PackageInfo, PackageStatus,
+    SearchResult, StateInfo,
+};
+// Re-export health status from events
+pub use sps2_events::HealthStatus;
+// Re-export ops-specific types from local types module
 pub use types::{
-    BuildReport, ChangeType, ComponentHealth, HealthCheck, HealthIssue, HealthStatus,
-    InstallReport, InstallRequest, IssueSeverity, OpChange, OpReport, PackageInfo, PackageStatus,
-    SearchResult, StateInfo, VulnDbStats,
+    ComponentHealth, HealthCheck, HealthIssue, InstallRequest, IssueSeverity, OpReport, VulnDbStats,
 };
 
 // Re-export operation functions
-pub use large_ops::{build, install, uninstall, update, upgrade};
+pub use build::build;
+pub use install::install;
 pub use small_ops::{
     audit, check_health, cleanup, history, list_packages, package_info, reposync, rollback,
     search_packages, self_update, update_vulndb, vulndb_stats,
 };
+pub use uninstall::uninstall;
+pub use update::update;
+pub use upgrade::upgrade;
 
 // Re-export audit types needed by the audit function
 pub use sps2_audit::{AuditReport, Severity};

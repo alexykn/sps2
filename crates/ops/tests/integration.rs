@@ -170,6 +170,8 @@ mod tests {
             status: PackageStatus::Installed,
             dependencies: vec!["openssl>=3.0.0".to_string()],
             size: Some(1024000),
+            arch: Some(sps2_types::Arch::Arm64),
+            installed: true,
         };
 
         let result = OperationResult::PackageInfo(package_info);

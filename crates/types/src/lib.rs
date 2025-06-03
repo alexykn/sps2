@@ -8,6 +8,7 @@
 
 pub mod format;
 pub mod package;
+pub mod reports;
 pub mod state;
 pub mod version;
 
@@ -17,9 +18,12 @@ pub use format::{
     PackageFormatMigration, PackageFormatValidationResult, PackageFormatVersion,
     PackageFormatVersionError,
 };
-pub use package::{DepKind, PackageId, PackageInfo, PackageSpec, SearchResult};
+pub use package::{
+    DepEdge, DepKind, PackageId, PackageInfo, PackageSpec, PackageStatus, SearchResult,
+};
+pub use reports::{BuildReport, InstallReport, PackageChange};
 pub use semver::Version;
-pub use state::{StateId, StateInfo};
+pub use state::{ChangeType, OpChange, StateId, StateInfo, StateTransition};
 pub use uuid::Uuid;
 pub use version::{VersionConstraint, VersionSpec};
 
