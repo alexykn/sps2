@@ -18,7 +18,9 @@ pub use atomic::{AtomicInstaller, StateTransition};
 pub use installer::{InstallConfig, Installer};
 pub use operations::{InstallOperation, UninstallOperation, UpdateOperation};
 pub use parallel::{ExecutionContext, ParallelExecutor};
-pub use pipeline::{BatchResult, BatchStats, PipelineConfig, PipelineMaster};
+pub use pipeline::batch::{BatchResult, BatchStats};
+pub use pipeline::config::PipelineConfig;
+pub use pipeline::PipelineMaster;
 pub use staging::{StagingDirectory, StagingGuard, StagingManager};
 pub use validation::{
     validate_sp_file, validate_tar_archive_content, PackageFormat, ValidationResult,

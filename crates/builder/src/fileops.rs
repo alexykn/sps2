@@ -1,0 +1,75 @@
+//! File system operations for build processes
+
+use sps2_errors::Error;
+use std::path::Path;
+use tokio::fs;
+
+/// Recursively copy directory contents
+pub fn copy_directory_recursive<'a>(
+    src: &'a Path,
+    dst: &'a Path,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Error>> + 'a>> {
+    Box::pin(async move {
+        fs::create_dir_all(dst).await?;
+
+        let mut entries = fs::read_dir(src).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let entry_path = entry.path();
+            let dst_path = dst.join(entry.file_name());
+
+            if entry_path.is_dir() {
+                copy_directory_recursive(&entry_path, &dst_path).await?;
+            } else {
+                fs::copy(&entry_path, &dst_path).await?;
+            }
+        }
+
+        Ok(())
+    })
+}
+
+/// Copy source files from recipe directory to working directory (excluding .star files)
+pub async fn copy_source_files(
+    recipe_dir: &Path,
+    working_dir: &Path,
+    context: &crate::BuildContext,
+) -> Result<(), Error> {
+    use crate::events::send_event;
+    use sps2_events::Event;
+
+    send_event(
+        context,
+        Event::DebugLog {
+            message: format!(
+                "Copying source files from {} to {}",
+                recipe_dir.display(),
+                working_dir.display()
+            ),
+            context: std::collections::HashMap::new(),
+        },
+    );
+
+    let mut entries = fs::read_dir(recipe_dir).await?;
+    while let Some(entry) = entries.next_entry().await? {
+        let entry_path = entry.path();
+        if entry_path.is_file() && entry_path.extension().is_none_or(|ext| ext != "star") {
+            let file_name = entry.file_name();
+            let dest_path = working_dir.join(&file_name);
+            fs::copy(&entry_path, &dest_path).await?;
+
+            send_event(
+                context,
+                Event::DebugLog {
+                    message: format!(
+                        "Copied {} to {}",
+                        file_name.to_string_lossy(),
+                        dest_path.display()
+                    ),
+                    context: std::collections::HashMap::new(),
+                },
+            );
+        }
+    }
+
+    Ok(())
+}

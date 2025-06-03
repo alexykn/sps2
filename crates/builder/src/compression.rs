@@ -1,4 +1,4 @@
-//! Compression level management for sps2 packages
+//! Compression level management and ZSTD compression for sps2 packages
 //!
 //! This module provides configurable compression levels to optimize the tradeoff
 //! between build speed and package size for different use cases:
@@ -7,6 +7,8 @@
 //! - Production: Maximum compression for distribution
 
 use serde::{Deserialize, Serialize};
+use sps2_errors::Error;
+use std::path::Path;
 
 /// Compression levels with clear speed vs size tradeoffs
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -19,7 +21,7 @@ pub enum CompressionLevel {
 
     /// Balanced compression (levels 6-9): Good compression, reasonable speed
     /// Best for: CI/CD builds, automated pipelines
-    /// Speed: 50-100% faster than maximum compression  
+    /// Speed: 50-100% faster than maximum compression\
     /// Use case: Default for automated builds
     Balanced,
 
@@ -216,6 +218,40 @@ impl CompressionConfig {
             self.size_increase_percent()
         )
     }
+}
+
+/// Compress tar archive with zstd using async-compression
+/// Compress a tar file using Zstandard compression
+///
+/// # Errors
+///
+/// Returns an error if file I/O operations fail or compression fails.
+pub async fn compress_with_zstd(
+    config: &CompressionConfig,
+    tar_path: &Path,
+    output_path: &Path,
+) -> Result<(), Error> {
+    use async_compression::tokio::write::ZstdEncoder;
+    use async_compression::Level;
+    use tokio::fs::File;
+    use tokio::io::{AsyncWriteExt, BufReader};
+
+    let input_file = File::open(tar_path).await?;
+    let output_file = File::create(output_path).await?;
+
+    // Create zstd encoder with specified compression level
+    let compression_level = config.level.zstd_level();
+    let level = Level::Precise(compression_level);
+    let mut encoder = ZstdEncoder::with_quality(output_file, level);
+
+    // Copy tar file through zstd encoder
+    let mut reader = BufReader::new(input_file);
+    tokio::io::copy(&mut reader, &mut encoder).await?;
+
+    // Ensure all data is written
+    encoder.shutdown().await?;
+
+    Ok(())
 }
 
 #[cfg(test)]

@@ -30,14 +30,14 @@ mod tests {
         let url = server.url("/test.txt");
 
         // Download
-        let result = download_file(&client, &url, &dest, None, &tx)
+        let (hash, size) = download_file(&client, &url, &dest, None, &tx)
             .await
             .unwrap();
 
         // Verify
         mock.assert();
-        assert_eq!(result.size, content.len() as u64);
-        assert_eq!(result.hash, Hash::from_data(content));
+        assert_eq!(size, content.len() as u64);
+        assert_eq!(hash, Hash::from_data(content));
 
         let downloaded = tokio::fs::read(&dest).await.unwrap();
         assert_eq!(downloaded, content);
@@ -79,10 +79,10 @@ mod tests {
         let url = server.url("/verified.txt");
 
         // Download with correct hash
-        let result = download_file(&client, &url, &dest, Some(&expected_hash), &tx)
+        let (hash, _size) = download_file(&client, &url, &dest, Some(&expected_hash), &tx)
             .await
             .unwrap();
-        assert_eq!(result.hash, expected_hash);
+        assert_eq!(hash, expected_hash);
 
         // Download with wrong hash should fail
         let wrong_hash = Hash::from_data(b"different content");

@@ -8,13 +8,11 @@
 
 mod client;
 mod download;
-mod package_download;
 
-pub use client::{DownloadProgress, NetClient, NetConfig};
-pub use download::{Download, DownloadResult};
-pub use package_download::{
-    PackageDownloadConfig, PackageDownloadRequest, PackageDownloadResult, PackageDownloader,
-    RetryConfig,
+pub use client::{NetClient, NetConfig};
+pub use download::{
+    DownloadProgress, DownloadResult, PackageDownloadConfig, PackageDownloadRequest,
+    PackageDownloadResult, PackageDownloader, RetryConfig,
 };
 
 use sps2_errors::{Error, NetworkError};
@@ -30,14 +28,17 @@ use url::Url;
 /// Returns an error if the URL is invalid, the download fails, or there are
 /// I/O errors while writing the file.
 pub async fn download_file(
-    client: &NetClient,
+    _client: &NetClient,
     url: &str,
     dest: &Path,
     expected_hash: Option<&Hash>,
     tx: &EventSender,
-) -> Result<DownloadResult, Error> {
-    let download = Download::new(url)?;
-    download.execute(client, dest, expected_hash, tx).await
+) -> Result<(Hash, u64), Error> {
+    let downloader = PackageDownloader::with_defaults()?;
+    let result = downloader
+        .download_with_resume(url, dest, expected_hash, tx.clone())
+        .await?;
+    Ok((result.hash, result.size))
 }
 
 /// Fetch text content from a URL

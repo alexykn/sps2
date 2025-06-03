@@ -1,0 +1,137 @@
+//! Core `BuildEnvironment` struct and construction
+
+use crate::BuildContext;
+use sps2_errors::Error;
+use sps2_install::Installer;
+use sps2_net::NetClient;
+use sps2_resolver::Resolver;
+use sps2_store::PackageStore;
+use sps2_types::Version;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+/// Build environment for isolated package building
+pub struct BuildEnvironment {
+    /// Build context
+    pub(crate) context: BuildContext,
+    /// Build prefix directory
+    pub(crate) build_prefix: PathBuf,
+    /// Build dependencies prefix
+    pub(crate) deps_prefix: PathBuf,
+    /// Staging directory for installation
+    pub(crate) staging_dir: PathBuf,
+    /// Environment variables
+    pub(crate) env_vars: HashMap<String, String>,
+    /// Resolver for dependencies
+    pub(crate) resolver: Option<Resolver>,
+    /// Package store for build dependencies
+    pub(crate) store: Option<PackageStore>,
+    /// Installer for build dependencies
+    pub(crate) installer: Option<Installer>,
+    /// Network client for downloads
+    pub(crate) net: Option<NetClient>,
+}
+
+impl BuildEnvironment {
+    /// Create new build environment
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the build environment cannot be initialized.
+    pub fn new(context: BuildContext, build_root: &Path) -> Result<Self, Error> {
+        let build_prefix = Self::get_build_prefix_path(build_root, &context.name, &context.version);
+        let deps_prefix = build_prefix.join("deps");
+        let staging_dir = build_prefix.join("stage");
+
+        let mut env_vars = HashMap::new();
+        env_vars.insert("PREFIX".to_string(), staging_dir.display().to_string());
+        env_vars.insert("JOBS".to_string(), Self::cpu_count().to_string());
+
+        Ok(Self {
+            context,
+            build_prefix,
+            deps_prefix,
+            staging_dir,
+            env_vars,
+            resolver: None,
+            store: None,
+            installer: None,
+            net: None,
+        })
+    }
+
+    /// Set resolver for dependency management
+    #[must_use]
+    pub fn with_resolver(mut self, resolver: Resolver) -> Self {
+        self.resolver = Some(resolver);
+        self
+    }
+
+    /// Set package store for build dependencies
+    #[must_use]
+    pub fn with_store(mut self, store: PackageStore) -> Self {
+        self.store = Some(store);
+        self
+    }
+
+    /// Set installer for build dependencies
+    #[must_use]
+    pub fn with_installer(mut self, installer: Installer) -> Self {
+        self.installer = Some(installer);
+        self
+    }
+
+    /// Set network client for downloads
+    #[must_use]
+    pub fn with_net(mut self, net: NetClient) -> Self {
+        self.net = Some(net);
+        self
+    }
+
+    /// Get staging directory
+    #[must_use]
+    pub fn staging_dir(&self) -> &Path {
+        &self.staging_dir
+    }
+
+    /// Get build prefix
+    #[must_use]
+    pub fn build_prefix(&self) -> &Path {
+        &self.build_prefix
+    }
+
+    /// Get environment variables
+    #[must_use]
+    pub fn env_vars(&self) -> &HashMap<String, String> {
+        &self.env_vars
+    }
+
+    /// Set environment variable
+    ///
+    /// # Errors
+    ///
+    /// Currently infallible, but returns Result for future compatibility.
+    pub fn set_env_var(&mut self, key: String, value: String) -> Result<(), Error> {
+        self.env_vars.insert(key, value);
+        Ok(())
+    }
+
+    /// Get build prefix path for package
+    #[must_use]
+    pub(crate) fn get_build_prefix_path(
+        build_root: &Path,
+        name: &str,
+        version: &Version,
+    ) -> PathBuf {
+        build_root.join(name).join(version.to_string())
+    }
+
+    /// Get CPU count for parallel builds
+    #[must_use]
+    pub(crate) fn cpu_count() -> usize {
+        // Use 75% of available cores as per specification
+        let cores = num_cpus::get();
+        let target = cores.saturating_mul(3).saturating_add(3) / 4; // 75% using integer arithmetic
+        std::cmp::max(1, target)
+    }
+}

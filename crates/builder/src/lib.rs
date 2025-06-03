@@ -7,13 +7,23 @@
 //! isolated environments, dependency management, and SBOM generation.
 
 mod api;
+mod archive;
 mod builder;
 mod compression;
+mod config;
 mod environment;
+mod events;
+mod fileops;
 mod format;
+mod manifest;
+mod packaging;
+mod quality;
+mod recipe;
 mod sbom;
 mod signing;
 mod starlark_bridge;
+mod timeout_utils;
+mod workflow;
 
 pub use api::BuilderApi;
 pub use builder::{BuildConfig, Builder};
@@ -23,6 +33,11 @@ pub use format::{detect_compression_format, CompressionFormatInfo};
 pub use sbom::{SbomConfig, SbomFiles, SbomGenerator};
 pub use signing::{PackageSigner, SigningConfig};
 pub use starlark_bridge::StarlarkBridge;
+
+// Re-export the compression function for external use
+pub use compression::compress_with_zstd;
+// Re-export archive functions for external use
+pub use archive::{create_deterministic_tar_archive, get_deterministic_timestamp};
 
 use sps2_events::EventSender;
 use sps2_types::Version;

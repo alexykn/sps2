@@ -41,9 +41,7 @@ impl OutputRenderer {
 
     /// Render as JSON
     fn render_json(&self, result: &OperationResult) -> io::Result<()> {
-        let json = result
-            .to_json()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let json = result.to_json().map_err(io::Error::other)?;
         println!("{json}");
         Ok(())
     }

@@ -13,7 +13,7 @@
 //! For proper argument handling, consider refactoring to use the `#[starlark_module]`
 //! macro with proper function definitions instead of custom `StarlarkValue` implementations.
 
-#![allow(clippy::needless_lifetimes)]
+#![allow(clippy::needless_lifetimes, clippy::elidable_lifetime_names)]
 
 use crate::error_helpers::format_metadata_error;
 use crate::recipe::{BuildStep, RecipeMetadata};

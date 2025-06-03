@@ -1,0 +1,192 @@
+//! Environment variable setup and isolation
+
+use super::core::BuildEnvironment;
+use std::collections::HashMap;
+
+impl BuildEnvironment {
+    /// Get a summary of the build environment for debugging
+    #[must_use]
+    pub fn environment_summary(&self) -> HashMap<String, String> {
+        let mut summary = HashMap::new();
+
+        summary.insert(
+            "build_prefix".to_string(),
+            self.build_prefix.display().to_string(),
+        );
+        summary.insert(
+            "deps_prefix".to_string(),
+            self.deps_prefix.display().to_string(),
+        );
+        summary.insert(
+            "staging_dir".to_string(),
+            self.staging_dir.display().to_string(),
+        );
+        summary.insert("package_name".to_string(), self.context.name.clone());
+        summary.insert(
+            "package_version".to_string(),
+            self.context.version.to_string(),
+        );
+
+        // Add key environment variables
+        for key in &[
+            "PATH",
+            "PKG_CONFIG_PATH",
+            "CMAKE_PREFIX_PATH",
+            "CFLAGS",
+            "LDFLAGS",
+        ] {
+            if let Some(value) = self.env_vars.get(*key) {
+                summary.insert((*key).to_string(), value.clone());
+            }
+        }
+
+        summary
+    }
+
+    /// Setup base environment variables for isolated build
+    pub(crate) fn setup_environment(&mut self) {
+        // Clear potentially harmful environment variables for clean build
+        self.setup_clean_environment();
+
+        // Add staging dir to environment (standard autotools DESTDIR)
+        self.env_vars.insert(
+            "DESTDIR".to_string(),
+            self.staging_dir.display().to_string(),
+        );
+
+        // Set build prefix to final installation location (not staging dir)
+        self.env_vars
+            .insert("PREFIX".to_string(), "/opt/pm/live".to_string());
+
+        // Number of parallel jobs
+        self.env_vars
+            .insert("JOBS".to_string(), Self::cpu_count().to_string());
+        self.env_vars
+            .insert("MAKEFLAGS".to_string(), format!("-j{}", Self::cpu_count()));
+
+        // Compiler flags for dependency isolation
+        let deps_prefix_display = self.deps_prefix.display();
+        self.env_vars.insert(
+            "CFLAGS".to_string(),
+            format!("-I{deps_prefix_display}/include"),
+        );
+        self.env_vars.insert(
+            "CPPFLAGS".to_string(),
+            format!("-I{deps_prefix_display}/include"),
+        );
+        self.env_vars.insert(
+            "LDFLAGS".to_string(),
+            format!("-L{deps_prefix_display}/lib"),
+        );
+
+        // Prevent system library contamination
+        self.env_vars.insert(
+            "LIBRARY_PATH".to_string(),
+            format!("{deps_prefix_display}/lib"),
+        );
+        self.env_vars.insert(
+            "LD_LIBRARY_PATH".to_string(),
+            format!("{deps_prefix_display}/lib"),
+        );
+
+        // macOS specific settings - targeting Apple Silicon Macs (macOS 12.0+)
+        self.env_vars
+            .insert("MACOSX_DEPLOYMENT_TARGET".to_string(), "12.0".to_string());
+    }
+
+    /// Setup a clean environment by removing potentially harmful variables
+    fn setup_clean_environment(&mut self) {
+        // Keep only essential environment variables
+        let essential_vars = vec![
+            "PATH", "HOME", "USER", "SHELL", "TERM", "LANG", "LC_ALL", "TMPDIR", "TMP", "TEMP",
+        ];
+
+        // Start with a minimal PATH containing only system essentials
+        self.env_vars.insert(
+            "PATH".to_string(),
+            "/usr/bin:/bin:/usr/sbin:/sbin".to_string(),
+        );
+
+        // Copy essential variables from host environment
+        for var in essential_vars {
+            if let Ok(value) = std::env::var(var) {
+                self.env_vars.insert(var.to_string(), value);
+            }
+        }
+
+        // Clear potentially problematic variables
+        self.env_vars.remove("CFLAGS");
+        self.env_vars.remove("CPPFLAGS");
+        self.env_vars.remove("LDFLAGS");
+        self.env_vars.remove("PKG_CONFIG_PATH");
+        self.env_vars.remove("LIBRARY_PATH");
+        self.env_vars.remove("LD_LIBRARY_PATH");
+        self.env_vars.remove("DYLD_LIBRARY_PATH");
+        self.env_vars.remove("CMAKE_PREFIX_PATH");
+        self.env_vars.remove("ACLOCAL_PATH");
+    }
+
+    /// Setup environment for build dependencies with proper isolation
+    pub(crate) fn setup_build_deps_environment(&mut self) {
+        let deps_prefix_display = self.deps_prefix.display();
+        let deps_bin = format!("{deps_prefix_display}/bin");
+        let deps_lib = format!("{deps_prefix_display}/lib");
+        let deps_include = format!("{deps_prefix_display}/include");
+        let deps_pkgconfig = format!("{deps_prefix_display}/lib/pkgconfig");
+        let deps_share = format!("{deps_prefix_display}/share");
+
+        // Prepend build deps to PATH (highest priority)
+        let current_path = self.env_vars.get("PATH").cloned().unwrap_or_default();
+        let new_path = if current_path.is_empty() {
+            deps_bin
+        } else {
+            format!("{deps_bin}:{current_path}")
+        };
+        self.env_vars.insert("PATH".to_string(), new_path);
+
+        // PKG_CONFIG_PATH for dependency discovery
+        self.env_vars
+            .insert("PKG_CONFIG_PATH".to_string(), deps_pkgconfig.clone());
+
+        // CMAKE_PREFIX_PATH for CMake-based builds
+        self.env_vars.insert(
+            "CMAKE_PREFIX_PATH".to_string(),
+            self.deps_prefix.display().to_string(),
+        );
+
+        // Update compiler flags to include build dep paths
+        let current_cflags = self.env_vars.get("CFLAGS").cloned().unwrap_or_default();
+        let new_cflags = if current_cflags.is_empty() {
+            format!("-I{deps_include}")
+        } else {
+            format!("{current_cflags} -I{deps_include}")
+        };
+        self.env_vars.insert("CFLAGS".to_string(), new_cflags);
+
+        let current_cppflags = self.env_vars.get("CPPFLAGS").cloned().unwrap_or_default();
+        let new_cppflags = if current_cppflags.is_empty() {
+            format!("-I{deps_include}")
+        } else {
+            format!("{current_cppflags} -I{deps_include}")
+        };
+        self.env_vars.insert("CPPFLAGS".to_string(), new_cppflags);
+
+        let current_ldflags = self.env_vars.get("LDFLAGS").cloned().unwrap_or_default();
+        let new_ldflags = if current_ldflags.is_empty() {
+            format!("-L{deps_lib}")
+        } else {
+            format!("{current_ldflags} -L{deps_lib}")
+        };
+        self.env_vars.insert("LDFLAGS".to_string(), new_ldflags);
+
+        // Autotools-specific paths
+        self.env_vars
+            .insert("ACLOCAL_PATH".to_string(), format!("{deps_share}/aclocal"));
+
+        // Ensure library search paths are set
+        self.env_vars
+            .insert("LIBRARY_PATH".to_string(), deps_lib.clone());
+        self.env_vars
+            .insert("LD_LIBRARY_PATH".to_string(), deps_lib);
+    }
+}

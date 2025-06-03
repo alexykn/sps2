@@ -11,6 +11,14 @@ mod context;
 mod keys;
 mod large_ops;
 mod small_ops;
+
+// Import modularized operations
+mod health;
+mod maintenance;
+mod query;
+mod repository;
+mod security;
+mod self_update;
 mod types;
 
 pub use context::{OpsContextBuilder, OpsCtx};
