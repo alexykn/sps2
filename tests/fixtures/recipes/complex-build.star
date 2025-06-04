@@ -1,57 +1,71 @@
 # Complex build recipe with dependencies
 
-def metadata(m):
-    m.name("complex-app")
-    m.version("2.1.3")
-    m.description("A complex application with multiple dependencies")
-    m.license("Apache-2.0")
-    m.homepage("https://github.com/example/complex-app")
-    m.depends_on("libssl>=1.1.1,<2.0")
-    m.depends_on("zlib~=1.2.11")
-    m.depends_on("sqlite>=3.36.0")
-    m.depends_on("curl>=7.68.0,<8.0")
-    m.build_depends_on("cmake>=3.16")
-    m.build_depends_on("gcc>=9.0")
-    m.build_depends_on("pkg-config>=0.29")
+def metadata():
+    """Return package metadata as a dictionary."""
+    return {
+        "name": "complex-app",
+        "version": "2.1.3",
+        "description": "A complex application with multiple dependencies",
+        "license": "Apache-2.0",
+        "homepage": "https://github.com/example/complex-app",
+        "depends": [
+            "libssl>=1.1.1,<2.0",
+            "zlib~=1.2.11",
+            "sqlite>=3.36.0",
+            "curl>=7.68.0,<8.0"
+        ],
+        "build_depends": [
+            "cmake>=3.16",
+            "gcc>=9.0",
+            "pkg-config>=0.29"
+        ]
+    }
 
-def build(b):
+def build(ctx):
+    """Build the package using the provided context.
+    
+    Args:
+        ctx: Build context with attributes:
+            - ctx.NAME: package name from metadata
+            - ctx.VERSION: package version from metadata
+            - ctx.PREFIX: installation prefix (e.g. /opt/pm/live)
+            - ctx.JOBS: number of parallel build jobs
+    """
     # Fetch source with verification
-    b.fetch("https://github.com/example/complex-app/archive/v2.1.3.tar.gz",
-            "blake3:a665a45920422f9d417e4867efdc4fb8a04a1f3cbc663dda3c5c0c0c1b7e84c5")
+    ctx.fetch("https://github.com/example/complex-app/archive/v2.1.3.tar.gz")
     
-    # Extract and enter source directory
-    b.run("tar xzf v2.1.3.tar.gz")
-    b.chdir("complex-app-2.1.3")
+    # Extract source (handled automatically by fetch)
+    # Enter source directory
+    ctx.command("cd complex-app-2.1.3")
     
-    # Configure with CMake
-    b.run("mkdir build")
-    b.chdir("build")
+    # Use CMake build system
+    ctx.cmake([
+        "-DCMAKE_INSTALL_PREFIX=" + ctx.PREFIX,
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DWITH_SSL=ON",
+        "-DWITH_SQLITE=ON",
+        "-S", "complex-app-2.1.3",
+        "-B", "build"
+    ])
     
-    b.run("cmake .. " +
-          "-DCMAKE_INSTALL_PREFIX=$PREFIX " +
-          "-DCMAKE_BUILD_TYPE=Release " +
-          "-DWITH_SSL=ON " +
-          "-DWITH_SQLITE=ON")
-    
-    # Build with multiple cores
-    cores = b.cpu_count()
-    b.run("make -j{}".format(cores))
+    # Build with make using parallel jobs
+    ctx.command("cd build")
+    ctx.make(["-C", "build", "-j" + str(ctx.JOBS)])
     
     # Run tests
-    b.run("make test")
+    ctx.make(["-C", "build", "test"])
     
-    # Install
-    b.run("make install")
+    # Install to staging directory
+    ctx.make(["-C", "build", "install", "DESTDIR=$(pwd)/stage"])
     
     # Install additional documentation
-    b.chdir("..")
-    b.run("mkdir -p $PREFIX/share/doc/complex-app")
-    b.run("cp README.md CHANGELOG.md LICENSE $PREFIX/share/doc/complex-app/")
-    b.run("cp -r docs/ $PREFIX/share/doc/complex-app/")
+    ctx.command("mkdir -p stage" + ctx.PREFIX + "/share/doc/complex-app")
+    ctx.command("cp complex-app-2.1.3/README.md complex-app-2.1.3/CHANGELOG.md complex-app-2.1.3/LICENSE stage" + ctx.PREFIX + "/share/doc/complex-app/")
+    ctx.command("cp -r complex-app-2.1.3/docs/ stage" + ctx.PREFIX + "/share/doc/complex-app/")
     
     # Create sample configuration
-    b.run("mkdir -p $PREFIX/share/complex-app")
-    b.write_file("$PREFIX/share/complex-app/config.example.toml", """
+    ctx.command("mkdir -p stage" + ctx.PREFIX + "/share/complex-app")
+    ctx.command("""cat > stage""" + ctx.PREFIX + """/share/complex-app/config.example.toml << 'EOF'
 [application]
 name = "complex-app"
 version = "2.1.3"
@@ -64,4 +78,4 @@ path = "~/.local/share/complex-app/data.db"
 [network]
 timeout = 30
 retries = 3
-""")
+EOF""")
