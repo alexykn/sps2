@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// Build environment for isolated package building
+#[derive(Clone, Debug)]
 pub struct BuildEnvironment {
     /// Build context
     pub(crate) context: BuildContext,
@@ -98,6 +99,12 @@ impl BuildEnvironment {
     #[must_use]
     pub fn build_prefix(&self) -> &Path {
         &self.build_prefix
+    }
+
+    /// Get dependencies prefix
+    #[must_use]
+    pub fn deps_prefix(&self) -> &Path {
+        &self.deps_prefix
     }
 
     /// Get environment variables

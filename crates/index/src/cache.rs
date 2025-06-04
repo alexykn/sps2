@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use tokio::fs;
 
 /// Index cache manager
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct IndexCache {
     cache_dir: PathBuf,
 }

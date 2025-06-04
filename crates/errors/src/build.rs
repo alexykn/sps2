@@ -65,4 +65,31 @@ pub enum BuildError {
 
     #[error("signing error: {message}")]
     SigningError { message: String },
+
+    #[error("no build system detected in {path}")]
+    NoBuildSystemDetected { path: String },
+
+    #[error("dependency conflict: {message}")]
+    DependencyConflict { message: String },
+
+    #[error("compilation failed: {message}")]
+    CompilationFailed { message: String },
+
+    #[error("tests failed: {passed}/{total} tests passed")]
+    TestsFailed { passed: usize, total: usize },
+
+    #[error("quality assurance failed: {message}")]
+    QualityAssuranceFailed { message: String },
+
+    #[error("linter error: {linter} - {message}")]
+    LinterError { linter: String, message: String },
+
+    #[error("security vulnerability found: {scanner} - {message}")]
+    SecurityVulnerability { scanner: String, message: String },
+
+    #[error("policy violation: {rule} - {message}")]
+    PolicyViolation { rule: String, message: String },
+
+    #[error("license compliance error: {message}")]
+    LicenseComplianceError { message: String },
 }

@@ -80,14 +80,13 @@ impl BuildEnvironment {
         );
 
         // Prevent system library contamination
+        // LIBRARY_PATH is used by compiler/linker at build time
         self.env_vars.insert(
             "LIBRARY_PATH".to_string(),
             format!("{deps_prefix_display}/lib"),
         );
-        self.env_vars.insert(
-            "LD_LIBRARY_PATH".to_string(),
-            format!("{deps_prefix_display}/lib"),
-        );
+        // Note: We don't set LD_LIBRARY_PATH or DYLD_LIBRARY_PATH as they're
+        // considered dangerous for isolation and are runtime variables, not build-time
 
         // macOS specific settings - targeting Apple Silicon Macs (macOS 12.0+)
         self.env_vars
@@ -183,10 +182,10 @@ impl BuildEnvironment {
         self.env_vars
             .insert("ACLOCAL_PATH".to_string(), format!("{deps_share}/aclocal"));
 
-        // Ensure library search paths are set
-        self.env_vars
-            .insert("LIBRARY_PATH".to_string(), deps_lib.clone());
-        self.env_vars
-            .insert("LD_LIBRARY_PATH".to_string(), deps_lib);
+        // Ensure library search paths are set for build time
+        // LIBRARY_PATH is used by compiler/linker at build time
+        self.env_vars.insert("LIBRARY_PATH".to_string(), deps_lib);
+        // Note: We don't set LD_LIBRARY_PATH or DYLD_LIBRARY_PATH as they're
+        // considered dangerous for isolation and are runtime variables, not build-time
     }
 }

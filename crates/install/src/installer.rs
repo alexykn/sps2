@@ -66,6 +66,7 @@ impl InstallConfig {
 }
 
 /// Main installer for sps2 packages
+#[derive(Clone)]
 pub struct Installer {
     /// Configuration
     config: InstallConfig,
@@ -75,6 +76,14 @@ pub struct Installer {
     state_manager: StateManager,
     /// Package store
     store: PackageStore,
+}
+
+impl std::fmt::Debug for Installer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Installer")
+            .field("config", &self.config)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Installer {

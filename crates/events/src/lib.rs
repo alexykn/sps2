@@ -103,6 +103,41 @@ pub enum Event {
     BuildCleaned {
         package: String,
     },
+    BuildRetrying {
+        package: String,
+        attempt: usize,
+        reason: String,
+    },
+    BuildWarning {
+        package: String,
+        message: String,
+    },
+    BuildCheckpointCreated {
+        package: String,
+        checkpoint_id: String,
+        stage: String,
+    },
+    BuildCheckpointRestored {
+        package: String,
+        checkpoint_id: String,
+        stage: String,
+    },
+    BuildCacheHit {
+        cache_key: String,
+        artifacts_count: usize,
+    },
+    BuildCacheMiss {
+        cache_key: String,
+        reason: String,
+    },
+    BuildCacheUpdated {
+        cache_key: String,
+        artifacts_count: usize,
+    },
+    BuildCacheCleaned {
+        removed_items: usize,
+        freed_bytes: u64,
+    },
 
     // State management
     StateTransition {
@@ -193,6 +228,47 @@ pub enum Event {
     OperationCompleted {
         operation: String,
         success: bool,
+    },
+
+    // Quality Assurance events
+    QaCheckStarted {
+        check_type: String,
+        check_name: String,
+    },
+    QaCheckCompleted {
+        check_type: String,
+        check_name: String,
+        findings_count: usize,
+        severity_counts: HashMap<String, usize>,
+    },
+    QaCheckFailed {
+        check_type: String,
+        check_name: String,
+        error: String,
+    },
+    QaPipelineStarted {
+        package: String,
+        version: String,
+        qa_level: String,
+    },
+    QaPipelineCompleted {
+        package: String,
+        version: String,
+        total_checks: usize,
+        passed: usize,
+        failed: usize,
+        duration_seconds: u64,
+    },
+    QaFindingReported {
+        check_type: String,
+        severity: String,
+        message: String,
+        file_path: Option<String>,
+        line: Option<usize>,
+    },
+    QaReportGenerated {
+        format: String,
+        path: Option<String>,
     },
     OperationFailed {
         operation: String,

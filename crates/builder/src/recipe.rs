@@ -151,6 +151,78 @@ async fn execute_build_step(
         BuildStep::AllowNetwork { enabled } => {
             let _result = api.allow_network(*enabled);
         }
+        // New build system detection
+        BuildStep::DetectBuildSystem => {
+            // TODO: Implement build system detection
+            // For now, just log it as a no-op
+        }
+        BuildStep::SetBuildSystem { name: _ } => {
+            // TODO: Store build system preference
+            // For now, just log it as a no-op
+        }
+        // Feature flags
+        BuildStep::EnableFeature { name: _ } => {
+            // TODO: Enable feature in build context
+            // For now, just log it as a no-op
+        }
+        BuildStep::DisableFeature { name: _ } => {
+            // TODO: Disable feature in build context
+            // For now, just log it as a no-op
+        }
+        BuildStep::WithFeatures { features: _, steps } => {
+            // TODO: Check features and conditionally execute steps
+            // For now, execute all steps unconditionally
+            for step in steps {
+                Box::pin(execute_build_step(step, api, environment)).await?;
+            }
+        }
+        // Error recovery
+        BuildStep::TryRecover {
+            steps,
+            recovery_strategy: _,
+        } => {
+            // TODO: Execute steps with recovery strategy
+            // For now, execute steps normally
+            for step in steps {
+                Box::pin(execute_build_step(step, api, environment)).await?;
+            }
+        }
+        BuildStep::OnError { handler: _ } => {
+            // TODO: Register error handler
+            // For now, just log it as a no-op
+        }
+        BuildStep::Checkpoint { name: _ } => {
+            // TODO: Create checkpoint for recovery
+            // For now, just log it as a no-op
+        }
+        // Cross-compilation
+        BuildStep::SetTarget { triple: _ } => {
+            // TODO: Configure cross-compilation target
+            // For now, just log it as a no-op
+        }
+        BuildStep::SetToolchain { name: _, path: _ } => {
+            // TODO: Configure toolchain component
+            // For now, just log it as a no-op
+        }
+        // Parallel execution
+        BuildStep::SetParallelism { jobs: _ } => {
+            // TODO: Update parallelism level
+            // For now, just log it as a no-op
+        }
+        BuildStep::ParallelSteps { steps } => {
+            // TODO: Execute steps in parallel
+            // For now, execute steps sequentially
+            for step in steps {
+                Box::pin(execute_build_step(step, api, environment)).await?;
+            }
+        }
+        BuildStep::SetResourceHints {
+            cpu: _,
+            memory_mb: _,
+        } => {
+            // TODO: Set resource hints for scheduler
+            // For now, just log it as a no-op
+        }
     }
 
     Ok(())

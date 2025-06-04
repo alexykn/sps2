@@ -22,7 +22,7 @@ pub struct PackageFormatInfo {
 }
 
 /// Package format detector for .sp files
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PackageFormatDetector {
     checker: PackageFormatChecker,
 }
@@ -225,7 +225,7 @@ impl Default for PackageFormatDetector {
 }
 
 /// Store-level format validation for package operations
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct StoreFormatValidator {
     detector: PackageFormatDetector,
     require_compatibility: bool,

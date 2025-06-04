@@ -62,16 +62,87 @@ pub struct RecipeMetadata {
 /// A build step from the `build()` function
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BuildStep {
-    Fetch { url: String, blake3: String },
-    ApplyPatch { path: String },
-    AllowNetwork { enabled: bool },
-    Configure { args: Vec<String> },
-    Make { args: Vec<String> },
-    Autotools { args: Vec<String> },
-    Cmake { args: Vec<String> },
-    Meson { args: Vec<String> },
-    Cargo { args: Vec<String> },
-    Command { program: String, args: Vec<String> },
-    SetEnv { key: String, value: String },
+    Fetch {
+        url: String,
+        blake3: String,
+    },
+    ApplyPatch {
+        path: String,
+    },
+    AllowNetwork {
+        enabled: bool,
+    },
+    Configure {
+        args: Vec<String>,
+    },
+    Make {
+        args: Vec<String>,
+    },
+    Autotools {
+        args: Vec<String>,
+    },
+    Cmake {
+        args: Vec<String>,
+    },
+    Meson {
+        args: Vec<String>,
+    },
+    Cargo {
+        args: Vec<String>,
+    },
+    Command {
+        program: String,
+        args: Vec<String>,
+    },
+    SetEnv {
+        key: String,
+        value: String,
+    },
     Install,
+    // New build system detection
+    DetectBuildSystem,
+    SetBuildSystem {
+        name: String,
+    },
+    // Feature flags
+    EnableFeature {
+        name: String,
+    },
+    DisableFeature {
+        name: String,
+    },
+    WithFeatures {
+        features: Vec<String>,
+        steps: Vec<BuildStep>,
+    },
+    // Error recovery
+    TryRecover {
+        steps: Vec<BuildStep>,
+        recovery_strategy: String,
+    },
+    OnError {
+        handler: String,
+    },
+    Checkpoint {
+        name: String,
+    },
+    // Cross-compilation
+    SetTarget {
+        triple: String,
+    },
+    SetToolchain {
+        name: String,
+        path: String,
+    },
+    // Parallel execution
+    SetParallelism {
+        jobs: usize,
+    },
+    ParallelSteps {
+        steps: Vec<BuildStep>,
+    },
+    SetResourceHints {
+        cpu: Option<usize>,
+        memory_mb: Option<usize>,
+    },
 }

@@ -433,6 +433,12 @@ mod tests {
 
     #[test]
     fn test_merge_env_variables() {
+        // Clean up any existing vars first
+        std::env::remove_var("SPS2_COLOR");
+        std::env::remove_var("SPS2_BUILD_JOBS");
+        std::env::remove_var("SPS2_NETWORK_ACCESS");
+        std::env::remove_var("SPS2_PARALLEL_DOWNLOADS");
+
         let mut config = Config::default();
 
         // Test SPS2_COLOR
@@ -441,35 +447,41 @@ mod tests {
         std::env::set_var("SPS2_NETWORK_ACCESS", "true");
         std::env::set_var("SPS2_PARALLEL_DOWNLOADS", "8");
 
-        config.merge_env().unwrap();
+        let result = config.merge_env();
+
+        // Clean up immediately after setting to avoid test pollution
+        std::env::remove_var("SPS2_COLOR");
+        std::env::remove_var("SPS2_BUILD_JOBS");
+        std::env::remove_var("SPS2_NETWORK_ACCESS");
+        std::env::remove_var("SPS2_PARALLEL_DOWNLOADS");
+
+        // Now check the result
+        result.unwrap();
 
         assert_eq!(config.general.color, ColorChoice::Always);
         assert_eq!(config.build.build_jobs, 16);
         assert!(config.build.network_access);
         assert_eq!(config.general.parallel_downloads, 8);
-
-        // Clean up
-        std::env::remove_var("SPS2_COLOR");
-        std::env::remove_var("SPS2_BUILD_JOBS");
-        std::env::remove_var("SPS2_NETWORK_ACCESS");
-        std::env::remove_var("SPS2_PARALLEL_DOWNLOADS");
     }
 
     #[test]
     fn test_env_error_handling() {
+        // Clean up any existing vars first
+        std::env::remove_var("SPS2_COLOR");
+        std::env::remove_var("SPS2_BUILD_JOBS");
+
         let mut config = Config::default();
 
         // Test invalid values
         std::env::set_var("SPS2_COLOR", "invalid");
         let result = config.merge_env();
+        std::env::remove_var("SPS2_COLOR"); // Always clean up
         assert!(result.is_err());
 
-        std::env::remove_var("SPS2_COLOR");
-
+        config = Config::default(); // Reset config
         std::env::set_var("SPS2_BUILD_JOBS", "not_a_number");
         let result = config.merge_env();
+        std::env::remove_var("SPS2_BUILD_JOBS"); // Always clean up
         assert!(result.is_err());
-
-        std::env::remove_var("SPS2_BUILD_JOBS");
     }
 }

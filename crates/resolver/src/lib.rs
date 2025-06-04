@@ -10,10 +10,12 @@
 mod execution;
 mod graph;
 mod resolver;
+mod sat;
 
 pub use execution::ExecutionPlan;
 pub use graph::{DepEdge, DepKind, NodeAction, PackageId, ResolvedNode};
 pub use resolver::Resolver;
+pub use sat::{solve_dependencies, DependencyProblem, DependencySolution};
 
 use sps2_types::package::PackageSpec;
 use std::collections::HashMap;

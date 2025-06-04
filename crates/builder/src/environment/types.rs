@@ -16,7 +16,7 @@ pub struct BuildCommandResult {
 }
 
 /// Result of the build process
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BuildResult {
     /// Path to the generated package file
     pub package_path: PathBuf,

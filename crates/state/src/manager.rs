@@ -22,6 +22,15 @@ pub struct StateManager {
     tx: EventSender,
 }
 
+impl std::fmt::Debug for StateManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StateManager")
+            .field("state_path", &self.state_path)
+            .field("live_path", &self.live_path)
+            .finish_non_exhaustive()
+    }
+}
+
 impl StateManager {
     /// Create a new state manager with database setup
     ///

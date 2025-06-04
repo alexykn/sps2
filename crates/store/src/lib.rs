@@ -23,7 +23,7 @@ use sps2_root::{create_dir_all, exists, remove_dir_all, set_compression, size};
 use std::path::{Path, PathBuf};
 
 /// Store manager for content-addressed packages
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PackageStore {
     base_path: PathBuf,
     format_validator: StoreFormatValidator,

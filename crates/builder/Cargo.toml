@@ -30,6 +30,14 @@ minisign = "0.7.9"
 async-trait = "0.1.83"
 tar = "0.4.44"
 async-compression = { version = "0.4.23", features = ["tokio", "zstd"] }
+futures = "0.3.31"
+dashmap = { workspace = true }
+crossbeam = { workspace = true }
+chrono = { workspace = true }
+which = "6.0.0"
+sysinfo = "0.32"
+uuid = { version = "1.10", features = ["v4"] }
+bitflags = "2.6"
 
 [dev-dependencies]
 tempfile = { workspace = true }

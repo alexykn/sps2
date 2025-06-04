@@ -25,7 +25,7 @@ use std::path::Path;
 pub const SUPPORTED_INDEX_VERSION: u32 = 1;
 
 /// Repository index manager
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct IndexManager {
     index: Option<Index>,
     pub cache: IndexCache,

@@ -230,6 +230,367 @@ impl BuildMethodFunction {
             }
         }
     }
+
+    fn handle_detect_build_system_invoke<'v>(
+        &self,
+        args: &Arguments<'v, '_>,
+        eval: &mut starlark::eval::Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<()> {
+        args.no_positional_args(eval.heap())?;
+        args.no_named_args()?;
+        self.context
+            .steps
+            .borrow_mut()
+            .push(BuildStep::DetectBuildSystem);
+        Ok(())
+    }
+
+    fn handle_set_build_system_invoke<'v>(
+        &self,
+        args: &Arguments<'v, '_>,
+        eval: &mut starlark::eval::Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<()> {
+        let len = args.len()?;
+        if len != 1 {
+            return Err(starlark::Error::new_other(anyhow::anyhow!(
+                "set_build_system() requires exactly 1 argument: build system name, got {}",
+                len
+            )));
+        }
+        args.no_named_args()?;
+
+        let name = args
+            .positional1(eval.heap())?
+            .unpack_str()
+            .ok_or_else(|| {
+                starlark::Error::new_other(anyhow::anyhow!("Build system name must be a string"))
+            })?
+            .to_string();
+
+        self.context
+            .detected_build_system
+            .replace(Some(name.clone()));
+        self.context
+            .steps
+            .borrow_mut()
+            .push(BuildStep::SetBuildSystem { name });
+        Ok(())
+    }
+
+    fn handle_enable_feature_invoke<'v>(
+        &self,
+        args: &Arguments<'v, '_>,
+        eval: &mut starlark::eval::Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<()> {
+        let len = args.len()?;
+        if len != 1 {
+            return Err(starlark::Error::new_other(anyhow::anyhow!(
+                "enable_feature() requires exactly 1 argument: feature name, got {}",
+                len
+            )));
+        }
+        args.no_named_args()?;
+
+        let name = args
+            .positional1(eval.heap())?
+            .unpack_str()
+            .ok_or_else(|| {
+                starlark::Error::new_other(anyhow::anyhow!("Feature name must be a string"))
+            })?
+            .to_string();
+
+        self.context
+            .features
+            .borrow_mut()
+            .insert(name.clone(), true);
+        self.context
+            .steps
+            .borrow_mut()
+            .push(BuildStep::EnableFeature { name });
+        Ok(())
+    }
+
+    fn handle_disable_feature_invoke<'v>(
+        &self,
+        args: &Arguments<'v, '_>,
+        eval: &mut starlark::eval::Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<()> {
+        let len = args.len()?;
+        if len != 1 {
+            return Err(starlark::Error::new_other(anyhow::anyhow!(
+                "disable_feature() requires exactly 1 argument: feature name, got {}",
+                len
+            )));
+        }
+        args.no_named_args()?;
+
+        let name = args
+            .positional1(eval.heap())?
+            .unpack_str()
+            .ok_or_else(|| {
+                starlark::Error::new_other(anyhow::anyhow!("Feature name must be a string"))
+            })?
+            .to_string();
+
+        self.context
+            .features
+            .borrow_mut()
+            .insert(name.clone(), false);
+        self.context
+            .steps
+            .borrow_mut()
+            .push(BuildStep::DisableFeature { name });
+        Ok(())
+    }
+
+    fn handle_with_features_invoke<'v>(
+        &self,
+        args: &Arguments<'v, '_>,
+        _eval: &mut starlark::eval::Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<()> {
+        // For now, simplified implementation - would need proper list parsing
+        args.no_named_args()?;
+        let len = args.len()?;
+        if len < 1 {
+            return Err(starlark::Error::new_other(anyhow::anyhow!(
+                "with_features() requires at least 1 argument"
+            )));
+        }
+
+        // Placeholder implementation
+        self.context
+            .steps
+            .borrow_mut()
+            .push(BuildStep::WithFeatures {
+                features: vec![],
+                steps: vec![],
+            });
+        Ok(())
+    }
+
+    fn handle_try_recover_invoke<'v>(
+        &self,
+        args: &Arguments<'v, '_>,
+        eval: &mut starlark::eval::Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<()> {
+        args.no_named_args()?;
+        let len = args.len()?;
+        if len != 1 {
+            return Err(starlark::Error::new_other(anyhow::anyhow!(
+                "try_recover() requires exactly 1 argument: recovery strategy, got {}",
+                len
+            )));
+        }
+
+        let strategy = args
+            .positional1(eval.heap())?
+            .unpack_str()
+            .ok_or_else(|| {
+                starlark::Error::new_other(anyhow::anyhow!("Recovery strategy must be a string"))
+            })?
+            .to_string();
+
+        self.context.steps.borrow_mut().push(BuildStep::TryRecover {
+            steps: vec![],
+            recovery_strategy: strategy,
+        });
+        Ok(())
+    }
+
+    fn handle_on_error_invoke<'v>(
+        &self,
+        args: &Arguments<'v, '_>,
+        eval: &mut starlark::eval::Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<()> {
+        let len = args.len()?;
+        if len != 1 {
+            return Err(starlark::Error::new_other(anyhow::anyhow!(
+                "on_error() requires exactly 1 argument: handler name, got {}",
+                len
+            )));
+        }
+        args.no_named_args()?;
+
+        let handler = args
+            .positional1(eval.heap())?
+            .unpack_str()
+            .ok_or_else(|| {
+                starlark::Error::new_other(anyhow::anyhow!("Handler name must be a string"))
+            })?
+            .to_string();
+
+        self.context
+            .error_handlers
+            .borrow_mut()
+            .push(handler.clone());
+        self.context
+            .steps
+            .borrow_mut()
+            .push(BuildStep::OnError { handler });
+        Ok(())
+    }
+
+    fn handle_checkpoint_invoke<'v>(
+        &self,
+        args: &Arguments<'v, '_>,
+        eval: &mut starlark::eval::Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<()> {
+        let len = args.len()?;
+        if len != 1 {
+            return Err(starlark::Error::new_other(anyhow::anyhow!(
+                "checkpoint() requires exactly 1 argument: checkpoint name, got {}",
+                len
+            )));
+        }
+        args.no_named_args()?;
+
+        let name = args
+            .positional1(eval.heap())?
+            .unpack_str()
+            .ok_or_else(|| {
+                starlark::Error::new_other(anyhow::anyhow!("Checkpoint name must be a string"))
+            })?
+            .to_string();
+
+        self.context.checkpoints.borrow_mut().push(name.clone());
+        self.context
+            .steps
+            .borrow_mut()
+            .push(BuildStep::Checkpoint { name });
+        Ok(())
+    }
+
+    fn handle_set_target_invoke<'v>(
+        &self,
+        args: &Arguments<'v, '_>,
+        eval: &mut starlark::eval::Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<()> {
+        let len = args.len()?;
+        if len != 1 {
+            return Err(starlark::Error::new_other(anyhow::anyhow!(
+                "set_target() requires exactly 1 argument: target triple, got {}",
+                len
+            )));
+        }
+        args.no_named_args()?;
+
+        let triple = args
+            .positional1(eval.heap())?
+            .unpack_str()
+            .ok_or_else(|| {
+                starlark::Error::new_other(anyhow::anyhow!("Target triple must be a string"))
+            })?
+            .to_string();
+
+        self.context.target_triple.replace(Some(triple.clone()));
+        self.context
+            .steps
+            .borrow_mut()
+            .push(BuildStep::SetTarget { triple });
+        Ok(())
+    }
+
+    fn handle_set_toolchain_invoke<'v>(
+        &self,
+        args: &Arguments<'v, '_>,
+        eval: &mut starlark::eval::Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<()> {
+        args.no_named_args()?;
+        let len = args.len()?;
+        if len != 2 {
+            return Err(starlark::Error::new_other(anyhow::anyhow!(
+                "set_toolchain() requires exactly 2 arguments: name and path, got {}",
+                len
+            )));
+        }
+
+        // Due to Starlark limitations, we can only get the first argument easily
+        // For now, simplified implementation
+        let name = args
+            .positional1(eval.heap())?
+            .unpack_str()
+            .ok_or_else(|| {
+                starlark::Error::new_other(anyhow::anyhow!("Toolchain name must be a string"))
+            })?
+            .to_string();
+
+        self.context
+            .steps
+            .borrow_mut()
+            .push(BuildStep::SetToolchain {
+                name,
+                path: "/placeholder/path".to_string(),
+            });
+        Ok(())
+    }
+
+    fn handle_set_parallelism_invoke<'v>(
+        &self,
+        args: &Arguments<'v, '_>,
+        eval: &mut starlark::eval::Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<()> {
+        let len = args.len()?;
+        if len != 1 {
+            return Err(starlark::Error::new_other(anyhow::anyhow!(
+                "set_parallelism() requires exactly 1 argument: number of jobs, got {}",
+                len
+            )));
+        }
+        args.no_named_args()?;
+
+        let jobs_value = args.positional1(eval.heap())?;
+        let jobs = jobs_value.unpack_i32().ok_or_else(|| {
+            starlark::Error::new_other(anyhow::anyhow!("Jobs must be an integer"))
+        })?;
+
+        if jobs <= 0 {
+            return Err(starlark::Error::new_other(anyhow::anyhow!(
+                "Jobs must be a positive integer"
+            )));
+        }
+
+        let jobs_usize = jobs.try_into().unwrap_or(1);
+        self.context.parallelism.replace(jobs_usize);
+        self.context
+            .steps
+            .borrow_mut()
+            .push(BuildStep::SetParallelism { jobs: jobs_usize });
+        Ok(())
+    }
+
+    fn handle_parallel_steps_invoke<'v>(
+        &self,
+        args: &Arguments<'v, '_>,
+        _eval: &mut starlark::eval::Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<()> {
+        // For now, simplified implementation - would need proper list parsing
+        args.no_named_args()?;
+
+        self.context
+            .steps
+            .borrow_mut()
+            .push(BuildStep::ParallelSteps { steps: vec![] });
+        Ok(())
+    }
+
+    fn handle_set_resource_hints_invoke<'v>(
+        &self,
+        args: &Arguments<'v, '_>,
+        _eval: &mut starlark::eval::Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<()> {
+        args.no_named_args()?;
+
+        // For now, simplified implementation
+        self.context.resource_hints.replace((None, None));
+        self.context
+            .steps
+            .borrow_mut()
+            .push(BuildStep::SetResourceHints {
+                cpu: None,
+                memory_mb: None,
+            });
+        Ok(())
+    }
 }
 
 #[starlark_value(type = "BuildMethodFunction")]
@@ -259,6 +620,58 @@ impl<'v> StarlarkValue<'v> for BuildMethodFunction {
             }
             "command" => {
                 self.handle_command_invoke(args, eval)?;
+                Ok(Value::new_none())
+            }
+            "detect_build_system" => {
+                self.handle_detect_build_system_invoke(args, eval)?;
+                Ok(Value::new_none())
+            }
+            "set_build_system" => {
+                self.handle_set_build_system_invoke(args, eval)?;
+                Ok(Value::new_none())
+            }
+            "enable_feature" => {
+                self.handle_enable_feature_invoke(args, eval)?;
+                Ok(Value::new_none())
+            }
+            "disable_feature" => {
+                self.handle_disable_feature_invoke(args, eval)?;
+                Ok(Value::new_none())
+            }
+            "with_features" => {
+                self.handle_with_features_invoke(args, eval)?;
+                Ok(Value::new_none())
+            }
+            "try_recover" => {
+                self.handle_try_recover_invoke(args, eval)?;
+                Ok(Value::new_none())
+            }
+            "on_error" => {
+                self.handle_on_error_invoke(args, eval)?;
+                Ok(Value::new_none())
+            }
+            "checkpoint" => {
+                self.handle_checkpoint_invoke(args, eval)?;
+                Ok(Value::new_none())
+            }
+            "set_target" => {
+                self.handle_set_target_invoke(args, eval)?;
+                Ok(Value::new_none())
+            }
+            "set_toolchain" => {
+                self.handle_set_toolchain_invoke(args, eval)?;
+                Ok(Value::new_none())
+            }
+            "set_parallelism" => {
+                self.handle_set_parallelism_invoke(args, eval)?;
+                Ok(Value::new_none())
+            }
+            "parallel_steps" => {
+                self.handle_parallel_steps_invoke(args, eval)?;
+                Ok(Value::new_none())
+            }
+            "set_resource_hints" => {
+                self.handle_set_resource_hints_invoke(args, eval)?;
                 Ok(Value::new_none())
             }
             _ => Err(starlark::Error::new_other(anyhow::anyhow!(
@@ -302,6 +715,26 @@ pub struct BuildContext {
     // Build executor integration
     #[allocative(skip)]
     executor: Option<Arc<tokio::sync::Mutex<dyn BuildExecutor>>>,
+    // Build system detection
+    #[allocative(skip)]
+    pub detected_build_system: RefCell<Option<String>>,
+    // Feature flags
+    #[allocative(skip)]
+    pub features: Rc<RefCell<std::collections::HashMap<String, bool>>>,
+    // Error recovery
+    #[allocative(skip)]
+    pub error_handlers: Rc<RefCell<Vec<String>>>,
+    #[allocative(skip)]
+    pub checkpoints: Rc<RefCell<Vec<String>>>,
+    // Cross-compilation
+    #[allocative(skip)]
+    pub target_triple: RefCell<Option<String>>,
+    #[allocative(skip)]
+    pub toolchain: RefCell<std::collections::HashMap<String, String>>,
+    // Parallel configuration
+    pub parallelism: RefCell<usize>,
+    #[allocative(skip)]
+    pub resource_hints: RefCell<(Option<usize>, Option<usize>)>, // (cpu, memory_mb)
 }
 
 impl BuildContext {
@@ -315,6 +748,14 @@ impl BuildContext {
             name: String::new(),
             version: String::new(),
             executor: None,
+            detected_build_system: RefCell::new(None),
+            features: Rc::new(RefCell::new(std::collections::HashMap::new())),
+            error_handlers: Rc::new(RefCell::new(Vec::new())),
+            checkpoints: Rc::new(RefCell::new(Vec::new())),
+            target_triple: RefCell::new(None),
+            toolchain: RefCell::new(std::collections::HashMap::new()),
+            parallelism: RefCell::new(jobs.try_into().unwrap_or(1)),
+            resource_hints: RefCell::new((None, None)),
         }
     }
 
@@ -333,6 +774,14 @@ impl BuildContext {
             name: String::new(),
             version: String::new(),
             executor: Some(executor),
+            detected_build_system: RefCell::new(None),
+            features: Rc::new(RefCell::new(std::collections::HashMap::new())),
+            error_handlers: Rc::new(RefCell::new(Vec::new())),
+            checkpoints: Rc::new(RefCell::new(Vec::new())),
+            target_triple: RefCell::new(None),
+            toolchain: RefCell::new(std::collections::HashMap::new()),
+            parallelism: RefCell::new(jobs.try_into().unwrap_or(1)),
+            resource_hints: RefCell::new((None, None)),
         }
     }
 
@@ -458,6 +907,186 @@ impl BuildContext {
         });
         Ok(())
     }
+
+    /// Detect the build system for the current source directory
+    ///
+    /// # Errors
+    ///
+    /// This method currently does not return errors in this minimal implementation.
+    pub fn detect_build_system(&self) -> anyhow::Result<String> {
+        self.steps.borrow_mut().push(BuildStep::DetectBuildSystem);
+        // Return a placeholder for now - actual detection happens in builder
+        Ok("autodetect".to_string())
+    }
+
+    /// Set the build system to use
+    ///
+    /// # Errors
+    ///
+    /// This method currently does not return errors in this minimal implementation.
+    pub fn set_build_system(&self, name: &str) -> anyhow::Result<()> {
+        self.detected_build_system.replace(Some(name.to_string()));
+        self.steps.borrow_mut().push(BuildStep::SetBuildSystem {
+            name: name.to_string(),
+        });
+        Ok(())
+    }
+
+    /// Enable a feature flag
+    ///
+    /// # Errors
+    ///
+    /// This method currently does not return errors in this minimal implementation.
+    pub fn enable_feature(&self, name: &str) -> anyhow::Result<()> {
+        self.features.borrow_mut().insert(name.to_string(), true);
+        self.steps.borrow_mut().push(BuildStep::EnableFeature {
+            name: name.to_string(),
+        });
+        Ok(())
+    }
+
+    /// Disable a feature flag
+    ///
+    /// # Errors
+    ///
+    /// This method currently does not return errors in this minimal implementation.
+    pub fn disable_feature(&self, name: &str) -> anyhow::Result<()> {
+        self.features.borrow_mut().insert(name.to_string(), false);
+        self.steps.borrow_mut().push(BuildStep::DisableFeature {
+            name: name.to_string(),
+        });
+        Ok(())
+    }
+
+    /// Execute steps conditionally based on features
+    ///
+    /// # Errors
+    ///
+    /// This method currently does not return errors in this minimal implementation.
+    pub fn with_features(
+        &self,
+        features: Vec<String>,
+        steps: Vec<BuildStep>,
+    ) -> anyhow::Result<()> {
+        self.steps
+            .borrow_mut()
+            .push(BuildStep::WithFeatures { features, steps });
+        Ok(())
+    }
+
+    /// Try to recover from errors with specified strategy
+    ///
+    /// # Errors
+    ///
+    /// This method currently does not return errors in this minimal implementation.
+    pub fn try_recover(
+        &self,
+        steps: Vec<BuildStep>,
+        recovery_strategy: &str,
+    ) -> anyhow::Result<()> {
+        self.steps.borrow_mut().push(BuildStep::TryRecover {
+            steps,
+            recovery_strategy: recovery_strategy.to_string(),
+        });
+        Ok(())
+    }
+
+    /// Register an error handler
+    ///
+    /// # Errors
+    ///
+    /// This method currently does not return errors in this minimal implementation.
+    pub fn on_error(&self, handler: &str) -> anyhow::Result<()> {
+        self.error_handlers.borrow_mut().push(handler.to_string());
+        self.steps.borrow_mut().push(BuildStep::OnError {
+            handler: handler.to_string(),
+        });
+        Ok(())
+    }
+
+    /// Create a checkpoint for recovery
+    ///
+    /// # Errors
+    ///
+    /// This method currently does not return errors in this minimal implementation.
+    pub fn checkpoint(&self, name: &str) -> anyhow::Result<()> {
+        self.checkpoints.borrow_mut().push(name.to_string());
+        self.steps.borrow_mut().push(BuildStep::Checkpoint {
+            name: name.to_string(),
+        });
+        Ok(())
+    }
+
+    /// Set the target triple for cross-compilation
+    ///
+    /// # Errors
+    ///
+    /// This method currently does not return errors in this minimal implementation.
+    pub fn set_target(&self, triple: &str) -> anyhow::Result<()> {
+        self.target_triple.replace(Some(triple.to_string()));
+        self.steps.borrow_mut().push(BuildStep::SetTarget {
+            triple: triple.to_string(),
+        });
+        Ok(())
+    }
+
+    /// Set a toolchain component for cross-compilation
+    ///
+    /// # Errors
+    ///
+    /// This method currently does not return errors in this minimal implementation.
+    pub fn set_toolchain(&self, name: &str, path: &str) -> anyhow::Result<()> {
+        self.toolchain
+            .borrow_mut()
+            .insert(name.to_string(), path.to_string());
+        self.steps.borrow_mut().push(BuildStep::SetToolchain {
+            name: name.to_string(),
+            path: path.to_string(),
+        });
+        Ok(())
+    }
+
+    /// Set the parallelism level for builds
+    ///
+    /// # Errors
+    ///
+    /// This method currently does not return errors in this minimal implementation.
+    pub fn set_parallelism(&self, jobs: usize) -> anyhow::Result<()> {
+        self.parallelism.replace(jobs);
+        self.steps
+            .borrow_mut()
+            .push(BuildStep::SetParallelism { jobs });
+        Ok(())
+    }
+
+    /// Execute steps in parallel
+    ///
+    /// # Errors
+    ///
+    /// This method currently does not return errors in this minimal implementation.
+    pub fn parallel_steps(&self, steps: Vec<BuildStep>) -> anyhow::Result<()> {
+        self.steps
+            .borrow_mut()
+            .push(BuildStep::ParallelSteps { steps });
+        Ok(())
+    }
+
+    /// Set resource hints for the build
+    ///
+    /// # Errors
+    ///
+    /// This method currently does not return errors in this minimal implementation.
+    pub fn set_resource_hints(
+        &self,
+        cpu: Option<usize>,
+        memory_mb: Option<usize>,
+    ) -> anyhow::Result<()> {
+        self.resource_hints.replace((cpu, memory_mb));
+        self.steps
+            .borrow_mut()
+            .push(BuildStep::SetResourceHints { cpu, memory_mb });
+        Ok(())
+    }
 }
 
 impl Display for BuildContext {
@@ -473,6 +1102,53 @@ impl Display for BuildContext {
 unsafe impl<'v> Trace<'v> for BuildContext {
     fn trace(&mut self, _tracer: &starlark::values::Tracer<'v>) {
         // No Value<'v> types to trace in BuildContext
+    }
+}
+
+impl BuildContext {
+    /// Helper to create build system method functions
+    fn create_build_system_method<'v>(&self, method_name: &str, heap: &'v Heap) -> Value<'v> {
+        heap.alloc(BuildMethodFunction {
+            context: self.clone(),
+            method_name: method_name.to_string(),
+            executor: self.executor.clone(),
+        })
+    }
+
+    /// Helper to create build operation method functions
+    fn create_build_operation_method<'v>(&self, method_name: &str, heap: &'v Heap) -> Value<'v> {
+        heap.alloc(BuildMethodFunction {
+            context: self.clone(),
+            method_name: method_name.to_string(),
+            executor: self.executor.clone(),
+        })
+    }
+
+    /// Helper to create feature management method functions
+    fn create_feature_method<'v>(&self, method_name: &str, heap: &'v Heap) -> Value<'v> {
+        heap.alloc(BuildMethodFunction {
+            context: self.clone(),
+            method_name: method_name.to_string(),
+            executor: self.executor.clone(),
+        })
+    }
+
+    /// Helper to create recovery and error handling method functions
+    fn create_recovery_method<'v>(&self, method_name: &str, heap: &'v Heap) -> Value<'v> {
+        heap.alloc(BuildMethodFunction {
+            context: self.clone(),
+            method_name: method_name.to_string(),
+            executor: self.executor.clone(),
+        })
+    }
+
+    /// Helper to create configuration and optimization method functions
+    fn create_config_method<'v>(&self, method_name: &str, heap: &'v Heap) -> Value<'v> {
+        heap.alloc(BuildMethodFunction {
+            context: self.clone(),
+            method_name: method_name.to_string(),
+            executor: self.executor.clone(),
+        })
     }
 }
 
@@ -495,6 +1171,19 @@ impl<'v> StarlarkValue<'v> for BuildContext {
                 | "cargo"
                 | "apply_patch"
                 | "command"
+                | "detect_build_system"
+                | "set_build_system"
+                | "enable_feature"
+                | "disable_feature"
+                | "with_features"
+                | "try_recover"
+                | "on_error"
+                | "checkpoint"
+                | "set_target"
+                | "set_toolchain"
+                | "set_parallelism"
+                | "parallel_steps"
+                | "set_resource_hints"
         )
     }
 
@@ -504,56 +1193,24 @@ impl<'v> StarlarkValue<'v> for BuildContext {
             "JOBS" => Some(heap.alloc(self.jobs)),
             "NAME" => Some(heap.alloc(&self.name)),
             "VERSION" => Some(heap.alloc(&self.version)),
-            "fetch" => Some(heap.alloc(BuildMethodFunction {
-                context: self.clone(),
-                method_name: "fetch".to_string(),
-                executor: self.executor.clone(),
-            })),
-            "make" => Some(heap.alloc(BuildMethodFunction {
-                context: self.clone(),
-                method_name: "make".to_string(),
-                executor: self.executor.clone(),
-            })),
-            "install" => Some(heap.alloc(BuildMethodFunction {
-                context: self.clone(),
-                method_name: "install".to_string(),
-                executor: self.executor.clone(),
-            })),
-            "configure" => Some(heap.alloc(BuildMethodFunction {
-                context: self.clone(),
-                method_name: "configure".to_string(),
-                executor: self.executor.clone(),
-            })),
-            "autotools" => Some(heap.alloc(BuildMethodFunction {
-                context: self.clone(),
-                method_name: "autotools".to_string(),
-                executor: self.executor.clone(),
-            })),
-            "cmake" => Some(heap.alloc(BuildMethodFunction {
-                context: self.clone(),
-                method_name: "cmake".to_string(),
-                executor: self.executor.clone(),
-            })),
-            "meson" => Some(heap.alloc(BuildMethodFunction {
-                context: self.clone(),
-                method_name: "meson".to_string(),
-                executor: self.executor.clone(),
-            })),
-            "cargo" => Some(heap.alloc(BuildMethodFunction {
-                context: self.clone(),
-                method_name: "cargo".to_string(),
-                executor: self.executor.clone(),
-            })),
-            "apply_patch" => Some(heap.alloc(BuildMethodFunction {
-                context: self.clone(),
-                method_name: "apply_patch".to_string(),
-                executor: self.executor.clone(),
-            })),
-            "command" => Some(heap.alloc(BuildMethodFunction {
-                context: self.clone(),
-                method_name: "command".to_string(),
-                executor: self.executor.clone(),
-            })),
+            // Basic build system methods
+            "fetch" | "make" | "install" | "configure" | "autotools" | "cmake" | "meson"
+            | "cargo" => Some(self.create_build_system_method(attribute, heap)),
+            // Build operation methods
+            "apply_patch" | "command" | "detect_build_system" | "set_build_system" => {
+                Some(self.create_build_operation_method(attribute, heap))
+            }
+            // Feature management methods
+            "enable_feature" | "disable_feature" | "with_features" => {
+                Some(self.create_feature_method(attribute, heap))
+            }
+            // Error handling and recovery methods
+            "try_recover" | "on_error" | "checkpoint" => {
+                Some(self.create_recovery_method(attribute, heap))
+            }
+            // Configuration and optimization methods
+            "set_target" | "set_toolchain" | "set_parallelism" | "parallel_steps"
+            | "set_resource_hints" => Some(self.create_config_method(attribute, heap)),
             _ => None,
         }
     }

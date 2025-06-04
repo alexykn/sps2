@@ -334,7 +334,7 @@ pub enum PackageFormatVersionError {
 }
 
 /// Package format version compatibility checker
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PackageFormatChecker {
     /// Current version this checker supports
     current_version: PackageFormatVersion,
