@@ -33,7 +33,6 @@ pub trait BuildExecutor: Send + Sync + std::fmt::Debug {
 
 /// Build context exposed to Starlark recipes
 #[derive(Debug, Clone, ProvidesStaticType, NoSerialize, Allocative)]
-#[allow(clippy::needless_lifetimes)]
 pub struct BuildContext {
     #[allocative(skip)]
     pub steps: Rc<RefCell<Vec<BuildStep>>>,
@@ -140,8 +139,8 @@ impl Display for BuildContext {
     }
 }
 
-unsafe impl<'v> Trace<'v> for BuildContext {
-    fn trace(&mut self, _tracer: &starlark::values::Tracer<'v>) {
+unsafe impl Trace<'_> for BuildContext {
+    fn trace(&mut self, _tracer: &starlark::values::Tracer<'_>) {
         // No Value<'v> types to trace in BuildContext
     }
 }
