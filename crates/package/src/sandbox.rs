@@ -4,7 +4,7 @@ use crate::error_helpers::{
     format_build_error, format_eval_error, format_missing_function_error, format_parse_error,
 };
 use crate::recipe::{BuildStep, Recipe, RecipeMetadata};
-use crate::starlark_api::{build_api, parse_metadata, BuildContext, BuildExecutor};
+use crate::starlark::{parse_metadata, register_globals, BuildContext, BuildExecutor};
 use sps2_errors::{BuildError, Error};
 use starlark::environment::{Globals, GlobalsBuilder, Module};
 use starlark::eval::Evaluator;
@@ -26,7 +26,7 @@ pub struct RecipeEngine {
 impl RecipeEngine {
     /// Create a new sandboxed engine
     pub fn new() -> Self {
-        let globals = GlobalsBuilder::standard().with(build_api).build();
+        let globals = GlobalsBuilder::standard().with(register_globals).build();
 
         Self { globals }
     }
@@ -97,7 +97,7 @@ impl RecipeEngine {
         // Future versions may add more granular limits via compilation flags or
         // alternative evaluation contexts.
 
-        // Evaluate the recipe
+        // Evaluate the recipe with globals
         eval.eval_module(ast, &self.globals)
             .map_err(|e| format_eval_error(&e.to_string()))?;
 
@@ -129,10 +129,6 @@ impl RecipeEngine {
             .get("build")
             .map_err(|_| format_missing_function_error("build"))?;
 
-        let build_module = Module::new();
-        let mut build_eval = Evaluator::new(&build_module);
-        let _ = build_eval.set_max_callstack_size(1000);
-
         // Create build context with metadata
         let jobs = i32::try_from(num_cpus::get()).unwrap_or(1);
         let context = if let Some(exec) = &executor {
@@ -143,11 +139,16 @@ impl RecipeEngine {
                 .with_metadata(metadata.name.clone(), metadata.version.clone())
         };
 
-        // Allocate the context in the build module's heap
-        // IMPORTANT: We need to extract steps from the context that Starlark actually uses
-        let starlark_context = context.clone();
-        let context_value = build_module.heap().alloc(starlark_context.clone());
+        // Create a new module for the build function evaluation
+        let build_module = Module::new();
+        let mut build_eval = Evaluator::new(&build_module);
+        let _ = build_eval.set_max_callstack_size(1000);
 
+        // Allocate the context in the evaluator's heap
+        let starlark_context = context.clone();
+        let context_value = build_eval.heap().alloc(starlark_context.clone());
+
+        // Call the build function with the context
         build_eval
             .eval_function(build_fn.value(), &[context_value], &[])
             .map_err(|e| format_build_error(&e.to_string()))?;
@@ -531,5 +532,112 @@ def build(ctx):
         let result = result.unwrap();
         assert_eq!(result.metadata.name, "sandbox-test");
         assert_eq!(result.metadata.version, "1.0.0");
+    }
+
+    #[test]
+    fn test_global_functions_integration() {
+        use crate::recipe::BuildStep;
+
+        let recipe_content = r#"
+def metadata():
+    return {
+        "name": "test-global-funcs",
+        "version": "1.0.0",
+        "description": "Test global function integration"
+    }
+
+def build(ctx):
+    # Test various global functions
+    fetch(ctx, "https://example.com/source.tar.gz", "hash123")
+    
+    # Test build system functions
+    configure(ctx, ["--prefix=" + ctx.PREFIX])
+    make(ctx, ["-j" + str(ctx.JOBS)])
+    cmake(ctx, ["-DCMAKE_INSTALL_PREFIX=" + ctx.PREFIX])
+    
+    # Test feature functions
+    enable_feature(ctx, "ssl")
+    disable_feature(ctx, "debug")
+    
+    # Test context functions
+    set_env(ctx, "CC", "gcc")
+    allow_network(ctx, True)
+    checkpoint(ctx, "after-build")
+    
+    # Test parallel functions
+    set_parallelism(ctx, 4)
+    
+    # Test cross functions
+    set_target(ctx, "aarch64-apple-darwin")
+    set_toolchain(ctx, "CC", "aarch64-apple-darwin-gcc")
+    
+    # Finally install
+    install(ctx)
+"#;
+
+        let recipe = Recipe::parse(recipe_content).unwrap();
+        let engine = RecipeEngine::new();
+        let result = engine.execute(&recipe).unwrap();
+
+        // Check metadata
+        assert_eq!(result.metadata.name, "test-global-funcs");
+        assert_eq!(result.metadata.version, "1.0.0");
+
+        // Check that build steps were recorded
+        assert!(!result.build_steps.is_empty());
+
+        // Check specific build steps
+        let steps = &result.build_steps;
+
+        // Should have fetch as first step
+        assert!(
+            matches!(&steps[0], BuildStep::Fetch { url, .. } if url == "https://example.com/source.tar.gz")
+        );
+
+        // Should have configure step
+        assert!(steps
+            .iter()
+            .any(|s| matches!(s, BuildStep::Configure { .. })));
+
+        // Should have make step
+        assert!(steps.iter().any(|s| matches!(s, BuildStep::Make { .. })));
+
+        // Should have cmake step
+        assert!(steps.iter().any(|s| matches!(s, BuildStep::Cmake { .. })));
+
+        // Should have feature steps
+        assert!(steps
+            .iter()
+            .any(|s| matches!(s, BuildStep::EnableFeature { name } if name == "ssl")));
+        assert!(steps
+            .iter()
+            .any(|s| matches!(s, BuildStep::DisableFeature { name } if name == "debug")));
+
+        // Should have environment and config steps
+        assert!(steps
+            .iter()
+            .any(|s| matches!(s, BuildStep::SetEnv { key, .. } if key == "CC")));
+        assert!(steps
+            .iter()
+            .any(|s| matches!(s, BuildStep::AllowNetwork { enabled } if *enabled)));
+        assert!(steps
+            .iter()
+            .any(|s| matches!(s, BuildStep::Checkpoint { name } if name == "after-build")));
+
+        // Should have parallelism step
+        assert!(steps
+            .iter()
+            .any(|s| matches!(s, BuildStep::SetParallelism { jobs } if *jobs == 4)));
+
+        // Should have cross-compilation steps
+        assert!(steps.iter().any(
+            |s| matches!(s, BuildStep::SetTarget { triple } if triple == "aarch64-apple-darwin")
+        ));
+        assert!(steps
+            .iter()
+            .any(|s| matches!(s, BuildStep::SetToolchain { name, .. } if name == "CC")));
+
+        // Should end with install
+        assert!(matches!(steps.last(), Some(BuildStep::Install)));
     }
 }

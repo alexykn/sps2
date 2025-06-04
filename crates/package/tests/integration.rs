@@ -130,7 +130,7 @@ def build(ctx):
         // Missing metadata function
         let recipe_content = r#"
 def build(ctx):
-    ctx.install()
+    install(ctx)
 "#;
         assert!(Recipe::parse(recipe_content).is_err());
 
@@ -147,7 +147,7 @@ def metadata():
     return {"version": "1.0"}
 
 def build(ctx):
-    ctx.install()
+    install(ctx)
 "#;
         let recipe = Recipe::parse(recipe_content).unwrap();
         assert!(execute_recipe(&recipe).is_err());
@@ -201,15 +201,15 @@ def metadata():
 def build(ctx):
     # Test method dispatch - this should work with our BuildMethodFunction implementation
     # These calls will record BuildStep entries in the context
-    ctx.fetch("https://example.com/file.tar.gz")
-    ctx.configure()
-    ctx.make()
-    ctx.install()
-    ctx.autotools()
-    ctx.cmake()
-    ctx.meson()
-    ctx.cargo()
-    ctx.apply_patch("some.patch")
+    fetch(ctx, "https://example.com/file.tar.gz")
+    configure(ctx)
+    make(ctx)
+    install(ctx)
+    autotools(ctx)
+    cmake(ctx)
+    meson(ctx)
+    cargo(ctx)
+    apply_patch(ctx, "some.patch")
 "#;
 
         let recipe = Recipe::parse(recipe_content).unwrap();
@@ -270,10 +270,10 @@ def metadata():
     }
 
 def build(ctx):
-    ctx.fetch("https://example.com/comprehensive-pkg-3.2.1.tar.gz")
-    ctx.configure()
-    ctx.make()
-    ctx.install()
+    fetch(ctx, "https://example.com/comprehensive-pkg-3.2.1.tar.gz")
+    configure(ctx)
+    make(ctx)
+    install(ctx)
 "#;
 
         let recipe = Recipe::parse(recipe_content).unwrap();
@@ -343,18 +343,18 @@ def metadata():
 
 def build(ctx):
     # Test all available build steps
-    ctx.fetch("https://example.com/source.tar.gz")
-    ctx.apply_patch("fix1.patch")
-    ctx.apply_patch("fix2.patch")
-    ctx.configure()
-    ctx.make()
-    ctx.autotools()
-    ctx.cmake()
-    ctx.meson()
-    ctx.cargo()
-    ctx.command("echo")
-    ctx.command("mkdir")
-    ctx.install()
+    fetch(ctx, "https://example.com/source.tar.gz")
+    apply_patch(ctx, "fix1.patch")
+    apply_patch(ctx, "fix2.patch")
+    configure(ctx)
+    make(ctx)
+    autotools(ctx)
+    cmake(ctx)
+    meson(ctx)
+    cargo(ctx)
+    command(ctx, "echo")
+    command(ctx, "mkdir")
+    install(ctx)
 "#;
 
         let recipe = Recipe::parse(recipe_content).unwrap();
@@ -440,7 +440,7 @@ def metadata():
     }
 
 def build(ctx):
-    ctx.install()
+    install(ctx)
 "#;
 
         let recipe = Recipe::parse(recipe_content).unwrap();
@@ -468,7 +468,7 @@ def metadata():
     }
 
 def build(ctx):
-    ctx.install()
+    install(ctx)
 "#;
 
         let recipe = Recipe::parse(recipe_content).unwrap();
@@ -505,11 +505,11 @@ def build(ctx):
     
     # Test conditionals
     if ctx.JOBS > 1:
-        ctx.make()
+        make(ctx)
     else:
-        ctx.configure()
+        configure(ctx)
     
-    ctx.install()
+    install(ctx)
 "#;
 
         let recipe = Recipe::parse(recipe_content).unwrap();
@@ -553,10 +553,10 @@ def build(ctx):
         fail("JOBS should be positive, got: " + str(jobs))
     
     # Use context in build steps
-    ctx.fetch("https://example.com/{}-{}.tar.gz".format(name, version))
-    ctx.configure()
-    ctx.make()
-    ctx.install()
+    fetch(ctx, "https://example.com/{}-{}.tar.gz".format(name, version))
+    configure(ctx)
+    make(ctx)
+    install(ctx)
 "#;
 
         let recipe = Recipe::parse(recipe_content).unwrap();
@@ -609,12 +609,12 @@ def build(ctx):
     parallel_jobs = str(jobs)
     
     # Test method calls with computed values
-    ctx.fetch(url)
-    ctx.command("mkdir")
-    ctx.command("echo")
-    ctx.configure()
-    ctx.make()
-    ctx.install()
+    fetch(ctx, url)
+    command(ctx, "mkdir")
+    command(ctx, "echo")
+    configure(ctx)
+    make(ctx)
+    install(ctx)
 "#;
 
         let recipe = Recipe::parse(recipe_content).unwrap();

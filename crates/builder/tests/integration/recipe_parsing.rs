@@ -16,7 +16,7 @@ def metadata():
     }
 
 def build(ctx):
-    ctx.install()
+    install(ctx)
 "#;
 
 /// Complex Starlark recipe with dependencies and build steps
@@ -33,10 +33,10 @@ def metadata():
     }
 
 def build(ctx):
-    ctx.fetch("https://curl.se/download/curl-8.5.0.tar.gz")
-    ctx.configure()
-    ctx.make()
-    ctx.install()
+    fetch(ctx, "https://curl.se/download/curl-8.5.0.tar.gz")
+    configure(ctx)
+    make(ctx)
+    install(ctx)
 "#;
 
 /// Recipe with various build methods
@@ -49,16 +49,16 @@ def metadata():
     }
 
 def build(ctx):
-    ctx.fetch("https://example.com/source.tar.gz")
-    ctx.configure()
-    ctx.make()
-    ctx.autotools()
-    ctx.cmake()
-    ctx.meson()
-    ctx.cargo()
-    ctx.apply_patch("fix.patch")
-    ctx.command("echo")
-    ctx.install()
+    fetch(ctx, "https://example.com/source.tar.gz")
+    configure(ctx)
+    make(ctx)
+    autotools(ctx)
+    cmake(ctx)
+    meson(ctx)
+    cargo(ctx)
+    apply_patch(ctx, "fix.patch")
+    command(ctx, "echo")
+    install(ctx)
 "#;
 
 #[tokio::test]
@@ -158,7 +158,7 @@ async fn test_starlark_recipe_validation_errors() {
     // Missing metadata function
     let recipe_content = r#"
 def build(ctx):
-    ctx.install()
+    install(ctx)
 "#;
     let recipe_path = temp.path().join("no_metadata.star");
     fs::write(&recipe_path, recipe_content).await.unwrap();
@@ -179,7 +179,7 @@ def metadata():
     return {"version": "1.0"}
 
 def build(ctx):
-    ctx.install()
+    install(ctx)
 "#;
     let recipe_path = temp.path().join("no_name.star");
     fs::write(&recipe_path, recipe_content).await.unwrap();
@@ -192,7 +192,7 @@ def metadata():
     return {"name": "test"}
 
 def build(ctx):
-    ctx.install()
+    install(ctx)
 "#;
     let recipe_path = temp.path().join("no_version.star");
     fs::write(&recipe_path, recipe_content).await.unwrap();
@@ -214,8 +214,8 @@ def metadata():
 
 def build(ctx):
     # Test that context can handle environment-related build steps
-    ctx.command("echo")
-    ctx.install()
+    command(ctx, "echo")
+    install(ctx)
 "#;
 
     let recipe_path = temp.path().join("env_test.star");
@@ -241,7 +241,7 @@ def metadata():
     # Missing closing brace
 
 def build(ctx):
-    ctx.install()
+    install(ctx)
 "#;
 
     let recipe_path = temp.path().join("bad_syntax.star");

@@ -23,29 +23,29 @@ def build(ctx):
             - ctx.JOBS: number of parallel build jobs
     """
     # Fetch source
-    ctx.fetch("https://example.com/hello-world-1.0.0.tar.gz")
+    fetch(ctx, "https://example.com/hello-world-1.0.0.tar.gz")
     
     # Create source directory
-    ctx.command("mkdir -p src")
+    command(ctx, "mkdir -p src")
     
     # Create hello.c file
-    ctx.command("cat > src/hello.c << 'EOF'\n#include <stdio.h>\n\nint main() {\n    printf(\"Hello, World!\\n\");\n    return 0;\n}\nEOF")
+    command(ctx, "cat > src/hello.c << 'EOF'\n#include <stdio.h>\n\nint main() {\n    printf(\"Hello, World!\\n\");\n    return 0;\n}\nEOF")
     
-    # Compile using make (or could use ctx.cmake, ctx.autotools, etc)
+    # Compile using make (or could use cmake, autotools, etc)
     # For a simple C file, we use make with custom target
-    ctx.command("echo 'hello: src/hello.c' > Makefile")
-    ctx.command("echo '\t$(CC) -o hello src/hello.c' >> Makefile")
-    ctx.command("echo 'install: hello' >> Makefile")
-    ctx.command("echo '\tmkdir -p $(DESTDIR)$(PREFIX)/bin' >> Makefile")
-    ctx.command("echo '\tcp hello $(DESTDIR)$(PREFIX)/bin/' >> Makefile")
+    command(ctx, "echo 'hello: src/hello.c' > Makefile")
+    command(ctx, "echo '\t$(CC) -o hello src/hello.c' >> Makefile")
+    command(ctx, "echo 'install: hello' >> Makefile")
+    command(ctx, "echo '\tmkdir -p $(DESTDIR)$(PREFIX)/bin' >> Makefile")
+    command(ctx, "echo '\tcp hello $(DESTDIR)$(PREFIX)/bin/' >> Makefile")
     
     # Build with make
-    ctx.make(["-j" + str(ctx.JOBS)])
+    make(ctx, ["-j" + str(ctx.JOBS)])
     
     # Install to staging directory
-    ctx.make(["install", "DESTDIR=$(pwd)/stage", "PREFIX=" + ctx.PREFIX])
+    make(ctx, ["install", "DESTDIR=$(pwd)/stage", "PREFIX=" + ctx.PREFIX])
     
     # Add documentation
-    ctx.command("mkdir -p stage" + ctx.PREFIX + "/share/doc/hello-world")
-    ctx.command("echo '# Hello World\n\nA simple hello world program.' > README.md")
-    ctx.command("cp README.md stage" + ctx.PREFIX + "/share/doc/hello-world/")
+    command(ctx, "mkdir -p stage" + ctx.PREFIX + "/share/doc/hello-world")
+    command(ctx, "echo '# Hello World\n\nA simple hello world program.' > README.md")
+    command(ctx, "cp README.md stage" + ctx.PREFIX + "/share/doc/hello-world/")

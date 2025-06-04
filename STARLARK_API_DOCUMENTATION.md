@@ -36,180 +36,189 @@ The `ctx` parameter in the `build()` function provides these read-only attribute
 - `ctx.PREFIX` - Installation prefix (e.g., `/opt/pm/live`)
 - `ctx.JOBS` - Number of parallel build jobs (integer)
 
-## Build Methods
+## Build Functions
 
 ### Basic Build Operations
 
-#### ctx.fetch(url)
+#### fetch(ctx, url, hash?)
 Fetch and extract source archive.
 ```starlark
-ctx.fetch("https://example.com/package-1.0.0.tar.gz")
+fetch(ctx, "https://example.com/package-1.0.0.tar.gz")
+fetch(ctx, "https://example.com/package-1.0.0.tar.gz", "blake3:abc123...")
 ```
 
-#### ctx.command(cmd)
-Execute arbitrary shell command.
+#### command(ctx, cmd)
+Execute arbitrary shell command. Can accept string or list.
 ```starlark
-ctx.command("mkdir -p build")
-ctx.command("echo 'Hello' > README")
+command(ctx, "mkdir -p build")
+command(ctx, "echo 'Hello' > README")
+command(ctx, ["gcc", "-o", "output", "input.c"])
 ```
 
-#### ctx.apply_patch(path)
+#### apply_patch(ctx, path)
 Apply a patch file to the source.
 ```starlark
-ctx.apply_patch("fix-build.patch")
+apply_patch(ctx, "fix-build.patch")
 ```
 
-#### ctx.install()
+#### install(ctx)
 Run the install phase (typically `make install`).
 ```starlark
-ctx.install()
+install(ctx)
 ```
 
-### Build System Methods
+### Build System Functions
 
-#### ctx.make(args=[])
+#### make(ctx, args?)
 Run make with optional arguments.
 ```starlark
-ctx.make()                           # Simple make
-ctx.make(["-j" + str(ctx.JOBS)])   # Parallel make
-ctx.make(["install", "PREFIX=/usr"]) # Make with target and vars
+make(ctx)                           # Simple make
+make(ctx, ["-j" + str(ctx.JOBS)])   # Parallel make
+make(ctx, ["install", "PREFIX=/usr"]) # Make with target and vars
 ```
 
-#### ctx.configure(args=[])
+#### configure(ctx, args?)
 Run configure script (typically for autotools).
 ```starlark
-ctx.configure()                                          # Basic configure
-ctx.configure(["--prefix=" + ctx.PREFIX, "--disable-static"])  # With options
+configure(ctx)                                          # Basic configure
+configure(ctx, ["--prefix=" + ctx.PREFIX, "--disable-static"])  # With options
 ```
 
-#### ctx.autotools(args=[])
+#### autotools(ctx, args?)
 Run full autotools sequence (configure && make && make install).
 ```starlark
-ctx.autotools()
-ctx.autotools(["--enable-shared", "--disable-static"])
+autotools(ctx)
+autotools(ctx, ["--enable-shared", "--disable-static"])
 ```
 
-#### ctx.cmake(args=[])
+#### cmake(ctx, args?)
 Run CMake build.
 ```starlark
-ctx.cmake(["-DCMAKE_INSTALL_PREFIX=" + ctx.PREFIX, 
+cmake(ctx, ["-DCMAKE_INSTALL_PREFIX=" + ctx.PREFIX, 
            "-DCMAKE_BUILD_TYPE=Release"])
 ```
 
-#### ctx.meson(args=[])
+#### meson(ctx, args?)
 Run Meson build.
 ```starlark
-ctx.meson(["--prefix=" + ctx.PREFIX, "--buildtype=release"])
+meson(ctx, ["--prefix=" + ctx.PREFIX, "--buildtype=release"])
 ```
 
-#### ctx.cargo(args=[])
+#### cargo(ctx, args?)
 Run Cargo (Rust) build.
 ```starlark
-ctx.cargo(["build", "--release"])
+cargo(ctx, ["build", "--release"])
 ```
 
 ### Build System Detection
 
-#### ctx.detect_build_system()
+#### detect_build_system(ctx)
 Automatically detect the build system.
 ```starlark
-ctx.detect_build_system()
+detect_build_system(ctx)
 ```
 
-#### ctx.set_build_system(name)
+#### set_build_system(ctx, name)
 Manually set the build system.
 ```starlark
-ctx.set_build_system("cmake")  # Options: autotools, cmake, meson, cargo, go, python, nodejs
+set_build_system(ctx, "cmake")  # Options: autotools, cmake, meson, cargo, go, python, nodejs
 ```
 
 ### Feature Management
 
-#### ctx.enable_feature(name)
+#### enable_feature(ctx, name)
 Enable a build feature.
 ```starlark
-ctx.enable_feature("ssl")
-ctx.enable_feature("gui")
+enable_feature(ctx, "ssl")
+enable_feature(ctx, "gui")
 ```
 
-#### ctx.disable_feature(name)
+#### disable_feature(ctx, name)
 Disable a build feature.
 ```starlark
-ctx.disable_feature("tests")
-ctx.disable_feature("docs")
+disable_feature(ctx, "tests")
+disable_feature(ctx, "docs")
 ```
 
-#### ctx.with_features(features, steps)
+#### with_features(ctx, features, callback)
 Execute steps conditionally based on features.
 ```starlark
-# Note: Currently has limited implementation
-ctx.with_features(["ssl", "zlib"], [
-    # Steps to execute if features are enabled
+# Execute callback if all features are enabled
+with_features(ctx, ["ssl", "zlib"], lambda: [
+    configure(ctx, ["--with-ssl", "--with-zlib"]),
+    make(ctx)
 ])
 ```
 
 ### Error Recovery
 
-#### ctx.on_error(handler)
+#### on_error(ctx, handler)
 Register an error handler.
 ```starlark
-ctx.on_error("retry")
-ctx.on_error("skip_tests")
+on_error(ctx, "retry")
+on_error(ctx, "skip_tests")
 ```
 
-#### ctx.checkpoint(name)
+#### checkpoint(ctx, name)
 Create a recovery checkpoint.
 ```starlark
-ctx.checkpoint("after_configure")
-ctx.checkpoint("before_tests")
+checkpoint(ctx, "after_configure")
+checkpoint(ctx, "before_tests")
 ```
 
-#### ctx.try_recover(steps, strategy)
+#### try_recover(ctx, strategy, callback)
 Try steps with recovery strategy.
 ```starlark
-# Note: Currently has limited implementation
-ctx.try_recover([], "retry")  # Strategies: retry, continue, abort
+# Execute callback with recovery strategy
+try_recover(ctx, "retry", lambda: [
+    configure(ctx, ["--host=aarch64-apple-darwin"]),
+    make(ctx)
+])  # Strategies: retry, continue, abort
 ```
 
 ### Cross-Compilation
 
-#### ctx.set_target(triple)
+#### set_target(ctx, triple)
 Set target triple for cross-compilation.
 ```starlark
-ctx.set_target("aarch64-apple-darwin")
-ctx.set_target("x86_64-unknown-linux-gnu")
+set_target(ctx, "aarch64-apple-darwin")
+set_target(ctx, "x86_64-unknown-linux-gnu")
 ```
 
-#### ctx.set_toolchain(name, path)
+#### set_toolchain(ctx, name, path)
 Set toolchain component path.
 ```starlark
-# Note: Currently only stores first argument due to Starlark limitations
-ctx.set_toolchain("CC", "/usr/bin/clang")
-ctx.set_toolchain("CXX", "/usr/bin/clang++")
+set_toolchain(ctx, "CC", "/usr/bin/clang")
+set_toolchain(ctx, "CXX", "/usr/bin/clang++")
+set_toolchain(ctx, "AR", "/usr/bin/ar")
 ```
 
 ### Parallel Execution
 
-#### ctx.set_parallelism(jobs)
+#### set_parallelism(ctx, jobs)
 Set the parallelism level for builds.
 ```starlark
-ctx.set_parallelism(4)
-ctx.set_parallelism(ctx.JOBS * 2)
+set_parallelism(ctx, 4)
+set_parallelism(ctx, ctx.JOBS * 2)
 ```
 
-#### ctx.parallel_steps(steps)
+#### parallel_steps(ctx, callback)
 Execute multiple build steps in parallel.
 ```starlark
-# Note: Currently has limited implementation
-ctx.parallel_steps([
-    # List of steps to run in parallel
+# Execute steps in parallel
+parallel_steps(ctx, lambda: [
+    command(ctx, "make -C lib1"),
+    command(ctx, "make -C lib2"),
+    command(ctx, "make -C lib3")
 ])
 ```
 
-#### ctx.set_resource_hints(cpu=None, memory_mb=None)
+#### set_resource_hints(ctx, cpu?, memory_mb?)
 Provide resource hints for the build.
 ```starlark
-# Note: Currently has simplified implementation
-ctx.set_resource_hints()  # Will be enhanced in future
+set_resource_hints(ctx, cpu=4)           # Hint: needs 4 CPU cores
+set_resource_hints(ctx, memory_mb=8192)  # Hint: needs 8GB RAM
+set_resource_hints(ctx, cpu=8, memory_mb=16384)  # Both hints
 ```
 
 ## Complete Examples
@@ -226,19 +235,19 @@ def metadata():
 
 def build(ctx):
     # Create source
-    ctx.command("mkdir -p src")
-    ctx.command("cat > src/hello.c << 'EOF'\n#include <stdio.h>\nint main() { printf(\"Hello!\\n\"); return 0; }\nEOF")
+    command(ctx, "mkdir -p src")
+    command(ctx, "cat > src/hello.c << 'EOF'\n#include <stdio.h>\nint main() { printf(\"Hello!\\n\"); return 0; }\nEOF")
     
     # Create Makefile
-    ctx.command("echo 'hello: src/hello.c' > Makefile")
-    ctx.command("echo '\t$(CC) -o hello src/hello.c' >> Makefile")
+    command(ctx, "echo 'hello: src/hello.c' > Makefile")
+    command(ctx, "echo '\t$(CC) -o hello src/hello.c' >> Makefile")
     
     # Build
-    ctx.make(["-j" + str(ctx.JOBS)])
+    make(ctx, ["-j" + str(ctx.JOBS)])
     
     # Install
-    ctx.command("mkdir -p stage" + ctx.PREFIX + "/bin")
-    ctx.command("cp hello stage" + ctx.PREFIX + "/bin/")
+    command(ctx, "mkdir -p stage" + ctx.PREFIX + "/bin")
+    command(ctx, "cp hello stage" + ctx.PREFIX + "/bin/")
 ```
 
 ### CMake Project
@@ -254,10 +263,10 @@ def metadata():
 
 def build(ctx):
     # Fetch source
-    ctx.fetch("https://example.com/app-2.0.0.tar.gz")
+    fetch(ctx, "https://example.com/app-2.0.0.tar.gz")
     
     # Configure with CMake
-    ctx.cmake([
+    cmake(ctx, [
         "-DCMAKE_INSTALL_PREFIX=" + ctx.PREFIX,
         "-DCMAKE_BUILD_TYPE=Release",
         "-DWITH_SSL=ON",
@@ -266,14 +275,14 @@ def build(ctx):
     ])
     
     # Build
-    ctx.command("cd build")
-    ctx.make(["-C", "build", "-j" + str(ctx.JOBS)])
+    command(ctx, "cd build")
+    make(ctx, ["-C", "build", "-j" + str(ctx.JOBS)])
     
     # Test
-    ctx.make(["-C", "build", "test"])
+    make(ctx, ["-C", "build", "test"])
     
     # Install
-    ctx.make(["-C", "build", "install", "DESTDIR=$(pwd)/stage"])
+    make(ctx, ["-C", "build", "install", "DESTDIR=$(pwd)/stage"])
 ```
 
 ### Autotools Project with Features
@@ -287,15 +296,15 @@ def metadata():
     }
 
 def build(ctx):
-    ctx.fetch("https://gnu.org/app-3.5.0.tar.gz")
+    fetch(ctx, "https://gnu.org/app-3.5.0.tar.gz")
     
     # Enable optional features
-    ctx.enable_feature("nls")
-    ctx.enable_feature("shared")
-    ctx.disable_feature("static")
+    enable_feature(ctx, "nls")
+    enable_feature(ctx, "shared")
+    disable_feature(ctx, "static")
     
     # Configure with features
-    ctx.configure([
+    configure(ctx, [
         "--prefix=" + ctx.PREFIX,
         "--enable-nls",
         "--enable-shared",
@@ -303,10 +312,10 @@ def build(ctx):
     ])
     
     # Build with parallel jobs
-    ctx.make(["-j" + str(ctx.JOBS)])
+    make(ctx, ["-j" + str(ctx.JOBS)])
     
     # Install
-    ctx.install()
+    install(ctx)
 ```
 
 ### Cross-Compilation Example
@@ -319,37 +328,38 @@ def metadata():
     }
 
 def build(ctx):
-    ctx.fetch("https://example.com/app-1.0.0.tar.gz")
+    fetch(ctx, "https://example.com/app-1.0.0.tar.gz")
     
     # Set cross-compilation target
-    ctx.set_target("aarch64-linux-gnu")
+    set_target(ctx, "aarch64-linux-gnu")
     
     # Set toolchain
-    ctx.set_toolchain("CC", "aarch64-linux-gnu-gcc")
+    set_toolchain(ctx, "CC", "aarch64-linux-gnu-gcc")
+    set_toolchain(ctx, "CXX", "aarch64-linux-gnu-g++")
     
     # Configure for cross-compilation
-    ctx.configure([
+    configure(ctx, [
         "--host=aarch64-linux-gnu",
         "--prefix=" + ctx.PREFIX
     ])
     
-    ctx.make(["-j" + str(ctx.JOBS)])
-    ctx.install()
+    make(ctx, ["-j" + str(ctx.JOBS)])
+    install(ctx)
 ```
 
 ## Build Systems Implementation Status
 
 ### Fully Exposed in Starlark API:
-- ✅ autotools (ctx.autotools, ctx.configure)
-- ✅ cmake (ctx.cmake)
-- ✅ meson (ctx.meson)
-- ✅ cargo (ctx.cargo)
-- ✅ make (ctx.make)
+- ✅ autotools (autotools, configure functions)
+- ✅ cmake (cmake function)
+- ✅ meson (meson function)
+- ✅ cargo (cargo function)
+- ✅ make (make function)
 
 ### Implemented in Builder but NOT Exposed:
-- ❌ go - Use `ctx.command("go build")` as workaround
-- ❌ python - Use `ctx.command("python setup.py")` as workaround
-- ❌ nodejs - Use `ctx.command("npm install")` as workaround
+- ❌ go - Use `command(ctx, "go build")` as workaround
+- ❌ python - Use `command(ctx, "python setup.py")` as workaround
+- ❌ nodejs - Use `command(ctx, "npm install")` as workaround
 
 ## Important Notes
 
@@ -359,18 +369,19 @@ def build(ctx):
 4. **Dependencies** - Use semantic versioning in metadata dependencies
 5. **Error handling** - Methods currently don't return errors but will in future versions
 
-## Limitations
+## API Changes in Latest Version
 
-Due to Starlark 0.13 limitations:
-- Methods with multiple arguments may have simplified implementations
-- List/array arguments are not fully supported in some methods
-- Some advanced features like `with_features` and `parallel_steps` have placeholder implementations
+The Starlark API has been refactored to use global functions instead of methods:
+- All build operations are now global functions that take `ctx` as the first parameter
+- This change was made to work around Starlark 0.13's argument handling limitations
+- The functionality remains the same, only the calling syntax has changed
 
 ## Future Enhancements
 
 Planned improvements:
-- Full argument support for all methods
-- Native Go, Python, and Node.js build system methods
+- Native Go, Python, and Node.js build system functions
 - Enhanced error recovery mechanisms
 - Better resource management for parallel builds
 - BLAKE3 hash verification in fetch()
+- More sophisticated conditional execution with with_features()
+- Enhanced parallel_steps() implementation

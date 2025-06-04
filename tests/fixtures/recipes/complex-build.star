@@ -32,14 +32,14 @@ def build(ctx):
             - ctx.JOBS: number of parallel build jobs
     """
     # Fetch source with verification
-    ctx.fetch("https://github.com/example/complex-app/archive/v2.1.3.tar.gz")
+    fetch(ctx, "https://github.com/example/complex-app/archive/v2.1.3.tar.gz")
     
     # Extract source (handled automatically by fetch)
     # Enter source directory
-    ctx.command("cd complex-app-2.1.3")
+    command(ctx, "cd complex-app-2.1.3")
     
     # Use CMake build system
-    ctx.cmake([
+    cmake(ctx, [
         "-DCMAKE_INSTALL_PREFIX=" + ctx.PREFIX,
         "-DCMAKE_BUILD_TYPE=Release",
         "-DWITH_SSL=ON",
@@ -49,23 +49,23 @@ def build(ctx):
     ])
     
     # Build with make using parallel jobs
-    ctx.command("cd build")
-    ctx.make(["-C", "build", "-j" + str(ctx.JOBS)])
+    command(ctx, "cd build")
+    make(ctx, ["-C", "build", "-j" + str(ctx.JOBS)])
     
     # Run tests
-    ctx.make(["-C", "build", "test"])
+    make(ctx, ["-C", "build", "test"])
     
     # Install to staging directory
-    ctx.make(["-C", "build", "install", "DESTDIR=$(pwd)/stage"])
+    make(ctx, ["-C", "build", "install", "DESTDIR=$(pwd)/stage"])
     
     # Install additional documentation
-    ctx.command("mkdir -p stage" + ctx.PREFIX + "/share/doc/complex-app")
-    ctx.command("cp complex-app-2.1.3/README.md complex-app-2.1.3/CHANGELOG.md complex-app-2.1.3/LICENSE stage" + ctx.PREFIX + "/share/doc/complex-app/")
-    ctx.command("cp -r complex-app-2.1.3/docs/ stage" + ctx.PREFIX + "/share/doc/complex-app/")
+    command(ctx, "mkdir -p stage" + ctx.PREFIX + "/share/doc/complex-app")
+    command(ctx, "cp complex-app-2.1.3/README.md complex-app-2.1.3/CHANGELOG.md complex-app-2.1.3/LICENSE stage" + ctx.PREFIX + "/share/doc/complex-app/")
+    command(ctx, "cp -r complex-app-2.1.3/docs/ stage" + ctx.PREFIX + "/share/doc/complex-app/")
     
     # Create sample configuration
-    ctx.command("mkdir -p stage" + ctx.PREFIX + "/share/complex-app")
-    ctx.command("""cat > stage""" + ctx.PREFIX + """/share/complex-app/config.example.toml << 'EOF'
+    command(ctx, "mkdir -p stage" + ctx.PREFIX + "/share/complex-app")
+    command(ctx, """cat > stage""" + ctx.PREFIX + """/share/complex-app/config.example.toml << 'EOF'
 [application]
 name = "complex-app"
 version = "2.1.3"

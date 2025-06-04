@@ -12,11 +12,11 @@
 mod error_helpers;
 mod recipe;
 mod sandbox;
-mod starlark_api;
+mod starlark;
 
 pub use recipe::{BuildStep, Recipe, RecipeMetadata};
 pub use sandbox::{RecipeEngine, RecipeResult};
-pub use starlark_api::{BuildContext, BuildExecutor};
+pub use starlark::{BuildContext, BuildExecutor};
 
 use sps2_errors::Error;
 use std::path::Path;

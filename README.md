@@ -1249,10 +1249,10 @@ def metadata():
 def build(ctx):
     """Build curl using autotools."""
     # Fetch source archive
-    ctx.fetch("https://curl.se/download/curl-8.5.0.tar.gz")
+    fetch(ctx, "https://curl.se/download/curl-8.5.0.tar.gz")
     
     # Configure with autotools
-    ctx.configure([
+    configure(ctx, [
         "--prefix=" + ctx.PREFIX,
         "--with-openssl",
         "--with-zlib",
@@ -1262,13 +1262,13 @@ def build(ctx):
     ])
     
     # Build with parallel jobs
-    ctx.make(["-j" + str(ctx.JOBS)])
+    make(ctx, ["-j" + str(ctx.JOBS)])
     
     # Run tests
-    ctx.make(["test"])
+    make(ctx, ["test"])
     
     # Install to staging
-    ctx.make(["install", "DESTDIR=stage"])
+    make(ctx, ["install", "DESTDIR=stage"])
 
 # Example 2: CMake-based C++ project
 def metadata():
@@ -1284,10 +1284,10 @@ def metadata():
 
 def build(ctx):
     """Build fmt library using CMake."""
-    ctx.fetch("https://github.com/fmtlib/fmt/archive/10.2.1.tar.gz")
+    fetch(ctx, "https://github.com/fmtlib/fmt/archive/10.2.1.tar.gz")
     
     # Configure with CMake
-    ctx.cmake([
+    cmake(ctx, [
         "-DCMAKE_BUILD_TYPE=Release",
         "-DCMAKE_INSTALL_PREFIX=" + ctx.PREFIX,
         "-DFMT_TEST=ON",
@@ -1296,9 +1296,9 @@ def build(ctx):
     ])
     
     # Build and test
-    ctx.command("ninja -j" + str(ctx.JOBS))
-    ctx.command("ninja test")
-    ctx.command("DESTDIR=stage ninja install")
+    command(ctx, "ninja -j" + str(ctx.JOBS))
+    command(ctx, "ninja test")
+    command(ctx, "DESTDIR=stage ninja install")
 
 # Example 3: Rust project with cargo
 def metadata():
@@ -1314,21 +1314,21 @@ def metadata():
 
 def build(ctx):
     """Build ripgrep using cargo."""
-    ctx.fetch("https://github.com/BurntSushi/ripgrep/archive/14.1.0.tar.gz")
+    fetch(ctx, "https://github.com/BurntSushi/ripgrep/archive/14.1.0.tar.gz")
     
     # Build with cargo in release mode
-    ctx.cargo(["build", "--release", "--locked"])
+    cargo(ctx, ["build", "--release", "--locked"])
     
     # Run tests
-    ctx.cargo(["test", "--release"])
+    cargo(ctx, ["test", "--release"])
     
     # Install manually since cargo install rebuilds
-    ctx.command("mkdir -p stage" + ctx.PREFIX + "/bin")
-    ctx.command("cp target/release/rg stage" + ctx.PREFIX + "/bin/")
+    command(ctx, "mkdir -p stage" + ctx.PREFIX + "/bin")
+    command(ctx, "cp target/release/rg stage" + ctx.PREFIX + "/bin/")
     
     # Install completions
-    ctx.command("mkdir -p stage" + ctx.PREFIX + "/share/bash-completion/completions")
-    ctx.command("cp complete/rg.bash stage" + ctx.PREFIX + "/share/bash-completion/completions/rg")
+    command(ctx, "mkdir -p stage" + ctx.PREFIX + "/share/bash-completion/completions")
+    command(ctx, "cp complete/rg.bash stage" + ctx.PREFIX + "/share/bash-completion/completions/rg")
 
 # Example 4: Python package (when API is exposed)
 def metadata():
@@ -1344,17 +1344,17 @@ def metadata():
 
 def build(ctx):
     """Build black using Python build system."""
-    ctx.fetch("https://github.com/psf/black/archive/24.1.0.tar.gz")
+    fetch(ctx, "https://github.com/psf/black/archive/24.1.0.tar.gz")
     
     # For now, use command until python build system is exposed
-    ctx.command("python3 -m venv venv")
-    ctx.command("source venv/bin/activate && pip install --upgrade pip wheel")
-    ctx.command("source venv/bin/activate && pip install .")
-    ctx.command("source venv/bin/activate && python -m pytest tests/")
+    command(ctx, "python3 -m venv venv")
+    command(ctx, "source venv/bin/activate && pip install --upgrade pip wheel")
+    command(ctx, "source venv/bin/activate && pip install .")
+    command(ctx, "source venv/bin/activate && python -m pytest tests/")
     
     # Install to staging
-    ctx.command("mkdir -p stage" + ctx.PREFIX)
-    ctx.command("source venv/bin/activate && pip install --prefix=stage" + ctx.PREFIX + " .")
+    command(ctx, "mkdir -p stage" + ctx.PREFIX)
+    command(ctx, "source venv/bin/activate && pip install --prefix=stage" + ctx.PREFIX + " .")
 ```
 
 **Version specifiers (Python-style):**
@@ -1396,35 +1396,35 @@ def build(ctx):
 - `ctx.PREFIX` - Installation prefix, e.g. `/opt/pm/live` (read-only)
 - `ctx.JOBS` - Number of parallel build jobs (read-only)
 
-**Build System Methods:**
-| Method | Description | Example |
-|--------|-------------|---------|
-| `ctx.fetch(url)` | Download & extract source archive | `ctx.fetch("https://example.com/pkg-1.0.tar.gz")` |
-| `ctx.configure(args)` | Run configure script | `ctx.configure(["--prefix=" + ctx.PREFIX, "--with-ssl"])` |
-| `ctx.make(args)` | Run make with arguments | `ctx.make(["-j" + str(ctx.JOBS), "test"])` |
-| `ctx.autotools(args)` | Configure + make + make install | `ctx.autotools(["--enable-shared"])` |
-| `ctx.cmake(args)` | CMake configuration | `ctx.cmake(["-DCMAKE_BUILD_TYPE=Release", "-GNinja"])` |
-| `ctx.meson(args)` | Meson build setup | `ctx.meson(["--buildtype=release"])` |
-| `ctx.cargo(args)` | Rust cargo commands | `ctx.cargo(["build", "--release"])` |
+**Build System Functions:**
+| Function | Description | Example |
+|----------|-------------|---------|
+| `fetch(ctx, url, hash?)` | Download & extract source archive | `fetch(ctx, "https://example.com/pkg-1.0.tar.gz")` |
+| `configure(ctx, args)` | Run configure script | `configure(ctx, ["--prefix=" + ctx.PREFIX, "--with-ssl"])` |
+| `make(ctx, args)` | Run make with arguments | `make(ctx, ["-j" + str(ctx.JOBS), "test"])` |
+| `autotools(ctx, args)` | Configure + make + make install | `autotools(ctx, ["--enable-shared"])` |
+| `cmake(ctx, args)` | CMake configuration | `cmake(ctx, ["-DCMAKE_BUILD_TYPE=Release", "-GNinja"])` |
+| `meson(ctx, args)` | Meson build setup | `meson(ctx, ["--buildtype=release"])` |
+| `cargo(ctx, args)` | Rust cargo commands | `cargo(ctx, ["build", "--release"])` |
 
-**Utility Methods:**
-| Method | Description | Example |
-|--------|-------------|---------|
-| `ctx.apply_patch(path)` | Apply a patch file | `ctx.apply_patch("fix-build.patch")` |
-| `ctx.command(cmd)` | Run arbitrary shell command | `ctx.command("mkdir -p " + ctx.PREFIX + "/share")` |
-| `ctx.install()` | Finalize package creation | Not needed - automatic |
+**Utility Functions:**
+| Function | Description | Example |
+|----------|-------------|---------|
+| `apply_patch(ctx, path)` | Apply a patch file | `apply_patch(ctx, "fix-build.patch")` |
+| `command(ctx, cmd)` | Run arbitrary shell command | `command(ctx, "mkdir -p " + ctx.PREFIX + "/share")` |
+| `install(ctx)` | Finalize package creation | `install(ctx)` |
 
 **Advanced Features:**
-| Method | Description | Example |
-|--------|-------------|---------|
-| `ctx.detect_build_system()` | Auto-detect build system | `system = ctx.detect_build_system()` |
-| `ctx.set_build_system(name)` | Override detected system | `ctx.set_build_system("cmake")` |
-| `ctx.enable_feature(name)` | Enable build feature | `ctx.enable_feature("ssl")` |
-| `ctx.disable_feature(name)` | Disable build feature | `ctx.disable_feature("tests")` |
-| `ctx.set_parallelism(n)` | Override job count | `ctx.set_parallelism(4)` |
-| `ctx.set_target(triple)` | Cross-compilation target | `ctx.set_target("aarch64-linux-gnu")` |
-| `ctx.checkpoint(name)` | Create recovery point | `ctx.checkpoint("after-configure")` |
-| `ctx.on_error(handler)` | Error recovery | `ctx.on_error("retry")` |
+| Function | Description | Example |
+|----------|-------------|---------|
+| `detect_build_system(ctx)` | Auto-detect build system | `detect_build_system(ctx)` |
+| `set_build_system(ctx, name)` | Override detected system | `set_build_system(ctx, "cmake")` |
+| `enable_feature(ctx, name)` | Enable build feature | `enable_feature(ctx, "ssl")` |
+| `disable_feature(ctx, name)` | Disable build feature | `disable_feature(ctx, "tests")` |
+| `set_parallelism(ctx, n)` | Override job count | `set_parallelism(ctx, 4)` |
+| `set_target(ctx, triple)` | Cross-compilation target | `set_target(ctx, "aarch64-linux-gnu")` |
+| `with_features(ctx, features, fn)` | Conditional execution | `with_features(ctx, ["ssl"], lambda: configure(ctx, ["--with-ssl"]))` |
+| `parallel_steps(ctx, fn)` | Parallel execution | `parallel_steps(ctx, lambda: [make(ctx, ["docs"]), make(ctx, ["tests"])])` |
 
 **Build environment setup:**
 - Build dependencies are automatically installed before `build()` runs

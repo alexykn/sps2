@@ -22,16 +22,16 @@ def metadata():
 
 def build(ctx):
     # Test various build system methods
-    ctx.fetch("https://example.com/source.tar.gz")
-    ctx.configure()
-    ctx.make()
-    ctx.autotools()
-    ctx.cmake()
-    ctx.meson()
-    ctx.cargo()
-    ctx.apply_patch("fix.patch")
-    ctx.command("echo test")
-    ctx.install()
+    fetch(ctx, "https://example.com/source.tar.gz")
+    configure(ctx)
+    make(ctx)
+    autotools(ctx)
+    cmake(ctx)
+    meson(ctx)
+    cargo(ctx)
+    apply_patch(ctx, "fix.patch")
+    command(ctx, "echo test")
+    install(ctx)
 "#;
 
     let recipe_path = temp.path().join("dispatch_test.star");
@@ -66,16 +66,16 @@ def metadata():
 def build(ctx):
     # Test variable usage and string formatting
     source_url = "https://example.com/{}-{}.tar.gz".format("source", "1.0.0")
-    ctx.fetch(source_url)
+    fetch(ctx, source_url)
     
     # Test conditionals and loops (simulated)
     if True:
-        ctx.configure()
+        configure(ctx)
     
     for i in range(1):
-        ctx.make()
+        make(ctx)
     
-    ctx.install()
+    install(ctx)
 "#;
 
     let recipe_path = temp.path().join("lang_features.star");
@@ -111,19 +111,19 @@ def metadata():
 def build(ctx):
     # Comprehensive build workflow
     source_file = "comprehensive-test-3.1.4.tar.gz"
-    ctx.fetch("https://example.com/releases/{}".format(source_file))
+    fetch(ctx, "https://example.com/releases/{}".format(source_file))
     
     # Configure with options
-    ctx.configure("--enable-ssl", "--with-zlib")
+    configure(ctx, ["--enable-ssl", "--with-zlib"])
     
     # Build with make
-    ctx.make("-j4")
+    make(ctx, ["-j4"])
     
     # Run tests
-    ctx.command("make test")
+    command(ctx, "make test")
     
     # Install
-    ctx.install()
+    install(ctx)
 "#;
 
     let recipe_path = temp.path().join("comprehensive.star");
@@ -175,10 +175,10 @@ def metadata():
 
 def build(ctx):
     # Test that context methods can be called
-    ctx.fetch("https://example.com/source.tar.gz")
-    ctx.configure()
-    ctx.make()
-    ctx.install()
+    fetch(ctx, "https://example.com/source.tar.gz")
+    configure(ctx)
+    make(ctx)
+    install(ctx)
 "#;
 
     let recipe_path = temp.path().join("context_test.star");
@@ -239,10 +239,10 @@ def metadata():
 
 def build(ctx):
     # Test file operations
-    ctx.command("ls", "-la")
-    ctx.configure()
-    ctx.make()
-    ctx.install()
+    command(ctx, "ls", "-la")
+    configure(ctx)
+    make(ctx)
+    install(ctx)
 "#;
 
     let recipe_path = build_dir.join("recipe.star");
@@ -355,12 +355,12 @@ def metadata():
 
 def build(ctx):
     # Test different build system support
-    ctx.autotools()  # GNU Autotools
-    ctx.cmake()      # CMake
-    ctx.meson()      # Meson
-    ctx.cargo()      # Rust Cargo
-    ctx.make()       # Make
-    ctx.install()
+    autotools(ctx)  # GNU Autotools
+    cmake(ctx)      # CMake
+    meson(ctx)      # Meson
+    cargo(ctx)      # Rust Cargo
+    make(ctx)       # Make
+    install(ctx)
 "#;
 
     let recipe_path = temp.path().join("multi_build.star");
@@ -404,10 +404,10 @@ def build(ctx):
     archive_name = "{}-{}.tar.gz".format(pkg_name, version)
     url = "https://example.com/releases/{}".format(archive_name)
     
-    ctx.fetch(url)
-    ctx.configure("--prefix=/usr", "--enable-ssl")
-    ctx.make("-j4")
-    ctx.install()
+    fetch(ctx, url)
+    configure(ctx, ["--prefix=/usr", "--enable-ssl"])
+    make(ctx, ["-j4"])
+    install(ctx)
 "#;
 
     let recipe_path = temp.path().join("advanced.star");
