@@ -80,6 +80,7 @@ pub async fn fetch_text(client: &NetClient, url: &str, tx: &EventSender) -> Resu
 ///
 /// Returns `Ok(None)` if the server responds with 304 Not Modified,
 /// `Ok(Some((content, etag)))` if new content is available.
+#[ignore]
 pub async fn fetch_text_conditional(
     client: &NetClient,
     url: &str,
