@@ -33,6 +33,7 @@ pub trait BuildExecutor: Send + Sync + std::fmt::Debug {
 
 /// Build context exposed to Starlark recipes
 #[derive(Debug, Clone, ProvidesStaticType, NoSerialize, Allocative)]
+#[allow(clippy::needless_lifetimes)]
 pub struct BuildContext {
     #[allocative(skip)]
     pub steps: Rc<RefCell<Vec<BuildStep>>>,
