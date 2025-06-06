@@ -58,14 +58,14 @@ def build(ctx):
     # Install to staging directory
     make(ctx, ["-C", "build", "install", "DESTDIR=$(pwd)/stage"])
     
-    # Install additional documentation
-    command(ctx, "mkdir -p stage" + ctx.PREFIX + "/share/doc/complex-app")
-    command(ctx, "cp complex-app-2.1.3/README.md complex-app-2.1.3/CHANGELOG.md complex-app-2.1.3/LICENSE stage" + ctx.PREFIX + "/share/doc/complex-app/")
-    command(ctx, "cp -r complex-app-2.1.3/docs/ stage" + ctx.PREFIX + "/share/doc/complex-app/")
+    # Install additional documentation (files go directly in stage/)
+    command(ctx, "mkdir -p stage/share/doc/complex-app")
+    command(ctx, "cp complex-app-2.1.3/README.md complex-app-2.1.3/CHANGELOG.md complex-app-2.1.3/LICENSE stage/share/doc/complex-app/")
+    command(ctx, "cp -r complex-app-2.1.3/docs/ stage/share/doc/complex-app/")
     
     # Create sample configuration
-    command(ctx, "mkdir -p stage" + ctx.PREFIX + "/share/complex-app")
-    command(ctx, """cat > stage""" + ctx.PREFIX + """/share/complex-app/config.example.toml << 'EOF'
+    command(ctx, "mkdir -p stage/share/complex-app")
+    command(ctx, """cat > stage/share/complex-app/config.example.toml << 'EOF'
 [application]
 name = "complex-app"
 version = "2.1.3"

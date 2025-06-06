@@ -44,14 +44,14 @@ impl CargoBuildSystem {
             fs::create_dir_all(&cargo_dir).await?;
 
             let config_content = r#"[source.crates-io]
-replace-with = "vendored-sources"
+                                    replace-with = "vendored-sources"
 
-[source.vendored-sources]
-directory = "vendor"
+                                    [source.vendored-sources]
+                                    directory = "vendor"
 
-[net]
-offline = true
-"#;
+                                    [net]
+                                    offline = true
+                                    "#;
 
             let config_path = cargo_dir.join("config.toml");
             fs::write(&config_path, config_content).await?;
@@ -165,13 +165,6 @@ offline = true
                                         binaries.push(path);
                                     }
                                 }
-                            }
-                        }
-                        #[cfg(not(unix))]
-                        {
-                            // On non-Unix, assume .exe files are binaries
-                            if path.extension() == Some(std::ffi::OsStr::new("exe")) {
-                                binaries.push(path);
                             }
                         }
                     }
@@ -512,9 +505,9 @@ mod tests {
         fs::write(
             temp.path().join("Cargo.toml"),
             r#"[package]
-name = "test"
-version = "0.1.0"
-"#,
+                name = "test"
+                version = "0.1.0"
+                "#,
         )
         .await
         .unwrap();

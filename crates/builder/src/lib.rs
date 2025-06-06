@@ -131,6 +131,8 @@ pub struct BuildContext {
     pub output_dir: PathBuf,
     /// Event sender for progress reporting
     pub event_sender: Option<EventSender>,
+    /// Path to the generated .sp package (set after package creation)
+    pub package_path: Option<PathBuf>,
 }
 
 impl BuildContext {
@@ -145,6 +147,7 @@ impl BuildContext {
             recipe_path,
             output_dir,
             event_sender: None,
+            package_path: None,
         }
     }
 

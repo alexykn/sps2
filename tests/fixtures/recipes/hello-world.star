@@ -45,7 +45,7 @@ def build(ctx):
     # Install to staging directory
     make(ctx, ["install", "DESTDIR=$(pwd)/stage", "PREFIX=" + ctx.PREFIX])
     
-    # Add documentation
-    command(ctx, "mkdir -p stage" + ctx.PREFIX + "/share/doc/hello-world")
+    # Add documentation (files go directly in stage/)
+    command(ctx, "mkdir -p stage/share/doc/hello-world")
     command(ctx, "echo '# Hello World\n\nA simple hello world program.' > README.md")
-    command(ctx, "cp README.md stage" + ctx.PREFIX + "/share/doc/hello-world/")
+    command(ctx, "cp README.md stage/share/doc/hello-world/")

@@ -204,12 +204,12 @@ def build(ctx):
     fetch(ctx, "https://example.com/file.tar.gz")
     configure(ctx)
     make(ctx)
-    install(ctx)
     autotools(ctx)
     cmake(ctx)
     meson(ctx)
     cargo(ctx)
     apply_patch(ctx, "some.patch")
+    install(ctx)  # Must be last if used
 "#;
 
         let recipe = Recipe::parse(recipe_content).unwrap();

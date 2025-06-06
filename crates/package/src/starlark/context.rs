@@ -28,6 +28,9 @@ pub trait BuildExecutor: Send + Sync + std::fmt::Debug {
     async fn cmake(&mut self, args: &[String]) -> Result<(), Error>;
     async fn meson(&mut self, args: &[String]) -> Result<(), Error>;
     async fn cargo(&mut self, args: &[String]) -> Result<(), Error>;
+    async fn go(&mut self, args: &[String]) -> Result<(), Error>;
+    async fn python(&mut self, args: &[String]) -> Result<(), Error>;
+    async fn nodejs(&mut self, args: &[String]) -> Result<(), Error>;
     async fn apply_patch(&mut self, patch_path: &Path) -> Result<(), Error>;
 }
 
@@ -36,7 +39,8 @@ pub trait BuildExecutor: Send + Sync + std::fmt::Debug {
 pub struct BuildContext {
     #[allocative(skip)]
     pub steps: Rc<RefCell<Vec<BuildStep>>>,
-    pub prefix: String,
+    pub prefix: String,           // Final installation prefix (e.g., /opt/pm/live)
+    pub build_prefix: String,     // Staging directory prefix (relative to stage/)
     pub jobs: i32,
     #[allocative(skip)]
     pub network_allowed: RefCell<bool>,
@@ -74,6 +78,7 @@ impl BuildContext {
         Self {
             steps: Rc::new(RefCell::new(Vec::new())),
             prefix,
+            build_prefix: String::new(),  // Empty means install directly to stage/
             jobs,
             network_allowed: RefCell::new(false),
             name: String::new(),
@@ -100,6 +105,7 @@ impl BuildContext {
         Self {
             steps: Rc::new(RefCell::new(Vec::new())),
             prefix,
+            build_prefix: String::new(),  // Empty means install directly to stage/
             jobs,
             network_allowed: RefCell::new(false),
             name: String::new(),
@@ -123,6 +129,12 @@ impl BuildContext {
         self
     }
 
+    #[must_use]
+    pub fn with_build_prefix(mut self, build_prefix: String) -> Self {
+        self.build_prefix = build_prefix;
+        self
+    }
+
     /// Add a build step
     pub(crate) fn add_step(&self, step: BuildStep) {
         self.steps.borrow_mut().push(step);
@@ -133,8 +145,8 @@ impl Display for BuildContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "BuildContext(prefix={}, jobs={}, name={}, version={})",
-            self.prefix, self.jobs, self.name, self.version
+            "BuildContext(prefix={}, build_prefix={}, jobs={}, name={}, version={})",
+            self.prefix, self.build_prefix, self.jobs, self.name, self.version
         )
     }
 }
@@ -148,12 +160,13 @@ unsafe impl Trace<'_> for BuildContext {
 #[starlark_value(type = "BuildContext")]
 impl<'v> StarlarkValue<'v> for BuildContext {
     fn has_attr(&self, attribute: &str, _heap: &'v Heap) -> bool {
-        matches!(attribute, "PREFIX" | "JOBS" | "NAME" | "VERSION")
+        matches!(attribute, "PREFIX" | "BUILD_PREFIX" | "JOBS" | "NAME" | "VERSION")
     }
 
     fn get_attr(&self, attribute: &str, heap: &'v Heap) -> Option<Value<'v>> {
         match attribute {
             "PREFIX" => Some(heap.alloc(&self.prefix)),
+            "BUILD_PREFIX" => Some(heap.alloc(&self.build_prefix)),
             "JOBS" => Some(heap.alloc(self.jobs)),
             "NAME" => Some(heap.alloc(&self.name)),
             "VERSION" => Some(heap.alloc(&self.version)),

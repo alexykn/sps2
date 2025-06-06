@@ -33,10 +33,23 @@ The `ctx` parameter in the `build()` function provides these read-only attribute
 
 - `ctx.NAME` - Package name from metadata
 - `ctx.VERSION` - Package version from metadata  
-- `ctx.PREFIX` - Installation prefix (e.g., `/opt/pm/live`)
+- `ctx.PREFIX` - Final installation prefix (e.g., `/opt/pm/live`)
+- `ctx.BUILD_PREFIX` - Staging directory prefix (empty string, meaning install directly to `stage/`)
 - `ctx.JOBS` - Number of parallel build jobs (integer)
 
 ## Build Functions
+
+### Important Note on Staging
+
+When building packages, files should be installed to the `stage/` directory in the build environment. Do NOT include the final installation prefix path in the staging directory structure. For example:
+
+- ✅ CORRECT: `stage/bin/myapp`, `stage/lib/libfoo.so`
+- ❌ WRONG: `stage/opt/pm/live/bin/myapp`
+
+The `ctx.PREFIX` variable contains the final installation prefix (e.g., `/opt/pm/live`) and should be used for:
+- Configure scripts: `--prefix=${ctx.PREFIX}`
+- Compile-time paths that will be embedded in binaries
+- NOT for staging directory paths
 
 ### Basic Build Operations
 
@@ -62,9 +75,26 @@ apply_patch(ctx, "fix-build.patch")
 ```
 
 #### install(ctx)
-Run the install phase (typically `make install`).
+Request installation of the built package after .sp creation.
+
+**Important**: This does NOT run `make install`. Instead:
+- Build systems should install files to staging directory during their build steps
+- The `install()` function requests that the generated .sp package be installed after build
+- Must be the LAST step in the recipe if used
+- The actual installation happens after the .sp package is created
+
 ```starlark
-install(ctx)
+# Example: autotools project
+configure(ctx, ["--prefix=" + ctx.PREFIX])
+make(ctx, ["-j" + str(ctx.JOBS)])
+make(ctx, ["install", "DESTDIR=stage"])  # Install to staging
+install(ctx)  # Request .sp package installation (must be last!)
+
+# Example: simple project without install()
+cargo(ctx, ["build", "--release"])
+command(ctx, "mkdir -p stage/bin")  # Files go directly in stage/
+command(ctx, "cp target/release/myapp stage/bin/")
+# No install() - package is created but not installed
 ```
 
 ### Build System Functions
@@ -108,6 +138,31 @@ meson(ctx, ["--prefix=" + ctx.PREFIX, "--buildtype=release"])
 Run Cargo (Rust) build.
 ```starlark
 cargo(ctx, ["build", "--release"])
+```
+
+#### go(ctx, args?)
+Run Go build.
+```starlark
+go(ctx, ["build", "-o", "myapp"])
+go(ctx, ["test", "./..."])
+go(ctx, ["mod", "vendor"])
+```
+
+#### python(ctx, args?)
+Run Python build.
+```starlark
+python(ctx, ["setup.py", "build"])
+python(ctx, ["setup.py", "install", "--prefix=/opt"])
+python(ctx, ["-m", "pip", "install", "."])
+```
+
+#### nodejs(ctx, args?)
+Run Node.js/npm build.
+```starlark
+nodejs(ctx, ["npm", "install"])
+nodejs(ctx, ["npm", "run", "build"])
+nodejs(ctx, ["yarn", "install"])
+nodejs(ctx, ["pnpm", "install"])
 ```
 
 ### Build System Detection
@@ -246,8 +301,8 @@ def build(ctx):
     make(ctx, ["-j" + str(ctx.JOBS)])
     
     # Install
-    command(ctx, "mkdir -p stage" + ctx.PREFIX + "/bin")
-    command(ctx, "cp hello stage" + ctx.PREFIX + "/bin/")
+    command(ctx, "mkdir -p stage/bin")
+    command(ctx, "cp hello stage/bin/")
 ```
 
 ### CMake Project
@@ -314,7 +369,10 @@ def build(ctx):
     # Build with parallel jobs
     make(ctx, ["-j" + str(ctx.JOBS)])
     
-    # Install
+    # Install to staging
+    make(ctx, ["install", "DESTDIR=stage"])
+    
+    # Request package installation after build
     install(ctx)
 ```
 
@@ -347,6 +405,79 @@ def build(ctx):
     install(ctx)
 ```
 
+### Go Application Example
+```starlark
+def metadata():
+    return {
+        "name": "go-app",
+        "version": "1.2.0",
+        "description": "Go application example",
+        "build_depends": ["go>=1.20"]
+    }
+
+def build(ctx):
+    fetch(ctx, "https://github.com/example/go-app/archive/v1.2.0.tar.gz")
+    
+    # Download dependencies
+    go(ctx, ["mod", "download"])
+    
+    # Build the application
+    go(ctx, ["build", "-ldflags", "-s -w", "-o", "go-app", "./cmd/app"])
+    
+    # Run tests
+    go(ctx, ["test", "./..."])
+    
+    # Install
+    command(ctx, "mkdir -p stage" + ctx.PREFIX + "/bin")
+    command(ctx, "cp go-app stage" + ctx.PREFIX + "/bin/")
+```
+
+### Python Package Example
+```starlark
+def metadata():
+    return {
+        "name": "python-app",
+        "version": "2.1.0",
+        "description": "Python application",
+        "depends": ["python3>=3.8"],
+        "build_depends": ["python3-pip", "python3-setuptools"]
+    }
+
+def build(ctx):
+    fetch(ctx, "https://pypi.org/packages/source/p/python-app/python-app-2.1.0.tar.gz")
+    
+    # Build Python package
+    python(ctx, ["setup.py", "build"])
+    
+    # Install with prefix
+    python(ctx, ["setup.py", "install", "--prefix=" + ctx.PREFIX, "--root=stage"])
+```
+
+### Node.js Application Example  
+```starlark
+def metadata():
+    return {
+        "name": "node-app",
+        "version": "3.0.0",
+        "description": "Node.js web application",
+        "depends": ["nodejs>=18.0"],
+        "build_depends": ["npm"]
+    }
+
+def build(ctx):
+    fetch(ctx, "https://github.com/example/node-app/archive/v3.0.0.tar.gz")
+    
+    # Install dependencies
+    nodejs(ctx, ["npm", "ci", "--production"])
+    
+    # Build the application
+    nodejs(ctx, ["npm", "run", "build"])
+    
+    # Install to staging
+    command(ctx, "mkdir -p stage" + ctx.PREFIX + "/lib/node-app")
+    command(ctx, "cp -r dist node_modules package.json stage" + ctx.PREFIX + "/lib/node-app/")
+```
+
 ## Build Systems Implementation Status
 
 ### Fully Exposed in Starlark API:
@@ -355,11 +486,9 @@ def build(ctx):
 - ✅ meson (meson function)
 - ✅ cargo (cargo function)
 - ✅ make (make function)
-
-### Implemented in Builder but NOT Exposed:
-- ❌ go - Use `command(ctx, "go build")` as workaround
-- ❌ python - Use `command(ctx, "python setup.py")` as workaround
-- ❌ nodejs - Use `command(ctx, "npm install")` as workaround
+- ✅ go (go function)
+- ✅ python (python function)  
+- ✅ nodejs (nodejs function)
 
 ## Important Notes
 
@@ -368,6 +497,11 @@ def build(ctx):
 3. **Staging** - Install to `stage$(ctx.PREFIX)` not directly to `ctx.PREFIX`
 4. **Dependencies** - Use semantic versioning in metadata dependencies
 5. **Error handling** - Methods currently don't return errors but will in future versions
+6. **install() behavior**:
+   - Does NOT run `make install` or equivalent
+   - Only requests that the generated .sp package be installed
+   - Must be the LAST step in recipe if used
+   - Optional - omit if you only want to build, not install
 
 ## API Changes in Latest Version
 
@@ -378,10 +512,10 @@ The Starlark API has been refactored to use global functions instead of methods:
 
 ## Future Enhancements
 
-Planned improvements:
-- Native Go, Python, and Node.js build system functions
-- Enhanced error recovery mechanisms
-- Better resource management for parallel builds
-- BLAKE3 hash verification in fetch()
-- More sophisticated conditional execution with with_features()
-- Enhanced parallel_steps() implementation
+Recent improvements:
+- ✅ Native Go, Python, and Node.js build system functions - Now exposed!
+- ✅ Enhanced error recovery mechanisms - on_error(), checkpoint(), try_recover() implemented
+- ✅ Better resource management for parallel builds - set_parallelism(), set_resource_hints() implemented
+- ✅ BLAKE3 hash verification in fetch() - Already implemented
+- ✅ More sophisticated conditional execution with with_features() - Fully implemented
+- ✅ Enhanced parallel_steps() implementation - Fully implemented

@@ -23,6 +23,8 @@ pub struct BuilderApi {
     auto_sbom: bool,
     /// SBOM exclusion patterns
     sbom_excludes: Vec<String>,
+    /// Whether install was requested during recipe execution
+    install_requested: bool,
 }
 
 impl BuilderApi {
@@ -44,6 +46,7 @@ impl BuilderApi {
                 "./*.a".to_string(),
                 "./*.la".to_string(),
             ],
+            install_requested: false,
         })
     }
 
@@ -142,37 +145,30 @@ impl BuilderApi {
         args: &[String],
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
+        use crate::build_systems::{BuildSystem, BuildSystemContext, AutotoolsBuildSystem};
+        
         // Extract source archive first if needed
         self.extract_downloads().await?;
 
-        // Run ./configure with PREFIX automatically added
-        let mut configure_args = args.to_vec();
-        if !configure_args
-            .iter()
-            .any(|arg| arg.starts_with("--prefix="))
-        {
-            configure_args.insert(0, "--prefix=/opt/pm/live".to_string());
-        }
-
-        env.execute_command(
-            "sh",
-            &["-c", &format!("./configure {}", configure_args.join(" "))],
-            Some(&self.working_dir),
-        )
-        .await?;
-
-        // Run make
-        let jobs = env
-            .env_vars()
-            .get("JOBS")
-            .unwrap_or(&"1".to_string())
-            .clone();
-        env.execute_command("make", &["-j", &jobs], Some(&self.working_dir))
-            .await?;
-
-        // Run make install
-        env.execute_command("make", &["install"], Some(&self.working_dir))
-            .await
+        // Create build system context
+        let ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
+        let autotools_system = AutotoolsBuildSystem::new();
+        
+        // Configure
+        autotools_system.configure(&ctx, args).await?;
+        
+        // Build
+        autotools_system.build(&ctx, &[]).await?;
+        
+        // Install - this will also adjust staged files
+        autotools_system.install(&ctx).await?;
+        
+        Ok(BuildCommandResult {
+            success: true,
+            exit_code: Some(0),
+            stdout: "Autotools build completed successfully".to_string(),
+            stderr: String::new(),
+        })
     }
 
     /// Configure with `CMake`
@@ -185,38 +181,35 @@ impl BuilderApi {
         args: &[String],
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
+        use crate::build_systems::{BuildSystem, BuildSystemContext, CMakeBuildSystem};
+        
         // Extract source archive first if needed
         self.extract_downloads().await?;
 
-        // Create build directory
+        // Create build system context with out-of-source build directory
         let build_dir = self.working_dir.join("build");
         fs::create_dir_all(&build_dir).await?;
-
-        // Run cmake with CMAKE_INSTALL_PREFIX
-        let mut cmake_args = vec!["..".to_string()];
-
-        // Add CMAKE_INSTALL_PREFIX if not already specified
-        if !args.iter().any(|arg| arg.contains("CMAKE_INSTALL_PREFIX")) {
-            cmake_args.push("-DCMAKE_INSTALL_PREFIX=/opt/pm/live".to_string());
-        }
-        cmake_args.extend(args.iter().cloned());
-
-        let arg_strs: Vec<&str> = cmake_args.iter().map(String::as_str).collect();
-        env.execute_command("cmake", &arg_strs, Some(&build_dir))
-            .await?;
-
-        // Run make
-        let jobs = env
-            .env_vars()
-            .get("JOBS")
-            .unwrap_or(&"1".to_string())
-            .clone();
-        env.execute_command("make", &["-j", &jobs], Some(&build_dir))
-            .await?;
-
-        // Run make install
-        env.execute_command("make", &["install"], Some(&build_dir))
-            .await
+        
+        let mut ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
+        ctx.build_dir = build_dir;
+        
+        let cmake_system = CMakeBuildSystem::new();
+        
+        // Configure
+        cmake_system.configure(&ctx, args).await?;
+        
+        // Build
+        cmake_system.build(&ctx, &[]).await?;
+        
+        // Install - this will also adjust staged files
+        cmake_system.install(&ctx).await?;
+        
+        Ok(BuildCommandResult {
+            success: true,
+            exit_code: Some(0),
+            stdout: "CMake build completed successfully".to_string(),
+            stderr: String::new(),
+        })
     }
 
     /// Configure with Meson
@@ -229,31 +222,34 @@ impl BuilderApi {
         args: &[String],
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
+        use crate::build_systems::{BuildSystem, BuildSystemContext, MesonBuildSystem};
+        
         // Extract source archive first if needed
         self.extract_downloads().await?;
 
-        // Setup meson
+        // Create build system context with out-of-source build directory
         let build_dir = self.working_dir.join("build");
-
-        let mut setup_args = vec!["setup".to_string(), build_dir.display().to_string()];
-
-        // Add prefix if not already specified
-        if !args.iter().any(|arg| arg.contains("--prefix")) {
-            setup_args.push("--prefix=/opt/pm/live".to_string());
-        }
-        setup_args.extend(args.iter().cloned());
-
-        let arg_strs: Vec<&str> = setup_args.iter().map(String::as_str).collect();
-        env.execute_command("meson", &arg_strs, Some(&self.working_dir))
-            .await?;
-
-        // Compile
-        env.execute_command("meson", &["compile"], Some(&build_dir))
-            .await?;
-
-        // Install
-        env.execute_command("meson", &["install"], Some(&build_dir))
-            .await
+        
+        let mut ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
+        ctx.build_dir = build_dir;
+        
+        let meson_system = MesonBuildSystem::new();
+        
+        // Configure
+        meson_system.configure(&ctx, args).await?;
+        
+        // Build
+        meson_system.build(&ctx, &[]).await?;
+        
+        // Install - this will also adjust staged files
+        meson_system.install(&ctx).await?;
+        
+        Ok(BuildCommandResult {
+            success: true,
+            exit_code: Some(0),
+            stdout: "Meson build completed successfully".to_string(),
+            stderr: String::new(),
+        })
     }
 
     /// Build with Cargo
@@ -270,39 +266,120 @@ impl BuilderApi {
         args: &[String],
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
+        use crate::build_systems::{BuildSystem, BuildSystemContext, CargoBuildSystem};
+        
         // Extract source archive first if needed
         self.extract_downloads().await?;
 
-        let mut cargo_args = vec!["build", "--release"];
-        let arg_strs: Vec<&str> = args.iter().map(String::as_str).collect();
-        cargo_args.extend(arg_strs);
-
-        env.execute_command("cargo", &cargo_args, Some(&self.working_dir))
-            .await?;
-
-        // Install binaries to staging directory
-        let staging_bin = env.staging_dir().join("bin");
-        fs::create_dir_all(&staging_bin).await?;
-
-        // Copy target/release/* to staging/bin (simplified for now)
-        let target_dir = self.working_dir.join("target/release");
-        if target_dir.exists() {
-            let mut entries = fs::read_dir(&target_dir).await?;
-            while let Some(entry) = entries.next_entry().await? {
-                let path = entry.path();
-                if path.is_file() && path.extension().is_none_or(|ext| ext != "d") {
-                    let filename = path.file_name().unwrap();
-                    fs::copy(&path, staging_bin.join(filename)).await?;
-                }
-            }
-        }
+        // Create build system context
+        let ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
+        let cargo_system = CargoBuildSystem::new();
+        
+        // Configure (checks Cargo.toml, sets up environment)
+        cargo_system.configure(&ctx, args).await?;
+        
+        // Build
+        cargo_system.build(&ctx, args).await?;
+        
+        // Install - this will copy binaries to staging/bin
+        cargo_system.install(&ctx).await?;
 
         Ok(BuildCommandResult {
             success: true,
             exit_code: Some(0),
-            stdout: "Cargo build completed".to_string(),
+            stdout: "Cargo build completed successfully".to_string(),
             stderr: String::new(),
         })
+    }
+
+    /// Build with Go
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the go command fails.
+    pub async fn go(
+        &self,
+        args: &[String],
+        env: &BuildEnvironment,
+    ) -> Result<BuildCommandResult, Error> {
+        use crate::build_systems::{BuildSystem, BuildSystemContext, GoBuildSystem};
+        
+        // Extract source archive first if needed
+        self.extract_downloads().await?;
+
+        // Create build system context
+        let ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
+        let go_system = GoBuildSystem::new();
+        
+        // Configure if needed (this will handle go mod vendor, etc)
+        go_system.configure(&ctx, args).await?;
+        
+        // Build the project - this will output to staging/bin automatically
+        go_system.build(&ctx, args).await?;
+        
+        // Install (verifies binaries and sets permissions)
+        go_system.install(&ctx).await?;
+        
+        Ok(BuildCommandResult {
+            success: true,
+            exit_code: Some(0),
+            stdout: "Go build completed successfully".to_string(),
+            stderr: String::new(),
+        })
+    }
+
+    /// Build with Python
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the python3 command fails.
+    pub async fn python(
+        &self,
+        args: &[String],
+        env: &BuildEnvironment,
+    ) -> Result<BuildCommandResult, Error> {
+        // Extract source archive first if needed
+        self.extract_downloads().await?;
+
+        let arg_strs: Vec<&str> = args.iter().map(String::as_str).collect();
+        env.execute_command("python3", &arg_strs, Some(&self.working_dir))
+            .await
+    }
+
+    /// Build with Node.js
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the node/npm command fails.
+    pub async fn nodejs(
+        &self,
+        args: &[String],
+        env: &BuildEnvironment,
+    ) -> Result<BuildCommandResult, Error> {
+        // Extract source archive first if needed
+        self.extract_downloads().await?;
+
+        // Determine which command to use
+        let (command, command_args) = if !args.is_empty() {
+            match args[0].as_str() {
+                "npm" | "yarn" | "pnpm" => {
+                    // Use the package manager as command with remaining args
+                    let arg_strs: Vec<&str> = args[1..].iter().map(String::as_str).collect();
+                    (args[0].as_str(), arg_strs)
+                }
+                _ => {
+                    // Use node with all args
+                    let arg_strs: Vec<&str> = args.iter().map(String::as_str).collect();
+                    ("node", arg_strs)
+                }
+            }
+        } else {
+            // No args, just use node
+            ("node", vec![])
+        };
+
+        env.execute_command(command, &command_args, Some(&self.working_dir))
+            .await
     }
 
     /// Run configure step only
@@ -345,30 +422,40 @@ impl BuilderApi {
         args: &[String],
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
-        let mut make_args = vec!["make"];
-        let arg_strs: Vec<&str> = args.iter().map(String::as_str).collect();
-        make_args.extend(arg_strs);
+        // Process arguments, replacing relative DESTDIR with absolute path
+        let processed_args: Vec<String> = args
+            .iter()
+            .map(|arg| {
+                if arg.starts_with("DESTDIR=") {
+                    // Always use the absolute staging directory from environment
+                    format!("DESTDIR={}", env.staging_dir().display())
+                } else {
+                    arg.clone()
+                }
+            })
+            .collect();
 
-        env.execute_command("make", &make_args[1..], Some(&self.working_dir))
+        let arg_strs: Vec<&str> = processed_args.iter().map(String::as_str).collect();
+        env.execute_command("make", &arg_strs, Some(&self.working_dir))
             .await
     }
 
-    /// Install to staging directory
+    /// Mark that installation is requested
     ///
-    /// # Errors
-    ///
-    /// Returns an error if the install command fails.
-    pub async fn install(&self, env: &BuildEnvironment) -> Result<BuildCommandResult, Error> {
-        // Check if we're in a build subdirectory (CMake/Meson)
-        let build_dir = self.working_dir.join("build");
-        let install_dir = if build_dir.exists() {
-            &build_dir
-        } else {
-            &self.working_dir
-        };
+    /// This method does not actually perform installation during recipe execution.
+    /// Instead, it marks that the package should be installed after it's built.
+    /// The actual installation happens after the .sp package is created.
+    pub async fn install(&mut self, _env: &BuildEnvironment) -> Result<BuildCommandResult, Error> {
+        // Mark that installation was requested
+        self.install_requested = true;
 
-        env.execute_command("make", &["install"], Some(install_dir))
-            .await
+        // Return success - the actual installation will happen later
+        Ok(BuildCommandResult {
+            success: true,
+            exit_code: Some(0),
+            stdout: "Installation request recorded".to_string(),
+            stderr: String::new(),
+        })
     }
 
     /// Set SBOM generation
@@ -389,6 +476,12 @@ impl BuilderApi {
     #[must_use]
     pub fn sbom_config(&self) -> (bool, &[String]) {
         (self.auto_sbom, &self.sbom_excludes)
+    }
+
+    /// Check if installation was requested during recipe execution
+    #[must_use]
+    pub fn is_install_requested(&self) -> bool {
+        self.install_requested
     }
 
     /// Extract downloaded archives
@@ -529,6 +622,7 @@ impl BuilderApi {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::BuildEnvironment;
     use tempfile::tempdir;
 
     #[test]
@@ -556,5 +650,39 @@ mod tests {
         let (sbom_enabled, excludes) = api.sbom_config();
         assert!(!sbom_enabled);
         assert_eq!(excludes, &["*.test"]);
+    }
+
+    #[tokio::test]
+    async fn test_install_request() {
+        let temp = tempdir().unwrap();
+        let mut api = BuilderApi::new(temp.path().to_path_buf()).unwrap();
+
+        // Initially, install should not be requested
+        assert!(!api.is_install_requested());
+
+        // Create a dummy build context
+        let context = crate::BuildContext {
+            name: "test-package".to_string(),
+            version: "1.0.0".parse().unwrap(),
+            revision: 1,
+            arch: "aarch64-apple-darwin".to_string(),
+            recipe_path: temp.path().join("test.star"),
+            output_dir: temp.path().to_path_buf(),
+            event_sender: None,
+            package_path: None,
+        };
+
+        // Create build environment
+        let env = BuildEnvironment::new(context, temp.path()).unwrap();
+
+        // Call install
+        let result = api.install(&env).await.unwrap();
+
+        // Verify the result
+        assert!(result.success);
+        assert_eq!(result.stdout, "Installation request recorded");
+
+        // Verify install was marked as requested
+        assert!(api.is_install_requested());
     }
 }

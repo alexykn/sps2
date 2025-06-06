@@ -102,9 +102,6 @@ impl AutotoolsBuildSystem {
             args.push(format!("--prefix={}", ctx.prefix.display()));
         }
 
-        // Add DESTDIR support
-        args.push(format!("DESTDIR={}", ctx.env.staging_dir().display()));
-
         // Handle cross-compilation
         if let Some(cross) = &ctx.cross_compilation {
             args.push(format!("--host={}", cross.host_platform.triple()));
@@ -300,7 +297,9 @@ impl BuildSystem for AutotoolsBuildSystem {
             .into());
         }
 
-        Ok(())
+        // Autotools with DESTDIR also installs to DESTDIR/PREFIX
+        // Move files from stage/opt/pm/live/* to stage/*
+        self.adjust_staged_files(ctx).await
     }
 
     fn get_env_vars(&self, ctx: &BuildSystemContext) -> HashMap<String, String> {
@@ -339,6 +338,73 @@ impl BuildSystem for AutotoolsBuildSystem {
     fn prefers_out_of_source_build(&self) -> bool {
         // Autotools supports both, but in-source is traditional
         false
+    }
+}
+
+impl AutotoolsBuildSystem {
+    /// Adjust staged files by moving them from stage/PREFIX/* to stage/*
+    async fn adjust_staged_files(&self, ctx: &BuildSystemContext) -> Result<(), Error> {
+        use tokio::fs;
+        
+        let staging_dir = ctx.env.staging_dir();
+        let prefix_in_staging = staging_dir.join(ctx.prefix.strip_prefix("/").unwrap_or(&ctx.prefix));
+        
+        // If the full prefix path exists in staging, we need to move its contents up
+        if prefix_in_staging.exists() && prefix_in_staging != staging_dir {
+            // Read all entries from the prefixed directory
+            let mut entries = fs::read_dir(&prefix_in_staging).await?;
+            
+            while let Some(entry) = entries.next_entry().await? {
+                let source = entry.path();
+                let relative = source.strip_prefix(&prefix_in_staging)
+                    .map_err(|e| Error::internal(format!("Failed to strip prefix: {}", e)))?;
+                let destination = staging_dir.join(relative);
+                
+                // Create parent directory if needed
+                if let Some(parent) = destination.parent() {
+                    fs::create_dir_all(parent).await?;
+                }
+                
+                // Move the file or directory
+                fs::rename(&source, &destination).await
+                    .map_err(|e| Error::internal(format!("Failed to move staged file: {}", e)))?;
+            }
+            
+            // Clean up the now-empty prefix directories
+            self.cleanup_empty_dirs(&prefix_in_staging).await?;
+        }
+        
+        Ok(())
+    }
+    
+    /// Recursively remove empty directories
+    fn cleanup_empty_dirs<'a>(&'a self, path: &'a Path) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Error>> + Send + 'a>> {
+        Box::pin(async move {
+            use tokio::fs;
+            
+            if path.is_dir() {
+                let mut is_empty = true;
+                let mut entries = fs::read_dir(path).await?;
+                
+                while let Some(entry) = entries.next_entry().await? {
+                    if entry.path().is_dir() {
+                        self.cleanup_empty_dirs(&entry.path()).await?;
+                        // Check if directory still exists (might have been removed)
+                        if entry.path().exists() {
+                            is_empty = false;
+                        }
+                    } else {
+                        is_empty = false;
+                    }
+                }
+                
+                if is_empty {
+                    fs::remove_dir(path).await?;
+                }
+            }
+            
+            Ok(())
+        })
     }
 }
 

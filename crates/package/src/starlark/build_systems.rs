@@ -204,4 +204,101 @@ fn build_systems_module(builder: &mut GlobalsBuilder) {
         build_ctx.add_step(BuildStep::Cargo { args: arg_vec });
         Ok(NoneType)
     }
+
+    /// Run Go build
+    ///
+    /// Examples:
+    /// - go(ctx, ["build", "-o", "myapp"])
+    /// - go(ctx, ["test", "./..."])
+    /// - go(ctx, ["mod", "vendor"])
+    fn go<'v>(ctx: Value<'v>, args: Option<Value<'v>>) -> anyhow::Result<NoneType> {
+        // Unpack BuildContext from the Value
+        let build_ctx = ctx
+            .downcast_ref::<BuildContext>()
+            .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
+
+        let mut arg_vec = Vec::new();
+
+        if let Some(args_value) = args {
+            if let Some(list) = ListRef::from_value(args_value) {
+                for item in list.iter() {
+                    if let Some(s) = item.unpack_str() {
+                        arg_vec.push(s.to_string());
+                    } else {
+                        return Err(anyhow::anyhow!("All arguments must be strings"));
+                    }
+                }
+            } else {
+                return Err(anyhow::anyhow!("Arguments must be a list of strings"));
+            }
+        }
+
+        build_ctx.add_step(BuildStep::Go { args: arg_vec });
+        Ok(NoneType)
+    }
+
+    /// Run Python build
+    ///
+    /// Examples:
+    /// - python(ctx, ["setup.py", "build"])
+    /// - python(ctx, ["setup.py", "install", "--prefix=/opt"])
+    /// - python(ctx, ["-m", "pip", "install", "."])
+    fn python<'v>(ctx: Value<'v>, args: Option<Value<'v>>) -> anyhow::Result<NoneType> {
+        // Unpack BuildContext from the Value
+        let build_ctx = ctx
+            .downcast_ref::<BuildContext>()
+            .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
+
+        let mut arg_vec = Vec::new();
+
+        if let Some(args_value) = args {
+            if let Some(list) = ListRef::from_value(args_value) {
+                for item in list.iter() {
+                    if let Some(s) = item.unpack_str() {
+                        arg_vec.push(s.to_string());
+                    } else {
+                        return Err(anyhow::anyhow!("All arguments must be strings"));
+                    }
+                }
+            } else {
+                return Err(anyhow::anyhow!("Arguments must be a list of strings"));
+            }
+        }
+
+        build_ctx.add_step(BuildStep::Python { args: arg_vec });
+        Ok(NoneType)
+    }
+
+    /// Run Node.js/npm build
+    ///
+    /// Examples:
+    /// - nodejs(ctx, ["npm", "install"])
+    /// - nodejs(ctx, ["npm", "run", "build"])
+    /// - nodejs(ctx, ["yarn", "install"])
+    /// - nodejs(ctx, ["pnpm", "install"])
+    fn nodejs<'v>(ctx: Value<'v>, args: Option<Value<'v>>) -> anyhow::Result<NoneType> {
+        // Unpack BuildContext from the Value
+        let build_ctx = ctx
+            .downcast_ref::<BuildContext>()
+            .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
+
+        let mut arg_vec = Vec::new();
+
+        if let Some(args_value) = args {
+            if let Some(list) = ListRef::from_value(args_value) {
+                for item in list.iter() {
+                    if let Some(s) = item.unpack_str() {
+                        arg_vec.push(s.to_string());
+                    } else {
+                        return Err(anyhow::anyhow!("All arguments must be strings"));
+                    }
+                }
+            } else {
+                return Err(anyhow::anyhow!("Arguments must be a list of strings"));
+            }
+        }
+
+        build_ctx.add_step(BuildStep::NodeJs { args: arg_vec });
+        Ok(NoneType)
+    }
 }

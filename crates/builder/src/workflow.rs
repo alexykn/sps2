@@ -11,7 +11,7 @@ use sps2_events::Event;
 use sps2_net::NetClient;
 use sps2_resolver::Resolver;
 use sps2_store::PackageStore;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Package builder
 #[derive(Clone)]
@@ -93,7 +93,7 @@ impl Builder {
         let mut environment = self.setup_build_environment(&context).await?;
 
         // Execute recipe and setup dependencies
-        let (runtime_deps, recipe_metadata) = self
+        let (runtime_deps, recipe_metadata, install_requested) = self
             .execute_recipe_and_setup_deps(&context, &mut environment)
             .await?;
 
@@ -115,10 +115,14 @@ impl Builder {
             create_and_sign_package(&self.config, &context, &environment, manifest, sbom_files)
                 .await?;
 
-        // Cleanup and finalize
-        Self::cleanup_and_finalize(&context, &environment, &package_path);
+        // Update context with the generated package path
+        let mut updated_context = context.clone();
+        updated_context.package_path = Some(package_path.clone());
 
-        Ok(BuildResult::new(package_path))
+        // Cleanup and finalize
+        Self::cleanup_and_finalize(&updated_context, &environment, &package_path);
+
+        Ok(BuildResult::new(package_path).with_install_requested(install_requested))
     }
 
     /// Setup build environment with full isolation
@@ -127,13 +131,9 @@ impl Builder {
         context: &BuildContext,
     ) -> Result<BuildEnvironment, Error> {
         // Create build environment with full isolation setup
-        let default_build_root;
-        let build_root = if let Some(root) = &self.config.build_root {
-            root.as_path()
-        } else {
-            default_build_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-            &default_build_root
-        };
+        // Use the configured build_root from BuildConfig (defaults to /opt/pm/build)
+        let build_root = self.config.build_root.as_ref()
+            .expect("build_root should have a default value");
         let mut environment = BuildEnvironment::new(context.clone(), build_root)?;
 
         // Configure environment with resolver, store, and net client if available
@@ -171,9 +171,9 @@ impl Builder {
         &self,
         context: &BuildContext,
         environment: &mut BuildEnvironment,
-    ) -> Result<(Vec<String>, sps2_package::RecipeMetadata), Error> {
+    ) -> Result<(Vec<String>, sps2_package::RecipeMetadata, bool), Error> {
         // Execute recipe
-        let (runtime_deps, build_deps, recipe_metadata) =
+        let (runtime_deps, build_deps, recipe_metadata, install_requested) =
             execute_recipe(&self.config, context, environment).await?;
 
         // Setup build dependencies in isolated environment
@@ -198,7 +198,7 @@ impl Builder {
             );
         }
 
-        Ok((runtime_deps, recipe_metadata))
+        Ok((runtime_deps, recipe_metadata, install_requested))
     }
 
     /// Cleanup build environment and finalize

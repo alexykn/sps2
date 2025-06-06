@@ -56,29 +56,29 @@ impl MesonBuildSystem {
             // Generate cross file content
             let content = format!(
                 r"[binaries]
-c = '{}'
-cpp = '{}'
-ar = '{}'
-strip = '{}'
-ranlib = '{}'
-pkgconfig = 'pkg-config'
+                c = '{}'
+                cpp = '{}'
+                ar = '{}'
+                strip = '{}'
+                ranlib = '{}'
+                pkgconfig = 'pkg-config'
 
-[properties]
-sys_root = '{}'
-pkg_config_libdir = ['{}/usr/lib/pkgconfig', '{}/usr/share/pkgconfig']
+                [properties]
+                sys_root = '{}'
+                pkg_config_libdir = ['{}/usr/lib/pkgconfig', '{}/usr/share/pkgconfig']
 
-[host_machine]
-system = '{}'
-cpu_family = '{}'
-cpu = '{}'
-endian = '{}'
+                [host_machine]
+                system = '{}'
+                cpu_family = '{}'
+                cpu = '{}'
+                endian = '{}'
 
-[build_machine]
-system = '{}'
-cpu_family = '{}'
-cpu = '{}'
-endian = '{}'
-",
+                [build_machine]
+                system = '{}'
+                cpu_family = '{}'
+                cpu = '{}'
+                endian = '{}'
+                ",
                 cross.toolchain.cc,
                 cross.toolchain.cxx,
                 cross.toolchain.ar,

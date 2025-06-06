@@ -36,7 +36,7 @@ impl Default for BuildConfig {
             max_build_time: Some(3600), // 1 hour
             allow_network: false,
             build_jobs: None, // Use auto-detection
-            build_root: None, // Defaults to current directory
+            build_root: Some(PathBuf::from("/opt/pm/build")), // Default to /opt/pm/build
             compression_config: CompressionConfig::default(),
             monitoring_config: MonitoringConfig::default(),
             qa_config: QaConfig::default(),
@@ -192,6 +192,13 @@ impl BuildConfig {
     #[must_use]
     pub fn with_prod_monitoring(mut self) -> Self {
         self.monitoring_config = MonitoringConfig::production();
+        self
+    }
+
+    /// Set build root directory
+    #[must_use]
+    pub fn with_build_root(mut self, path: PathBuf) -> Self {
+        self.build_root = Some(path);
         self
     }
 }

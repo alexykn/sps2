@@ -97,6 +97,32 @@ pub async fn build(
     // Use the builder with custom configuration
     let result = builder.build(build_context).await?;
 
+    // Check if install was requested during recipe execution
+    if result.install_requested {
+        ctx.tx
+            .send(Event::OperationStarted {
+                operation: format!(
+                    "Installing {} {} (requested by recipe)",
+                    package_name, package_version
+                ),
+            })
+            .ok();
+
+        // Install the built package
+        let package_path_str = result.package_path.to_string_lossy().to_string();
+        let _install_report = crate::install(ctx, &[package_path_str]).await?;
+
+        ctx.tx
+            .send(Event::OperationCompleted {
+                operation: format!(
+                    "Installed {} {} successfully",
+                    package_name, package_version
+                ),
+                success: true,
+            })
+            .ok();
+    }
+
     let report = BuildReport {
         package: package_name,
         version: package_version,

@@ -138,30 +138,30 @@ impl CMakeBuildSystem {
 
             let content = format!(
                 r#"# CMake toolchain file for cross-compilation
-set(CMAKE_SYSTEM_NAME {})
-set(CMAKE_SYSTEM_PROCESSOR {})
+                    set(CMAKE_SYSTEM_NAME {})
+                    set(CMAKE_SYSTEM_PROCESSOR {})
 
-# Toolchain
-set(CMAKE_C_COMPILER {})
-set(CMAKE_CXX_COMPILER {})
-set(CMAKE_AR {})
-set(CMAKE_RANLIB {})
-set(CMAKE_STRIP {})
+                    # Toolchain
+                    set(CMAKE_C_COMPILER {})
+                    set(CMAKE_CXX_COMPILER {})
+                    set(CMAKE_AR {})
+                    set(CMAKE_RANLIB {})
+                    set(CMAKE_STRIP {})
 
-# Sysroot
-set(CMAKE_SYSROOT {})
-set(CMAKE_FIND_ROOT_PATH {})
+                    # Sysroot
+                    set(CMAKE_SYSROOT {})
+                    set(CMAKE_FIND_ROOT_PATH {})
 
-# Search paths
-set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+                    # Search paths
+                    set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+                    set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+                    set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+                    set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 
-# pkg-config
-set(ENV{{PKG_CONFIG_PATH}} "{}/usr/lib/pkgconfig:{}/usr/share/pkgconfig")
-set(ENV{{PKG_CONFIG_SYSROOT_DIR}} "{}")
-"#,
+                    # pkg-config
+                    set(ENV{{PKG_CONFIG_PATH}} "{}/usr/lib/pkgconfig:{}/usr/share/pkgconfig")
+                    set(ENV{{PKG_CONFIG_SYSROOT_DIR}} "{}")
+                    "#,
                 match cross.host_platform.os.as_str() {
                     "darwin" => "Darwin",
                     "linux" => "Linux",
@@ -184,6 +184,100 @@ set(ENV{{PKG_CONFIG_SYSROOT_DIR}} "{}")
         }
 
         Ok(())
+    }
+
+    /// Adjust staged files by moving them from stage/PREFIX/* to stage/*
+    async fn adjust_staged_files(&self, ctx: &BuildSystemContext) -> Result<(), Error> {
+        
+        let staging_dir = ctx.env.staging_dir();
+        let prefix_in_staging = staging_dir.join(ctx.prefix.strip_prefix("/").unwrap_or(&ctx.prefix));
+        
+        // Debug: log what we're checking
+        // Debug: log what we're checking
+        // Note: BuildOutput event doesn't exist, using println for debugging
+        if std::env::var("DEBUG").is_ok() {
+            eprintln!("CMake: Checking for files in {:?} to move to {:?}", prefix_in_staging, staging_dir);
+        }
+        
+        // If the full prefix path exists in staging, we need to move its contents up
+        if prefix_in_staging.exists() && prefix_in_staging != staging_dir {
+            // Debug: found prefix directory
+            if std::env::var("DEBUG").is_ok() {
+                eprintln!("CMake: Found prefix directory, adjusting staged files");
+            }
+            
+            // Use a non-recursive approach to move files
+            self.move_directory_contents(&prefix_in_staging, &staging_dir).await?;
+            
+            // Clean up the now-empty prefix directories
+            self.cleanup_empty_dirs(&prefix_in_staging).await?;
+        }
+        
+        Ok(())
+    }
+    
+    /// Move all contents from source directory to destination
+    fn move_directory_contents<'a>(&'a self, source: &'a Path, dest: &'a Path) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Error>> + Send + 'a>> {
+        Box::pin(async move {
+            use tokio::fs;
+            
+            let mut entries = fs::read_dir(source).await?;
+            
+            while let Some(entry) = entries.next_entry().await? {
+                let source_path = entry.path();
+                let file_name = source_path.file_name()
+                    .ok_or_else(|| Error::internal("Invalid file name"))?;
+                let dest_path = dest.join(file_name);
+                
+                // Create parent directory if needed
+                if let Some(parent) = dest_path.parent() {
+                    fs::create_dir_all(parent).await?;
+                }
+                
+                // If it's a directory, recursively move its contents
+                if source_path.is_dir() {
+                    fs::create_dir_all(&dest_path).await?;
+                    self.move_directory_contents(&source_path, &dest_path).await?;
+                    fs::remove_dir(&source_path).await?;
+                } else {
+                    // Move the file
+                    fs::rename(&source_path, &dest_path).await
+                        .map_err(|e| Error::internal(format!("Failed to move file from {:?} to {:?}: {}", source_path, dest_path, e)))?;
+                }
+            }
+            
+            Ok(())
+        })
+    }
+    
+    /// Recursively remove empty directories
+    fn cleanup_empty_dirs<'a>(&'a self, path: &'a Path) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Error>> + Send + 'a>> {
+        Box::pin(async move {
+            use tokio::fs;
+            
+            if path.is_dir() {
+                let mut is_empty = true;
+                let mut entries = fs::read_dir(path).await?;
+                
+                while let Some(entry) = entries.next_entry().await? {
+                    if entry.path().is_dir() {
+                        self.cleanup_empty_dirs(&entry.path()).await?;
+                        // Check if directory still exists (might have been removed)
+                        if entry.path().exists() {
+                            is_empty = false;
+                        }
+                    } else {
+                        is_empty = false;
+                    }
+                }
+                
+                if is_empty {
+                    fs::remove_dir(path).await?;
+                }
+            }
+            
+            Ok(())
+        })
     }
 }
 
@@ -323,42 +417,61 @@ impl BuildSystem for CMakeBuildSystem {
     }
 
     async fn install(&self, ctx: &BuildSystemContext) -> Result<(), Error> {
-        // CMake install with DESTDIR
+        // When using DESTDIR, we need to adjust the install behavior
+        // DESTDIR is prepended to the install prefix, so if CMAKE_INSTALL_PREFIX is /opt/pm/live
+        // and DESTDIR is /path/to/stage, files go to /path/to/stage/opt/pm/live
+        // To get files in /path/to/stage directly, we need to strip the prefix during packaging
+        
+        // Set DESTDIR in the environment for this context
+        let staging_dir = ctx.env.staging_dir().display().to_string();
+        if let Ok(mut extra) = ctx.extra_env.write() {
+            extra.insert("DESTDIR".to_string(), staging_dir.clone());
+        }
+        
+        // Also set it directly in the build environment
+        // Set DESTDIR in the environment - env_vars is not a RwLock, it's a HashMap
+        // We need to use a different approach
+        std::env::set_var("DESTDIR", &staging_dir);
+        
         let result = ctx
             .execute(
                 "cmake",
-                &[
-                    "--install",
-                    ".",
-                    "--prefix",
-                    &ctx.prefix.display().to_string(),
-                ],
+                &["--install", "."],
                 Some(&ctx.build_dir),
             )
-            .await?;
+            .await;
 
-        if !result.success {
-            // Fallback to make install for older CMake versions
-            let make_result = ctx
-                .execute(
-                    "make",
-                    &[
-                        "install",
-                        &format!("DESTDIR={}", ctx.env.staging_dir().display()),
-                    ],
-                    Some(&ctx.build_dir),
-                )
-                .await?;
+        match result {
+            Ok(res) if res.success => {
+                // After successful install, we need to move files from 
+                // stage/opt/pm/live/* to stage/*
+                self.adjust_staged_files(ctx).await
+            },
+            _ => {
+                // Fallback to make install for older CMake versions or if cmake --install fails
+                // Ensure DESTDIR is set in environment
+                // Set DESTDIR in the environment
+                std::env::set_var("DESTDIR", &staging_dir);
+                
+                let make_result = ctx
+                    .execute(
+                        "make",
+                        &["install"],
+                        Some(&ctx.build_dir),
+                    )
+                    .await?;
 
-            if !make_result.success {
-                return Err(BuildError::InstallFailed {
-                    message: format!("cmake install failed: {}", result.stderr),
+                if !make_result.success {
+                    return Err(BuildError::InstallFailed {
+                        message: format!("cmake install failed: {}", make_result.stderr),
+                    }
+                    .into());
                 }
-                .into());
+                
+                // Adjust staged files after make install too
+                self.adjust_staged_files(ctx).await
             }
         }
-
-        Ok(())
     }
 
     fn get_env_vars(&self, ctx: &BuildSystemContext) -> HashMap<String, String> {

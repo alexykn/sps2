@@ -109,21 +109,27 @@ impl GoBuildSystem {
             // No need to add them as arguments
         }
 
-        // Add output directory
-        args.push("-o".to_string());
-        let staging_dir = ctx.env.staging_dir();
-        let output_dir = staging_dir.join("bin");
-        args.push(output_dir.display().to_string());
-
-        // Add user arguments
+        // Add user arguments (before -o to allow overriding)
         args.extend(user_args.iter().cloned());
+
+        // Don't add -o if user already specified it
+        if !args.iter().any(|arg| arg == "-o") {
+            // Determine output binary name from build context
+            let binary_name = ctx.env.package_name();
+            
+            // Add output file path
+            args.push("-o".to_string());
+            let staging_dir = ctx.env.staging_dir();
+            let output_path = staging_dir.join("bin").join(binary_name);
+            args.push(output_path.display().to_string());
+        }
 
         // Add build target (current directory by default)
         if !user_args
             .iter()
-            .any(|arg| arg.ends_with(".go") || arg.contains('/'))
+            .any(|arg| arg.ends_with(".go") || arg.contains('/') || arg == "." || arg == "./...")
         {
-            args.push("./...".to_string()); // Build all packages
+            args.push(".".to_string()); // Build current package
         }
 
         args

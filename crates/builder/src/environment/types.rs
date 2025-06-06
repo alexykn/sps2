@@ -24,6 +24,8 @@ pub struct BuildResult {
     pub sbom_files: Vec<PathBuf>,
     /// Build log
     pub build_log: String,
+    /// Whether the recipe requested the package be installed after building
+    pub install_requested: bool,
 }
 
 impl BuildResult {
@@ -34,6 +36,7 @@ impl BuildResult {
             package_path,
             sbom_files: Vec::new(),
             build_log: String::new(),
+            install_requested: false,
         }
     }
 
@@ -45,5 +48,12 @@ impl BuildResult {
     /// Set build log
     pub fn set_build_log(&mut self, log: String) {
         self.build_log = log;
+    }
+
+    /// Set install requested flag
+    #[must_use]
+    pub fn with_install_requested(mut self, install_requested: bool) -> Self {
+        self.install_requested = install_requested;
+        self
     }
 }

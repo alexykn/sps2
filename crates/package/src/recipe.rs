@@ -90,6 +90,15 @@ pub enum BuildStep {
     Cargo {
         args: Vec<String>,
     },
+    Go {
+        args: Vec<String>,
+    },
+    Python {
+        args: Vec<String>,
+    },
+    NodeJs {
+        args: Vec<String>,
+    },
     Command {
         program: String,
         args: Vec<String>,

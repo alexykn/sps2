@@ -76,6 +76,21 @@ impl BuildExecutor for StarlarkBridge {
         Ok(())
     }
 
+    async fn go(&mut self, args: &[String]) -> Result<(), Error> {
+        self.api.go(args, &self.env).await?;
+        Ok(())
+    }
+
+    async fn python(&mut self, args: &[String]) -> Result<(), Error> {
+        self.api.python(args, &self.env).await?;
+        Ok(())
+    }
+
+    async fn nodejs(&mut self, args: &[String]) -> Result<(), Error> {
+        self.api.nodejs(args, &self.env).await?;
+        Ok(())
+    }
+
     async fn apply_patch(&mut self, patch_path: &Path) -> Result<(), Error> {
         self.api.apply_patch(patch_path, &self.env).await?;
         Ok(())

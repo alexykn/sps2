@@ -132,11 +132,13 @@ impl RecipeEngine {
         // Create build context with metadata
         let jobs = i32::try_from(num_cpus::get()).unwrap_or(1);
         let context = if let Some(exec) = &executor {
-            BuildContext::with_executor("/opt/pm/build".to_string(), jobs, (**exec).clone())
+            BuildContext::with_executor("/opt/pm/live".to_string(), jobs, (**exec).clone())
                 .with_metadata(metadata.name.clone(), metadata.version.clone())
+                .with_build_prefix(String::new())  // Empty means install directly to stage/
         } else {
-            BuildContext::new("/opt/pm/build".to_string(), jobs)
+            BuildContext::new("/opt/pm/live".to_string(), jobs)
                 .with_metadata(metadata.name.clone(), metadata.version.clone())
+                .with_build_prefix(String::new())  // Empty means install directly to stage/
         };
 
         // Create a new module for the build function evaluation
@@ -179,6 +181,20 @@ impl RecipeEngine {
         //     }
         //     .into());
         // }
+
+        // Validate that if install() is used, it must be the last step
+        if let Some(install_position) = build_steps
+            .iter()
+            .position(|s| matches!(s, BuildStep::Install))
+        {
+            if install_position != build_steps.len() - 1 {
+                return Err(BuildError::RecipeError {
+                    message: "install() must be the last step in the build() function if used"
+                        .to_string(),
+                }
+                .into());
+            }
+        }
 
         Ok(RecipeResult {
             metadata,
@@ -639,5 +655,96 @@ def build(ctx):
 
         // Should end with install
         assert!(matches!(steps.last(), Some(BuildStep::Install)));
+    }
+
+    #[test]
+    fn test_install_must_be_last_step() {
+        let recipe_content = r#"
+def metadata():
+    return {
+        "name": "test-install-order",
+        "version": "1.0.0"
+    }
+
+def build(ctx):
+    configure(ctx, ["--prefix=" + ctx.PREFIX])
+    install(ctx)  # Install is not the last step
+    make(ctx, ["-j" + str(ctx.JOBS)])  # Error: step after install
+"#;
+
+        let recipe = Recipe::parse(recipe_content).unwrap();
+        let engine = RecipeEngine::new();
+        let result = engine.execute(&recipe);
+
+        // Should fail with appropriate error message
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("install() must be the last step in the build() function if used"));
+    }
+
+    #[test]
+    fn test_install_as_last_step_succeeds() {
+        let recipe_content = r#"
+def metadata():
+    return {
+        "name": "test-install-last",
+        "version": "1.0.0"
+    }
+
+def build(ctx):
+    configure(ctx, ["--prefix=" + ctx.PREFIX])
+    make(ctx, ["-j" + str(ctx.JOBS)])
+    install(ctx)  # Install is the last step - this is correct
+"#;
+
+        let recipe = Recipe::parse(recipe_content).unwrap();
+        let engine = RecipeEngine::new();
+        let result = engine.execute(&recipe);
+
+        // Should succeed
+        assert!(result.is_ok());
+        let result = result.unwrap();
+        assert_eq!(result.metadata.name, "test-install-last");
+        assert_eq!(result.metadata.version, "1.0.0");
+
+        // Verify install is indeed the last step
+        assert!(matches!(
+            result.build_steps.last(),
+            Some(BuildStep::Install)
+        ));
+    }
+
+    #[test]
+    fn test_no_install_step_allowed() {
+        let recipe_content = r#"
+def metadata():
+    return {
+        "name": "test-no-install",
+        "version": "1.0.0"
+    }
+
+def build(ctx):
+    configure(ctx, ["--prefix=" + ctx.PREFIX])
+    make(ctx, ["-j" + str(ctx.JOBS)])
+    # No install step - this is currently allowed
+"#;
+
+        let recipe = Recipe::parse(recipe_content).unwrap();
+        let engine = RecipeEngine::new();
+        let result = engine.execute(&recipe);
+
+        // Should succeed since install is optional for now
+        assert!(result.is_ok());
+        let result = result.unwrap();
+        assert_eq!(result.metadata.name, "test-no-install");
+        assert_eq!(result.metadata.version, "1.0.0");
+
+        // Verify there's no install step
+        assert!(!result
+            .build_steps
+            .iter()
+            .any(|s| matches!(s, BuildStep::Install)));
     }
 }

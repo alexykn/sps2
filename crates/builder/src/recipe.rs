@@ -13,12 +13,12 @@ use sps2_types::package::PackageSpec;
 use std::path::Path;
 use tokio::fs;
 
-/// Execute the Starlark recipe and return dependencies and metadata
+/// Execute the Starlark recipe and return dependencies, metadata, and install request status
 pub async fn execute_recipe(
     config: &BuildConfig,
     context: &BuildContext,
     environment: &mut BuildEnvironment,
-) -> Result<(Vec<String>, Vec<PackageSpec>, RecipeMetadata), Error> {
+) -> Result<(Vec<String>, Vec<PackageSpec>, RecipeMetadata, bool), Error> {
     // Read recipe file
     let _recipe_content = fs::read_to_string(&context.recipe_path)
         .await
@@ -57,7 +57,10 @@ pub async fn execute_recipe(
     )
     .await?;
 
-    Ok(result)
+    // Check if install was requested
+    let install_requested = api.is_install_requested();
+
+    Ok((result.0, result.1, result.2, install_requested))
 }
 
 /// Execute recipe steps
@@ -133,6 +136,15 @@ async fn execute_build_step(
         BuildStep::Cargo { args } => {
             api.cargo(args, environment).await?;
         }
+        BuildStep::Go { args } => {
+            api.go(args, environment).await?;
+        }
+        BuildStep::Python { args } => {
+            api.python(args, environment).await?;
+        }
+        BuildStep::NodeJs { args } => {
+            api.nodejs(args, environment).await?;
+        }
         BuildStep::Install => {
             api.install(environment).await?;
         }
@@ -140,7 +152,23 @@ async fn execute_build_step(
             api.apply_patch(Path::new(path), environment).await?;
         }
         BuildStep::Command { program, args } => {
-            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            // Process arguments to handle DESTDIR properly
+            let processed_args: Vec<String> = if program == "make" {
+                args.iter()
+                    .map(|arg| {
+                        if arg.starts_with("DESTDIR=") {
+                            // Always use the absolute staging directory
+                            format!("DESTDIR={}", environment.staging_dir().display())
+                        } else {
+                            arg.clone()
+                        }
+                    })
+                    .collect()
+            } else {
+                args.clone()
+            };
+            
+            let arg_refs: Vec<&str> = processed_args.iter().map(String::as_str).collect();
             environment
                 .execute_command(program, &arg_refs, None)
                 .await?;

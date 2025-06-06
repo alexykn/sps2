@@ -45,7 +45,8 @@ impl BuildEnvironment {
         let staging_dir = build_prefix.join("stage");
 
         let mut env_vars = HashMap::new();
-        env_vars.insert("PREFIX".to_string(), staging_dir.display().to_string());
+        env_vars.insert("PREFIX".to_string(), "/opt/pm/live".to_string());
+        env_vars.insert("DESTDIR".to_string(), staging_dir.display().to_string());
         env_vars.insert("JOBS".to_string(), Self::cpu_count().to_string());
 
         Ok(Self {
@@ -121,6 +122,24 @@ impl BuildEnvironment {
     pub fn set_env_var(&mut self, key: String, value: String) -> Result<(), Error> {
         self.env_vars.insert(key, value);
         Ok(())
+    }
+
+    /// Get the package path from the build context
+    #[must_use]
+    pub fn package_path(&self) -> Option<&Path> {
+        self.context.package_path.as_deref()
+    }
+
+    /// Get the output path where the package will be created
+    #[must_use]
+    pub fn package_output_path(&self) -> PathBuf {
+        self.context.output_path()
+    }
+
+    /// Get the package name
+    #[must_use]
+    pub fn package_name(&self) -> &str {
+        &self.context.name
     }
 
     /// Get build prefix path for package
