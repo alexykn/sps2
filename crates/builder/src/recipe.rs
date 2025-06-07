@@ -303,7 +303,7 @@ async fn execute_parallel_steps(
 /// Clean up the staging directory for the current package
 async fn cleanup_staging_directory(environment: &BuildEnvironment) -> Result<(), Error> {
     let staging_dir = environment.staging_dir();
-    
+
     // Only clean if the staging directory exists
     if staging_dir.exists() {
         // Remove all contents but keep the directory itself
@@ -316,7 +316,7 @@ async fn cleanup_staging_directory(environment: &BuildEnvironment) -> Result<(),
                 fs::remove_file(&path).await?;
             }
         }
-        
+
         // Send event about cleanup
         send_event(
             environment.context(),
@@ -326,6 +326,6 @@ async fn cleanup_staging_directory(environment: &BuildEnvironment) -> Result<(),
             },
         );
     }
-    
+
     Ok(())
 }

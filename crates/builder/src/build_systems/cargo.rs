@@ -344,7 +344,7 @@ impl BuildSystem for CargoBuildSystem {
             // to a temp location and then move files to the staging dir with BUILD_PREFIX structure
             let temp_install_dir = ctx.build_dir.join("cargo_install_temp");
             fs::create_dir_all(&temp_install_dir).await?;
-            
+
             let temp_install_str = temp_install_dir.display().to_string();
             let install_args = vec![
                 "install",
@@ -368,14 +368,14 @@ impl BuildSystem for CargoBuildSystem {
 
             // Move files from temp install to staging with BUILD_PREFIX structure
             let staging_dir = ctx.env.staging_dir();
-            let prefix_path = staging_dir.join(&ctx.env.get_build_prefix().trim_start_matches('/'));
-            
+            let prefix_path = staging_dir.join(ctx.env.get_build_prefix().trim_start_matches('/'));
+
             // Move bin directory
             let temp_bin = temp_install_dir.join("bin");
             if temp_bin.exists() {
                 let dest_bin = prefix_path.join("bin");
                 fs::create_dir_all(&dest_bin).await?;
-                
+
                 let mut entries = fs::read_dir(&temp_bin).await?;
                 while let Some(entry) = entries.next_entry().await? {
                     let src = entry.path();
@@ -385,14 +385,13 @@ impl BuildSystem for CargoBuildSystem {
                     }
                 }
             }
-            
+
             // Clean up temp directory
             let _ = fs::remove_dir_all(&temp_install_dir).await;
-            
         } else {
             // Manually copy binaries to staging with BUILD_PREFIX structure
             let staging_dir = ctx.env.staging_dir();
-            let prefix_path = staging_dir.join(&ctx.env.get_build_prefix().trim_start_matches('/'));
+            let prefix_path = staging_dir.join(ctx.env.get_build_prefix().trim_start_matches('/'));
             let staging_bin = prefix_path.join("bin");
             fs::create_dir_all(&staging_bin).await?;
 

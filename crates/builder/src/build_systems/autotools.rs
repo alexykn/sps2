@@ -297,9 +297,9 @@ impl BuildSystem for AutotoolsBuildSystem {
             .into());
         }
 
-        // Autotools with DESTDIR also installs to DESTDIR/PREFIX
-        // Move files from stage/opt/pm/live/* to stage/*
-        self.adjust_staged_files(ctx).await
+        // No need to adjust staged files since we're using BUILD_PREFIX now
+        // which already includes the package-name-version structure
+        Ok(())
     }
 
     fn get_env_vars(&self, ctx: &BuildSystemContext) -> HashMap<String, String> {

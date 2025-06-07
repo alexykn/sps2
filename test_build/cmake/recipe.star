@@ -8,5 +8,9 @@ def metadata():
     }
 
 def build(ctx):
+    # Clean up any leftover files from previous builds
+    cleanup(ctx)
+    
     # Use the cmake() function which handles cmake configuration and build
-    cmake(ctx, ["-DCMAKE_INSTALL_PREFIX=" + ctx.PREFIX, "-DCMAKE_BUILD_TYPE=Release"])
+    # Don't pass CMAKE_INSTALL_PREFIX manually, let the build system handle it
+    cmake(ctx, ["-DCMAKE_BUILD_TYPE=Release"])

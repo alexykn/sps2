@@ -109,13 +109,13 @@ pub async fn create_sp_package(
             operation: "Copying package files".to_string(),
         },
     );
-    
+
     // The staging directory already contains the package-name-version/ structure
     // created by the build system, so just copy it directly
     if staging_dir.exists() {
         copy_directory_recursive(staging_dir, &package_temp_dir).await?;
     }
-    
+
     send_event(
         context,
         Event::OperationCompleted {

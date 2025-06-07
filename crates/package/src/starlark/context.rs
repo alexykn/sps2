@@ -302,7 +302,9 @@ pub fn build_context_functions(builder: &mut GlobalsBuilder) {
             .downcast_ref::<BuildContext>()
             .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
 
-        build_ctx.detected_build_system.replace(Some(name.to_string()));
+        build_ctx
+            .detected_build_system
+            .replace(Some(name.to_string()));
         build_ctx.add_step(BuildStep::SetBuildSystem {
             name: name.to_string(),
         });
@@ -330,7 +332,10 @@ pub fn build_context_functions(builder: &mut GlobalsBuilder) {
             .downcast_ref::<BuildContext>()
             .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
 
-        build_ctx.error_handlers.borrow_mut().push(handler.to_string());
+        build_ctx
+            .error_handlers
+            .borrow_mut()
+            .push(handler.to_string());
         build_ctx.add_step(BuildStep::OnError {
             handler: handler.to_string(),
         });

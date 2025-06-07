@@ -158,7 +158,6 @@ impl MesonBuildSystem {
         args
     }
 
-
     /// Parse Meson test output
     fn parse_test_output(&self, output: &str) -> (usize, usize, usize, Vec<TestFailure>) {
         let mut total = 0;

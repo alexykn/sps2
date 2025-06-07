@@ -52,9 +52,26 @@ pub async fn copy_source_files(
     let mut entries = fs::read_dir(recipe_dir).await?;
     while let Some(entry) = entries.next_entry().await? {
         let entry_path = entry.path();
-        if entry_path.is_file() && entry_path.extension().is_none_or(|ext| ext != "star") {
-            let file_name = entry.file_name();
-            let dest_path = working_dir.join(&file_name);
+        let file_name = entry.file_name();
+        let dest_path = working_dir.join(&file_name);
+
+        if entry_path.is_dir() {
+            // Recursively copy directories
+            copy_directory_recursive(&entry_path, &dest_path).await?;
+
+            send_event(
+                context,
+                Event::DebugLog {
+                    message: format!(
+                        "Copied directory {} to {}",
+                        file_name.to_string_lossy(),
+                        dest_path.display()
+                    ),
+                    context: std::collections::HashMap::new(),
+                },
+            );
+        } else if entry_path.extension().is_none_or(|ext| ext != "star") {
+            // Copy files except .star files
             fs::copy(&entry_path, &dest_path).await?;
 
             send_event(

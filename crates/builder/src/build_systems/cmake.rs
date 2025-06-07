@@ -48,7 +48,10 @@ impl CMakeBuildSystem {
             .iter()
             .any(|arg| arg.starts_with("-DCMAKE_INSTALL_PREFIX="))
         {
-            args.push(format!("-DCMAKE_INSTALL_PREFIX={}", ctx.env.get_build_prefix()));
+            args.push(format!(
+                "-DCMAKE_INSTALL_PREFIX={}",
+                ctx.env.get_build_prefix()
+            ));
         }
 
         // Add default arguments
@@ -185,7 +188,6 @@ impl CMakeBuildSystem {
 
         Ok(())
     }
-
 }
 
 impl Default for CMakeBuildSystem {

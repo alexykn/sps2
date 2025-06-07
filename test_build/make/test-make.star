@@ -8,6 +8,9 @@ def metadata():
     }
 
 def build(ctx):
+    # Clean up any leftover files from previous builds
+    cleanup(ctx)
+    
     # Build the program using make
     make(ctx, ["-j" + str(ctx.JOBS)])
     

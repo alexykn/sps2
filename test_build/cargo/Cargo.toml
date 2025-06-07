@@ -3,4 +3,8 @@ name = "hello-cargo"
 version = "1.0.0"
 edition = "2021"
 
+[[bin]]
+name = "hello-cargo"
+path = "src/main.rs"
+
 [dependencies]
