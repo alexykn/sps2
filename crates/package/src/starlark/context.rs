@@ -39,8 +39,8 @@ pub trait BuildExecutor: Send + Sync + std::fmt::Debug {
 pub struct BuildContext {
     #[allocative(skip)]
     pub steps: Rc<RefCell<Vec<BuildStep>>>,
-    pub prefix: String,           // Final installation prefix (e.g., /opt/pm/live)
-    pub build_prefix: String,     // Staging directory prefix (relative to stage/)
+    pub prefix: String,       // Final installation prefix (e.g., /opt/pm/live)
+    pub build_prefix: String, // Staging directory prefix (relative to stage/)
     pub jobs: i32,
     #[allocative(skip)]
     pub network_allowed: RefCell<bool>,
@@ -78,7 +78,7 @@ impl BuildContext {
         Self {
             steps: Rc::new(RefCell::new(Vec::new())),
             prefix,
-            build_prefix: String::new(),  // Empty means install directly to stage/
+            build_prefix: String::new(), // Empty means install directly to stage/
             jobs,
             network_allowed: RefCell::new(false),
             name: String::new(),
@@ -105,7 +105,7 @@ impl BuildContext {
         Self {
             steps: Rc::new(RefCell::new(Vec::new())),
             prefix,
-            build_prefix: String::new(),  // Empty means install directly to stage/
+            build_prefix: String::new(), // Empty means install directly to stage/
             jobs,
             network_allowed: RefCell::new(false),
             name: String::new(),
@@ -160,7 +160,10 @@ unsafe impl Trace<'_> for BuildContext {
 #[starlark_value(type = "BuildContext")]
 impl<'v> StarlarkValue<'v> for BuildContext {
     fn has_attr(&self, attribute: &str, _heap: &'v Heap) -> bool {
-        matches!(attribute, "PREFIX" | "BUILD_PREFIX" | "JOBS" | "NAME" | "VERSION")
+        matches!(
+            attribute,
+            "PREFIX" | "BUILD_PREFIX" | "JOBS" | "NAME" | "VERSION"
+        )
     }
 
     fn get_attr(&self, attribute: &str, heap: &'v Heap) -> Option<Value<'v>> {

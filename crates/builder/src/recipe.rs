@@ -152,26 +152,7 @@ async fn execute_build_step(
             api.apply_patch(Path::new(path), environment).await?;
         }
         BuildStep::Command { program, args } => {
-            // Process arguments to handle DESTDIR properly
-            let processed_args: Vec<String> = if program == "make" {
-                args.iter()
-                    .map(|arg| {
-                        if arg.starts_with("DESTDIR=") {
-                            // Always use the absolute staging directory
-                            format!("DESTDIR={}", environment.staging_dir().display())
-                        } else {
-                            arg.clone()
-                        }
-                    })
-                    .collect()
-            } else {
-                args.clone()
-            };
-            
-            let arg_refs: Vec<&str> = processed_args.iter().map(String::as_str).collect();
-            environment
-                .execute_command(program, &arg_refs, None)
-                .await?;
+            execute_command_step(program, args, environment).await?;
         }
         BuildStep::SetEnv { key, value } => {
             environment.set_env_var(key.clone(), value.clone())?;
@@ -198,22 +179,14 @@ async fn execute_build_step(
             // For now, just log it as a no-op
         }
         BuildStep::WithFeatures { features: _, steps } => {
-            // TODO: Check features and conditionally execute steps
-            // For now, execute all steps unconditionally
-            for step in steps {
-                Box::pin(execute_build_step(step, api, environment)).await?;
-            }
+            execute_conditional_steps(steps, api, environment).await?;
         }
         // Error recovery
         BuildStep::TryRecover {
             steps,
             recovery_strategy: _,
         } => {
-            // TODO: Execute steps with recovery strategy
-            // For now, execute steps normally
-            for step in steps {
-                Box::pin(execute_build_step(step, api, environment)).await?;
-            }
+            execute_recovery_steps(steps, api, environment).await?;
         }
         BuildStep::OnError { handler: _ } => {
             // TODO: Register error handler
@@ -238,11 +211,7 @@ async fn execute_build_step(
             // For now, just log it as a no-op
         }
         BuildStep::ParallelSteps { steps } => {
-            // TODO: Execute steps in parallel
-            // For now, execute steps sequentially
-            for step in steps {
-                Box::pin(execute_build_step(step, api, environment)).await?;
-            }
+            execute_parallel_steps(steps, api, environment).await?;
         }
         BuildStep::SetResourceHints {
             cpu: _,
@@ -253,5 +222,76 @@ async fn execute_build_step(
         }
     }
 
+    Ok(())
+}
+
+/// Execute a command step with proper DESTDIR handling
+async fn execute_command_step(
+    program: &str,
+    args: &[String],
+    environment: &mut BuildEnvironment,
+) -> Result<(), Error> {
+    // Process arguments to handle DESTDIR properly
+    let processed_args: Vec<String> = if program == "make" {
+        args.iter()
+            .map(|arg| {
+                if arg.starts_with("DESTDIR=") {
+                    // Always use the absolute staging directory
+                    format!("DESTDIR={}", environment.staging_dir().display())
+                } else {
+                    arg.clone()
+                }
+            })
+            .collect()
+    } else {
+        args.to_vec()
+    };
+
+    let arg_refs: Vec<&str> = processed_args.iter().map(String::as_str).collect();
+    environment
+        .execute_command(program, &arg_refs, None)
+        .await?;
+    Ok(())
+}
+
+/// Execute conditional steps based on features
+async fn execute_conditional_steps(
+    steps: &[BuildStep],
+    api: &mut BuilderApi,
+    environment: &mut BuildEnvironment,
+) -> Result<(), Error> {
+    // TODO: Check features and conditionally execute steps
+    // For now, execute all steps unconditionally
+    for step in steps {
+        Box::pin(execute_build_step(step, api, environment)).await?;
+    }
+    Ok(())
+}
+
+/// Execute steps with recovery strategy
+async fn execute_recovery_steps(
+    steps: &[BuildStep],
+    api: &mut BuilderApi,
+    environment: &mut BuildEnvironment,
+) -> Result<(), Error> {
+    // TODO: Execute steps with recovery strategy
+    // For now, execute steps normally
+    for step in steps {
+        Box::pin(execute_build_step(step, api, environment)).await?;
+    }
+    Ok(())
+}
+
+/// Execute steps in parallel
+async fn execute_parallel_steps(
+    steps: &[BuildStep],
+    api: &mut BuilderApi,
+    environment: &mut BuildEnvironment,
+) -> Result<(), Error> {
+    // TODO: Execute steps in parallel
+    // For now, execute steps sequentially
+    for step in steps {
+        Box::pin(execute_build_step(step, api, environment)).await?;
+    }
     Ok(())
 }

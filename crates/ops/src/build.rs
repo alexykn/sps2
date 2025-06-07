@@ -102,8 +102,7 @@ pub async fn build(
         ctx.tx
             .send(Event::OperationStarted {
                 operation: format!(
-                    "Installing {} {} (requested by recipe)",
-                    package_name, package_version
+                    "Installing {package_name} {package_version} (requested by recipe)"
                 ),
             })
             .ok();
@@ -114,10 +113,7 @@ pub async fn build(
 
         ctx.tx
             .send(Event::OperationCompleted {
-                operation: format!(
-                    "Installed {} {} successfully",
-                    package_name, package_version
-                ),
+                operation: format!("Installed {package_name} {package_version} successfully"),
                 success: true,
             })
             .ok();

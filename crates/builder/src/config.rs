@@ -35,7 +35,7 @@ impl Default for BuildConfig {
             signing_config: SigningConfig::default(),
             max_build_time: Some(3600), // 1 hour
             allow_network: false,
-            build_jobs: None, // Use auto-detection
+            build_jobs: None,                                 // Use auto-detection
             build_root: Some(PathBuf::from("/opt/pm/build")), // Default to /opt/pm/build
             compression_config: CompressionConfig::default(),
             monitoring_config: MonitoringConfig::default(),

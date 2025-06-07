@@ -81,7 +81,21 @@ impl GoBuildSystem {
 
     /// Get build arguments for go build
     fn get_build_args(&self, ctx: &BuildSystemContext, user_args: &[String]) -> Vec<String> {
-        let mut args = vec!["build".to_string()];
+        let mut args = Vec::new();
+
+        // Check if user already provided a command (build, test, mod, etc.)
+        let has_command = !user_args.is_empty() && !user_args[0].starts_with('-');
+
+        // If user provided a command, add it first
+        if has_command {
+            args.push(user_args[0].clone());
+        } else {
+            // If no command provided, default to "build"
+            args.push("build".to_string());
+        }
+
+        // Only add build-specific flags if this is a build command
+        let is_build_command = args[0] == "build";
 
         // Add -mod=vendor if vendor directory exists
         let vendor_dir = ctx.source_dir.join("vendor");
@@ -89,18 +103,20 @@ impl GoBuildSystem {
             args.push("-mod=vendor".to_string());
         }
 
-        // Add build flags for release builds
-        if !user_args.contains(&"-gcflags".to_string()) {
-            args.push("-gcflags=all=-l".to_string()); // Disable inlining for smaller binaries
-        }
+        if is_build_command {
+            // Add build flags for release builds
+            if !user_args.iter().any(|arg| arg.starts_with("-gcflags")) {
+                args.push("-gcflags=all=-l".to_string()); // Disable inlining for smaller binaries
+            }
 
-        if !user_args.contains(&"-ldflags".to_string()) {
-            args.push("-ldflags=-s -w".to_string()); // Strip debug info
-        }
+            if !user_args.iter().any(|arg| arg.starts_with("-ldflags")) {
+                args.push("-ldflags=-s -w".to_string()); // Strip debug info
+            }
 
-        // Add parallel compilation
-        if ctx.jobs > 1 && !user_args.iter().any(|arg| arg.starts_with("-p=")) {
-            args.push(format!("-p={}", ctx.jobs));
+            // Add parallel compilation
+            if ctx.jobs > 1 && !user_args.iter().any(|arg| arg.starts_with("-p=")) {
+                args.push(format!("-p={}", ctx.jobs));
+            }
         }
 
         // Add cross-compilation target
@@ -109,14 +125,15 @@ impl GoBuildSystem {
             // No need to add them as arguments
         }
 
-        // Add user arguments (before -o to allow overriding)
-        args.extend(user_args.iter().cloned());
+        // Add remaining user arguments (skip the command if it was provided)
+        let start_idx = usize::from(has_command);
+        args.extend(user_args.iter().skip(start_idx).cloned());
 
-        // Don't add -o if user already specified it
-        if !args.iter().any(|arg| arg == "-o") {
+        // Only add output path if this is a build command and user hasn't specified -o
+        if is_build_command && !args.iter().any(|arg| arg == "-o") {
             // Determine output binary name from build context
             let binary_name = ctx.env.package_name();
-            
+
             // Add output file path
             args.push("-o".to_string());
             let staging_dir = ctx.env.staging_dir();
@@ -124,10 +141,11 @@ impl GoBuildSystem {
             args.push(output_path.display().to_string());
         }
 
-        // Add build target (current directory by default)
-        if !user_args
-            .iter()
-            .any(|arg| arg.ends_with(".go") || arg.contains('/') || arg == "." || arg == "./...")
+        // Add build target (current directory by default) only for build command
+        if is_build_command
+            && !user_args.iter().any(|arg| {
+                arg.ends_with(".go") || arg.contains('/') || arg == "." || arg == "./..."
+            })
         {
             args.push(".".to_string()); // Build current package
         }
@@ -482,12 +500,19 @@ mod tests {
         let ctx = BuildSystemContext::new(env, temp.path().to_path_buf());
         let system = GoBuildSystem::new();
 
+        // Test with no command - should add "build"
         let args = system.get_build_args(&ctx, &["-tags=release".to_string()]);
-
         assert!(args.contains(&"build".to_string()));
         assert!(args.contains(&"-ldflags=-s -w".to_string()));
         assert!(args.contains(&"-tags=release".to_string()));
-        assert!(args.contains(&"./...".to_string()));
+        assert!(args.contains(&".".to_string()));
+
+        // Test with explicit "build" command - should not duplicate
+        let args2 =
+            system.get_build_args(&ctx, &["build".to_string(), "-tags=release".to_string()]);
+        assert_eq!(args2.iter().filter(|&arg| arg == "build").count(), 1);
+        assert!(args2.contains(&"-ldflags=-s -w".to_string()));
+        assert!(args2.contains(&"-tags=release".to_string()));
     }
 
     #[test]

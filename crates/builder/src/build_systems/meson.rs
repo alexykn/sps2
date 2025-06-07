@@ -158,6 +158,106 @@ impl MesonBuildSystem {
         args
     }
 
+    /// Adjust staged files by moving them from stage/PREFIX/* to stage/*
+    async fn adjust_staged_files(&self, ctx: &BuildSystemContext) -> Result<(), Error> {
+        let staging_dir = ctx.env.staging_dir();
+        let prefix_in_staging =
+            staging_dir.join(ctx.prefix.strip_prefix("/").unwrap_or(&ctx.prefix));
+
+        // If the full prefix path exists in staging, we need to move its contents up
+        if prefix_in_staging.exists() && prefix_in_staging != staging_dir {
+            // Use a non-recursive approach to move files
+            self.move_directory_contents(&prefix_in_staging, staging_dir)
+                .await?;
+
+            // Clean up the now-empty prefix directories
+            self.cleanup_empty_dirs(&prefix_in_staging).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Move all contents from source directory to destination
+    #[allow(clippy::only_used_in_recursion)]
+    fn move_directory_contents<'a>(
+        &'a self,
+        source: &'a Path,
+        dest: &'a Path,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Error>> + Send + 'a>> {
+        Box::pin(async move {
+            use tokio::fs;
+
+            let mut entries = fs::read_dir(source).await?;
+
+            while let Some(entry) = entries.next_entry().await? {
+                let source_path = entry.path();
+                let file_name = source_path
+                    .file_name()
+                    .ok_or_else(|| Error::internal("Invalid file name"))?;
+                let dest_path = dest.join(file_name);
+
+                // Create parent directory if needed
+                if let Some(parent) = dest_path.parent() {
+                    fs::create_dir_all(parent).await?;
+                }
+
+                // If it's a directory, recursively move its contents
+                if source_path.is_dir() {
+                    fs::create_dir_all(&dest_path).await?;
+                    self.move_directory_contents(&source_path, &dest_path)
+                        .await?;
+                    fs::remove_dir(&source_path).await?;
+                } else {
+                    // Move the file
+                    fs::rename(&source_path, &dest_path).await.map_err(|e| {
+                        Error::internal(format!(
+                            "Failed to move file from {} to {}: {}",
+                            source_path.display(),
+                            dest_path.display(),
+                            e
+                        ))
+                    })?;
+                }
+            }
+
+            Ok(())
+        })
+    }
+
+    /// Recursively remove empty directories
+    #[allow(clippy::only_used_in_recursion)]
+    fn cleanup_empty_dirs<'a>(
+        &'a self,
+        path: &'a Path,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Error>> + Send + 'a>> {
+        Box::pin(async move {
+            use tokio::fs;
+
+            if path.is_dir() {
+                let mut is_empty = true;
+                let mut entries = fs::read_dir(path).await?;
+
+                while let Some(entry) = entries.next_entry().await? {
+                    if entry.path().is_dir() {
+                        self.cleanup_empty_dirs(&entry.path()).await?;
+                        // Check if directory still exists (might have been removed)
+                        if entry.path().exists() {
+                            is_empty = false;
+                        }
+                    } else {
+                        is_empty = false;
+                    }
+                }
+
+                if is_empty {
+                    fs::remove_dir(path).await?;
+                }
+            }
+
+            Ok(())
+        })
+    }
+
     /// Parse Meson test output
     fn parse_test_output(&self, output: &str) -> (usize, usize, usize, Vec<TestFailure>) {
         let mut total = 0;
@@ -305,11 +405,9 @@ impl BuildSystem for MesonBuildSystem {
 
     async fn install(&self, ctx: &BuildSystemContext) -> Result<(), Error> {
         // Set DESTDIR for staged installation
+        let staging_dir = ctx.env.staging_dir();
         if let Ok(mut extra_env) = ctx.extra_env.write() {
-            extra_env.insert(
-                "DESTDIR".to_string(),
-                ctx.env.staging_dir().display().to_string(),
-            );
+            extra_env.insert("DESTDIR".to_string(), staging_dir.display().to_string());
         }
 
         // Run meson install
@@ -329,7 +427,8 @@ impl BuildSystem for MesonBuildSystem {
             .into());
         }
 
-        Ok(())
+        // After successful install, we need to move files from stage/PREFIX/* to stage/*
+        self.adjust_staged_files(ctx).await
     }
 
     fn get_env_vars(&self, _ctx: &BuildSystemContext) -> HashMap<String, String> {

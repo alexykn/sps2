@@ -2,6 +2,7 @@
 
 use sps2_builder::*;
 use sps2_types::Version;
+use std::path::PathBuf;
 use tempfile::tempdir;
 use tokio::sync::mpsc;
 
@@ -55,7 +56,7 @@ fn test_build_config_defaults() {
     assert!(config.build_jobs.is_none());
     assert!(config.sbom_config.generate_spdx);
     assert!(!config.sbom_config.generate_cyclonedx);
-    assert!(config.build_root.is_none());
+    assert_eq!(config.build_root, Some(PathBuf::from("/opt/pm/build")));
 }
 
 #[test]

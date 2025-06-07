@@ -132,7 +132,10 @@ impl Builder {
     ) -> Result<BuildEnvironment, Error> {
         // Create build environment with full isolation setup
         // Use the configured build_root from BuildConfig (defaults to /opt/pm/build)
-        let build_root = self.config.build_root.as_ref()
+        let build_root = self
+            .config
+            .build_root
+            .as_ref()
             .expect("build_root should have a default value");
         let mut environment = BuildEnvironment::new(context.clone(), build_root)?;
 

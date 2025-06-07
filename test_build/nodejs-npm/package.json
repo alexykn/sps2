@@ -1,0 +1,11 @@
+{
+  "name": "hello-npm",
+  "version": "1.0.0",
+  "description": "Test npm build",
+  "bin": {
+    "hello-npm": "./hello.js"
+  },
+  "scripts": {
+    "test": "echo \"No tests\""
+  }
+}

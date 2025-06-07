@@ -134,11 +134,11 @@ impl RecipeEngine {
         let context = if let Some(exec) = &executor {
             BuildContext::with_executor("/opt/pm/live".to_string(), jobs, (**exec).clone())
                 .with_metadata(metadata.name.clone(), metadata.version.clone())
-                .with_build_prefix(String::new())  // Empty means install directly to stage/
+                .with_build_prefix(String::new()) // Empty means install directly to stage/
         } else {
             BuildContext::new("/opt/pm/live".to_string(), jobs)
                 .with_metadata(metadata.name.clone(), metadata.version.clone())
-                .with_build_prefix(String::new())  // Empty means install directly to stage/
+                .with_build_prefix(String::new()) // Empty means install directly to stage/
         };
 
         // Create a new module for the build function evaluation
@@ -363,8 +363,8 @@ def build(ctx):
     if ctx.VERSION != "2.0.0":
         fail("Expected ctx.VERSION to be '2.0.0', got: " + ctx.VERSION)
     # Also test original context fields
-    if not ctx.PREFIX.endswith("build"):
-        fail("Expected ctx.PREFIX to end with 'build', got: " + ctx.PREFIX)
+    if ctx.PREFIX != "/opt/pm/live":
+        fail("Expected ctx.PREFIX to be '/opt/pm/live', got: " + ctx.PREFIX)
     if ctx.JOBS <= 0:
         fail("Expected ctx.JOBS to be positive, got: " + str(ctx.JOBS))
 "#;
@@ -374,6 +374,9 @@ def build(ctx):
         let result = engine.execute(&recipe);
 
         // Should succeed if context passing works
+        if let Err(e) = &result {
+            eprintln!("Test failed with error: {e}");
+        }
         assert!(result.is_ok());
         let result = result.unwrap();
         assert_eq!(result.metadata.name, "context-test");

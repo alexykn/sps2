@@ -145,24 +145,24 @@ impl BuilderApi {
         args: &[String],
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
-        use crate::build_systems::{BuildSystem, BuildSystemContext, AutotoolsBuildSystem};
-        
+        use crate::build_systems::{AutotoolsBuildSystem, BuildSystem, BuildSystemContext};
+
         // Extract source archive first if needed
         self.extract_downloads().await?;
 
         // Create build system context
         let ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
         let autotools_system = AutotoolsBuildSystem::new();
-        
+
         // Configure
         autotools_system.configure(&ctx, args).await?;
-        
+
         // Build
         autotools_system.build(&ctx, &[]).await?;
-        
+
         // Install - this will also adjust staged files
         autotools_system.install(&ctx).await?;
-        
+
         Ok(BuildCommandResult {
             success: true,
             exit_code: Some(0),
@@ -182,28 +182,28 @@ impl BuilderApi {
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
         use crate::build_systems::{BuildSystem, BuildSystemContext, CMakeBuildSystem};
-        
+
         // Extract source archive first if needed
         self.extract_downloads().await?;
 
         // Create build system context with out-of-source build directory
         let build_dir = self.working_dir.join("build");
         fs::create_dir_all(&build_dir).await?;
-        
+
         let mut ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
         ctx.build_dir = build_dir;
-        
+
         let cmake_system = CMakeBuildSystem::new();
-        
+
         // Configure
         cmake_system.configure(&ctx, args).await?;
-        
+
         // Build
         cmake_system.build(&ctx, &[]).await?;
-        
+
         // Install - this will also adjust staged files
         cmake_system.install(&ctx).await?;
-        
+
         Ok(BuildCommandResult {
             success: true,
             exit_code: Some(0),
@@ -223,27 +223,27 @@ impl BuilderApi {
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
         use crate::build_systems::{BuildSystem, BuildSystemContext, MesonBuildSystem};
-        
+
         // Extract source archive first if needed
         self.extract_downloads().await?;
 
         // Create build system context with out-of-source build directory
         let build_dir = self.working_dir.join("build");
-        
+
         let mut ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
         ctx.build_dir = build_dir;
-        
+
         let meson_system = MesonBuildSystem::new();
-        
+
         // Configure
         meson_system.configure(&ctx, args).await?;
-        
+
         // Build
         meson_system.build(&ctx, &[]).await?;
-        
+
         // Install - this will also adjust staged files
         meson_system.install(&ctx).await?;
-        
+
         Ok(BuildCommandResult {
             success: true,
             exit_code: Some(0),
@@ -267,20 +267,20 @@ impl BuilderApi {
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
         use crate::build_systems::{BuildSystem, BuildSystemContext, CargoBuildSystem};
-        
+
         // Extract source archive first if needed
         self.extract_downloads().await?;
 
         // Create build system context
         let ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
         let cargo_system = CargoBuildSystem::new();
-        
+
         // Configure (checks Cargo.toml, sets up environment)
         cargo_system.configure(&ctx, args).await?;
-        
+
         // Build
         cargo_system.build(&ctx, args).await?;
-        
+
         // Install - this will copy binaries to staging/bin
         cargo_system.install(&ctx).await?;
 
@@ -303,23 +303,23 @@ impl BuilderApi {
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
         use crate::build_systems::{BuildSystem, BuildSystemContext, GoBuildSystem};
-        
+
         // Extract source archive first if needed
         self.extract_downloads().await?;
 
         // Create build system context
         let ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
         let go_system = GoBuildSystem::new();
-        
+
         // Configure if needed (this will handle go mod vendor, etc)
         go_system.configure(&ctx, args).await?;
-        
+
         // Build the project - this will output to staging/bin automatically
         go_system.build(&ctx, args).await?;
-        
+
         // Install (verifies binaries and sets permissions)
         go_system.install(&ctx).await?;
-        
+
         Ok(BuildCommandResult {
             success: true,
             exit_code: Some(0),
