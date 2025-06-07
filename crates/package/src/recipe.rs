@@ -154,4 +154,6 @@ pub enum BuildStep {
         cpu: Option<usize>,
         memory_mb: Option<usize>,
     },
+    // Cleanup staging directory
+    Cleanup,
 }

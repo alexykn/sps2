@@ -58,6 +58,13 @@ impl BuildEnvironment {
         self.env_vars
             .insert("PREFIX".to_string(), "/opt/pm/live".to_string());
 
+        // Set BUILD_PREFIX to package-specific prefix (e.g., /hello-1.0.0)
+        // This is used by build systems for their --prefix arguments
+        self.env_vars.insert(
+            "BUILD_PREFIX".to_string(),
+            format!("/{}-{}", self.context.name, self.context.version),
+        );
+
         // Number of parallel jobs
         self.env_vars
             .insert("JOBS".to_string(), Self::cpu_count().to_string());

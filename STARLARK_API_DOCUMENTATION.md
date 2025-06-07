@@ -97,6 +97,26 @@ command(ctx, "cp target/release/myapp stage/bin/")
 # No install() - package is created but not installed
 ```
 
+#### cleanup(ctx)
+Clean up the staging directory after build. This removes all files from the staging directory but keeps the directory itself.
+
+This is useful when:
+- Multiple build attempts may have left files with different prefixes
+- You want to ensure a clean staging directory before rebuilding
+- Testing different build configurations
+
+```starlark
+def build(ctx):
+    # Build and install to staging
+    meson(ctx, ["--buildtype=release"])
+    
+    # Clean up staging directory to remove any leftover files
+    cleanup(ctx)
+    
+    # Rebuild with different configuration
+    meson(ctx, ["--buildtype=debug"])
+```
+
 ### Build System Functions
 
 #### make(ctx, args?)

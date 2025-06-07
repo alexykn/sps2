@@ -131,14 +131,15 @@ impl RecipeEngine {
 
         // Create build context with metadata
         let jobs = i32::try_from(num_cpus::get()).unwrap_or(1);
+        let build_prefix = format!("/{}-{}", metadata.name, metadata.version);
         let context = if let Some(exec) = &executor {
             BuildContext::with_executor("/opt/pm/live".to_string(), jobs, (**exec).clone())
                 .with_metadata(metadata.name.clone(), metadata.version.clone())
-                .with_build_prefix(String::new()) // Empty means install directly to stage/
+                .with_build_prefix(build_prefix.clone())
         } else {
             BuildContext::new("/opt/pm/live".to_string(), jobs)
                 .with_metadata(metadata.name.clone(), metadata.version.clone())
-                .with_build_prefix(String::new()) // Empty means install directly to stage/
+                .with_build_prefix(build_prefix)
         };
 
         // Create a new module for the build function evaluation

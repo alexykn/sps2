@@ -8,8 +8,8 @@ def metadata():
     }
 
 def build(ctx):
-    # Build the program
+    # Build the program using make
     make(ctx, ["-j" + str(ctx.JOBS)])
-
+    
     # Install files to staging directory
     make(ctx, ["install", "DESTDIR=stage"])

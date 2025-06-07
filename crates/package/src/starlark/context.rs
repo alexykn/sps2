@@ -201,14 +201,14 @@ impl<'v> UnpackValue<'v> for BuildContext {
 #[allow(clippy::unnecessary_wraps)]
 pub fn build_context_functions(builder: &mut GlobalsBuilder) {
     /// Fetch a source archive
-    fn fetch<'v>(this: Value<'v>, url: &str, hash: Option<&str>) -> anyhow::Result<NoneType> {
+    fn fetch<'v>(ctx: Value<'v>, url: &str, hash: Option<&str>) -> anyhow::Result<NoneType> {
         // Unpack BuildContext from the Value
-        let ctx = this
+        let build_ctx = ctx
             .downcast_ref::<BuildContext>()
             .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
 
         let blake3 = hash.unwrap_or("<blake3-placeholder>").to_string();
-        ctx.add_step(BuildStep::Fetch {
+        build_ctx.add_step(BuildStep::Fetch {
             url: url.to_string(),
             blake3,
         });
@@ -216,22 +216,22 @@ pub fn build_context_functions(builder: &mut GlobalsBuilder) {
     }
 
     /// Apply a patch file
-    fn apply_patch<'v>(this: Value<'v>, path: &str) -> anyhow::Result<NoneType> {
+    fn apply_patch<'v>(ctx: Value<'v>, path: &str) -> anyhow::Result<NoneType> {
         // Unpack BuildContext from the Value
-        let ctx = this
+        let build_ctx = ctx
             .downcast_ref::<BuildContext>()
             .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
 
-        ctx.add_step(BuildStep::ApplyPatch {
+        build_ctx.add_step(BuildStep::ApplyPatch {
             path: path.to_string(),
         });
         Ok(NoneType)
     }
 
     /// Run an arbitrary command (pass command as string or list)
-    fn command<'v>(this: Value<'v>, cmd: Value<'v>) -> anyhow::Result<NoneType> {
+    fn command<'v>(ctx: Value<'v>, cmd: Value<'v>) -> anyhow::Result<NoneType> {
         // Unpack BuildContext from the Value
-        let ctx = this
+        let build_ctx = ctx
             .downcast_ref::<BuildContext>()
             .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
         // Handle both string and list inputs
@@ -269,97 +269,108 @@ pub fn build_context_functions(builder: &mut GlobalsBuilder) {
             ));
         };
 
-        ctx.add_step(BuildStep::Command { program, args });
+        build_ctx.add_step(BuildStep::Command { program, args });
         Ok(NoneType)
     }
 
     /// Run make install
-    fn install<'v>(this: Value<'v>) -> anyhow::Result<NoneType> {
+    fn install<'v>(ctx: Value<'v>) -> anyhow::Result<NoneType> {
         // Unpack BuildContext from the Value
-        let ctx = this
+        let build_ctx = ctx
             .downcast_ref::<BuildContext>()
             .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
 
-        ctx.add_step(BuildStep::Install);
+        build_ctx.add_step(BuildStep::Install);
         Ok(NoneType)
     }
 
     /// Detect the build system for the current source
-    fn detect_build_system<'v>(this: Value<'v>) -> anyhow::Result<NoneType> {
+    fn detect_build_system<'v>(ctx: Value<'v>) -> anyhow::Result<NoneType> {
         // Unpack BuildContext from the Value
-        let ctx = this
+        let build_ctx = ctx
             .downcast_ref::<BuildContext>()
             .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
 
-        ctx.add_step(BuildStep::DetectBuildSystem);
+        build_ctx.add_step(BuildStep::DetectBuildSystem);
         Ok(NoneType)
     }
 
     /// Set the build system to use
-    fn set_build_system<'v>(this: Value<'v>, name: &str) -> anyhow::Result<NoneType> {
+    fn set_build_system<'v>(ctx: Value<'v>, name: &str) -> anyhow::Result<NoneType> {
         // Unpack BuildContext from the Value
-        let ctx = this
+        let build_ctx = ctx
             .downcast_ref::<BuildContext>()
             .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
 
-        ctx.detected_build_system.replace(Some(name.to_string()));
-        ctx.add_step(BuildStep::SetBuildSystem {
+        build_ctx.detected_build_system.replace(Some(name.to_string()));
+        build_ctx.add_step(BuildStep::SetBuildSystem {
             name: name.to_string(),
         });
         Ok(NoneType)
     }
 
     /// Create a checkpoint for recovery
-    fn checkpoint<'v>(this: Value<'v>, name: &str) -> anyhow::Result<NoneType> {
+    fn checkpoint<'v>(ctx: Value<'v>, name: &str) -> anyhow::Result<NoneType> {
         // Unpack BuildContext from the Value
-        let ctx = this
+        let build_ctx = ctx
             .downcast_ref::<BuildContext>()
             .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
 
-        ctx.checkpoints.borrow_mut().push(name.to_string());
-        ctx.add_step(BuildStep::Checkpoint {
+        build_ctx.checkpoints.borrow_mut().push(name.to_string());
+        build_ctx.add_step(BuildStep::Checkpoint {
             name: name.to_string(),
         });
         Ok(NoneType)
     }
 
     /// Set error handler
-    fn on_error<'v>(this: Value<'v>, handler: &str) -> anyhow::Result<NoneType> {
+    fn on_error<'v>(ctx: Value<'v>, handler: &str) -> anyhow::Result<NoneType> {
         // Unpack BuildContext from the Value
-        let ctx = this
+        let build_ctx = ctx
             .downcast_ref::<BuildContext>()
             .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
 
-        ctx.error_handlers.borrow_mut().push(handler.to_string());
-        ctx.add_step(BuildStep::OnError {
+        build_ctx.error_handlers.borrow_mut().push(handler.to_string());
+        build_ctx.add_step(BuildStep::OnError {
             handler: handler.to_string(),
         });
         Ok(NoneType)
     }
 
     /// Allow or disallow network access during build
-    fn allow_network<'v>(this: Value<'v>, enabled: bool) -> anyhow::Result<NoneType> {
+    fn allow_network<'v>(ctx: Value<'v>, enabled: bool) -> anyhow::Result<NoneType> {
         // Unpack BuildContext from the Value
-        let ctx = this
+        let build_ctx = ctx
             .downcast_ref::<BuildContext>()
             .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
 
-        ctx.network_allowed.replace(enabled);
-        ctx.add_step(BuildStep::AllowNetwork { enabled });
+        build_ctx.network_allowed.replace(enabled);
+        build_ctx.add_step(BuildStep::AllowNetwork { enabled });
         Ok(NoneType)
     }
 
     /// Set an environment variable
-    fn set_env<'v>(this: Value<'v>, key: &str, value: &str) -> anyhow::Result<NoneType> {
+    fn set_env<'v>(ctx: Value<'v>, key: &str, value: &str) -> anyhow::Result<NoneType> {
         // Unpack BuildContext from the Value
-        let ctx = this
+        let build_ctx = ctx
             .downcast_ref::<BuildContext>()
             .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
 
-        ctx.add_step(BuildStep::SetEnv {
+        build_ctx.add_step(BuildStep::SetEnv {
             key: key.to_string(),
             value: value.to_string(),
         });
+        Ok(NoneType)
+    }
+
+    /// Clean up the staging directory after build
+    fn cleanup<'v>(ctx: Value<'v>) -> anyhow::Result<NoneType> {
+        // Unpack BuildContext from the Value
+        let build_ctx = ctx
+            .downcast_ref::<BuildContext>()
+            .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
+
+        build_ctx.add_step(BuildStep::Cleanup);
         Ok(NoneType)
     }
 }

@@ -220,6 +220,10 @@ async fn execute_build_step(
             // TODO: Set resource hints for scheduler
             // For now, just log it as a no-op
         }
+        BuildStep::Cleanup => {
+            // Clean up the staging directory
+            cleanup_staging_directory(environment).await?;
+        }
     }
 
     Ok(())
@@ -293,5 +297,35 @@ async fn execute_parallel_steps(
     for step in steps {
         Box::pin(execute_build_step(step, api, environment)).await?;
     }
+    Ok(())
+}
+
+/// Clean up the staging directory for the current package
+async fn cleanup_staging_directory(environment: &BuildEnvironment) -> Result<(), Error> {
+    let staging_dir = environment.staging_dir();
+    
+    // Only clean if the staging directory exists
+    if staging_dir.exists() {
+        // Remove all contents but keep the directory itself
+        let mut entries = fs::read_dir(&staging_dir).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if path.is_dir() {
+                fs::remove_dir_all(&path).await?;
+            } else {
+                fs::remove_file(&path).await?;
+            }
+        }
+        
+        // Send event about cleanup
+        send_event(
+            environment.context(),
+            Event::DebugLog {
+                message: format!("Cleaned staging directory: {}", staging_dir.display()),
+                context: std::collections::HashMap::new(),
+            },
+        );
+    }
+    
     Ok(())
 }

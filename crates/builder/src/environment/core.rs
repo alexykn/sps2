@@ -96,10 +96,22 @@ impl BuildEnvironment {
         &self.staging_dir
     }
 
+    /// Get build context
+    #[must_use]
+    pub fn context(&self) -> &BuildContext {
+        &self.context
+    }
+
     /// Get build prefix
     #[must_use]
     pub fn build_prefix(&self) -> &Path {
         &self.build_prefix
+    }
+
+    /// Get BUILD_PREFIX environment variable value (package-specific prefix)
+    #[must_use]
+    pub fn get_build_prefix(&self) -> String {
+        format!("/{}-{}", self.context.name, self.context.version)
     }
 
     /// Get dependencies prefix

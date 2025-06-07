@@ -109,16 +109,13 @@ pub async fn create_sp_package(
             operation: "Copying package files".to_string(),
         },
     );
-    let files_dir = package_temp_dir.join("files");
-
-    // Copy staging directory contents directly to files/
-    // The staging directory should contain bin/, lib/, etc. subdirectories
+    
+    // The staging directory already contains the package-name-version/ structure
+    // created by the build system, so just copy it directly
     if staging_dir.exists() {
-        copy_directory_recursive(staging_dir, &files_dir).await?;
-    } else {
-        // Create empty files directory if staging doesn't exist
-        fs::create_dir_all(&files_dir).await?;
+        copy_directory_recursive(staging_dir, &package_temp_dir).await?;
     }
+    
     send_event(
         context,
         Event::OperationCompleted {

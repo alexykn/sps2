@@ -8,5 +8,5 @@ def metadata():
     }
 
 def build(ctx):
-    # Use the cmake helper function
-    cmake(ctx, ["-DCMAKE_INSTALL_PREFIX=" + ctx.PREFIX])
+    # Use the cmake() function which handles cmake configuration and build
+    cmake(ctx, ["-DCMAKE_INSTALL_PREFIX=" + ctx.PREFIX, "-DCMAKE_BUILD_TYPE=Release"])

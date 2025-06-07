@@ -8,6 +8,9 @@ def metadata():
     }
 
 def build(ctx):
-    # Use the autotools helper function
-    # The autotools build system will automatically run autoreconf if needed
+    # Use the autotools function which handles everything:
+    # - autoreconf -fi (if configure.ac exists but configure doesn't)
+    # - ./configure with args
+    # - make
+    # - make install DESTDIR=stage
     autotools(ctx, ["--prefix=" + ctx.PREFIX])

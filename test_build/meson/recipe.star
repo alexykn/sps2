@@ -8,5 +8,9 @@ def metadata():
     }
 
 def build(ctx):
-    # Use the meson helper function
-    meson(ctx, ["--prefix=" + ctx.PREFIX])
+    # Clean up any leftover files from previous builds
+    cleanup(ctx)
+    
+    # Use the meson() function which handles meson setup, compile, and install
+    # Don't pass --prefix manually, let the build system handle it
+    meson(ctx, ["--buildtype=release"])

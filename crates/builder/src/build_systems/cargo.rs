@@ -340,14 +340,18 @@ impl BuildSystem for CargoBuildSystem {
 
         if binaries.is_empty() {
             // Try cargo install as fallback
-            let staging_dir = ctx.env.staging_dir();
-            let staging_dir_str = staging_dir.display().to_string();
+            // Since cargo install --root expects an actual directory path, we need to install
+            // to a temp location and then move files to the staging dir with BUILD_PREFIX structure
+            let temp_install_dir = ctx.build_dir.join("cargo_install_temp");
+            fs::create_dir_all(&temp_install_dir).await?;
+            
+            let temp_install_str = temp_install_dir.display().to_string();
             let install_args = vec![
                 "install",
                 "--path",
                 ".",
                 "--root",
-                &staging_dir_str,
+                &temp_install_str,
                 "--offline",
             ];
 
@@ -361,10 +365,35 @@ impl BuildSystem for CargoBuildSystem {
                 }
                 .into());
             }
-        } else {
-            // Manually copy binaries to staging
+
+            // Move files from temp install to staging with BUILD_PREFIX structure
             let staging_dir = ctx.env.staging_dir();
-            let staging_bin = staging_dir.join("bin");
+            let prefix_path = staging_dir.join(&ctx.env.get_build_prefix().trim_start_matches('/'));
+            
+            // Move bin directory
+            let temp_bin = temp_install_dir.join("bin");
+            if temp_bin.exists() {
+                let dest_bin = prefix_path.join("bin");
+                fs::create_dir_all(&dest_bin).await?;
+                
+                let mut entries = fs::read_dir(&temp_bin).await?;
+                while let Some(entry) = entries.next_entry().await? {
+                    let src = entry.path();
+                    if let Some(filename) = src.file_name() {
+                        let dest = dest_bin.join(filename);
+                        fs::rename(&src, &dest).await?;
+                    }
+                }
+            }
+            
+            // Clean up temp directory
+            let _ = fs::remove_dir_all(&temp_install_dir).await;
+            
+        } else {
+            // Manually copy binaries to staging with BUILD_PREFIX structure
+            let staging_dir = ctx.env.staging_dir();
+            let prefix_path = staging_dir.join(&ctx.env.get_build_prefix().trim_start_matches('/'));
+            let staging_bin = prefix_path.join("bin");
             fs::create_dir_all(&staging_bin).await?;
 
             for binary in binaries {
