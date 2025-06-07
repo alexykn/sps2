@@ -131,13 +131,27 @@ impl PythonBuildSystem {
         let wheel_dir = ctx.build_dir.join("dist");
         fs::create_dir_all(&wheel_dir).await?;
 
+        // Get venv path from environment
+        let venv_path = if let Ok(extra_env) = ctx.extra_env.read() {
+            extra_env
+                .get("PYTHON_VENV_PATH")
+                .map(|p| PathBuf::from(p))
+                .unwrap_or_else(|| ctx.build_dir.join("venv"))
+        } else {
+            ctx.build_dir.join("venv")
+        };
+
+        // Use venv's pip
+        let pip_path = venv_path.join("bin/pip");
+
         // Install build dependencies
         let result = ctx
             .execute(
-                "pip",
+                &pip_path.display().to_string(),
                 &[
                     "install",
                     "--upgrade",
+                    "--no-input", // Prevent interactive prompts
                     "pip",
                     "setuptools",
                     "wheel",
@@ -154,6 +168,9 @@ impl PythonBuildSystem {
             .into());
         }
 
+        // Use venv's python
+        let python_path = venv_path.join("bin/python3");
+
         // Build wheel using python-build
         let wheel_dir_str = wheel_dir.display().to_string();
         let mut build_args = vec!["-m", "build", "--wheel", "--outdir", &wheel_dir_str];
@@ -163,7 +180,11 @@ impl PythonBuildSystem {
         }
 
         let result = ctx
-            .execute("python3", &build_args, Some(&ctx.source_dir))
+            .execute(
+                &python_path.display().to_string(),
+                &build_args,
+                Some(&ctx.source_dir),
+            )
             .await?;
 
         if !result.success {
@@ -289,14 +310,16 @@ impl BuildSystem for PythonBuildSystem {
             .into());
         }
 
-        // Create virtual environment for isolation
-        if ctx.build_dir != ctx.source_dir {
-            self.create_venv(ctx).await?;
-        }
+        // Always create virtual environment for isolation
+        let venv_path = self.create_venv(ctx).await?;
 
-        // Store detected backend in environment for later use
+        // Store detected backend and venv path in environment for later use
         if let Ok(mut extra_env) = ctx.extra_env.write() {
             extra_env.insert("PYTHON_BUILD_BACKEND".to_string(), format!("{:?}", backend));
+            extra_env.insert(
+                "PYTHON_VENV_PATH".to_string(),
+                venv_path.display().to_string(),
+            );
         }
 
         Ok(())
@@ -391,13 +414,18 @@ impl BuildSystem for PythonBuildSystem {
     }
 
     async fn install(&self, ctx: &BuildSystemContext) -> Result<(), Error> {
-        // Get wheel path from build phase
-        let wheel_path = if let Ok(extra_env) = ctx.extra_env.read() {
-            extra_env.get("PYTHON_WHEEL_PATH").cloned().ok_or_else(|| {
+        // Get wheel path and venv path from build phase
+        let (wheel_path, venv_path) = if let Ok(extra_env) = ctx.extra_env.read() {
+            let wheel = extra_env.get("PYTHON_WHEEL_PATH").cloned().ok_or_else(|| {
                 BuildError::InstallFailed {
                     message: "No wheel found from build phase".to_string(),
                 }
-            })?
+            })?;
+            let venv = extra_env
+                .get("PYTHON_VENV_PATH")
+                .map(|p| PathBuf::from(p))
+                .unwrap_or_else(|| ctx.build_dir.join("venv"));
+            (wheel, venv)
         } else {
             return Err(BuildError::InstallFailed {
                 message: "Cannot access extra environment".to_string(),
@@ -405,11 +433,20 @@ impl BuildSystem for PythonBuildSystem {
             .into());
         };
 
+        // Use venv's pip
+        let pip_path = venv_path.join("bin/pip");
+
         // Install wheel using pip
         let pip_args = self.get_pip_args(ctx, &[wheel_path.clone()]);
         let arg_refs: Vec<&str> = pip_args.iter().map(String::as_str).collect();
 
-        let result = ctx.execute("pip", &arg_refs, Some(&ctx.source_dir)).await?;
+        let result = ctx
+            .execute(
+                &pip_path.display().to_string(),
+                &arg_refs,
+                Some(&ctx.source_dir),
+            )
+            .await?;
 
         if !result.success {
             return Err(BuildError::InstallFailed {

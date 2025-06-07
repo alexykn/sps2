@@ -134,10 +134,11 @@ impl GoBuildSystem {
             // Determine output binary name from build context
             let binary_name = ctx.env.package_name();
 
-            // Add output file path
+            // Add output file path with BUILD_PREFIX structure
             args.push("-o".to_string());
             let staging_dir = ctx.env.staging_dir();
-            let output_path = staging_dir.join("bin").join(binary_name);
+            let prefix_path = staging_dir.join(ctx.env.get_build_prefix().trim_start_matches('/'));
+            let output_path = prefix_path.join("bin").join(binary_name);
             args.push(output_path.display().to_string());
         }
 
@@ -274,9 +275,10 @@ impl BuildSystem for GoBuildSystem {
     }
 
     async fn build(&self, ctx: &BuildSystemContext, args: &[String]) -> Result<(), Error> {
-        // Create output directory
+        // Create output directory with BUILD_PREFIX structure
         let staging_dir = ctx.env.staging_dir();
-        let output_dir = staging_dir.join("bin");
+        let prefix_path = staging_dir.join(ctx.env.get_build_prefix().trim_start_matches('/'));
+        let output_dir = prefix_path.join("bin");
         fs::create_dir_all(&output_dir).await?;
 
         // Get build arguments
@@ -342,10 +344,11 @@ impl BuildSystem for GoBuildSystem {
     }
 
     async fn install(&self, ctx: &BuildSystemContext) -> Result<(), Error> {
-        // Go build already outputs to the staging directory
+        // Go build already outputs to the staging directory with BUILD_PREFIX
         // Just verify the binaries exist
         let staging_dir = ctx.env.staging_dir();
-        let bin_dir = staging_dir.join("bin");
+        let prefix_path = staging_dir.join(ctx.env.get_build_prefix().trim_start_matches('/'));
+        let bin_dir = prefix_path.join("bin");
 
         if !bin_dir.exists() {
             return Err(BuildError::InstallFailed {

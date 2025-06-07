@@ -107,10 +107,20 @@ impl NodeJsBuildSystem {
     }
 
     /// Get install command for package manager
-    fn get_install_command(&self, pm: &PackageManager, offline: bool) -> Vec<String> {
+    fn get_install_command(
+        &self,
+        pm: &PackageManager,
+        offline: bool,
+        has_lock_file: bool,
+    ) -> Vec<String> {
         match pm {
             PackageManager::Npm => {
-                let mut args = vec!["ci".to_string()]; // Use ci for reproducible installs
+                // Use ci only if lock file exists, otherwise use install
+                let mut args = if has_lock_file {
+                    vec!["ci".to_string()]
+                } else {
+                    vec!["install".to_string()]
+                };
                 if offline {
                     args.push("--offline".to_string());
                 }
@@ -249,6 +259,7 @@ impl NodeJsBuildSystem {
     /// Find and copy built artifacts
     async fn copy_built_artifacts(&self, ctx: &BuildSystemContext) -> Result<(), Error> {
         let staging_dir = ctx.env.staging_dir();
+        let prefix_path = staging_dir.join(ctx.env.get_build_prefix().trim_start_matches('/'));
 
         // Common output directories
         let possible_dirs = vec!["dist", "build", "out", "lib"];
@@ -256,17 +267,70 @@ impl NodeJsBuildSystem {
         for dir_name in possible_dirs {
             let output_dir = ctx.source_dir.join(dir_name);
             if output_dir.exists() {
-                // Copy to staging
-                let dest = staging_dir.join(dir_name);
+                // Copy to staging with BUILD_PREFIX structure
+                let dest = prefix_path.join(dir_name);
                 fs::create_dir_all(&dest).await?;
                 copy_dir_recursive(&output_dir, &dest).await?;
+            }
+        }
+
+        // Handle bin entries from package.json
+        let package_json_path = ctx.source_dir.join("package.json");
+        if package_json_path.exists() {
+            let content = fs::read_to_string(&package_json_path).await?;
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(bin) = json.get("bin") {
+                    let dest_bin = prefix_path.join("bin");
+                    fs::create_dir_all(&dest_bin).await?;
+
+                    match bin {
+                        serde_json::Value::String(script) => {
+                            // Single bin entry
+                            let script_path = ctx.source_dir.join(script);
+                            if script_path.exists() {
+                                let bin_name =
+                                    json.get("name").and_then(|n| n.as_str()).unwrap_or("bin");
+                                let dest = dest_bin.join(bin_name);
+                                fs::copy(&script_path, &dest).await?;
+                                #[cfg(unix)]
+                                {
+                                    use std::os::unix::fs::PermissionsExt;
+                                    let mut perms = fs::metadata(&dest).await?.permissions();
+                                    perms.set_mode(0o755);
+                                    fs::set_permissions(&dest, perms).await?;
+                                }
+                            }
+                        }
+                        serde_json::Value::Object(bins) => {
+                            // Multiple bin entries
+                            for (name, script) in bins {
+                                if let Some(script_str) = script.as_str() {
+                                    let script_path = ctx.source_dir.join(script_str);
+                                    if script_path.exists() {
+                                        let dest = dest_bin.join(name);
+                                        fs::copy(&script_path, &dest).await?;
+                                        #[cfg(unix)]
+                                        {
+                                            use std::os::unix::fs::PermissionsExt;
+                                            let mut perms =
+                                                fs::metadata(&dest).await?.permissions();
+                                            perms.set_mode(0o755);
+                                            fs::set_permissions(&dest, perms).await?;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
             }
         }
 
         // Copy binaries from node_modules/.bin if they exist
         let bin_dir = ctx.source_dir.join("node_modules/.bin");
         if bin_dir.exists() {
-            let dest_bin = staging_dir.join("bin");
+            let dest_bin = prefix_path.join("bin");
             fs::create_dir_all(&dest_bin).await?;
 
             let mut entries = fs::read_dir(&bin_dir).await?;
@@ -375,19 +439,37 @@ impl BuildSystem for NodeJsBuildSystem {
             _ => PackageManager::Npm,
         };
 
-        // Install dependencies first
-        let install_args = self.get_install_command(&pm, !ctx.network_allowed);
-        let arg_refs: Vec<&str> = install_args.iter().map(String::as_str).collect();
+        // Check if lock file exists
+        let has_lock_file = match &pm {
+            PackageManager::Npm => ctx.source_dir.join("package-lock.json").exists(),
+            PackageManager::Yarn => ctx.source_dir.join("yarn.lock").exists(),
+            PackageManager::Pnpm => ctx.source_dir.join("pnpm-lock.yaml").exists(),
+        };
 
-        let result = ctx
-            .execute(pm.command(), &arg_refs, Some(&ctx.source_dir))
-            .await?;
+        // Check if package.json has any dependencies
+        let package_json = ctx.source_dir.join("package.json");
+        let has_dependencies = if package_json.exists() {
+            let content = fs::read_to_string(&package_json).await?;
+            content.contains("\"dependencies\"") || content.contains("\"devDependencies\"")
+        } else {
+            false
+        };
 
-        if !result.success {
-            return Err(BuildError::CompilationFailed {
-                message: format!("{} install failed: {}", pm.command(), result.stderr),
+        // Only run install if there are dependencies or a lock file
+        if has_dependencies || has_lock_file {
+            let install_args = self.get_install_command(&pm, !ctx.network_allowed, has_lock_file);
+            let arg_refs: Vec<&str> = install_args.iter().map(String::as_str).collect();
+
+            let result = ctx
+                .execute(pm.command(), &arg_refs, Some(&ctx.source_dir))
+                .await?;
+
+            if !result.success {
+                return Err(BuildError::CompilationFailed {
+                    message: format!("{} install failed: {}", pm.command(), result.stderr),
+                }
+                .into());
             }
-            .into());
         }
 
         // Run build script if it exists
@@ -483,10 +565,12 @@ impl BuildSystem for NodeJsBuildSystem {
         // Copy built artifacts to staging
         self.copy_built_artifacts(ctx).await?;
 
-        // Also copy package.json for metadata
+        // Also copy package.json for metadata with BUILD_PREFIX structure
         let package_json_src = ctx.source_dir.join("package.json");
         if package_json_src.exists() {
-            let package_json_dest = ctx.env.staging_dir().join("package.json");
+            let staging_dir = ctx.env.staging_dir();
+            let prefix_path = staging_dir.join(ctx.env.get_build_prefix().trim_start_matches('/'));
+            let package_json_dest = prefix_path.join("package.json");
             fs::copy(&package_json_src, &package_json_dest).await?;
         }
 

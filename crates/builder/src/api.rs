@@ -338,12 +338,30 @@ impl BuilderApi {
         args: &[String],
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
+        use crate::build_systems::{BuildSystem, BuildSystemContext, PythonBuildSystem};
+
         // Extract source archive first if needed
         self.extract_downloads().await?;
 
-        let arg_strs: Vec<&str> = args.iter().map(String::as_str).collect();
-        env.execute_command("python3", &arg_strs, Some(&self.working_dir))
-            .await
+        // Create build system context
+        let ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
+        let python_system = PythonBuildSystem::new();
+
+        // Configure (detects build backend, sets up environment)
+        python_system.configure(&ctx, args).await?;
+
+        // Build (builds wheel or runs setup.py)
+        python_system.build(&ctx, args).await?;
+
+        // Install (installs to staging with BUILD_PREFIX)
+        python_system.install(&ctx).await?;
+
+        Ok(BuildCommandResult {
+            success: true,
+            exit_code: Some(0),
+            stdout: "Python build completed successfully".to_string(),
+            stderr: String::new(),
+        })
     }
 
     /// Build with Node.js
@@ -356,30 +374,30 @@ impl BuilderApi {
         args: &[String],
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
+        use crate::build_systems::{BuildSystem, BuildSystemContext, NodeJsBuildSystem};
+
         // Extract source archive first if needed
         self.extract_downloads().await?;
 
-        // Determine which command to use
-        let (command, command_args) = if !args.is_empty() {
-            match args[0].as_str() {
-                "npm" | "yarn" | "pnpm" => {
-                    // Use the package manager as command with remaining args
-                    let arg_strs: Vec<&str> = args[1..].iter().map(String::as_str).collect();
-                    (args[0].as_str(), arg_strs)
-                }
-                _ => {
-                    // Use node with all args
-                    let arg_strs: Vec<&str> = args.iter().map(String::as_str).collect();
-                    ("node", arg_strs)
-                }
-            }
-        } else {
-            // No args, just use node
-            ("node", vec![])
-        };
+        // Create build system context
+        let ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
+        let nodejs_system = NodeJsBuildSystem::new();
 
-        env.execute_command(command, &command_args, Some(&self.working_dir))
-            .await
+        // Configure (detects package manager, sets up environment)
+        nodejs_system.configure(&ctx, args).await?;
+
+        // Build (installs dependencies if needed, runs build scripts)
+        nodejs_system.build(&ctx, args).await?;
+
+        // Install (copies built artifacts and bin entries to staging)
+        nodejs_system.install(&ctx).await?;
+
+        Ok(BuildCommandResult {
+            success: true,
+            exit_code: Some(0),
+            stdout: "Node.js build completed successfully".to_string(),
+            stderr: String::new(),
+        })
     }
 
     /// Run configure step only
