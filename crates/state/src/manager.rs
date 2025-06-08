@@ -113,6 +113,21 @@ impl StateManager {
         Ok(packages)
     }
 
+    /// Get all installed packages in a specific state
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    pub async fn get_installed_packages_in_state(
+        &self,
+        state_id: &StateId,
+    ) -> Result<Vec<Package>, Error> {
+        let mut tx = self.pool.begin().await?;
+        let packages = queries::get_state_packages(&mut tx, state_id).await?;
+        tx.commit().await?;
+        Ok(packages)
+    }
+
     /// Begin a state transition
     ///
     /// # Errors

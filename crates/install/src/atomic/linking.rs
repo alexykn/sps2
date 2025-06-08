@@ -97,20 +97,22 @@ pub async fn create_hardlinks_recursive_with_tracking(
             ))
             .await?;
         } else {
-            // Create hard link
-            #[cfg(target_os = "macos")]
-            {
-                // Use APFS hard link on macOS
-                create_hard_link(&entry_path, &dest_path)?;
+            // Create hard link only if destination doesn't already exist
+            if !dest_path.exists() {
+                #[cfg(target_os = "macos")]
+                {
+                    // Use APFS hard link on macOS
+                    create_hard_link(&entry_path, &dest_path)?;
+                }
+
+                #[cfg(not(target_os = "macos"))]
+                {
+                    // Use standard hard link on other platforms
+                    create_hard_link(&entry_path, &dest_path)?;
+                }
             }
 
-            #[cfg(not(target_os = "macos"))]
-            {
-                // Use standard hard link on other platforms
-                create_hard_link(&entry_path, &dest_path)?;
-            }
-
-            // Record file in file tracking
+            // Record file in file tracking (whether newly linked or already existed)
             file_paths.push((relative_path.display().to_string(), false));
         }
     }

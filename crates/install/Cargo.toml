@@ -11,6 +11,7 @@ repository.workspace = true
 sps2-errors = { path = "../errors" }
 sps2-types = { path = "../types" }
 sps2-events = { path = "../events" }
+sps2-hash = { path = "../hash" }
 sps2-net = { path = "../net" }
 sps2-resolver = { path = "../resolver" }
 sps2-root = { path = "../root" }
@@ -36,3 +37,4 @@ blake3 = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 sps2-index = { path = "../index" }
+toml = { workspace = true }

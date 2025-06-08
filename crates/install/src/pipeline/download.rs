@@ -5,6 +5,7 @@ use crossbeam::queue::SegQueue;
 use dashmap::DashMap;
 use sps2_errors::{Error, InstallError};
 use sps2_events::{EventSender, ProgressManager};
+use sps2_hash::Hash;
 use sps2_net::PackageDownloader;
 use sps2_resolver::{ExecutionPlan, NodeAction, PackageId, ResolvedNode};
 use std::collections::HashMap;
@@ -19,6 +20,7 @@ use tokio::task::JoinHandle;
 pub struct DownloadResult {
     pub package_id: PackageId,
     pub downloaded_path: PathBuf,
+    pub hash: Hash,
     #[allow(dead_code)]
     pub temp_dir: Option<tempfile::TempDir>,
     pub node: ResolvedNode,
@@ -193,6 +195,7 @@ impl DownloadPipeline {
                     Ok(DownloadResult {
                         package_id: package_id.clone(),
                         downloaded_path: result.package_path,
+                        hash: result.hash,
                         temp_dir: Some(temp_dir),
                         node: node.clone(),
                     })
@@ -205,9 +208,13 @@ impl DownloadPipeline {
             }
             NodeAction::Local => {
                 if let Some(path) = &node.path {
+                    // Compute hash for local file
+                    let hash = Hash::hash_file(path).await?;
+
                     Ok(DownloadResult {
                         package_id: package_id.clone(),
                         downloaded_path: path.clone(),
+                        hash,
                         temp_dir: None,
                         node: node.clone(),
                     })

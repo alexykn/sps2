@@ -68,6 +68,10 @@ impl StateTransition {
     ///
     /// Returns an error if database transaction fails or filesystem operations fail.
     pub async fn commit(&self, live_path: &Path) -> Result<(), Error> {
+        // Get the current state ID before we start the transaction
+        // This is what's actually in /opt/pm/live right now
+        let actual_current_state_id = self.state_manager.get_current_state_id().await?;
+
         // Begin database transaction
         let mut tx = self.state_manager.begin_transaction().await?;
 
@@ -109,10 +113,11 @@ impl StateTransition {
         }
 
         // Prepare archived path for current live directory
+        // Use the actual current state ID we captured before the transaction
         let old_live_path = self
             .state_manager
             .state_path()
-            .join(self.parent_id.unwrap_or_default().to_string());
+            .join(actual_current_state_id.to_string());
 
         // Ensure parent directories exist before any rename operations
         if let Some(state_parent) = self.state_manager.state_path().parent() {
@@ -143,26 +148,119 @@ impl StateTransition {
                 })?;
         }
 
+        // Debug: Check staging directory before swap
+        if let Some(sender) = &self.event_sender {
+            let _ = sender.send(sps2_events::Event::DebugLog {
+                message: format!(
+                    "Before swap - staging path exists: {}, live path exists: {}",
+                    self.staging_path.exists(),
+                    live_path.exists()
+                ),
+                context: std::collections::HashMap::new(),
+            });
+
+            // List staging directory contents
+            if let Ok(mut entries) = tokio::fs::read_dir(&self.staging_path).await {
+                let mut count = 0;
+                while let Ok(Some(entry)) = entries.next_entry().await {
+                    count += 1;
+                    let _ = sender.send(sps2_events::Event::DebugLog {
+                        message: format!(
+                            "Staging contains: {}",
+                            entry.file_name().to_string_lossy()
+                        ),
+                        context: std::collections::HashMap::new(),
+                    });
+                }
+                let _ = sender.send(sps2_events::Event::DebugLog {
+                    message: format!("Total items in staging: {}", count),
+                    context: std::collections::HashMap::new(),
+                });
+            }
+        }
+
         // True atomic swap using sps2_root::atomic_swap
         // This uses macOS renamex_np with RENAME_SWAP for single OS-level atomic operation
         if live_path.exists() {
+            // Debug: Log paths before swap
+            if let Some(sender) = &self.event_sender {
+                let _ = sender.send(sps2_events::Event::DebugLog {
+                    message: format!(
+                        "Attempting atomic swap: staging={}, live={}",
+                        self.staging_path.display(),
+                        live_path.display()
+                    ),
+                    context: std::collections::HashMap::new(),
+                });
+            }
+
             // Use atomic swap to exchange staging and live directories
-            sps2_root::atomic_swap(&self.staging_path, live_path)
-                .await
-                .map_err(|e| InstallError::FilesystemError {
-                    operation: "atomic_swap".to_string(),
-                    path: live_path.display().to_string(),
-                    message: e.to_string(),
-                })?;
+            match sps2_root::atomic_swap(&self.staging_path, live_path).await {
+                Ok(()) => {
+                    if let Some(sender) = &self.event_sender {
+                        let _ = sender.send(sps2_events::Event::DebugLog {
+                            message: "Atomic swap successful".to_string(),
+                            context: std::collections::HashMap::new(),
+                        });
+                    }
+                }
+                Err(e) => {
+                    if let Some(sender) = &self.event_sender {
+                        let _ = sender.send(sps2_events::Event::DebugLog {
+                            message: format!("Atomic swap FAILED: {}", e),
+                            context: std::collections::HashMap::new(),
+                        });
+                    }
+                    return Err(InstallError::FilesystemError {
+                        operation: "atomic_swap".to_string(),
+                        path: live_path.display().to_string(),
+                        message: e.to_string(),
+                    }
+                    .into());
+                }
+            }
 
             // Move the old live directory (now in staging_path) to archived location
-            fs::rename(&self.staging_path, &old_live_path)
-                .await
-                .map_err(|e| InstallError::FilesystemError {
-                    operation: "archive_old_live".to_string(),
-                    path: old_live_path.display().to_string(),
-                    message: e.to_string(),
+            // Only archive if the state doesn't already exist (e.g., after rollback)
+            if !old_live_path.exists() {
+                if let Some(sender) = &self.event_sender {
+                    let _ = sender.send(sps2_events::Event::DebugLog {
+                        message: format!(
+                            "Archiving old state {} to {}",
+                            actual_current_state_id,
+                            old_live_path.display()
+                        ),
+                        context: std::collections::HashMap::new(),
+                    });
+                }
+
+                fs::rename(&self.staging_path, &old_live_path)
+                    .await
+                    .map_err(|e| InstallError::FilesystemError {
+                        operation: "archive_old_live".to_string(),
+                        path: old_live_path.display().to_string(),
+                        message: e.to_string(),
+                    })?;
+            } else {
+                // State already archived, just remove the staging directory
+                if let Some(sender) = &self.event_sender {
+                    let _ = sender.send(sps2_events::Event::DebugLog {
+                        message: format!(
+                            "WARNING: State {} already archived, removing staging directory",
+                            actual_current_state_id
+                        ),
+                        context: std::collections::HashMap::new(),
+                    });
+                }
+
+                fs::remove_dir_all(&self.staging_path).await.map_err(|e| {
+                    InstallError::FilesystemError {
+                        operation: "cleanup_staging_after_swap".to_string(),
+                        path: self.staging_path.display().to_string(),
+                        message: e.to_string(),
+                    }
                 })?;
+            }
         } else {
             // If live doesn't exist, just move staging to live (first install)
             fs::rename(&self.staging_path, live_path)

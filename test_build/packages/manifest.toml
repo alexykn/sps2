@@ -1,0 +1,20 @@
+[format_version]
+major = 1
+minor = 0
+patch = 0
+
+[package]
+name = "hello-meson"
+version = "1.0.0"
+revision = 1
+arch = "arm64"
+description = "Test Meson build system"
+license = "MIT"
+
+[package.compression]
+format = "legacy"
+
+[dependencies]
+
+[sbom]
+spdx = "24f25bd0a5bfd69e9fa8dbd56df3a1659adf1b98237f566aceb3894b7877f6aa"

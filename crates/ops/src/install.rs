@@ -4,7 +4,7 @@
 //! Delegates to `sps2_install` crate for the actual installation logic.
 
 use crate::{InstallReport, InstallRequest, OpsCtx};
-use sps2_errors::{Error, OpsError};
+use sps2_errors::{Error, InstallError, OpsError};
 use sps2_events::Event;
 use sps2_install::{InstallConfig, InstallContext, Installer, PipelineConfig, PipelineMaster};
 use sps2_types::{PackageSpec, Version};
@@ -349,16 +349,18 @@ async fn install_remote_packages_parallel(
     // Create package references for all successfully installed packages
     let mut packages_added = Vec::new();
     for package_id in &batch_result.successful_packages {
-        // For now, use placeholder hash and size - these should be retrieved from the store
-        // In a future enhancement, the pipeline should return the actual hashes
+        // Get the actual hash from the batch result
+        let hash = batch_result.package_hashes.get(package_id).ok_or_else(|| {
+            InstallError::AtomicOperationFailed {
+                message: format!("Missing hash for package {}", package_id.name),
+            }
+        })?;
+
         let package_ref = PackageRef {
             state_id: new_state_id,
             package_id: package_id.clone(),
-            hash: sps2_hash::Hash::from_data(
-                format!("{}-{}", package_id.name, package_id.version).as_bytes(),
-            )
-            .to_hex(), // Temporary hash based on name-version
-            size: 1024 * 1024, // Placeholder 1MB size
+            hash: hash.to_hex(),
+            size: 1024 * 1024, // TODO: Get actual size from store
         };
         packages_added.push(package_ref);
     }

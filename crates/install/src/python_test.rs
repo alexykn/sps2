@@ -64,7 +64,7 @@ mod tests {
         manifest.set_python_metadata(PythonPackageMetadata {
             requires_python: ">=3.9".to_string(),
             wheel_file: "myapp-1.0.0-py3-none-any.whl".to_string(),
-            requirements_file: "".to_string(),
+            requirements_file: String::new(),
             executables,
         });
 

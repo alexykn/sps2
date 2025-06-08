@@ -45,15 +45,23 @@ impl StoredPackage {
     /// Get the files directory
     #[must_use]
     pub fn files_path(&self) -> PathBuf {
-        // Check for new package structure first (<package-name>/)
+        // Check for new package structure with version first (<package-name>-<version>/)
         let package_name = &self.manifest.package.name;
-        let new_style_path = self.path.join(package_name);
+        let package_version = &self.manifest.package.version;
+        let versioned_path = self.path.join(format!("{package_name}-{package_version}"));
 
-        if new_style_path.exists() {
-            new_style_path
+        if versioned_path.exists() {
+            versioned_path
         } else {
-            // Fall back to old structure (files/)
-            self.path.join("files")
+            // Check for new package structure without version (<package-name>/)
+            let new_style_path = self.path.join(package_name);
+
+            if new_style_path.exists() {
+                new_style_path
+            } else {
+                // Fall back to old structure (files/)
+                self.path.join("files")
+            }
         }
     }
 

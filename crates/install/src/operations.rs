@@ -86,7 +86,7 @@ impl InstallOperation {
             AtomicInstaller::new(self.state_manager.clone(), self.store.clone()).await?;
 
         let result = atomic_installer
-            .install(&context, &resolution.nodes)
+            .install(&context, &resolution.nodes, None)
             .await?;
 
         Self::send_event(

@@ -746,11 +746,11 @@ Time:        1.234s
     fn test_get_install_command() {
         let system = NodeJsBuildSystem::new();
 
-        let npm_args = system.get_install_command(&PackageManager::Npm, true);
+        let npm_args = system.get_install_command(&PackageManager::Npm, true, true);
         assert!(npm_args.contains(&"ci".to_string()));
         assert!(npm_args.contains(&"--offline".to_string()));
 
-        let yarn_args = system.get_install_command(&PackageManager::Yarn, false);
+        let yarn_args = system.get_install_command(&PackageManager::Yarn, false, false);
         assert!(yarn_args.contains(&"install".to_string()));
         assert!(yarn_args.contains(&"--frozen-lockfile".to_string()));
     }

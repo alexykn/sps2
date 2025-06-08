@@ -39,6 +39,7 @@ impl StagingPipeline {
                 package_id: decompress_result.package_id.clone(),
                 decompressed_path: decompress_result.decompressed_path.clone(),
                 validation_result: decompress_result.validation_result.clone(),
+                hash: decompress_result.hash.clone(),
                 temp_file: None, // Can't clone NamedTempFile, so we don't pass it
             };
 

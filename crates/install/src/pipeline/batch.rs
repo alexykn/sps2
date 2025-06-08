@@ -1,6 +1,7 @@
 //! Batch operation management and coordination
 
 use sps2_errors::Error;
+use sps2_hash::Hash;
 use sps2_resolver::PackageId;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -44,6 +45,8 @@ pub struct BatchResult {
     pub batch_id: String,
     /// Successfully processed packages
     pub successful_packages: Vec<PackageId>,
+    /// Package hashes for successfully processed packages
+    pub package_hashes: HashMap<PackageId, Hash>,
     /// Failed packages with errors
     pub failed_packages: Vec<(PackageId, Error)>,
     /// Total processing time

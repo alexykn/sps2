@@ -5,6 +5,7 @@ use crate::{validate_sp_file, ValidationResult};
 use async_compression::tokio::bufread::ZstdDecoder;
 use sps2_errors::{Error, InstallError};
 use sps2_events::{Event, EventSender, EventSenderExt};
+use sps2_hash::Hash;
 use sps2_resolver::PackageId;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
@@ -20,6 +21,7 @@ pub struct DecompressResult {
     pub package_id: PackageId,
     pub decompressed_path: PathBuf,
     pub validation_result: ValidationResult,
+    pub hash: Hash,
     #[allow(dead_code)]
     pub temp_file: Option<tempfile::NamedTempFile>,
 }
@@ -76,6 +78,7 @@ impl DecompressPipeline {
             let result_moved = DownloadResult {
                 package_id: download_result.package_id.clone(),
                 downloaded_path: download_result.downloaded_path.clone(),
+                hash: download_result.hash.clone(),
                 temp_dir: None, // Can't clone TempDir, so we don't pass it
                 node: download_result.node.clone(),
             };
@@ -121,6 +124,7 @@ impl DecompressPipeline {
                 package_id: download_result.package_id.clone(),
                 decompressed_path: download_result.downloaded_path.clone(),
                 validation_result,
+                hash: download_result.hash.clone(),
                 temp_file: None,
             });
 
@@ -300,6 +304,7 @@ impl DecompressPipeline {
             package_id: download_result.package_id.clone(),
             decompressed_path: temp_path,
             validation_result,
+            hash: download_result.hash.clone(),
             temp_file: Some(temp_file),
         })
     }

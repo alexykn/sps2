@@ -207,6 +207,7 @@ impl PipelineMaster {
                 BatchResult {
                     batch_id,
                     successful_packages: Vec::new(),
+                    package_hashes: HashMap::new(),
                     failed_packages: vec![(
                         PackageId::new(
                             "batch".to_string(),
@@ -304,6 +305,15 @@ impl PipelineMaster {
 
         stage_timings.insert("install".to_string(), install_start.elapsed());
 
+        // Build package hash mapping from decompress results
+        let mut package_hashes = HashMap::new();
+        for decompress_result in &decompress_results {
+            package_hashes.insert(
+                decompress_result.package_id.clone(),
+                decompress_result.hash.clone(),
+            );
+        }
+
         // Collect results and statistics
         for result in &install_results {
             match result {
@@ -340,6 +350,7 @@ impl PipelineMaster {
         Ok(BatchResult {
             batch_id: batch_id.to_string(),
             successful_packages,
+            package_hashes,
             failed_packages,
             duration: total_duration,
             peak_memory_usage: self
