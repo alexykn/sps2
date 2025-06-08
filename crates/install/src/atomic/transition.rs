@@ -2,6 +2,7 @@
 
 use crate::atomic::filesystem;
 use sps2_errors::{Error, InstallError};
+use sps2_events::EventSender;
 use sps2_state::{PackageRef, StateManager};
 use std::path::{Path, PathBuf};
 use tokio::fs;
@@ -19,8 +20,12 @@ pub struct StateTransition {
     state_manager: StateManager,
     /// Package references to be added during commit
     pub package_refs: Vec<PackageRef>,
+    /// Package references with venv paths to be added during commit
+    pub package_refs_with_venv: Vec<(PackageRef, String)>,
     /// Package files to be added during commit
     pub package_files: Vec<(String, String, String, bool)>, // (package_name, package_version, file_path, is_directory)
+    /// Event sender for progress reporting
+    pub event_sender: Option<EventSender>,
 }
 
 impl StateTransition {
@@ -42,7 +47,9 @@ impl StateTransition {
             staging_path,
             state_manager: state_manager.clone(),
             package_refs: Vec::new(),
+            package_refs_with_venv: Vec::new(),
             package_files: Vec::new(),
+            event_sender: None,
         })
     }
 
@@ -78,6 +85,13 @@ impl StateTransition {
         for package_ref in &self.package_refs {
             self.state_manager
                 .add_package_ref_with_tx(&mut tx, package_ref)
+                .await?;
+        }
+
+        // Add all packages with venv paths to the database
+        for (package_ref, venv_path) in &self.package_refs_with_venv {
+            self.state_manager
+                .add_package_ref_with_venv_tx(&mut tx, package_ref, Some(venv_path))
                 .await?;
         }
 

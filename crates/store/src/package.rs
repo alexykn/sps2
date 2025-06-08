@@ -45,7 +45,16 @@ impl StoredPackage {
     /// Get the files directory
     #[must_use]
     pub fn files_path(&self) -> PathBuf {
-        self.path.join("files")
+        // Check for new package structure first (<package-name>/)
+        let package_name = &self.manifest.package.name;
+        let new_style_path = self.path.join(package_name);
+
+        if new_style_path.exists() {
+            new_style_path
+        } else {
+            // Fall back to old structure (files/)
+            self.path.join("files")
+        }
     }
 
     /// Get the blobs directory

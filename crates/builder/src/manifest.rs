@@ -105,5 +105,6 @@ pub fn create_manifest(
             build: Vec::new(), // Build deps not included in final manifest
         },
         sbom: sbom_info,
+        python: None, // TODO: Add Python metadata support in builder
     }
 }

@@ -25,6 +25,8 @@ pub struct BuilderApi {
     sbom_excludes: Vec<String>,
     /// Whether install was requested during recipe execution
     install_requested: bool,
+    /// Build metadata collected during build (e.g., Python wheel path)
+    build_metadata: HashMap<String, String>,
 }
 
 impl BuilderApi {
@@ -47,6 +49,7 @@ impl BuilderApi {
                 "./*.la".to_string(),
             ],
             install_requested: false,
+            build_metadata: HashMap::new(),
         })
     }
 
@@ -334,7 +337,7 @@ impl BuilderApi {
     ///
     /// Returns an error if the python3 command fails.
     pub async fn python(
-        &self,
+        &mut self,
         args: &[String],
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
@@ -355,6 +358,15 @@ impl BuilderApi {
 
         // Install (installs to staging with BUILD_PREFIX)
         python_system.install(&ctx).await?;
+
+        // Copy Python metadata from BuildSystemContext to BuilderApi
+        if let Ok(extra_env) = ctx.extra_env.read() {
+            for (key, value) in extra_env.iter() {
+                if key.starts_with("PYTHON_") {
+                    self.build_metadata.insert(key.clone(), value.clone());
+                }
+            }
+        }
 
         Ok(BuildCommandResult {
             success: true,
@@ -500,6 +512,17 @@ impl BuilderApi {
     #[must_use]
     pub fn is_install_requested(&self) -> bool {
         self.install_requested
+    }
+
+    /// Get build metadata collected during build
+    #[must_use]
+    pub fn build_metadata(&self) -> &HashMap<String, String> {
+        &self.build_metadata
+    }
+
+    /// Take build metadata (consumes the metadata)
+    pub fn take_build_metadata(&mut self) -> HashMap<String, String> {
+        std::mem::take(&mut self.build_metadata)
     }
 
     /// Extract downloaded archives

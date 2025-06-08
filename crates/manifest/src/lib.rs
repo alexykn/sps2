@@ -10,7 +10,8 @@ use serde::{Deserialize, Serialize};
 use sps2_errors::{Error, PackageError};
 use sps2_hash::Hash;
 use sps2_types::{
-    format::CompressionFormatType, package::PackageSpec, Arch, PackageFormatVersion, Version,
+    format::CompressionFormatType, package::PackageSpec, Arch, PackageFormatVersion,
+    PythonPackageMetadata, Version,
 };
 use std::path::Path;
 
@@ -24,6 +25,9 @@ pub struct Manifest {
     pub dependencies: Dependencies,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sbom: Option<SbomInfo>,
+    /// Optional Python-specific metadata for Python packages
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub python: Option<PythonPackageMetadata>,
 }
 
 /// Package information section
@@ -91,6 +95,7 @@ impl Manifest {
             },
             dependencies: Dependencies::default(),
             sbom: None,
+            python: None,
         }
     }
 
@@ -185,6 +190,11 @@ impl Manifest {
             frame_size: Some(frame_size),
             frame_count,
         });
+    }
+
+    /// Set Python package metadata
+    pub fn set_python_metadata(&mut self, metadata: PythonPackageMetadata) {
+        self.python = Some(metadata);
     }
 
     /// Load manifest from TOML string
@@ -380,6 +390,13 @@ impl ManifestBuilder {
         self
     }
 
+    /// Set Python package metadata
+    #[must_use]
+    pub fn python_metadata(mut self, metadata: PythonPackageMetadata) -> Self {
+        self.manifest.python = Some(metadata);
+        self
+    }
+
     /// Build the manifest
     ///
     /// # Errors
@@ -470,6 +487,7 @@ mod tests {
             },
             dependencies: Dependencies::default(),
             sbom: None,
+            python: None,
         };
 
         assert!(manifest.validate().is_err());
@@ -660,5 +678,84 @@ mod tests {
 
         // Validation should fail
         assert!(manifest.validate().is_err());
+    }
+
+    #[test]
+    fn test_python_metadata() {
+        use std::collections::HashMap;
+
+        let mut manifest = Manifest::new(
+            "black".to_string(),
+            &Version::parse("23.1.0").unwrap(),
+            1,
+            &Arch::Arm64,
+        );
+
+        // Initially no Python metadata
+        assert!(manifest.python.is_none());
+
+        // Create Python metadata
+        let mut executables = HashMap::new();
+        executables.insert("black".to_string(), "black:main".to_string());
+        executables.insert("blackd".to_string(), "blackd:main".to_string());
+
+        let python_meta = PythonPackageMetadata {
+            requires_python: ">=3.8,<3.12".to_string(),
+            wheel_file: "python/black-23.1.0-py3-none-any.whl".to_string(),
+            requirements_file: "python/requirements.lock.txt".to_string(),
+            executables,
+        };
+
+        manifest.set_python_metadata(python_meta.clone());
+        assert!(manifest.python.is_some());
+        assert_eq!(
+            manifest.python.as_ref().unwrap().requires_python,
+            ">=3.8,<3.12"
+        );
+
+        // Test TOML roundtrip with Python metadata
+        let toml = manifest.to_toml().unwrap();
+        let parsed = Manifest::from_toml(&toml).unwrap();
+
+        assert!(parsed.python.is_some());
+        let parsed_python = parsed.python.unwrap();
+        assert_eq!(parsed_python.requires_python, ">=3.8,<3.12");
+        assert_eq!(
+            parsed_python.wheel_file,
+            "python/black-23.1.0-py3-none-any.whl"
+        );
+        assert_eq!(parsed_python.executables.len(), 2);
+        assert_eq!(
+            parsed_python.executables.get("black"),
+            Some(&"black:main".to_string())
+        );
+    }
+
+    #[test]
+    fn test_python_metadata_builder() {
+        use std::collections::HashMap;
+
+        let mut executables = HashMap::new();
+        executables.insert("myapp".to_string(), "myapp.cli:main".to_string());
+
+        let python_meta = PythonPackageMetadata {
+            requires_python: ">=3.9".to_string(),
+            wheel_file: "python/myapp-1.0.0-py3-none-any.whl".to_string(),
+            requirements_file: "python/requirements.lock.txt".to_string(),
+            executables,
+        };
+
+        let manifest = ManifestBuilder::new(
+            "myapp".to_string(),
+            &Version::parse("1.0.0").unwrap(),
+            &Arch::Arm64,
+        )
+        .description("My Python app".to_string())
+        .python_metadata(python_meta)
+        .build()
+        .unwrap();
+
+        assert!(manifest.python.is_some());
+        assert_eq!(manifest.python.as_ref().unwrap().requires_python, ">=3.9");
     }
 }

@@ -60,7 +60,15 @@ impl StagingDirectory {
     /// Get the files directory path
     #[must_use]
     pub fn files_path(&self) -> PathBuf {
-        self.path.join("files")
+        // Check for new package structure first (<package-name>/)
+        let new_style_path = self.path.join(&self.package_id.name);
+
+        if new_style_path.exists() {
+            new_style_path
+        } else {
+            // Fall back to old structure (files/)
+            self.path.join("files")
+        }
     }
 
     /// Move staging content to final destination atomically

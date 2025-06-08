@@ -8,6 +8,8 @@ use crate::{BuildConfig, BuildContext, BuildEnvironment, PackageSigner, SbomFile
 use sps2_errors::{BuildError, Error};
 use sps2_events::Event;
 use sps2_manifest::Manifest;
+use sps2_types::PythonPackageMetadata;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
@@ -46,10 +48,16 @@ pub async fn create_package(
     config: &BuildConfig,
     context: &BuildContext,
     environment: &BuildEnvironment,
-    manifest: Manifest,
+    mut manifest: Manifest,
     sbom_files: SbomFiles,
 ) -> Result<PathBuf, Error> {
     let package_path = context.output_path();
+
+    // Handle Python packages specially
+    if environment.is_python_package() {
+        let python_metadata = create_python_package_structure(environment, &manifest).await?;
+        manifest.set_python_metadata(python_metadata);
+    }
 
     // Create package using the real manifest data
     let manifest_string = toml::to_string(&manifest).map_err(|e| BuildError::Failed {
@@ -238,4 +246,63 @@ pub async fn sign_package(
     }
 
     Ok(())
+}
+
+/// Create Python package structure and metadata
+async fn create_python_package_structure(
+    environment: &BuildEnvironment,
+    manifest: &Manifest,
+) -> Result<PythonPackageMetadata, Error> {
+    // Get Python metadata from the build environment
+    let wheel_path = environment
+        .get_extra_env("PYTHON_WHEEL_PATH")
+        .ok_or_else(|| BuildError::Failed {
+            message: "Python wheel path not found in build environment".to_string(),
+        })?;
+
+    let lockfile_path = environment
+        .get_extra_env("PYTHON_LOCKFILE_PATH")
+        .ok_or_else(|| BuildError::Failed {
+            message: "Python lockfile path not found in build environment".to_string(),
+        })?;
+
+    let entry_points_json = environment
+        .get_extra_env("PYTHON_ENTRY_POINTS")
+        .unwrap_or_else(|| "{}".to_string());
+
+    let requires_python = environment
+        .get_extra_env("PYTHON_REQUIRES_VERSION")
+        .unwrap_or_else(|| ">=3.8".to_string());
+
+    // Parse entry points
+    let executables: HashMap<String, String> =
+        serde_json::from_str(&entry_points_json).unwrap_or_default();
+
+    // Create python/ subdirectory in staging
+    let python_dir = environment
+        .staging_dir()
+        .join(manifest.filename().replace(".sp", ""))
+        .join("python");
+    fs::create_dir_all(&python_dir).await?;
+
+    // Copy wheel file
+    let wheel_src = PathBuf::from(&wheel_path);
+    let wheel_filename = wheel_src.file_name().ok_or_else(|| BuildError::Failed {
+        message: "Invalid wheel path".to_string(),
+    })?;
+    let wheel_dst = python_dir.join(wheel_filename);
+    fs::copy(&wheel_src, &wheel_dst).await?;
+
+    // Copy lockfile
+    let lockfile_src = PathBuf::from(&lockfile_path);
+    let lockfile_dst = python_dir.join("requirements.lock.txt");
+    fs::copy(&lockfile_src, &lockfile_dst).await?;
+
+    // Create Python metadata
+    Ok(PythonPackageMetadata {
+        requires_python,
+        wheel_file: format!("python/{}", wheel_filename.to_string_lossy()),
+        requirements_file: "python/requirements.lock.txt".to_string(),
+        executables,
+    })
 }

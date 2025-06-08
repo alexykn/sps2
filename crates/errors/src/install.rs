@@ -99,4 +99,7 @@ pub enum InstallError {
 
     #[error("no progress detected: {message}")]
     NoProgress { message: String },
+
+    #[error("Python virtual environment error for package {package}: {message}")]
+    PythonVenvError { package: String, message: String },
 }

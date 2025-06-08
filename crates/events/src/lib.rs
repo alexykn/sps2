@@ -479,6 +479,59 @@ pub enum Event {
         new_version: String,
         duration_ms: u64,
     },
+
+    // Python virtual environment operations
+    PythonVenvCreating {
+        package: String,
+        version: Version,
+        venv_path: String,
+    },
+    PythonVenvCreated {
+        package: String,
+        version: Version,
+        venv_path: String,
+    },
+    PythonWheelInstalling {
+        package: String,
+        version: Version,
+        wheel_file: String,
+    },
+    PythonWheelInstalled {
+        package: String,
+        version: Version,
+    },
+    PythonWrapperCreating {
+        package: String,
+        executable: String,
+        wrapper_path: String,
+    },
+    PythonWrapperCreated {
+        package: String,
+        executable: String,
+        wrapper_path: String,
+    },
+    PythonVenvCloning {
+        package: String,
+        version: Version,
+        from_path: String,
+        to_path: String,
+    },
+    PythonVenvCloned {
+        package: String,
+        version: Version,
+        from_path: String,
+        to_path: String,
+    },
+    PythonVenvRemoving {
+        package: String,
+        version: Version,
+        venv_path: String,
+    },
+    PythonVenvRemoved {
+        package: String,
+        version: Version,
+        venv_path: String,
+    },
 }
 
 /// Health status for components

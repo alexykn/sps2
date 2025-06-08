@@ -245,3 +245,7 @@ mod tests {
     //
     // These tests focus on the API and component integration
 }
+
+// Include venv cleanup tests
+#[cfg(test)]
+mod test_venv_cleanup;

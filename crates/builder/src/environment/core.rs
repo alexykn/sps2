@@ -23,6 +23,8 @@ pub struct BuildEnvironment {
     pub(crate) staging_dir: PathBuf,
     /// Environment variables
     pub(crate) env_vars: HashMap<String, String>,
+    /// Build metadata from build systems (e.g., Python wheel path)
+    pub(crate) build_metadata: HashMap<String, String>,
     /// Resolver for dependencies
     pub(crate) resolver: Option<Resolver>,
     /// Package store for build dependencies
@@ -55,6 +57,7 @@ impl BuildEnvironment {
             deps_prefix,
             staging_dir,
             env_vars,
+            build_metadata: HashMap::new(),
             resolver: None,
             store: None,
             installer: None,
@@ -148,7 +151,34 @@ impl BuildEnvironment {
         self.context.output_path()
     }
 
-    /// Get the package name
+    /// Check if this is a Python package based on build metadata
+    #[must_use]
+    pub fn is_python_package(&self) -> bool {
+        self.build_metadata.contains_key("PYTHON_WHEEL_PATH")
+            || self.build_metadata.contains_key("PYTHON_BUILD_BACKEND")
+    }
+
+    /// Get extra environment variable (checks build_metadata first, then env_vars)
+    #[must_use]
+    pub fn get_extra_env(&self, key: &str) -> Option<String> {
+        self.build_metadata
+            .get(key)
+            .cloned()
+            .or_else(|| self.env_vars.get(key).cloned())
+    }
+
+    /// Set build metadata
+    pub fn set_build_metadata(&mut self, key: String, value: String) {
+        self.build_metadata.insert(key, value);
+    }
+
+    /// Get all build metadata
+    #[must_use]
+    pub fn build_metadata(&self) -> &HashMap<String, String> {
+        &self.build_metadata
+    }
+
+    /// Get package name
     #[must_use]
     pub fn package_name(&self) -> &str {
         &self.context.name

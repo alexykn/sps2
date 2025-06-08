@@ -1,5 +1,7 @@
 //! Integration tests for state management
 
+mod venv_tracking;
+
 #[cfg(test)]
 mod tests {
     use sps2_state::*;

@@ -60,6 +60,11 @@ pub async fn execute_recipe(
     // Check if install was requested
     let install_requested = api.is_install_requested();
 
+    // Transfer build metadata from API to environment
+    for (key, value) in api.build_metadata() {
+        environment.set_build_metadata(key.clone(), value.clone());
+    }
+
     Ok((result.0, result.1, result.2, install_requested))
 }
 

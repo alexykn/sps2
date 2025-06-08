@@ -518,6 +518,38 @@ impl StateManager {
         Ok(())
     }
 
+    /// Add package reference with venv path
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations fail.
+    pub async fn add_package_ref_with_venv(
+        &self,
+        package_ref: &PackageRef,
+        venv_path: Option<&str>,
+    ) -> Result<(), Error> {
+        let mut tx = self.pool.begin().await?;
+
+        // Add package to the state with venv path
+        queries::add_package_with_venv(
+            &mut tx,
+            &package_ref.state_id,
+            &package_ref.package_id.name,
+            &package_ref.package_id.version.to_string(),
+            &package_ref.hash,
+            package_ref.size,
+            venv_path,
+        )
+        .await?;
+
+        // Ensure store reference exists and increment it
+        queries::get_or_create_store_ref(&mut tx, &package_ref.hash, package_ref.size).await?;
+        queries::increment_store_ref(&mut tx, &package_ref.hash).await?;
+
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// Add package reference with an existing transaction
     ///
     /// # Errors
@@ -536,6 +568,36 @@ impl StateManager {
             &package_ref.package_id.version.to_string(),
             &package_ref.hash,
             package_ref.size,
+        )
+        .await?;
+
+        // Ensure store reference exists and increment it
+        queries::get_or_create_store_ref(tx, &package_ref.hash, package_ref.size).await?;
+        queries::increment_store_ref(tx, &package_ref.hash).await?;
+
+        Ok(())
+    }
+
+    /// Add package reference with venv path using an existing transaction
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations fail.
+    pub async fn add_package_ref_with_venv_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        package_ref: &PackageRef,
+        venv_path: Option<&str>,
+    ) -> Result<(), Error> {
+        // Add package to the state with venv path
+        queries::add_package_with_venv(
+            tx,
+            &package_ref.state_id,
+            &package_ref.package_id.name,
+            &package_ref.package_id.version.to_string(),
+            &package_ref.hash,
+            package_ref.size,
+            venv_path,
         )
         .await?;
 
@@ -673,6 +735,63 @@ impl StateManager {
     /// Returns an error if the database transaction cannot be started.
     pub async fn begin_transaction(&self) -> Result<sqlx::Transaction<'_, sqlx::Sqlite>, Error> {
         Ok(self.pool.begin().await?)
+    }
+
+    /// Get venv path for a package
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    pub async fn get_package_venv_path(
+        &self,
+        package_name: &str,
+        package_version: &str,
+    ) -> Result<Option<String>, Error> {
+        let mut tx = self.pool.begin().await?;
+        let state_id = queries::get_active_state(&mut tx).await?;
+        let venv_path =
+            queries::get_package_venv_path(&mut tx, &state_id, package_name, package_version)
+                .await?;
+        tx.commit().await?;
+        Ok(venv_path)
+    }
+
+    /// Get all packages with venvs in the current state
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    pub async fn get_packages_with_venvs(&self) -> Result<Vec<(String, String, String)>, Error> {
+        let mut tx = self.pool.begin().await?;
+        let state_id = queries::get_active_state(&mut tx).await?;
+        let packages = queries::get_packages_with_venvs(&mut tx, &state_id).await?;
+        tx.commit().await?;
+        Ok(packages)
+    }
+
+    /// Update venv path for a package
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database update fails.
+    pub async fn update_package_venv_path(
+        &self,
+        package_name: &str,
+        package_version: &str,
+        venv_path: Option<&str>,
+    ) -> Result<(), Error> {
+        let mut tx = self.pool.begin().await?;
+        let state_id = queries::get_active_state(&mut tx).await?;
+        queries::update_package_venv_path(
+            &mut tx,
+            &state_id,
+            package_name,
+            package_version,
+            venv_path,
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(())
     }
 
     /// Create state with transaction

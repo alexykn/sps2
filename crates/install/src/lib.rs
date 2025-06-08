@@ -49,8 +49,12 @@ mod installer;
 mod operations;
 mod parallel;
 mod pipeline;
+mod python;
 mod staging;
 pub mod validation;
+
+#[cfg(test)]
+mod python_test;
 
 pub use atomic::{AtomicInstaller, StateTransition};
 pub use installer::{InstallConfig, Installer};
@@ -59,6 +63,7 @@ pub use parallel::{ExecutionContext, ParallelExecutor};
 pub use pipeline::batch::{BatchResult, BatchStats};
 pub use pipeline::config::PipelineConfig;
 pub use pipeline::PipelineMaster;
+pub use python::{is_python_package, PythonVenvManager};
 pub use staging::{StagingDirectory, StagingGuard, StagingManager};
 pub use validation::{
     validate_sp_file, validate_tar_archive_content, PackageFormat, ValidationResult,

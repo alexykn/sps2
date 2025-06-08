@@ -171,6 +171,23 @@ pub struct DepEdge {
     pub kind: DepKind,
 }
 
+/// Python-specific metadata for packages that use Python
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PythonPackageMetadata {
+    /// The Python version requirement (e.g., ">=3.9,<3.12")
+    pub requires_python: String,
+
+    /// Path within the package to the built wheel file
+    pub wheel_file: String,
+
+    /// Path within the package to the locked requirements file
+    pub requirements_file: String,
+
+    /// Mapping of executable names to their Python entry points
+    /// e.g., {"black": "black:main", "blackd": "blackd:main"}
+    pub executables: std::collections::HashMap<String, String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -194,5 +211,26 @@ mod tests {
     fn test_package_id_display() {
         let id = PackageId::new("jq", Version::parse("1.7.0").unwrap());
         assert_eq!(id.to_string(), "jq-1.7.0");
+    }
+
+    #[test]
+    fn test_python_metadata() {
+        use std::collections::HashMap;
+
+        let mut executables = HashMap::new();
+        executables.insert("myapp".to_string(), "myapp.cli:main".to_string());
+
+        let metadata = PythonPackageMetadata {
+            requires_python: ">=3.9,<3.12".to_string(),
+            wheel_file: "python/myapp-1.0.0-py3-none-any.whl".to_string(),
+            requirements_file: "python/requirements.lock.txt".to_string(),
+            executables,
+        };
+
+        assert_eq!(metadata.requires_python, ">=3.9,<3.12");
+        assert_eq!(
+            metadata.executables.get("myapp"),
+            Some(&"myapp.cli:main".to_string())
+        );
     }
 }

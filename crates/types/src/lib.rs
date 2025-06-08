@@ -19,7 +19,8 @@ pub use format::{
     PackageFormatVersionError,
 };
 pub use package::{
-    DepEdge, DepKind, PackageId, PackageInfo, PackageSpec, PackageStatus, SearchResult,
+    DepEdge, DepKind, PackageId, PackageInfo, PackageSpec, PackageStatus, PythonPackageMetadata,
+    SearchResult,
 };
 pub use reports::{BuildReport, InstallReport, PackageChange};
 pub use semver::Version;

@@ -49,6 +49,7 @@ pub struct Package {
     pub hash: String,
     pub size: i64,
     pub installed_at: i64,
+    pub venv_path: Option<String>,
 }
 
 impl Package {

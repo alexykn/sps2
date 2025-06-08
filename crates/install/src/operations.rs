@@ -340,24 +340,14 @@ impl UninstallOperation {
             packages_to_remove.extend(Self::find_orphaned_dependencies(packages));
         }
 
-        // Start database transaction
+        // Get current packages to build PackageRef list for removal
         let mut tx = self.state_manager.begin_transaction().await?;
-
-        // Create new state record
-        let new_state_id = transition.to;
-        sps2_state::queries::create_state(
-            &mut tx,
-            &new_state_id,
-            Some(&transition.from),
-            "uninstall",
-        )
-        .await?;
-
-        // Copy all existing packages to new state except the ones being removed
         let current_packages =
             sps2_state::queries::get_state_packages(&mut tx, &transition.from).await?;
+        tx.commit().await?;
 
-        let mut result = InstallResult::new(new_state_id);
+        let mut result = InstallResult::new(transition.to);
+        let mut packages_removed_refs = Vec::new();
 
         for package in &current_packages {
             let should_remove = packages_to_remove
@@ -365,27 +355,32 @@ impl UninstallOperation {
                 .any(|pkg| pkg.name == package.name);
 
             if should_remove {
-                // Mark as removed and decrement store references
+                // Create PackageRef for removal
                 let package_id = sps2_resolver::PackageId::new(
                     package.name.clone(),
                     sps2_types::Version::parse(&package.version)
                         .map_err(|e| Error::internal(format!("invalid version: {e}")))?,
                 );
-                result.add_removed(package_id);
 
-                // Decrement store reference for the package hash
-                sps2_state::queries::decrement_store_ref(&mut tx, &package.hash).await?;
-            } else {
-                // Add to new state
-                sps2_state::queries::add_package(
-                    &mut tx,
-                    &new_state_id,
-                    &package.name,
-                    &package.version,
-                    &package.hash,
-                    package.size,
-                )
-                .await?;
+                let package_ref = sps2_state::PackageRef {
+                    state_id: transition.from,
+                    package_id: package_id.clone(),
+                    hash: package.hash.clone(),
+                    size: package.size,
+                };
+                packages_removed_refs.push(package_ref);
+
+                result.add_removed(package_id.clone());
+
+                // Check if package has an associated venv and remove it
+                if let Some(venv_path) = self
+                    .state_manager
+                    .get_package_venv_path(&package.name, &package.version)
+                    .await?
+                {
+                    self.remove_package_venv(&package_id, &venv_path, context)
+                        .await?;
+                }
             }
         }
 
@@ -393,13 +388,10 @@ impl UninstallOperation {
         self.remove_package_hardlinks(&transition, &packages_to_remove)
             .await?;
 
-        // Commit the state transition
+        // Commit the state transition - this handles all database operations
         self.state_manager
-            .commit_transition(transition, Vec::new(), Vec::new())
+            .commit_transition(transition, Vec::new(), packages_removed_refs)
             .await?;
-
-        // Commit database transaction
-        tx.commit().await?;
 
         Ok(result)
     }
@@ -470,6 +462,50 @@ impl UninstallOperation {
             .into_iter()
             .map(std::path::PathBuf::from)
             .collect())
+    }
+
+    /// Remove Python virtual environment for a package
+    async fn remove_package_venv(
+        &self,
+        package_id: &PackageId,
+        venv_path: &str,
+        context: &UninstallContext,
+    ) -> Result<(), Error> {
+        let venv_path = std::path::Path::new(venv_path);
+
+        // Send event about venv removal
+        Self::send_event(
+            self,
+            context,
+            Event::PythonVenvRemoving {
+                package: package_id.name.clone(),
+                version: package_id.version.clone(),
+                venv_path: venv_path.display().to_string(),
+            },
+        );
+
+        // Remove the venv directory if it exists
+        if venv_path.exists() {
+            tokio::fs::remove_dir_all(venv_path).await.map_err(|e| {
+                InstallError::FilesystemError {
+                    operation: "remove_venv".to_string(),
+                    path: venv_path.display().to_string(),
+                    message: e.to_string(),
+                }
+            })?;
+
+            Self::send_event(
+                self,
+                context,
+                Event::PythonVenvRemoved {
+                    package: package_id.name.clone(),
+                    version: package_id.version.clone(),
+                    venv_path: venv_path.display().to_string(),
+                },
+            );
+        }
+
+        Ok(())
     }
 
     /// Find orphaned dependencies that can be auto-removed

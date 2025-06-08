@@ -73,7 +73,7 @@ pub async fn get_state_packages(
 
     let packages = query_as!(
         Package,
-        "SELECT id, state_id, name, version, hash, size, installed_at
+        "SELECT id, state_id, name, version, hash, size, installed_at, venv_path
          FROM packages WHERE state_id = ?",
         id_str
     )
@@ -104,6 +104,36 @@ pub async fn add_package(
         hash,
         size,
         now
+    )
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(result.last_insert_rowid())
+}
+
+/// Add a package to a state with venv path
+pub async fn add_package_with_venv(
+    tx: &mut Transaction<'_, Sqlite>,
+    state_id: &StateId,
+    name: &str,
+    version: &str,
+    hash: &str,
+    size: i64,
+    venv_path: Option<&str>,
+) -> Result<i64, Error> {
+    let id_str = state_id.to_string();
+    let now = chrono::Utc::now().timestamp();
+
+    let result = query!(
+        "INSERT INTO packages (state_id, name, version, hash, size, installed_at, venv_path)
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
+        id_str,
+        name,
+        version,
+        hash,
+        size,
+        now,
+        venv_path
     )
     .execute(&mut **tx)
     .await?;
@@ -409,6 +439,77 @@ pub async fn insert_gc_log(
         now,
         items_removed,
         space_freed
+    )
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(())
+}
+
+/// Get the venv path for a package
+pub async fn get_package_venv_path(
+    tx: &mut Transaction<'_, Sqlite>,
+    state_id: &StateId,
+    package_name: &str,
+    package_version: &str,
+) -> Result<Option<String>, Error> {
+    let id_str = state_id.to_string();
+
+    let row = query!(
+        "SELECT venv_path FROM packages 
+         WHERE state_id = ? AND name = ? AND version = ?",
+        id_str,
+        package_name,
+        package_version
+    )
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    Ok(row.and_then(|r| r.venv_path))
+}
+
+/// Get all packages with venvs in a state
+pub async fn get_packages_with_venvs(
+    tx: &mut Transaction<'_, Sqlite>,
+    state_id: &StateId,
+) -> Result<Vec<(String, String, String)>, Error> {
+    let id_str = state_id.to_string();
+
+    let rows = query!(
+        "SELECT name, version, venv_path 
+         FROM packages 
+         WHERE state_id = ? AND venv_path IS NOT NULL",
+        id_str
+    )
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .filter_map(|r| {
+            r.venv_path
+                .map(|venv| (r.name, r.version, venv))
+        })
+        .collect())
+}
+
+/// Update venv path for a package
+pub async fn update_package_venv_path(
+    tx: &mut Transaction<'_, Sqlite>,
+    state_id: &StateId,
+    package_name: &str,
+    package_version: &str,
+    venv_path: Option<&str>,
+) -> Result<(), Error> {
+    let id_str = state_id.to_string();
+
+    query!(
+        "UPDATE packages SET venv_path = ?
+         WHERE state_id = ? AND name = ? AND version = ?",
+        venv_path,
+        id_str,
+        package_name,
+        package_version
     )
     .execute(&mut **tx)
     .await?;

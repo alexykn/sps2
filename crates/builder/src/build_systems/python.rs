@@ -74,24 +74,52 @@ impl PythonBuildSystem {
         .into())
     }
 
+    /// Check if uv is available
+    async fn check_uv_available(&self, ctx: &BuildSystemContext) -> Result<bool, Error> {
+        let result = ctx.execute("uv", &["--version"], None).await;
+        Ok(result.map(|r| r.success).unwrap_or(false))
+    }
+
     /// Create virtual environment for isolated builds
     async fn create_venv(&self, ctx: &BuildSystemContext) -> Result<PathBuf, Error> {
         let venv_path = ctx.build_dir.join("venv");
+        let use_uv = self.check_uv_available(ctx).await?;
 
-        // Create virtual environment
-        let result = ctx
-            .execute(
-                "python3",
-                &["-m", "venv", &venv_path.display().to_string()],
-                Some(&ctx.source_dir),
-            )
-            .await?;
+        if use_uv {
+            // Use uv for faster venv creation
+            let result = ctx
+                .execute(
+                    "uv",
+                    &["venv", &venv_path.display().to_string()],
+                    Some(&ctx.source_dir),
+                )
+                .await?;
 
-        if !result.success {
-            return Err(BuildError::ConfigureFailed {
-                message: format!("Failed to create virtual environment: {}", result.stderr),
+            if !result.success {
+                return Err(BuildError::ConfigureFailed {
+                    message: format!(
+                        "Failed to create virtual environment with uv: {}",
+                        result.stderr
+                    ),
+                }
+                .into());
             }
-            .into());
+        } else {
+            // Fall back to standard venv
+            let result = ctx
+                .execute(
+                    "python3",
+                    &["-m", "venv", &venv_path.display().to_string()],
+                    Some(&ctx.source_dir),
+                )
+                .await?;
+
+            if !result.success {
+                return Err(BuildError::ConfigureFailed {
+                    message: format!("Failed to create virtual environment: {}", result.stderr),
+                }
+                .into());
+            }
         }
 
         Ok(venv_path)
@@ -124,6 +152,37 @@ impl PythonBuildSystem {
         args.extend(user_args.iter().cloned());
 
         args
+    }
+
+    /// Build wheel using uv
+    async fn build_wheel_uv(&self, ctx: &BuildSystemContext) -> Result<PathBuf, Error> {
+        let wheel_dir = ctx.build_dir.join("dist");
+        fs::create_dir_all(&wheel_dir).await?;
+
+        // Build wheel using uv
+        let result = ctx
+            .execute(
+                "uv",
+                &[
+                    "pip",
+                    "wheel",
+                    ".",
+                    "--wheel-dir",
+                    &wheel_dir.display().to_string(),
+                ],
+                Some(&ctx.source_dir),
+            )
+            .await?;
+
+        if !result.success {
+            return Err(BuildError::CompilationFailed {
+                message: format!("Failed to build wheel with uv: {}", result.stderr),
+            }
+            .into());
+        }
+
+        // Find the built wheel
+        self.find_wheel_in_dir(&wheel_dir).await
     }
 
     /// Build wheel using PEP 517
@@ -195,7 +254,12 @@ impl PythonBuildSystem {
         }
 
         // Find the built wheel
-        let mut entries = fs::read_dir(&wheel_dir).await?;
+        self.find_wheel_in_dir(&wheel_dir).await
+    }
+
+    /// Find wheel file in directory
+    async fn find_wheel_in_dir(&self, dir: &Path) -> Result<PathBuf, Error> {
+        let mut entries = fs::read_dir(dir).await?;
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
             if path.extension().and_then(|s| s.to_str()) == Some("whl") {
@@ -266,6 +330,229 @@ enum BuildBackend {
     Pep517,     // Generic PEP 517 backend
 }
 
+impl PythonBuildSystem {
+    /// Generate lockfile for reproducible builds
+    async fn generate_lockfile(
+        &self,
+        ctx: &BuildSystemContext,
+        use_uv: bool,
+    ) -> Result<PathBuf, Error> {
+        let lockfile_path = ctx.build_dir.join("requirements.lock.txt");
+
+        if use_uv {
+            // Use uv to generate lockfile
+            let result = ctx
+                .execute(
+                    "uv",
+                    &[
+                        "pip",
+                        "compile",
+                        "--output-file",
+                        &lockfile_path.display().to_string(),
+                        "pyproject.toml",
+                    ],
+                    Some(&ctx.source_dir),
+                )
+                .await?;
+
+            if !result.success {
+                // Try requirements.txt if pyproject.toml fails
+                let req_txt = ctx.source_dir.join("requirements.txt");
+                if req_txt.exists() {
+                    let result = ctx
+                        .execute(
+                            "uv",
+                            &[
+                                "pip",
+                                "compile",
+                                "--output-file",
+                                &lockfile_path.display().to_string(),
+                                "requirements.txt",
+                            ],
+                            Some(&ctx.source_dir),
+                        )
+                        .await?;
+
+                    if !result.success {
+                        return Err(BuildError::CompilationFailed {
+                            message: format!(
+                                "Failed to generate lockfile with uv: {}",
+                                result.stderr
+                            ),
+                        }
+                        .into());
+                    }
+                } else {
+                    return Err(BuildError::CompilationFailed {
+                        message: format!("Failed to generate lockfile with uv: {}", result.stderr),
+                    }
+                    .into());
+                }
+            }
+        } else {
+            // Fall back to pip-compile if available
+            let venv_path = if let Ok(extra_env) = ctx.extra_env.read() {
+                extra_env
+                    .get("PYTHON_VENV_PATH")
+                    .map(|p| PathBuf::from(p))
+                    .unwrap_or_else(|| ctx.build_dir.join("venv"))
+            } else {
+                ctx.build_dir.join("venv")
+            };
+
+            let pip_path = venv_path.join("bin/pip");
+
+            // Install pip-tools
+            let _ = ctx
+                .execute(
+                    &pip_path.display().to_string(),
+                    &["install", "pip-tools"],
+                    Some(&ctx.source_dir),
+                )
+                .await?;
+
+            // Use pip-compile
+            let pip_compile = venv_path.join("bin/pip-compile");
+            let result = ctx
+                .execute(
+                    &pip_compile.display().to_string(),
+                    &[
+                        "--output-file",
+                        &lockfile_path.display().to_string(),
+                        "pyproject.toml",
+                    ],
+                    Some(&ctx.source_dir),
+                )
+                .await?;
+
+            if !result.success {
+                return Err(BuildError::CompilationFailed {
+                    message: format!("Failed to generate lockfile: {}", result.stderr),
+                }
+                .into());
+            }
+        }
+
+        Ok(lockfile_path)
+    }
+
+    /// Extract entry points from wheel
+    async fn extract_entry_points(
+        &self,
+        wheel_path: &Path,
+    ) -> Result<HashMap<String, String>, Error> {
+        use std::io::Read;
+        use zip::ZipArchive;
+
+        let mut executables = HashMap::new();
+
+        let file = std::fs::File::open(wheel_path).map_err(|e| BuildError::CompilationFailed {
+            message: format!("Failed to open wheel file: {}", e),
+        })?;
+
+        let mut archive = ZipArchive::new(file).map_err(|e| BuildError::CompilationFailed {
+            message: format!("Failed to read wheel archive: {}", e),
+        })?;
+
+        // Find .dist-info/entry_points.txt
+        for i in 0..archive.len() {
+            let mut file = archive
+                .by_index(i)
+                .map_err(|e| BuildError::CompilationFailed {
+                    message: format!("Failed to read wheel entry: {}", e),
+                })?;
+
+            if file.name().ends_with(".dist-info/entry_points.txt") {
+                let mut contents = String::new();
+                file.read_to_string(&mut contents)
+                    .map_err(|e| BuildError::CompilationFailed {
+                        message: format!("Failed to read entry_points.txt: {}", e),
+                    })?;
+
+                // Parse entry points
+                let mut in_console_scripts = false;
+                for line in contents.lines() {
+                    let trimmed = line.trim();
+                    if trimmed == "[console_scripts]" {
+                        in_console_scripts = true;
+                        continue;
+                    }
+                    if trimmed.starts_with('[') {
+                        in_console_scripts = false;
+                        continue;
+                    }
+                    if in_console_scripts && trimmed.contains('=') {
+                        let parts: Vec<&str> = trimmed.splitn(2, '=').collect();
+                        if parts.len() == 2 {
+                            executables
+                                .insert(parts[0].trim().to_string(), parts[1].trim().to_string());
+                        }
+                    }
+                }
+                break;
+            }
+        }
+
+        Ok(executables)
+    }
+
+    /// Extract Python version requirement from pyproject.toml
+    async fn extract_requires_python(&self, source_dir: &Path) -> Result<String, Error> {
+        let pyproject_path = source_dir.join("pyproject.toml");
+
+        if pyproject_path.exists() {
+            let content = fs::read_to_string(&pyproject_path).await?;
+
+            // Simple parsing - look for requires-python
+            for line in content.lines() {
+                if line.contains("requires-python") {
+                    if let Some(value) = line.split('=').nth(1) {
+                        // Remove quotes and whitespace
+                        let cleaned = value.trim().trim_matches('"').trim_matches('\'');
+                        return Ok(cleaned.to_string());
+                    }
+                }
+            }
+        }
+
+        // Default to current Python 3 requirement
+        Ok(">=3.8".to_string())
+    }
+
+    /// Remove direct_url.json files that contain hardcoded paths
+    async fn remove_direct_url_files(&self, prefix_path: &Path) -> Result<(), Error> {
+        let lib_dir = prefix_path.join("lib");
+        if !lib_dir.exists() {
+            return Ok(());
+        }
+
+        let mut stack = vec![lib_dir];
+        while let Some(dir) = stack.pop() {
+            let mut entries = fs::read_dir(&dir).await?;
+            while let Some(entry) = entries.next_entry().await? {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path.clone());
+                    // Check for dist-info directories
+                    if path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|n| n.ends_with(".dist-info"))
+                        .unwrap_or(false)
+                    {
+                        let direct_url = path.join("direct_url.json");
+                        if direct_url.exists() {
+                            fs::remove_file(&direct_url).await?;
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
 impl Default for PythonBuildSystem {
     fn default() -> Self {
         Self::new()
@@ -326,15 +613,40 @@ impl BuildSystem for PythonBuildSystem {
     }
 
     async fn build(&self, ctx: &BuildSystemContext, _args: &[String]) -> Result<(), Error> {
-        // Build wheel using PEP 517
-        let wheel_path = self.build_wheel_pep517(ctx).await?;
+        // Check if uv is available
+        let use_uv = self.check_uv_available(ctx).await?;
 
-        // Store wheel path for install phase
+        // Build wheel
+        let wheel_path = if use_uv {
+            self.build_wheel_uv(ctx).await?
+        } else {
+            self.build_wheel_pep517(ctx).await?
+        };
+
+        // Generate lockfile
+        let lockfile_path = self.generate_lockfile(ctx, use_uv).await?;
+
+        // Extract entry points from wheel
+        let entry_points = self.extract_entry_points(&wheel_path).await?;
+
+        // Extract Python version requirement
+        let requires_python = self.extract_requires_python(&ctx.source_dir).await?;
+
+        // Store all metadata for install phase
         if let Ok(mut extra_env) = ctx.extra_env.write() {
             extra_env.insert(
                 "PYTHON_WHEEL_PATH".to_string(),
                 wheel_path.display().to_string(),
             );
+            extra_env.insert(
+                "PYTHON_LOCKFILE_PATH".to_string(),
+                lockfile_path.display().to_string(),
+            );
+            extra_env.insert(
+                "PYTHON_ENTRY_POINTS".to_string(),
+                serde_json::to_string(&entry_points).unwrap_or_else(|_| "{}".to_string()),
+            );
+            extra_env.insert("PYTHON_REQUIRES_VERSION".to_string(), requires_python);
         }
 
         Ok(())
@@ -463,6 +775,9 @@ impl BuildSystem for PythonBuildSystem {
         if scripts_dir.exists() {
             self.fix_shebangs(&scripts_dir, ctx).await?;
         }
+
+        // Remove direct_url.json files which contain hardcoded paths
+        self.remove_direct_url_files(&prefix_in_staging).await?;
 
         Ok(())
     }
