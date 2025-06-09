@@ -97,12 +97,12 @@ if [[ -f "target/release/sps2" ]]; then
     chmod 755 "$LIVE_DIR/bin/sps2"
     set_ownership "$LIVE_DIR/bin/sps2"
     echo -e "${GREEN}sps2 installed to $LIVE_DIR/bin/${NC}"
-elif [[ -f "target/debug/sps2" ]]; then
-    echo "Installing sps2 binary (debug build)..."
-    cp target/debug/sps2 "$LIVE_DIR/bin/"
+elif [[ -f "target/aarch64-apple-darwin/release/sps2" ]]; then
+    echo "Installing sps2 binary (aarch64)..."
+    cp target/aarch64-apple-darwin/release/sps2 "$LIVE_DIR/bin/"
     chmod 755 "$LIVE_DIR/bin/sps2"
     set_ownership "$LIVE_DIR/bin/sps2"
-    echo -e "${YELLOW}sps2 (debug) installed to $LIVE_DIR/bin/${NC}"
+    echo -e "${YELLOW}sps2 (aarch64) installed to $LIVE_DIR/bin/${NC}"
 else
     echo -e "${YELLOW}sps2 binary not found. Run 'cargo build --release' first${NC}"
 fi

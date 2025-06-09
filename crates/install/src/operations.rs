@@ -6,8 +6,8 @@ use crate::{
 };
 use sps2_errors::{Error, InstallError};
 use sps2_events::Event;
-use sps2_resolver::{PackageId, ResolutionContext, Resolver};
-use sps2_state::{manager::StateTransition, StateManager};
+use sps2_resolver::{ResolutionContext, Resolver};
+use sps2_state::StateManager;
 use sps2_store::PackageStore;
 use sps2_types::PackageSpec;
 // HashMap import removed as it's not used in this module
@@ -230,13 +230,18 @@ impl InstallOperation {
 pub struct UninstallOperation {
     /// State manager
     state_manager: StateManager,
+    /// Package store
+    store: PackageStore,
 }
 
 impl UninstallOperation {
     /// Create new uninstall operation
     #[must_use]
-    pub fn new(state_manager: StateManager, _store: PackageStore) -> Self {
-        Self { state_manager }
+    pub fn new(state_manager: StateManager, store: PackageStore) -> Self {
+        Self {
+            state_manager,
+            store,
+        }
     }
 
     /// Execute uninstallation
@@ -301,13 +306,15 @@ impl UninstallOperation {
             return Ok(result);
         }
 
-        // Perform atomic uninstallation
+        // Perform atomic uninstallation using AtomicInstaller
         let package_ids: Vec<sps2_resolver::PackageId> = packages_to_remove
             .iter()
             .map(|pkg| sps2_resolver::PackageId::new(pkg.name.clone(), pkg.version()))
             .collect();
 
-        let result = self.remove_packages(&package_ids, &context).await?;
+        let mut atomic_installer =
+            AtomicInstaller::new(self.state_manager.clone(), self.store.clone()).await?;
+        let result = atomic_installer.uninstall(&package_ids, &context).await?;
 
         Self::send_event(
             self,
@@ -323,261 +330,6 @@ impl UninstallOperation {
         );
 
         Ok(result)
-    }
-
-    /// Remove packages from system using atomic state transitions
-    async fn remove_packages(
-        &self,
-        packages: &[PackageId],
-        context: &UninstallContext,
-    ) -> Result<InstallResult, Error> {
-        // Begin state transition
-        let transition = self.state_manager.begin_transition("uninstall").await?;
-
-        // Get the packages that will be removed (including autoremove candidates)
-        let mut packages_to_remove = packages.to_vec();
-
-        if context.autoremove {
-            // Find orphaned dependencies - packages that are only depended on by packages being removed
-            packages_to_remove.extend(Self::find_orphaned_dependencies(packages));
-        }
-
-        // Get current packages to build PackageRef list for removal
-        let mut tx = self.state_manager.begin_transaction().await?;
-        let current_packages =
-            sps2_state::queries::get_state_packages(&mut tx, &transition.from).await?;
-        tx.commit().await?;
-
-        let mut result = InstallResult::new(transition.to);
-        let mut packages_removed_refs = Vec::new();
-
-        for package in &current_packages {
-            let should_remove = packages_to_remove
-                .iter()
-                .any(|pkg| pkg.name == package.name);
-
-            if should_remove {
-                // Create PackageRef for removal
-                let package_id = sps2_resolver::PackageId::new(
-                    package.name.clone(),
-                    sps2_types::Version::parse(&package.version)
-                        .map_err(|e| Error::internal(format!("invalid version: {e}")))?,
-                );
-
-                let package_ref = sps2_state::PackageRef {
-                    state_id: transition.from,
-                    package_id: package_id.clone(),
-                    hash: package.hash.clone(),
-                    size: package.size,
-                };
-                packages_removed_refs.push(package_ref);
-
-                result.add_removed(package_id.clone());
-
-                // Check if package has an associated venv and remove it
-                if let Some(venv_path) = self
-                    .state_manager
-                    .get_package_venv_path(&package.name, &package.version)
-                    .await?
-                {
-                    self.remove_package_venv(&package_id, &venv_path, context)
-                        .await?;
-                }
-            }
-        }
-
-        // Remove hard links from staging directory
-        self.remove_package_hardlinks(&transition, &packages_to_remove)
-            .await?;
-
-        // Commit the state transition - this handles all database operations
-        self.state_manager
-            .commit_transition(transition, Vec::new(), packages_removed_refs)
-            .await?;
-
-        Ok(result)
-    }
-
-    /// Remove hard links for packages from staging directory
-    async fn remove_package_hardlinks(
-        &self,
-        transition: &StateTransition,
-        packages: &[PackageId],
-    ) -> Result<(), Error> {
-        for package in packages {
-            // Get all files belonging to this package from the database
-            let package_files = self.get_package_files(package).await?;
-
-            // Group files by type for proper removal order
-            let mut symlinks = Vec::new();
-            let mut regular_files = Vec::new();
-            let mut directories = Vec::new();
-            let mut package_dirs = std::collections::HashSet::new();
-
-            for file_path in package_files {
-                let staging_file = transition.staging_path.join(&file_path);
-
-                // Track package directories
-                let file_path_str = file_path.to_string_lossy();
-                if file_path_str.contains('/') {
-                    let parts: Vec<&str> = file_path_str.split('/').collect();
-                    if parts.len() >= 2 && parts[0].contains('-') {
-                        // This looks like a package directory (e.g., "curl-8.5.0/bin/curl")
-                        package_dirs.insert(parts[0].to_string());
-                    }
-                }
-
-                if staging_file.exists() {
-                    // Check if it's a symlink
-                    let metadata = tokio::fs::symlink_metadata(&staging_file).await?;
-                    if metadata.is_symlink() {
-                        symlinks.push(file_path);
-                    } else if staging_file.is_dir() {
-                        directories.push(file_path);
-                    } else {
-                        regular_files.push(file_path);
-                    }
-                }
-            }
-
-            // Remove in order: symlinks first, then files, then directories
-            // This ensures we don't try to remove non-empty directories
-
-            // 1. Remove symlinks (e.g., bin/curl -> ../curl-8.5.0/bin/curl)
-            for file_path in symlinks {
-                let staging_file = transition.staging_path.join(&file_path);
-                if staging_file.exists() {
-                    tokio::fs::remove_file(&staging_file).await.map_err(|e| {
-                        sps2_errors::InstallError::FilesystemError {
-                            operation: "remove_symlink".to_string(),
-                            path: staging_file.display().to_string(),
-                            message: e.to_string(),
-                        }
-                    })?;
-                }
-            }
-
-            // 2. Remove regular files
-            for file_path in regular_files {
-                let staging_file = transition.staging_path.join(&file_path);
-                if staging_file.exists() {
-                    tokio::fs::remove_file(&staging_file).await.map_err(|e| {
-                        sps2_errors::InstallError::FilesystemError {
-                            operation: "remove_file".to_string(),
-                            path: staging_file.display().to_string(),
-                            message: e.to_string(),
-                        }
-                    })?;
-                }
-            }
-
-            // 3. Remove directories in reverse order (deepest first)
-            directories.sort_by(|a, b| b.cmp(a)); // Reverse lexicographic order
-            for file_path in directories {
-                let staging_file = transition.staging_path.join(&file_path);
-                if staging_file.exists() {
-                    // Try to remove directory if it's empty
-                    if let Ok(mut entries) = tokio::fs::read_dir(&staging_file).await {
-                        if entries.next_entry().await?.is_none() {
-                            tokio::fs::remove_dir(&staging_file).await.map_err(|e| {
-                                sps2_errors::InstallError::FilesystemError {
-                                    operation: "remove_dir".to_string(),
-                                    path: staging_file.display().to_string(),
-                                    message: e.to_string(),
-                                }
-                            })?;
-                        }
-                    }
-                }
-            }
-
-            // 4. Finally, remove the package directories themselves
-            for package_dir in package_dirs {
-                let package_dir_path = transition.staging_path.join(&package_dir);
-                if package_dir_path.exists() {
-                    // The package directory should be empty now
-                    if let Err(_e) = tokio::fs::remove_dir(&package_dir_path).await {
-                        // It's okay if the directory is not empty or doesn't exist
-                        // This might happen if files were manually added
-                        // Just continue - not critical
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// Get file paths for a package from the active state
-    async fn get_package_files(
-        &self,
-        package: &PackageId,
-    ) -> Result<Vec<std::path::PathBuf>, Error> {
-        let mut tx = self.state_manager.begin_transaction().await?;
-
-        let file_paths = sps2_state::queries::get_active_package_files(
-            &mut tx,
-            &package.name,
-            &package.version.to_string(),
-        )
-        .await?;
-
-        tx.commit().await?;
-
-        Ok(file_paths
-            .into_iter()
-            .map(std::path::PathBuf::from)
-            .collect())
-    }
-
-    /// Remove Python virtual environment for a package
-    async fn remove_package_venv(
-        &self,
-        package_id: &PackageId,
-        venv_path: &str,
-        context: &UninstallContext,
-    ) -> Result<(), Error> {
-        let venv_path = std::path::Path::new(venv_path);
-
-        // Send event about venv removal
-        Self::send_event(
-            self,
-            context,
-            Event::PythonVenvRemoving {
-                package: package_id.name.clone(),
-                version: package_id.version.clone(),
-                venv_path: venv_path.display().to_string(),
-            },
-        );
-
-        // Remove the venv directory if it exists
-        if venv_path.exists() {
-            tokio::fs::remove_dir_all(venv_path).await.map_err(|e| {
-                InstallError::FilesystemError {
-                    operation: "remove_venv".to_string(),
-                    path: venv_path.display().to_string(),
-                    message: e.to_string(),
-                }
-            })?;
-
-            Self::send_event(
-                self,
-                context,
-                Event::PythonVenvRemoved {
-                    package: package_id.name.clone(),
-                    version: package_id.version.clone(),
-                    venv_path: venv_path.display().to_string(),
-                },
-            );
-        }
-
-        Ok(())
-    }
-
-    /// Find orphaned dependencies that can be auto-removed
-    fn find_orphaned_dependencies(_removing_packages: &[PackageId]) -> Vec<PackageId> {
-        // TODO: Implement dependency analysis
-        // For now return empty list
-        Vec::new()
     }
 
     /// Send event if context has event sender

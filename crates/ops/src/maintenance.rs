@@ -16,8 +16,8 @@ pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
 
     ctx.tx.send(Event::CleanupStarting).ok();
 
-    // Clean up old states (keep last 10)
-    let cleaned_states = ctx.state.cleanup_old_states(10).await?;
+    // Clean up old states (keep last 10, remove states older than 30 days)
+    let cleanup_result = ctx.state.cleanup(10, 30).await?;
 
     // Run garbage collection on store
     let cleaned_packages = ctx.state.gc_store_with_removal(&ctx.store).await?;
@@ -25,13 +25,12 @@ pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
     let duration = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
     let message = format!(
         "Cleaned up {} old states and {} orphaned packages",
-        cleaned_states.len(),
-        cleaned_packages
+        cleanup_result.states_removed, cleaned_packages
     );
 
     ctx.tx
         .send(Event::CleanupCompleted {
-            states_removed: cleaned_states.len(),
+            states_removed: cleanup_result.states_removed,
             packages_removed: cleaned_packages,
             duration_ms: duration,
         })
@@ -74,8 +73,17 @@ pub async fn rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<StateI
         })
         .ok();
 
-    // Verify target state exists
+    // Verify target state exists in database
     if !ctx.state.state_exists(&target_id).await? {
+        return Err(OpsError::StateNotFound {
+            state_id: target_id,
+        }
+        .into());
+    }
+
+    // Verify target state directory exists on filesystem
+    let state_path = ctx.state.state_path().join(target_id.to_string());
+    if !state_path.exists() {
         return Err(OpsError::StateNotFound {
             state_id: target_id,
         }

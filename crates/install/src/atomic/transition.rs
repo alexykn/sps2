@@ -26,6 +26,8 @@ pub struct StateTransition {
     pub package_files: Vec<(String, String, String, bool)>, // (package_name, package_version, file_path, is_directory)
     /// Event sender for progress reporting
     pub event_sender: Option<EventSender>,
+    /// Operation type (install, uninstall, etc.)
+    operation: String,
 }
 
 impl StateTransition {
@@ -34,7 +36,7 @@ impl StateTransition {
     /// # Errors
     ///
     /// Returns an error if getting current state ID fails.
-    pub async fn new(state_manager: &StateManager) -> Result<Self, Error> {
+    pub async fn new(state_manager: &StateManager, operation: String) -> Result<Self, Error> {
         let staging_id = Uuid::new_v4();
         let parent_id = state_manager.get_current_state_id().await?;
         let staging_path = state_manager
@@ -50,6 +52,7 @@ impl StateTransition {
             package_refs_with_venv: Vec::new(),
             package_files: Vec::new(),
             event_sender: None,
+            operation,
         })
     }
 
@@ -81,7 +84,7 @@ impl StateTransition {
                 &mut tx,
                 &self.staging_id,
                 self.parent_id.as_ref(),
-                "install",
+                &self.operation,
             )
             .await?;
 
@@ -221,8 +224,8 @@ impl StateTransition {
             }
 
             // Move the old live directory (now in staging_path) to archived location
-            // Only archive if the state doesn't already exist (e.g., after rollback)
             if !old_live_path.exists() {
+                // Archive normally if state doesn't exist
                 if let Some(sender) = &self.event_sender {
                     let _ = sender.send(sps2_events::Event::DebugLog {
                         message: format!(
@@ -242,24 +245,31 @@ impl StateTransition {
                         message: e.to_string(),
                     })?;
             } else {
-                // State already archived, just remove the staging directory
+                // State already exists - archive with timestamp to avoid collision
+                let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
+                let alternative_path = self
+                    .state_manager
+                    .state_path()
+                    .join(format!("{}-{}", actual_current_state_id, timestamp));
+
                 if let Some(sender) = &self.event_sender {
                     let _ = sender.send(sps2_events::Event::DebugLog {
                         message: format!(
-                            "WARNING: State {} already archived, removing staging directory",
-                            actual_current_state_id
+                            "State {} already archived, using alternative path: {}",
+                            actual_current_state_id,
+                            alternative_path.display()
                         ),
                         context: std::collections::HashMap::new(),
                     });
                 }
 
-                fs::remove_dir_all(&self.staging_path).await.map_err(|e| {
-                    InstallError::FilesystemError {
-                        operation: "cleanup_staging_after_swap".to_string(),
-                        path: self.staging_path.display().to_string(),
+                fs::rename(&self.staging_path, &alternative_path)
+                    .await
+                    .map_err(|e| InstallError::FilesystemError {
+                        operation: "archive_old_live_alternative".to_string(),
+                        path: alternative_path.display().to_string(),
                         message: e.to_string(),
-                    }
-                })?;
+                    })?;
             }
         } else {
             // If live doesn't exist, just move staging to live (first install)

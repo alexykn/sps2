@@ -66,7 +66,8 @@ impl AtomicInstaller {
         package_hashes: Option<&HashMap<PackageId, Hash>>,
     ) -> Result<InstallResult, Error> {
         // Create new state transition
-        let mut transition = StateTransition::new(&self.state_manager).await?;
+        let mut transition =
+            StateTransition::new(&self.state_manager, "install".to_string()).await?;
 
         // Set event sender on transition
         transition.event_sender.clone_from(&context.event_sender);
@@ -436,88 +437,22 @@ impl AtomicInstaller {
             .into());
         }
 
-        // Create package directory in staging: <name>-<version>/
-        let package_dir_name = format!("{}-{}", package_id.name, package_id.version);
-        let package_dir_in_staging = staging_prefix.join(&package_dir_name);
-        tokio::fs::create_dir_all(&package_dir_in_staging).await?;
-
         // Debug log
         if let Some(sender) = &transition.event_sender {
             let _ = sender.send(Event::DebugLog {
                 message: format!(
-                    "Linking package {} from {} to staging package directory {}",
+                    "Linking package {} from {} directly to staging FHS directories",
                     package_id.name,
-                    files_path.display(),
-                    package_dir_in_staging.display()
+                    files_path.display()
                 ),
                 context: std::collections::HashMap::new(),
             });
         }
 
-        // Recursively link the entire package directory contents to the package directory in staging
-        linking::create_hardlinks_recursive_with_tracking(
-            &files_path,
-            &package_dir_in_staging,
-            &files_path,
-            &mut file_paths,
-        )
-        .await?;
-
-        // Now create symlinks in staging/bin/ for any executables
-        let bin_dir_in_staging = staging_prefix.join("bin");
-        let bin_dir_in_package = files_path.join("bin");
-
-        if bin_dir_in_package.exists() {
-            // Ensure bin directory exists in staging
-            tokio::fs::create_dir_all(&bin_dir_in_staging).await?;
-
-            // Read all files in the package's bin directory
-            let mut entries = tokio::fs::read_dir(&bin_dir_in_package).await?;
-            while let Some(entry) = entries.next_entry().await? {
-                let file_name = entry.file_name();
-                let metadata = entry.metadata().await?;
-
-                // Only create symlinks for files (not directories)
-                if metadata.is_file() {
-                    let symlink_path = bin_dir_in_staging.join(&file_name);
-                    let target_path = PathBuf::from("..")
-                        .join(&package_dir_name)
-                        .join("bin")
-                        .join(&file_name);
-
-                    // Remove existing symlink if it exists
-                    if symlink_path.exists() {
-                        tokio::fs::remove_file(&symlink_path).await?;
-                    }
-
-                    // Create relative symlink
-                    #[cfg(unix)]
-                    {
-                        use std::os::unix::fs::symlink;
-                        symlink(&target_path, &symlink_path)?;
-                    }
-
-                    // Track the symlink as a package file
-                    let relative_symlink_path = symlink_path
-                        .strip_prefix(staging_prefix)
-                        .unwrap_or(&symlink_path)
-                        .display()
-                        .to_string();
-                    file_paths.push((relative_symlink_path, false));
-
-                    if let Some(sender) = &transition.event_sender {
-                        let _ = sender.send(Event::DebugLog {
-                            message: format!(
-                                "Created symlink {} -> {}",
-                                symlink_path.display(),
-                                target_path.display()
-                            ),
-                            context: std::collections::HashMap::new(),
-                        });
-                    }
-                }
-            }
-        }
+        // Recursively link files directly to their FHS locations in staging
+        // No package directory creation - direct links only
+        self.link_package_files_to_fhs(&files_path, staging_prefix, &files_path, &mut file_paths)
+            .await?;
 
         // Debug what was linked
         if let Some(sender) = &transition.event_sender {
@@ -532,22 +467,113 @@ impl AtomicInstaller {
         }
 
         // Store file information to be added during commit
-        // Adjust paths to be relative to staging root and include package directory
+        // Paths are already relative to staging root
         for (file_path, is_directory) in file_paths {
-            let adjusted_path = if file_path.starts_with("bin/") {
-                // Symlinks in bin/ are already relative to staging root
-                file_path
-            } else {
-                // Other files need package directory prefix
-                format!("{}/{}", package_dir_name, file_path)
-            };
-
             transition.package_files.push((
                 package_id.name.clone(),
                 package_id.version.to_string(),
-                adjusted_path,
+                file_path,
                 is_directory,
             ));
+        }
+
+        Ok(())
+    }
+
+    /// Link package files directly to FHS locations without creating package directories
+    async fn link_package_files_to_fhs(
+        &self,
+        src_dir: &Path,
+        staging_root: &Path,
+        base_path: &Path,
+        file_paths: &mut Vec<(String, bool)>,
+    ) -> Result<(), Error> {
+        let mut entries = tokio::fs::read_dir(src_dir).await?;
+
+        while let Some(entry) = entries.next_entry().await? {
+            let src_path = entry.path();
+            let file_name = entry.file_name();
+            let metadata = entry.metadata().await?;
+
+            // Calculate relative path from base for tracking
+            let relative_from_base = src_path
+                .strip_prefix(base_path)
+                .unwrap_or(&src_path)
+                .to_path_buf();
+
+            // Create destination path directly in staging root
+            let dest_path = staging_root.join(&relative_from_base);
+
+            if metadata.is_dir() {
+                // Create directory if it doesn't exist
+                tokio::fs::create_dir_all(&dest_path).await?;
+
+                // Track directory
+                let relative_path = dest_path
+                    .strip_prefix(staging_root)
+                    .unwrap_or(&dest_path)
+                    .display()
+                    .to_string();
+                file_paths.push((relative_path, true));
+
+                // Recursively process subdirectory
+                Box::pin(self.link_package_files_to_fhs(
+                    &src_path,
+                    staging_root,
+                    base_path,
+                    file_paths,
+                ))
+                .await?;
+            } else if metadata.is_file() {
+                // Ensure parent directory exists
+                if let Some(parent) = dest_path.parent() {
+                    tokio::fs::create_dir_all(parent).await?;
+                }
+
+                // Remove existing file if it exists
+                if dest_path.exists() {
+                    tokio::fs::remove_file(&dest_path).await?;
+                }
+
+                // Create hard link
+                linking::create_hard_link(&src_path, &dest_path)?;
+
+                // Track file
+                let relative_path = dest_path
+                    .strip_prefix(staging_root)
+                    .unwrap_or(&dest_path)
+                    .display()
+                    .to_string();
+                file_paths.push((relative_path, false));
+            } else if metadata.is_symlink() {
+                // For symlinks, read the target and create a new symlink
+                let target = tokio::fs::read_link(&src_path).await?;
+
+                // Ensure parent directory exists
+                if let Some(parent) = dest_path.parent() {
+                    tokio::fs::create_dir_all(parent).await?;
+                }
+
+                // Remove existing symlink if it exists
+                if dest_path.exists() {
+                    tokio::fs::remove_file(&dest_path).await?;
+                }
+
+                // Create symlink
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::symlink;
+                    symlink(&target, &dest_path)?;
+                }
+
+                // Track symlink
+                let relative_path = dest_path
+                    .strip_prefix(staging_root)
+                    .unwrap_or(&dest_path)
+                    .display()
+                    .to_string();
+                file_paths.push((relative_path, false));
+            }
         }
 
         Ok(())
@@ -661,6 +687,284 @@ impl AtomicInstaller {
         transition
             .package_refs_with_venv
             .push((package_ref, production_venv_path));
+
+        Ok(())
+    }
+
+    /// Perform atomic uninstallation
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if state transition fails, package removal fails,
+    /// or filesystem operations fail.
+    pub async fn uninstall(
+        &mut self,
+        packages_to_remove: &[PackageId],
+        context: &crate::UninstallContext,
+    ) -> Result<InstallResult, Error> {
+        // Create new state transition
+        let mut transition =
+            StateTransition::new(&self.state_manager, "uninstall".to_string()).await?;
+
+        // Set event sender on transition
+        transition.event_sender.clone_from(&context.event_sender);
+
+        if let Some(sender) = &context.event_sender {
+            let _ = sender.send(Event::StateCreating {
+                state_id: transition.staging_id,
+            });
+        }
+
+        // Clone current state to staging directory
+        transition.create_staging(&self.live_path)?;
+
+        if let Some(sender) = &context.event_sender {
+            let _ = sender.send(Event::DebugLog {
+                message: format!(
+                    "Created staging directory at: {}",
+                    transition.staging_path.display()
+                ),
+                context: std::collections::HashMap::new(),
+            });
+        }
+
+        // Get packages from the parent state to carry over non-removed packages
+        let mut result = InstallResult::new(transition.staging_id);
+
+        if let Some(parent_id) = transition.parent_id {
+            let parent_packages = self
+                .state_manager
+                .get_installed_packages_in_state(&parent_id)
+                .await?;
+
+            for pkg in parent_packages {
+                // Check if this package should be removed
+                let should_remove = packages_to_remove
+                    .iter()
+                    .any(|remove_pkg| remove_pkg.name == pkg.name);
+
+                if should_remove {
+                    // Remove package files from staging
+                    result.add_removed(PackageId::new(pkg.name.clone(), pkg.version()));
+
+                    // Remove venv if it exists
+                    if let Some(venv_path) = &pkg.venv_path {
+                        self.remove_package_venv(&pkg, venv_path, context).await?;
+                    }
+
+                    // Remove package files from staging
+                    self.remove_package_from_staging(&mut transition, &pkg)
+                        .await?;
+
+                    if let Some(sender) = &context.event_sender {
+                        let _ = sender.send(Event::DebugLog {
+                            message: format!("Removed package {} from staging", pkg.name),
+                            context: std::collections::HashMap::new(),
+                        });
+                    }
+                } else {
+                    // Keep this package - re-link it to staging
+                    let hash = Hash::from_hex(&pkg.hash).map_err(|e| {
+                        InstallError::AtomicOperationFailed {
+                            message: format!("Invalid hash in database for {}: {}", pkg.name, e),
+                        }
+                    })?;
+                    let store_path = self.store.package_path(&hash);
+
+                    if store_path.exists() {
+                        let package_id = PackageId::new(pkg.name.clone(), pkg.version());
+                        let is_python = pkg.venv_path.is_some();
+
+                        if let Some(sender) = &context.event_sender {
+                            let _ = sender.send(Event::DebugLog {
+                                message: format!(
+                                    "Re-linking existing package {} from parent state",
+                                    pkg.name
+                                ),
+                                context: std::collections::HashMap::new(),
+                            });
+                        }
+
+                        self.link_package_to_staging(
+                            &mut transition,
+                            &store_path,
+                            &package_id,
+                            is_python,
+                        )
+                        .await?;
+
+                        // Add the existing package to transition.package_refs so it's recorded in the new state
+                        if !is_python {
+                            let package_ref = PackageRef {
+                                state_id: transition.staging_id,
+                                package_id: package_id.clone(),
+                                hash: pkg.hash.clone(),
+                                size: pkg.size,
+                            };
+                            transition.package_refs.push(package_ref);
+                        } else if let Some(venv_path) = &pkg.venv_path {
+                            // For Python packages, add with venv path
+                            let package_ref = PackageRef {
+                                state_id: transition.staging_id,
+                                package_id: package_id.clone(),
+                                hash: pkg.hash.clone(),
+                                size: pkg.size,
+                            };
+                            transition
+                                .package_refs_with_venv
+                                .push((package_ref, venv_path.clone()));
+                        }
+                    }
+                }
+            }
+        }
+
+        if context.dry_run {
+            // Clean up staging and return result without committing
+            transition.cleanup().await?;
+            return Ok(result);
+        }
+
+        // Commit the state transition
+        transition.commit(&self.live_path).await?;
+
+        if let Some(sender) = &context.event_sender {
+            let _ = sender.send(Event::StateTransition {
+                from: transition.parent_id.unwrap_or_default(),
+                to: transition.staging_id,
+                operation: "uninstall".to_string(),
+            });
+        }
+
+        Ok(result)
+    }
+
+    /// Remove package files from staging directory
+    async fn remove_package_from_staging(
+        &self,
+        transition: &mut StateTransition,
+        package: &sps2_state::models::Package,
+    ) -> Result<(), Error> {
+        // Get all files belonging to this package from the database
+        let mut tx = self.state_manager.begin_transaction().await?;
+        let file_paths =
+            sps2_state::queries::get_active_package_files(&mut tx, &package.name, &package.version)
+                .await?;
+        tx.commit().await?;
+
+        // Group files by type for proper removal order
+        let mut symlinks = Vec::new();
+        let mut regular_files = Vec::new();
+        let mut directories = Vec::new();
+
+        for file_path in file_paths {
+            let staging_file = transition.staging_path.join(&file_path);
+
+            if staging_file.exists() {
+                // Check if it's a symlink
+                let metadata = tokio::fs::symlink_metadata(&staging_file).await?;
+                if metadata.is_symlink() {
+                    symlinks.push(file_path);
+                } else if staging_file.is_dir() {
+                    directories.push(file_path);
+                } else {
+                    regular_files.push(file_path);
+                }
+            }
+        }
+
+        // Remove in order: symlinks first, then files, then directories
+        // This ensures we don't try to remove non-empty directories
+
+        // 1. Remove symlinks
+        for file_path in symlinks {
+            let staging_file = transition.staging_path.join(&file_path);
+            if staging_file.exists() {
+                tokio::fs::remove_file(&staging_file).await.map_err(|e| {
+                    InstallError::FilesystemError {
+                        operation: "remove_symlink".to_string(),
+                        path: staging_file.display().to_string(),
+                        message: e.to_string(),
+                    }
+                })?;
+            }
+        }
+
+        // 2. Remove regular files
+        for file_path in regular_files {
+            let staging_file = transition.staging_path.join(&file_path);
+            if staging_file.exists() {
+                tokio::fs::remove_file(&staging_file).await.map_err(|e| {
+                    InstallError::FilesystemError {
+                        operation: "remove_file".to_string(),
+                        path: staging_file.display().to_string(),
+                        message: e.to_string(),
+                    }
+                })?;
+            }
+        }
+
+        // 3. Remove directories in reverse order (deepest first)
+        directories.sort_by(|a, b| b.cmp(a)); // Reverse lexicographic order
+        for file_path in directories {
+            let staging_file = transition.staging_path.join(&file_path);
+            if staging_file.exists() {
+                // Try to remove directory if it's empty
+                if let Ok(mut entries) = tokio::fs::read_dir(&staging_file).await {
+                    if entries.next_entry().await?.is_none() {
+                        tokio::fs::remove_dir(&staging_file).await.map_err(|e| {
+                            InstallError::FilesystemError {
+                                operation: "remove_dir".to_string(),
+                                path: staging_file.display().to_string(),
+                                message: e.to_string(),
+                            }
+                        })?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Remove Python virtual environment for a package
+    async fn remove_package_venv(
+        &self,
+        package: &sps2_state::models::Package,
+        venv_path: &str,
+        context: &crate::UninstallContext,
+    ) -> Result<(), Error> {
+        let venv_path_buf = std::path::Path::new(venv_path);
+
+        // Send event about venv removal
+        if let Some(sender) = &context.event_sender {
+            let _ = sender.send(Event::PythonVenvRemoving {
+                package: package.name.clone(),
+                version: sps2_types::Version::parse(&package.version)
+                    .unwrap_or_else(|_| sps2_types::Version::new(0, 0, 0)),
+                venv_path: venv_path_buf.display().to_string(),
+            });
+        }
+
+        // Remove the venv directory if it exists
+        if venv_path_buf.exists() {
+            tokio::fs::remove_dir_all(venv_path_buf)
+                .await
+                .map_err(|e| InstallError::FilesystemError {
+                    operation: "remove_venv".to_string(),
+                    path: venv_path_buf.display().to_string(),
+                    message: e.to_string(),
+                })?;
+
+            if let Some(sender) = &context.event_sender {
+                let _ = sender.send(Event::PythonVenvRemoved {
+                    package: package.name.clone(),
+                    version: sps2_types::Version::parse(&package.version)
+                        .unwrap_or_else(|_| sps2_types::Version::new(0, 0, 0)),
+                    venv_path: venv_path_buf.display().to_string(),
+                });
+            }
+        }
 
         Ok(())
     }
