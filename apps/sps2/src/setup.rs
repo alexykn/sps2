@@ -139,7 +139,7 @@ impl SystemSetup {
     /// Initialize package store
     async fn init_store(&mut self) -> Result<(), CliError> {
         debug!("Initializing package store");
-        let store_path = Path::new("/opt/pm");
+        let store_path = Path::new("/opt/pm/store");
         let store = PackageStore::new(store_path.to_path_buf());
 
         self.store = Some(store);

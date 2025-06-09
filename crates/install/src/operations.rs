@@ -35,7 +35,7 @@ impl InstallOperation {
         state_manager: StateManager,
         store: PackageStore,
     ) -> Result<Self, Error> {
-        let executor = ParallelExecutor::new(store.clone())?;
+        let executor = ParallelExecutor::new(store.clone(), state_manager.clone())?;
 
         Ok(Self {
             resolver,
@@ -80,6 +80,8 @@ impl InstallOperation {
         self.executor
             .execute_parallel(&resolution.execution_plan, &resolution.nodes, &exec_context)
             .await?;
+
+        // Downloads now populate package_map automatically via ParallelExecutor
 
         // Perform atomic installation
         let mut atomic_installer =
@@ -406,35 +408,98 @@ impl UninstallOperation {
             // Get all files belonging to this package from the database
             let package_files = self.get_package_files(package).await?;
 
-            // Remove files in reverse order to handle directories properly
-            // (remove files before their parent directories)
-            let mut sorted_files = package_files;
-            sorted_files.sort_by(|a, b| b.cmp(a)); // Reverse lexicographic order
+            // Group files by type for proper removal order
+            let mut symlinks = Vec::new();
+            let mut regular_files = Vec::new();
+            let mut directories = Vec::new();
+            let mut package_dirs = std::collections::HashSet::new();
 
-            for file_path in sorted_files {
+            for file_path in package_files {
+                let staging_file = transition.staging_path.join(&file_path);
+
+                // Track package directories
+                let file_path_str = file_path.to_string_lossy();
+                if file_path_str.contains('/') {
+                    let parts: Vec<&str> = file_path_str.split('/').collect();
+                    if parts.len() >= 2 && parts[0].contains('-') {
+                        // This looks like a package directory (e.g., "curl-8.5.0/bin/curl")
+                        package_dirs.insert(parts[0].to_string());
+                    }
+                }
+
+                if staging_file.exists() {
+                    // Check if it's a symlink
+                    let metadata = tokio::fs::symlink_metadata(&staging_file).await?;
+                    if metadata.is_symlink() {
+                        symlinks.push(file_path);
+                    } else if staging_file.is_dir() {
+                        directories.push(file_path);
+                    } else {
+                        regular_files.push(file_path);
+                    }
+                }
+            }
+
+            // Remove in order: symlinks first, then files, then directories
+            // This ensures we don't try to remove non-empty directories
+
+            // 1. Remove symlinks (e.g., bin/curl -> ../curl-8.5.0/bin/curl)
+            for file_path in symlinks {
                 let staging_file = transition.staging_path.join(&file_path);
                 if staging_file.exists() {
-                    if staging_file.is_dir() {
-                        // Only remove directory if it's empty
-                        if let Ok(mut entries) = tokio::fs::read_dir(&staging_file).await {
-                            if entries.next_entry().await?.is_none() {
-                                tokio::fs::remove_dir(&staging_file).await.map_err(|e| {
-                                    sps2_errors::InstallError::FilesystemError {
-                                        operation: "remove_dir".to_string(),
-                                        path: staging_file.display().to_string(),
-                                        message: e.to_string(),
-                                    }
-                                })?;
-                            }
+                    tokio::fs::remove_file(&staging_file).await.map_err(|e| {
+                        sps2_errors::InstallError::FilesystemError {
+                            operation: "remove_symlink".to_string(),
+                            path: staging_file.display().to_string(),
+                            message: e.to_string(),
                         }
-                    } else {
-                        tokio::fs::remove_file(&staging_file).await.map_err(|e| {
-                            sps2_errors::InstallError::FilesystemError {
-                                operation: "remove_file".to_string(),
-                                path: staging_file.display().to_string(),
-                                message: e.to_string(),
-                            }
-                        })?;
+                    })?;
+                }
+            }
+
+            // 2. Remove regular files
+            for file_path in regular_files {
+                let staging_file = transition.staging_path.join(&file_path);
+                if staging_file.exists() {
+                    tokio::fs::remove_file(&staging_file).await.map_err(|e| {
+                        sps2_errors::InstallError::FilesystemError {
+                            operation: "remove_file".to_string(),
+                            path: staging_file.display().to_string(),
+                            message: e.to_string(),
+                        }
+                    })?;
+                }
+            }
+
+            // 3. Remove directories in reverse order (deepest first)
+            directories.sort_by(|a, b| b.cmp(a)); // Reverse lexicographic order
+            for file_path in directories {
+                let staging_file = transition.staging_path.join(&file_path);
+                if staging_file.exists() {
+                    // Try to remove directory if it's empty
+                    if let Ok(mut entries) = tokio::fs::read_dir(&staging_file).await {
+                        if entries.next_entry().await?.is_none() {
+                            tokio::fs::remove_dir(&staging_file).await.map_err(|e| {
+                                sps2_errors::InstallError::FilesystemError {
+                                    operation: "remove_dir".to_string(),
+                                    path: staging_file.display().to_string(),
+                                    message: e.to_string(),
+                                }
+                            })?;
+                        }
+                    }
+                }
+            }
+
+            // 4. Finally, remove the package directories themselves
+            for package_dir in package_dirs {
+                let package_dir_path = transition.staging_path.join(&package_dir);
+                if package_dir_path.exists() {
+                    // The package directory should be empty now
+                    if let Err(_e) = tokio::fs::remove_dir(&package_dir_path).await {
+                        // It's okay if the directory is not empty or doesn't exist
+                        // This might happen if files were manually added
+                        // Just continue - not critical
                     }
                 }
             }

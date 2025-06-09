@@ -50,11 +50,8 @@ pub async fn list_packages(ctx: &OpsCtx) -> Result<Vec<PackageInfo>, Error> {
             _ => PackageStatus::Installed,
         };
 
-        // Get package size from store
-        let size = ctx
-            .store
-            .get_package_size(&package.name, &package_version)
-            .ok();
+        // Get package size from state database
+        let size = Some(package.size as u64);
 
         let package_info = PackageInfo {
             name: package.name.clone(),
@@ -124,8 +121,12 @@ pub async fn package_info(ctx: &OpsCtx, package_name: &str) -> Result<PackageInf
     };
 
     // Get package size if installed
-    let size = if let Some(version) = &installed_version {
-        ctx.store.get_package_size(package_name, version).ok()
+    let size = if installed_version.is_some() {
+        // Find the installed package to get its size from state database
+        installed_packages
+            .iter()
+            .find(|pkg| pkg.name == package_name)
+            .map(|pkg| pkg.size as u64)
     } else {
         None
     };

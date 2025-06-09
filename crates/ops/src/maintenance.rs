@@ -135,7 +135,7 @@ pub async fn history(ctx: &OpsCtx) -> Result<Vec<StateInfo>, Error> {
             parent: parent_id,
             parent_id,
             timestamp: state.timestamp(),
-            operation: "unknown".to_string(), // TODO: Get actual operation
+            operation: state.operation.clone(),
             current: Some(current_id) == Some(state_id),
             package_count,
             total_size: 0, // TODO: Calculate actual size
@@ -182,7 +182,7 @@ async fn get_state_info(ctx: &OpsCtx, state_id: Uuid) -> Result<StateInfo, Error
         parent: parent_id,
         parent_id,
         timestamp: state.timestamp(),
-        operation: "unknown".to_string(), // TODO: Get actual operation
+        operation: state.operation.clone(),
         current: Some(current_id) == Some(state_id),
         package_count,
         total_size: 0, // TODO: Calculate actual size

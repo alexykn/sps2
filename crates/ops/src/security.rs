@@ -85,8 +85,19 @@ pub async fn audit(
 
         ctx.tx.send(Event::AuditStarting { package_count: 1 }).ok();
 
+        let package_hash =
+            sps2_hash::Hash::from_hex(&package.hash).map_err(|e| OpsError::OperationFailed {
+                message: format!("Invalid package hash: {}", e),
+            })?;
+
         let package_audit = audit_system
-            .scan_package(&package.name, &package.version(), &ctx.store, &scan_options)
+            .scan_package(
+                &package.name,
+                &package.version(),
+                &package_hash,
+                &ctx.store,
+                &scan_options,
+            )
             .await?;
 
         let vuln_count = package_audit.vulnerabilities.len();

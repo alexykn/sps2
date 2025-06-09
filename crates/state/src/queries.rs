@@ -516,3 +516,59 @@ pub async fn update_package_venv_path(
 
     Ok(())
 }
+
+/// Add a package to the package map
+pub async fn add_package_map(
+    tx: &mut Transaction<'_, Sqlite>,
+    name: &str,
+    version: &str,
+    hash: &str,
+) -> Result<(), Error> {
+    let now = chrono::Utc::now().to_rfc3339();
+    
+    query!(
+        "INSERT OR REPLACE INTO package_map (name, version, hash, created_at) VALUES (?, ?, ?, ?)",
+        name,
+        version,
+        hash,
+        now
+    )
+    .execute(&mut **tx)
+    .await?;
+    
+    Ok(())
+}
+
+/// Get the hash for a package name and version
+pub async fn get_package_hash(
+    tx: &mut Transaction<'_, Sqlite>,
+    name: &str,
+    version: &str,
+) -> Result<Option<String>, Error> {
+    let row = query!(
+        "SELECT hash FROM package_map WHERE name = ? AND version = ?",
+        name,
+        version
+    )
+    .fetch_optional(&mut **tx)
+    .await?;
+    
+    Ok(row.map(|r| r.hash))
+}
+
+/// Remove a package from the package map
+pub async fn remove_package_map(
+    tx: &mut Transaction<'_, Sqlite>,
+    name: &str,
+    version: &str,
+) -> Result<(), Error> {
+    query!(
+        "DELETE FROM package_map WHERE name = ? AND version = ?",
+        name,
+        version
+    )
+    .execute(&mut **tx)
+    .await?;
+    
+    Ok(())
+}

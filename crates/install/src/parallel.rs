@@ -8,6 +8,7 @@ use sps2_errors::{Error, InstallError};
 use sps2_events::{Event, EventSender};
 use sps2_net::NetClient;
 use sps2_resolver::{ExecutionPlan, NodeAction, PackageId, ResolvedNode};
+use sps2_state::StateManager;
 use sps2_store::PackageStore;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicUsize;
@@ -22,6 +23,8 @@ pub struct ParallelExecutor {
     net_client: NetClient,
     /// Package store
     store: PackageStore,
+    /// State manager for package_map updates
+    state_manager: StateManager,
     /// Maximum concurrent operations
     max_concurrency: usize,
     /// Download timeout
@@ -34,10 +37,11 @@ impl ParallelExecutor {
     /// # Errors
     ///
     /// Returns an error if network client initialization fails.
-    pub fn new(store: PackageStore) -> Result<Self, Error> {
+    pub fn new(store: PackageStore, state_manager: StateManager) -> Result<Self, Error> {
         Ok(Self {
             net_client: NetClient::with_defaults()?,
             store,
+            state_manager,
             max_concurrency: 4,                         // Default from spec
             download_timeout: Duration::from_secs(300), // 5 minutes
         })
@@ -208,6 +212,7 @@ impl ParallelExecutor {
     ) -> JoinHandle<Result<PackageId, Error>> {
         let net_client = self.net_client.clone();
         let store = self.store.clone();
+        let state_manager = self.state_manager.clone();
         let timeout_duration = self.download_timeout;
 
         tokio::spawn(async move {
@@ -217,6 +222,7 @@ impl ParallelExecutor {
                 context,
                 net_client,
                 store,
+                state_manager,
                 timeout_duration,
             )
             .await
@@ -230,6 +236,7 @@ impl ParallelExecutor {
         context: ExecutionContext,
         net_client: NetClient,
         store: PackageStore,
+        state_manager: StateManager,
         timeout_duration: Duration,
     ) -> Result<PackageId, Error> {
         context.send_event(Event::PackageInstalling {
@@ -243,7 +250,14 @@ impl ParallelExecutor {
                     // Download package with timeout
                     let download_result = timeout(
                         timeout_duration,
-                        Self::download_package(url, &package_id, &net_client, &store, &context),
+                        Self::download_package(
+                            url,
+                            &package_id,
+                            &net_client,
+                            &store,
+                            &state_manager,
+                            &context,
+                        ),
                     )
                     .await;
 
@@ -319,6 +333,7 @@ impl ParallelExecutor {
         package_id: &PackageId,
         net_client: &NetClient,
         store: &PackageStore,
+        state_manager: &StateManager,
         context: &ExecutionContext,
     ) -> Result<(), Error> {
         // Download to temporary file first
@@ -359,9 +374,31 @@ impl ParallelExecutor {
         }
 
         // Add to store
-        store
+        let stored_package = store
             .add_package_from_file(temp_file.path(), &package_id.name, &package_id.version)
             .await?;
+
+        // Get the hash and update package_map for content-addressable lookups
+        if let Some(hash) = stored_package.hash() {
+            // Update package_map for future lookups
+            state_manager
+                .add_package_map(
+                    &package_id.name,
+                    &package_id.version.to_string(),
+                    &hash.to_hex(),
+                )
+                .await?;
+
+            context.send_event(Event::DebugLog {
+                message: format!(
+                    "Package {}-{} stored with hash {} and added to package_map",
+                    package_id.name,
+                    package_id.version,
+                    hash.to_hex()
+                ),
+                context: std::collections::HashMap::new(),
+            });
+        }
 
         Ok(())
     }
@@ -527,8 +564,9 @@ mod tests {
     async fn test_parallel_executor_creation() {
         let temp = tempdir().unwrap();
         let store = PackageStore::new(temp.path().to_path_buf());
+        let state_manager = sps2_state::StateManager::new(temp.path()).await.unwrap();
 
-        let executor = ParallelExecutor::new(store)
+        let executor = ParallelExecutor::new(store, state_manager)
             .unwrap()
             .with_concurrency(8)
             .with_timeout(Duration::from_secs(600));

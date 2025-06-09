@@ -105,21 +105,13 @@ impl AtomicInstaller {
                 });
 
                 if !is_being_replaced {
-                    // Get the store path using the hash
-                    let store_path = if pkg.hash == "placeholder-hash" {
-                        // Use the temporary path based on name/version
-                        self.store.get_package_path(&pkg.name, &pkg.version())?
-                    } else {
-                        let hash = Hash::from_hex(&pkg.hash).map_err(|e| {
-                            InstallError::AtomicOperationFailed {
-                                message: format!(
-                                    "Invalid hash in database for {}: {}",
-                                    pkg.name, e
-                                ),
-                            }
-                        })?;
-                        self.store.package_path(&hash)
-                    };
+                    // Get the store path using the hash - no fallbacks allowed
+                    let hash = Hash::from_hex(&pkg.hash).map_err(|e| {
+                        InstallError::AtomicOperationFailed {
+                            message: format!("Invalid hash in database for {}: {}", pkg.name, e),
+                        }
+                    })?;
+                    let store_path = self.store.package_path(&hash);
 
                     if store_path.exists() {
                         let package_id =
@@ -219,18 +211,57 @@ impl AtomicInstaller {
         // First, install the package files
         match &node.action {
             sps2_resolver::NodeAction::Download => {
-                // Get the store path using the hash if available, otherwise fall back to name/version lookup
-                let store_path = if let Some(hash) = package_hash {
-                    self.store.package_path(hash)
+                // For downloaded packages, we need to find them in the store
+                // First, try to get the hash from package_map
+                let (hash, store_path) = if let Some(h) = package_hash {
+                    (h.clone(), self.store.package_path(h))
                 } else {
-                    // Fallback for when hash is not available (shouldn't happen in normal flow)
-                    self.store
-                        .get_package_path(&package_id.name, &package_id.version)?
+                    // Try to look up from package_map first
+                    if let Ok(Some(hash_hex)) = self
+                        .state_manager
+                        .get_package_hash(&package_id.name, &package_id.version.to_string())
+                        .await
+                    {
+                        let hash = Hash::from_hex(&hash_hex).map_err(|e| {
+                            InstallError::AtomicOperationFailed {
+                                message: format!("Invalid hash in package_map: {}", e),
+                            }
+                        })?;
+                        let store_path = self.store.package_path(&hash);
+                        (hash, store_path)
+                    } else {
+                        // Package not in package_map yet - this means it was just downloaded
+                        // We need to find it in the store and get its hash
+                        // For now, we'll require the hash to be provided
+                        return Err(InstallError::AtomicOperationFailed {
+                            message: format!(
+                                "Package {}-{} not found in package_map. This indicates a bug in the download process.",
+                                package_id.name, package_id.version
+                            ),
+                        }.into());
+                    }
                 };
 
                 // Check if this is a Python package that needs venv setup
                 let stored_package = StoredPackage::load(&store_path).await?;
                 let is_python = is_python_package(stored_package.manifest());
+
+                // Get package size for store ref
+                let size = stored_package.size().await?;
+
+                // Ensure store_refs entry exists before adding to package_map
+                self.state_manager
+                    .ensure_store_ref(&hash.to_hex(), size as i64)
+                    .await?;
+
+                // Ensure package is in package_map for future lookups
+                self.state_manager
+                    .add_package_map(
+                        &package_id.name,
+                        &package_id.version.to_string(),
+                        &hash.to_hex(),
+                    )
+                    .await?;
 
                 // Link package files to staging
                 self.link_package_to_staging(transition, &store_path, package_id, is_python)
@@ -239,15 +270,14 @@ impl AtomicInstaller {
                 // For non-Python packages, add the package reference now
                 // Python packages are handled in install_python_package
                 if !is_python {
+                    // Calculate actual installed size
+                    let size = stored_package.size().await?;
+
                     let package_ref = PackageRef {
                         state_id: transition.staging_id,
                         package_id: package_id.clone(),
-                        hash: package_hash.map_or_else(
-                            || "placeholder-hash".to_string(),
-                            sps2_hash::Hash::to_hex,
-                        ),
-                        // TODO: Calculate actual installed size from manifest or store
-                        size: 0,
+                        hash: hash.to_hex(),
+                        size: size as i64,
                     };
                     transition.package_refs.push(package_ref);
                 }
@@ -259,31 +289,17 @@ impl AtomicInstaller {
                         package_id,
                         stored_package.manifest(),
                         &store_path,
-                        package_hash,
+                        Some(&hash),
                     )
                     .await?;
                 }
             }
             sps2_resolver::NodeAction::Local => {
                 if let Some(local_path) = &node.path {
-                    // For local packages, compute the hash if not provided
-                    let computed_hash;
-                    let hash_to_use = if let Some(hash) = package_hash {
-                        hash
-                    } else {
-                        // Compute hash if not provided
-                        computed_hash = Hash::hash_file(local_path).await?;
-                        &computed_hash
-                    };
-
                     // Use the new staging system for local packages
-                    self.install_local_package_with_staging(
-                        transition,
-                        local_path,
-                        package_id,
-                        Some(hash_to_use),
-                    )
-                    .await?;
+                    // No hash verification needed - store handles content hashing
+                    self.install_local_package_with_staging(transition, local_path, package_id)
+                        .await?;
                 }
             }
         }
@@ -298,7 +314,6 @@ impl AtomicInstaller {
         transition: &mut StateTransition,
         local_path: &Path,
         package_id: &PackageId,
-        package_hash: Option<&Hash>,
     ) -> Result<(), Error> {
         // Extract to staging directory with validation
         let staging_dir = self
@@ -320,15 +335,32 @@ impl AtomicInstaller {
         // Add package to store from staging directory
         let stored_package = self.store.add_package(local_path).await?;
 
-        // Use provided hash or compute it
-        let hash = if let Some(h) = package_hash {
-            h.clone()
-        } else {
-            Hash::hash_file(local_path).await?
-        };
+        // Get the hash from the stored package
+        let hash = stored_package
+            .hash()
+            .ok_or_else(|| InstallError::AtomicOperationFailed {
+                message: "failed to get package hash from store path".to_string(),
+            })?;
+
+        // Get package size for store ref
+        let size = stored_package.size().await?;
+
+        // Ensure store_refs entry exists before adding to package_map
+        self.state_manager
+            .ensure_store_ref(&hash.to_hex(), size as i64)
+            .await?;
+
+        // Add to package map for future lookups
+        self.state_manager
+            .add_package_map(
+                &package_id.name,
+                &package_id.version.to_string(),
+                &hash.to_hex(),
+            )
+            .await?;
 
         // Get the store path where the package was stored
-        let store_path = self.store.package_path(&hash);
+        let store_path = stored_package.path();
 
         // Check if this is a Python package
         let is_python = is_python_package(stored_package.manifest());
@@ -346,7 +378,7 @@ impl AtomicInstaller {
         }
 
         // Link package files from store to staging (same as downloaded packages)
-        self.link_package_to_staging(transition, &store_path, package_id, is_python)
+        self.link_package_to_staging(transition, store_path, package_id, is_python)
             .await?;
 
         // For non-Python packages, add the package reference now
@@ -365,7 +397,7 @@ impl AtomicInstaller {
                 transition,
                 package_id,
                 stored_package.manifest(),
-                &store_path,
+                store_path,
                 Some(&hash),
             )
             .await?;
@@ -404,30 +436,88 @@ impl AtomicInstaller {
             .into());
         }
 
-        // The files_path points to the package directory (e.g., hello-cargo-1.0.0/)
-        // We need to link its contents to staging while preserving directory structure
+        // Create package directory in staging: <name>-<version>/
+        let package_dir_name = format!("{}-{}", package_id.name, package_id.version);
+        let package_dir_in_staging = staging_prefix.join(&package_dir_name);
+        tokio::fs::create_dir_all(&package_dir_in_staging).await?;
 
         // Debug log
         if let Some(sender) = &transition.event_sender {
             let _ = sender.send(Event::DebugLog {
                 message: format!(
-                    "Linking package {} from {} to staging at {}",
+                    "Linking package {} from {} to staging package directory {}",
                     package_id.name,
                     files_path.display(),
-                    staging_prefix.display()
+                    package_dir_in_staging.display()
                 ),
                 context: std::collections::HashMap::new(),
             });
         }
 
-        // Recursively link the entire package directory contents to staging
+        // Recursively link the entire package directory contents to the package directory in staging
         linking::create_hardlinks_recursive_with_tracking(
             &files_path,
-            staging_prefix,
+            &package_dir_in_staging,
             &files_path,
             &mut file_paths,
         )
         .await?;
+
+        // Now create symlinks in staging/bin/ for any executables
+        let bin_dir_in_staging = staging_prefix.join("bin");
+        let bin_dir_in_package = files_path.join("bin");
+
+        if bin_dir_in_package.exists() {
+            // Ensure bin directory exists in staging
+            tokio::fs::create_dir_all(&bin_dir_in_staging).await?;
+
+            // Read all files in the package's bin directory
+            let mut entries = tokio::fs::read_dir(&bin_dir_in_package).await?;
+            while let Some(entry) = entries.next_entry().await? {
+                let file_name = entry.file_name();
+                let metadata = entry.metadata().await?;
+
+                // Only create symlinks for files (not directories)
+                if metadata.is_file() {
+                    let symlink_path = bin_dir_in_staging.join(&file_name);
+                    let target_path = PathBuf::from("..")
+                        .join(&package_dir_name)
+                        .join("bin")
+                        .join(&file_name);
+
+                    // Remove existing symlink if it exists
+                    if symlink_path.exists() {
+                        tokio::fs::remove_file(&symlink_path).await?;
+                    }
+
+                    // Create relative symlink
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::symlink;
+                        symlink(&target_path, &symlink_path)?;
+                    }
+
+                    // Track the symlink as a package file
+                    let relative_symlink_path = symlink_path
+                        .strip_prefix(staging_prefix)
+                        .unwrap_or(&symlink_path)
+                        .display()
+                        .to_string();
+                    file_paths.push((relative_symlink_path, false));
+
+                    if let Some(sender) = &transition.event_sender {
+                        let _ = sender.send(Event::DebugLog {
+                            message: format!(
+                                "Created symlink {} -> {}",
+                                symlink_path.display(),
+                                target_path.display()
+                            ),
+                            context: std::collections::HashMap::new(),
+                        });
+                    }
+                }
+            }
+        }
 
         // Debug what was linked
         if let Some(sender) = &transition.event_sender {
@@ -442,11 +532,20 @@ impl AtomicInstaller {
         }
 
         // Store file information to be added during commit
+        // Adjust paths to be relative to staging root and include package directory
         for (file_path, is_directory) in file_paths {
+            let adjusted_path = if file_path.starts_with("bin/") {
+                // Symlinks in bin/ are already relative to staging root
+                file_path
+            } else {
+                // Other files need package directory prefix
+                format!("{}/{}", package_dir_name, file_path)
+            };
+
             transition.package_files.push((
                 package_id.name.clone(),
                 package_id.version.to_string(),
-                file_path,
+                adjusted_path,
                 is_directory,
             ));
         }
@@ -542,13 +641,22 @@ impl AtomicInstaller {
         let production_venv_path =
             format!("/opt/pm/venvs/{}-{}", package_id.name, package_id.version);
 
+        // Calculate actual installed size
+        let stored_package = StoredPackage::load(store_path).await?;
+        let size = stored_package.size().await?;
+
         let package_ref = PackageRef {
             state_id: transition.staging_id,
             package_id: package_id.clone(),
             hash: package_hash
-                .map_or_else(|| "placeholder-hash".to_string(), sps2_hash::Hash::to_hex),
-            // TODO: Calculate actual installed size for python packages
-            size: 0,
+                .ok_or_else(|| InstallError::AtomicOperationFailed {
+                    message: format!(
+                        "No hash available for Python package {}-{}",
+                        package_id.name, package_id.version
+                    ),
+                })?
+                .to_hex(),
+            size: size as i64,
         };
         transition
             .package_refs_with_venv

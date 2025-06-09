@@ -888,6 +888,63 @@ impl StateManager {
         tx.commit().await?;
         Ok(())
     }
+
+    /// Ensure store reference exists for a hash
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database operation fails.
+    pub async fn ensure_store_ref(&self, hash: &str, size: i64) -> Result<(), Error> {
+        let mut tx = self.pool.begin().await?;
+        queries::get_or_create_store_ref(&mut tx, hash, size).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Add a package to the package map
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database operation fails.
+    pub async fn add_package_map(
+        &self,
+        name: &str,
+        version: &str,
+        hash: &str,
+    ) -> Result<(), Error> {
+        let mut tx = self.pool.begin().await?;
+        queries::add_package_map(&mut tx, name, version, hash).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Get the hash for a package name and version
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    pub async fn get_package_hash(
+        &self,
+        name: &str,
+        version: &str,
+    ) -> Result<Option<String>, Error> {
+        let mut tx = self.pool.begin().await?;
+        let hash = queries::get_package_hash(&mut tx, name, version).await?;
+        tx.commit().await?;
+        Ok(hash)
+    }
+
+    /// Remove a package from the package map
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database operation fails.
+    pub async fn remove_package_map(&self, name: &str, version: &str) -> Result<(), Error> {
+        let mut tx = self.pool.begin().await?;
+        queries::remove_package_map(&mut tx, name, version).await?;
+        tx.commit().await?;
+        Ok(())
+    }
 }
 
 /// State transition handle

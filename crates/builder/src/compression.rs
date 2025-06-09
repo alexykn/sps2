@@ -21,14 +21,14 @@ pub enum CompressionLevel {
 
     /// Balanced compression (levels 6-9): Good compression, reasonable speed
     /// Best for: CI/CD builds, automated pipelines
-    /// Speed: 50-100% faster than maximum compression\
-    /// Use case: Default for automated builds
+    /// Speed: 50-100% faster than maximum compression
+    /// Use case: Automated builds where speed matters
     Balanced,
 
     /// Maximum compression (levels 19-22): Best compression, slower builds
     /// Best for: Production releases, distribution packages
     /// Speed: Baseline (slowest but smallest)
-    /// Use case: Final release builds, `sps2 build --max`
+    /// Use case: Default for all builds, `sps2 build --max`
     Maximum,
 
     /// Custom numeric level (1-22): Direct control over zstd compression level
@@ -39,8 +39,8 @@ pub enum CompressionLevel {
 
 impl Default for CompressionLevel {
     fn default() -> Self {
-        // Default to balanced for good compromise between speed and size
-        Self::Balanced
+        // Default to maximum compression for smallest package sizes
+        Self::Maximum
     }
 }
 
@@ -75,8 +75,8 @@ impl CompressionLevel {
     pub fn description(&self) -> &'static str {
         match self {
             Self::Fast => "Fast compression - Quick builds, larger files (2-5x faster)",
-            Self::Balanced => "Balanced compression - Good speed/size tradeoff (default)",
-            Self::Maximum => "Maximum compression - Best compression, slower builds",
+            Self::Balanced => "Balanced compression - Good speed/size tradeoff",
+            Self::Maximum => "Maximum compression - Best compression, slower builds (default)",
             Self::Custom(level) => match *level {
                 1..=3 => "Custom fast compression",
                 4..=9 => "Custom balanced compression",

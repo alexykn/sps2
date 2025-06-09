@@ -33,6 +33,7 @@ pub use vulndb::{DatabaseStatistics, VulnDbManager, VulnerabilityDatabase};
 
 use sps2_errors::Error;
 use sps2_events::EventSender;
+use sps2_hash::Hash;
 use sps2_state::StateManager;
 use sps2_store::PackageStore;
 
@@ -85,8 +86,14 @@ impl AuditSystem {
 
         for package in &installed_packages {
             let version = package.version();
+            let package_hash = Hash::from_hex(&package.hash).map_err(|e| {
+                sps2_errors::AuditError::InvalidData {
+                    message: format!("Invalid package hash: {e}"),
+                }
+            })?;
+
             let audit = self
-                .scan_package(&package.name, &version, store, &options)
+                .scan_package(&package.name, &version, &package_hash, store, &options)
                 .await?;
 
             let vuln_count = audit.vulnerabilities.len();
@@ -118,13 +125,12 @@ impl AuditSystem {
         &self,
         package_name: &str,
         package_version: &sps2_types::Version,
+        package_hash: &Hash,
         store: &PackageStore,
         options: &ScanOptions,
     ) -> Result<PackageAudit, Error> {
         // Get package SBOM from store
-        let sbom_data = store
-            .get_package_sbom(package_name, package_version)
-            .await?;
+        let sbom_data = store.get_package_sbom(package_hash).await?;
 
         // Parse SBOM to extract components
         let components = self.sbom_parser.parse_sbom(&sbom_data)?;

@@ -42,6 +42,16 @@ impl StoredPackage {
         &self.path
     }
 
+    /// Get the package hash from the path
+    #[must_use]
+    pub fn hash(&self) -> Option<sps2_hash::Hash> {
+        // The hash is the last component of the path
+        self.path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|hash_str| sps2_hash::Hash::from_hex(hash_str).ok())
+    }
+
     /// Get the files directory
     #[must_use]
     pub fn files_path(&self) -> PathBuf {

@@ -9,6 +9,7 @@
 use blake3::Hasher;
 use serde::{Deserialize, Serialize};
 use sps2_errors::{Error, StorageError};
+use std::collections::BTreeMap;
 use std::fmt;
 use std::path::Path;
 use tokio::fs::File;
@@ -122,6 +123,54 @@ impl Hash {
         writer.flush().await?;
         Ok((Self::from_bytes(*hasher.finalize().as_bytes()), total_bytes))
     }
+
+    /// Compute deterministic hash of a directory's contents
+    ///
+    /// This creates a reproducible hash by:
+    /// 1. Sorting all files by relative path
+    /// 2. Hashing each file's relative path, permissions, and contents
+    /// 3. Combining all hashes in a deterministic order
+    ///
+    /// # Errors
+    /// Returns an error if directory traversal or file operations fail.
+    pub async fn hash_directory(dir_path: &Path) -> Result<Self, Error> {
+        // Collect all files with their metadata
+        let mut files = BTreeMap::new();
+        collect_files(dir_path, dir_path, &mut files).await?;
+
+        // Create a hasher for the entire directory
+        let mut dir_hasher = Hasher::new();
+
+        // Process files in sorted order
+        for (rel_path, (full_path, metadata)) in files {
+            // Hash the relative path
+            dir_hasher.update(rel_path.as_bytes());
+            dir_hasher.update(b"\0"); // null separator
+
+            // Hash file type and permissions
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mode = metadata.permissions().mode();
+                dir_hasher.update(&mode.to_le_bytes());
+            }
+
+            if metadata.is_file() {
+                // Hash file contents
+                let file_hash = Self::hash_file(&full_path).await?;
+                dir_hasher.update(file_hash.as_bytes());
+            } else if metadata.is_symlink() {
+                // Hash symlink target
+                let target = tokio::fs::read_link(&full_path).await?;
+                dir_hasher.update(target.to_string_lossy().as_bytes());
+            }
+
+            // Add another separator
+            dir_hasher.update(b"\0");
+        }
+
+        Ok(Self::from_bytes(*dir_hasher.finalize().as_bytes()))
+    }
 }
 
 impl fmt::Display for Hash {
@@ -161,9 +210,39 @@ pub async fn verify_file(path: &Path, expected: &Hash) -> Result<bool, Error> {
 /// Create a content-addressed path from a hash
 #[must_use]
 pub fn content_path(hash: &Hash) -> String {
-    let hex = hash.to_hex();
-    // Use first 2 chars as directory for better filesystem performance
-    format!("{}/{}", &hex[..2], &hex[2..])
+    hash.to_hex()
+}
+
+/// Helper function to collect all files in a directory recursively
+async fn collect_files(
+    base_path: &Path,
+    current_path: &Path,
+    files: &mut BTreeMap<String, (std::path::PathBuf, std::fs::Metadata)>,
+) -> Result<(), Error> {
+    let mut entries = tokio::fs::read_dir(current_path).await?;
+
+    while let Some(entry) = entries.next_entry().await? {
+        let path = entry.path();
+        let metadata = entry.metadata().await?;
+
+        // Get relative path from base
+        let rel_path = path
+            .strip_prefix(base_path)
+            .map_err(|_| StorageError::IoError {
+                message: "failed to compute relative path".to_string(),
+            })?
+            .to_string_lossy()
+            .to_string();
+
+        files.insert(rel_path.clone(), (path.clone(), metadata.clone()));
+
+        // Recurse into directories
+        if metadata.is_dir() {
+            Box::pin(collect_files(base_path, &path, files)).await?;
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -219,6 +298,7 @@ mod tests {
     fn test_content_path() {
         let hash = Hash::from_data(b"test");
         let path = content_path(&hash);
-        assert!(path.starts_with("48/"));
+        assert_eq!(path, hash.to_hex());
+        assert!(!path.contains('/'));
     }
 }

@@ -220,8 +220,9 @@ mod tests {
     async fn test_parallel_executor_creation() {
         let temp = tempdir().unwrap();
         let store = PackageStore::new(temp.path().to_path_buf());
+        let state_manager = StateManager::new(temp.path()).await.unwrap();
 
-        let executor = ParallelExecutor::new(store)
+        let executor = ParallelExecutor::new(store, state_manager)
             .unwrap()
             .with_concurrency(8)
             .with_timeout(std::time::Duration::from_secs(600));
@@ -249,3 +250,7 @@ mod tests {
 // Include venv cleanup tests
 #[cfg(test)]
 mod test_venv_cleanup;
+
+// Include content-addressable storage tests
+#[cfg(test)]
+mod test_content_addressable_storage;

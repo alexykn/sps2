@@ -3571,6 +3571,7 @@ dependencies = [
  "serde_json",
  "sps2-errors",
  "sps2-events",
+ "sps2-hash",
  "sps2-state",
  "sps2-store",
  "sps2-types",

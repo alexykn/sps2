@@ -93,8 +93,15 @@ impl PackageStore {
             }
         );
 
-        // Compute hash of the .sp file
-        let hash = Hash::hash_file(sp_file).await?;
+        // Extract to temporary directory first
+        let temp_dir = tempfile::tempdir().map_err(|e| StorageError::IoError {
+            message: e.to_string(),
+        })?;
+
+        extract_package(sp_file, temp_dir.path()).await?;
+
+        // Compute hash of the extracted contents (true content-addressable storage)
+        let hash = sps2_hash::Hash::hash_directory(temp_dir.path()).await?;
 
         // Check if already exists
         let dest_path = self.package_path(&hash);
@@ -111,13 +118,6 @@ impl PackageStore {
         if let Some(parent) = dest_path.parent() {
             create_dir_all(parent).await?;
         }
-
-        // Extract to temporary directory
-        let temp_dir = tempfile::tempdir().map_err(|e| StorageError::IoError {
-            message: e.to_string(),
-        })?;
-
-        extract_package(sp_file, temp_dir.path()).await?;
 
         // Move to final location
         tokio::fs::rename(temp_dir.path(), &dest_path)
@@ -172,15 +172,11 @@ impl PackageStore {
     /// # Errors
     ///
     /// Returns an error if:
-    /// - Package cannot be found by name/version
+    /// - Package cannot be found by hash
     /// - SBOM file cannot be read
-    pub async fn get_package_sbom(
-        &self,
-        package_name: &str,
-        package_version: &sps2_types::Version,
-    ) -> Result<Vec<u8>, Error> {
-        // Get the package path (this is a simplified implementation)
-        let package_path = self.get_package_path(package_name, package_version)?;
+    pub async fn get_package_sbom(&self, hash: &Hash) -> Result<Vec<u8>, Error> {
+        // Get the package path using the hash
+        let package_path = self.package_path(hash);
 
         // Try to read SPDX SBOM first
         let spdx_path = package_path.join("sbom.spdx.json");
@@ -206,28 +202,12 @@ impl PackageStore {
 
         // No SBOM found
         Err(StorageError::IoError {
-            message: format!("SBOM file not found for package {package_name}-{package_version}"),
+            message: format!(
+                "SBOM file not found for package with hash {}",
+                hash.to_hex()
+            ),
         }
         .into())
-    }
-
-    /// Get package path by name and version
-    ///
-    /// # Errors
-    ///
-    /// Currently returns a dummy implementation, but may return errors in future
-    /// when actual package lookup is implemented
-    pub fn get_package_path(
-        &self,
-        package_name: &str,
-        package_version: &sps2_types::Version,
-    ) -> Result<std::path::PathBuf, Error> {
-        // This is a simplified implementation - in reality we'd need to
-        // look up the package hash from name/version
-        // For now, create a dummy hash from name and version
-        let dummy_content = format!("{package_name}-{package_version}");
-        let hash = sps2_hash::Hash::from_data(dummy_content.as_bytes());
-        Ok(self.package_path(&hash))
     }
 
     /// Add a local package file to the store
@@ -258,25 +238,10 @@ impl PackageStore {
             }
 
             let name = entry.file_name();
-            if let Some(prefix) = name.to_str() {
-                // First level is 2-char prefix
-                if prefix.len() != 2 {
-                    continue;
-                }
-
-                let mut sub_entries = tokio::fs::read_dir(entry.path()).await?;
-                while let Some(sub_entry) = sub_entries.next_entry().await? {
-                    if !sub_entry.file_type().await?.is_dir() {
-                        continue;
-                    }
-
-                    if let Some(suffix) = sub_entry.file_name().to_str() {
-                        // Reconstruct full hash
-                        let full_hash = format!("{prefix}{suffix}");
-                        if let Ok(hash) = Hash::from_hex(&full_hash) {
-                            packages.push(hash);
-                        }
-                    }
+            if let Some(hash_str) = name.to_str() {
+                // Each directory name should be a complete hash (flat structure)
+                if let Ok(hash) = Hash::from_hex(hash_str) {
+                    packages.push(hash);
                 }
             }
         }
@@ -415,17 +380,26 @@ impl PackageStore {
 
     /// Get package size by name and version
     ///
+    /// # Deprecated
+    ///
+    /// This method is deprecated. Package sizes should be retrieved from the
+    /// state database instead, as it tracks the actual installed package sizes.
+    /// Use `StateManager::get_installed_packages()` and access the `size` field
+    /// on the returned `Package` structs.
+    ///
     /// # Errors
     ///
-    /// Currently returns success, but may return errors in future implementations
-    /// when package lookup is implemented
+    /// Always returns 0 as this method is deprecated
+    #[deprecated(
+        since = "0.1.0",
+        note = "Use StateManager::get_installed_packages() to get package sizes from the state database"
+    )]
     pub fn get_package_size(
         &self,
         _package_name: &str,
         _package_version: &sps2_types::Version,
     ) -> Result<u64, Error> {
-        // TODO: Implement lookup by package name/version
-        // For now, return 0 as placeholder
+        // Deprecated: Package sizes should come from state database
         Ok(0)
     }
 
@@ -487,9 +461,8 @@ impl PackageStore {
 
     /// Compute hash of staging directory contents
     async fn compute_staging_hash(&self, staging_path: &Path) -> Result<Hash, Error> {
-        // For now, use a simple approach - hash the manifest content
-        let manifest_path = staging_path.join("manifest.toml");
-        Hash::hash_file(&manifest_path).await
+        // Hash the entire staging directory for true content-addressable storage
+        sps2_hash::Hash::hash_directory(staging_path).await
     }
 
     /// Copy staging directory to store location

@@ -281,6 +281,7 @@ impl OutputRenderer {
             "Created:  {}",
             info.timestamp.format("%Y-%m-%d %H:%M:%S UTC")
         );
+        println!("Operation: {}", info.operation);
         println!("Packages: {}", info.package_count);
 
         if let Some(parent) = info.parent_id {
@@ -344,6 +345,7 @@ impl OutputRenderer {
         table.set_header(vec![
             Cell::new("State ID").add_attribute(Attribute::Bold),
             Cell::new("Current").add_attribute(Attribute::Bold),
+            Cell::new("Operation").add_attribute(Attribute::Bold),
             Cell::new("Created").add_attribute(Attribute::Bold),
             Cell::new("Packages").add_attribute(Attribute::Bold),
         ]);
@@ -360,6 +362,7 @@ impl OutputRenderer {
             table.add_row(vec![
                 Cell::new(state.id.to_string()),
                 current_cell,
+                Cell::new(&state.operation),
                 Cell::new(state.timestamp.format("%Y-%m-%d %H:%M").to_string()),
                 Cell::new(state.package_count.to_string()),
             ]);

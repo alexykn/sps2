@@ -127,7 +127,7 @@ impl StagingPipeline {
             context: std::collections::HashMap::new(),
         });
 
-        store
+        let stored_package = store
             .add_package_from_staging(staging_dir.path(), &decompress_result.package_id)
             .await?;
 
@@ -142,10 +142,18 @@ impl StagingPipeline {
             path: staging_dir.path().display().to_string(),
         });
 
+        // Get the hash from the stored package
+        let hash = stored_package
+            .hash()
+            .ok_or_else(|| sps2_errors::StorageError::IoError {
+                message: "failed to get hash from stored package".to_string(),
+            })?;
+
         tx.emit(Event::DebugLog {
             message: format!(
-                "DEBUG: Package installation completed: {}",
-                decompress_result.package_id.name
+                "DEBUG: Package installation completed: {} (hash: {})",
+                decompress_result.package_id.name,
+                hash.to_hex()
             ),
             context: std::collections::HashMap::new(),
         });
