@@ -492,7 +492,7 @@ impl AtomicInstaller {
 
         while let Some(entry) = entries.next_entry().await? {
             let src_path = entry.path();
-            let file_name = entry.file_name();
+            let _file_name = entry.file_name();
             let metadata = entry.metadata().await?;
 
             // Calculate relative path from base for tracking

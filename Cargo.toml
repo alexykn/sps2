@@ -42,12 +42,12 @@ sqlx = { version = "0.8.6", features = [
 ] }
 
 # HTTP
-reqwest = { version = "0.12.18", features = ["json", "stream"] }
+reqwest = { version = "0.12.19", features = ["json", "stream"] }
 
 # Serialization
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
-toml = "0.8.22"
+toml = "0.8.23"
 
 # Error handling
 thiserror = "2.0.12"
@@ -66,12 +66,12 @@ crossbeam = "0.8.4"
 # Script engine is Starlark (handled in individual crates)
 
 # CLI
-clap = { version = "4.5.39", features = ["derive", "env"] }
+clap = { version = "4.5.40", features = ["derive", "env"] }
 
 # Archive handling
-tar = "0.4.43"
+tar = "0.4.44"
 
 # Testing
 tempfile = "3.20.0"
-proptest = "1.6.0"
+proptest = "1.7.0"
 futures = "0.3.31"

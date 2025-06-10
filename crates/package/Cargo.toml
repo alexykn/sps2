@@ -18,7 +18,7 @@ serde = { workspace = true }
 tokio = { workspace = true }
 num_cpus = "1.17.0"
 anyhow = "1.0.98"
-async-trait = "0.1.83"
+async-trait = "0.1.88"
 
 [dev-dependencies]
 tempfile = { workspace = true }
