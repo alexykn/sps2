@@ -68,14 +68,6 @@ cargo sqlx prepare
 - Leverage RAII - resources should clean themselves up
 - Version constraints should be parsed into structured types, not passed as strings internally
 
-### Testing Requirements
-- Unit tests for all complex logic (>20 lines or involves state)
-- Integration tests for public APIs
-- Use `proptest` for property-based testing where applicable
-- Mock filesystem operations in tests
-- Test both success and error paths
-- Extensive tests for version constraint parsing and matching
-- Test version resolution with complex dependency graphs
 
 ## Cross-Cutting Conventions
 
@@ -91,272 +83,419 @@ cargo sqlx prepare
 | **Progress** | Broadcast `Event` enum via channels | Decouples core from UI details |
 | **SBOM** | SPDX 3.0 JSON (primary), CycloneDX 1.6 (optional) | Built into every package via Syft |
 | **Crypto** | Minisign signatures; BLAKE3 for content hashing | Small trust root + fast hashing |
-| **Unit tests** | Each crate self-contained; tempdir fixtures | No integration tests hit real `/opt/pm` |
 | **Linting** | `#![deny(clippy::pedantic, unsafe_code)]` | Forces deliberate unsafe usage |
 | **CI** | `cargo deny` plus `cargo audit` | Catches transitive vulnerabilities |
-
-## Third-Party Dependencies
-
-Key external crates used throughout the project:
-
-| Crate | Version | License | Used by | Purpose |
-|-------|---------|---------|---------|---------|
-| `tokio` | `1.x` | MIT | All async crates | Async runtime |
-| `sqlx` | `0.7` | MIT/Apache-2.0 | `state` | Async SQLite access |
-| `reqwest` | `0.11` | MIT/Apache-2.0 | `net` | HTTP client |
-| `dashmap` | `5.x` | MIT | `install` | Concurrent deduplication |
-| `crossbeam` | `0.8` | MIT/Apache-2.0 | `install` | Lock-free queues |
-| `num_cpus` | `1.x` | MIT/Apache-2.0 | `builder` | CPU count detection |
-| `semver` | `1.x` | MIT/Apache-2.0 | `types` | Version parsing |
-| `blake3` | `1.x` | CC0-1.0/Apache-2.0 | `hash` | Content hashing |
-| `starlark` | `0.11` | Apache-2.0 | `package` | Recipe scripting |
-| `thiserror` | `1.x` | MIT/Apache-2.0 | `errors` | Error derives |
-| `serde` | `1.x` | MIT/Apache-2.0 | Most crates | Serialization |
-| `tracing` | `0.1` | MIT | All crates (macros) / `sps2` (subscriber) | Structured logging |
 
 **Note**: We avoid `sys-info` due to GPL-2.0 license. Load average detection uses `num_cpus` only.
 
 ## Project Structure
 
 ```
-sps2/:
-Cargo.toml              # Workspace manifest
-apps/
-crates/
-tests/                  # Integration tests
-
-sps2/apps/:
-sps2/                   # CLI application
-
-sps2/apps/sps2/:
-Cargo.toml
-src/
-
-sps2/apps/sps2/src/:
-main.rs
-
-sps2/crates/:
-audit/                  # Future: CVE detection using SBOMs
-builder/                # Package building with SBOM generation
-config/                 # Configuration management
-errors/                 # Fine-grained error types
-events/                 # Event system for async communication
-hash/                   # Content addressing (BLAKE3)
-index/                  # Package registry/discovery
-install/                # Installation operations
-manifest/               # Repository manifest handling
-net/                    # Network operations (downloads)
-ops/                    # High-level operations orchestration
-package/                # Package definition (Starlark) handling
-resolver/               # Dependency resolution for install and build
-root/                   # Filesystem root/prefix management
-state/                  # State management and transitions
-store/                  # Package store implementation
-types/                  # Shared type definitions
-
-sps2/crates/audit/:
-Cargo.toml
-src/
-tests/
-
-sps2/crates/audit/src/:
-lib.rs
-
-sps2/crates/audit/tests/:
-integration.rs
-
-sps2/crates/builder/:
-Cargo.toml
-src/
-tests/
-
-sps2/crates/builder/src/:
-lib.rs
-
-sps2/crates/builder/tests/:
-integration.rs
-
-sps2/crates/config/:
-Cargo.toml
-src/
-tests/
-
-sps2/crates/config/src/:
-lib.rs
-
-sps2/crates/config/tests/:
-integration.rs
-
-sps2/crates/errors/:
-Cargo.toml
-src/
-tests/
-
-sps2/crates/errors/src/:
-lib.rs
-
-sps2/crates/errors/tests/:
-integration.rs
-
-sps2/crates/events/:
-Cargo.toml
-src/
-tests/
-
-sps2/crates/events/src/:
-lib.rs
-
-sps2/crates/events/tests/:
-integration.rs
-
-sps2/crates/hash/:
-Cargo.toml
-src/
-tests/
-
-sps2/crates/hash/src/:
-lib.rs
-
-sps2/crates/hash/tests/:
-integration.rs
-
-sps2/crates/index/:
-Cargo.toml
-src/
-tests/
-
-sps2/crates/index/src/:
-lib.rs
-
-sps2/crates/index/tests/:
-integration.rs
-
-sps2/crates/install/:
-Cargo.toml
-src/
-tests/
-
-sps2/crates/install/src/:
-lib.rs
-
-sps2/crates/install/tests/:
-integration.rs
-
-sps2/crates/manifest/:
-Cargo.toml
-src/
-tests/
-
-sps2/crates/manifest/src/:
-lib.rs
-
-sps2/crates/manifest/tests/:
-integration.rs
-
-sps2/crates/net/:
-Cargo.toml
-src/
-tests/
-
-sps2/crates/net/src/:
-lib.rs
-
-sps2/crates/net/tests/:
-integration.rs
-
-sps2/crates/ops/:
-Cargo.toml
-src/
-tests/
-
-sps2/crates/ops/src/:
-lib.rs
-
-sps2/crates/ops/tests/:
-integration.rs
-
-sps2/crates/package/:
-Cargo.toml
-src/
-tests/
-
-sps2/crates/package/src/:
-lib.rs
-
-sps2/crates/package/tests/:
-integration.rs
-
-sps2/crates/resolver/:
-Cargo.toml
-src/
-tests/
-
-sps2/crates/resolver/src/:
-lib.rs
-
-sps2/crates/resolver/tests/:
-integration.rs
-
-sps2/crates/root/:
-Cargo.toml
-src/
-tests/
-
-sps2/crates/root/src/:
-lib.rs
-
-sps2/crates/root/tests/:
-integration.rs
-
-sps2/crates/state/:
-Cargo.toml
-src/
-tests/
-migrations/
-
-sps2/crates/state/src/:
-lib.rs
-
-sps2/crates/state/tests/:
-integration.rs
-
-sps2/crates/state/migrations/:
-0001_initial_schema.sql
-0002_add_build_deps.sql
-
-sps2/crates/store/:
-Cargo.toml
-src/
-tests/
-
-sps2/crates/store/src/:
-lib.rs
-
-sps2/crates/store/tests/:
-integration.rs
-
-sps2/crates/types/:
-Cargo.toml
-src/
-tests/
-
-sps2/crates/types/src/:
-lib.rs
-
-sps2/crates/types/tests/:
-integration.rs
-
-sps2/tests/:
-# Integration tests directory
-
-Each crate follows standard Rust structure:
-crate-name/:
-Cargo.toml
-src/
-    lib.rs
-    ...
-tests/
-    integration.rs
+.
+├── apps
+│   └── sps2
+│       ├── Cargo.toml
+│       └── src
+│           ├── cli.rs
+│           ├── display.rs
+│           ├── error.rs
+│           ├── events.rs
+│           ├── main.rs
+│           └── setup.rs
+├── Cargo.lock
+├── Cargo.toml
+├── crates
+│   ├── audit
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── lib.rs
+│   │       ├── sbom_parser.rs
+│   │       ├── scanner.rs
+│   │       ├── types.rs
+│   │       └── vulndb
+│   │           ├── cache.rs
+│   │           ├── database.rs
+│   │           ├── manager.rs
+│   │           ├── mod.rs
+│   │           ├── parser.rs
+│   │           ├── schema.rs
+│   │           ├── sources
+│   │           │   ├── github.rs
+│   │           │   ├── mod.rs
+│   │           │   ├── nvd.rs
+│   │           │   └── osv.rs
+│   │           ├── statistics.rs
+│   │           └── updater.rs
+│   ├── builder
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── api.rs
+│   │       ├── archive.rs
+│   │       ├── build_systems
+│   │       │   ├── autotools.rs
+│   │       │   ├── cargo.rs
+│   │       │   ├── cmake.rs
+│   │       │   ├── core.rs
+│   │       │   ├── go.rs
+│   │       │   ├── meson.rs
+│   │       │   ├── mod.rs
+│   │       │   ├── nodejs.rs
+│   │       │   └── python.rs
+│   │       ├── builder.rs
+│   │       ├── cache
+│   │       │   └── mod.rs
+│   │       ├── compression.rs
+│   │       ├── config.rs
+│   │       ├── cross.rs
+│   │       ├── dependencies
+│   │       │   └── mod.rs
+│   │       ├── environment
+│   │       │   ├── core.rs
+│   │       │   ├── dependencies.rs
+│   │       │   ├── directories.rs
+│   │       │   ├── execution.rs
+│   │       │   ├── hermetic.rs
+│   │       │   ├── isolation.rs
+│   │       │   ├── mod.rs
+│   │       │   ├── sandbox.rs
+│   │       │   ├── types.rs
+│   │       │   └── variables.rs
+│   │       ├── error_handling
+│   │       │   └── mod.rs
+│   │       ├── events.rs
+│   │       ├── fileops.rs
+│   │       ├── format.rs
+│   │       ├── lib.rs
+│   │       ├── manifest.rs
+│   │       ├── monitoring
+│   │       │   ├── aggregator.rs
+│   │       │   ├── config.rs
+│   │       │   ├── metrics.rs
+│   │       │   ├── mod.rs
+│   │       │   ├── pipeline.rs
+│   │       │   ├── telemetry.rs
+│   │       │   └── tracing.rs
+│   │       ├── orchestration
+│   │       │   └── mod.rs
+│   │       ├── packaging.rs
+│   │       ├── quality_assurance
+│   │       │   ├── config.rs
+│   │       │   ├── linters
+│   │       │   │   ├── cargo.rs
+│   │       │   │   ├── clang.rs
+│   │       │   │   ├── eslint.rs
+│   │       │   │   ├── generic.rs
+│   │       │   │   ├── mod.rs
+│   │       │   │   └── python.rs
+│   │       │   ├── mod.rs
+│   │       │   ├── pipeline.rs
+│   │       │   ├── policy
+│   │       │   │   ├── license.rs
+│   │       │   │   ├── mod.rs
+│   │       │   │   ├── permissions.rs
+│   │       │   │   └── size.rs
+│   │       │   ├── reports.rs
+│   │       │   ├── scanners
+│   │       │   │   ├── cargo_audit.rs
+│   │       │   │   ├── mod.rs
+│   │       │   │   ├── npm_audit.rs
+│   │       │   │   ├── python_scanner.rs
+│   │       │   │   └── trivy.rs
+│   │       │   └── types.rs
+│   │       ├── quality.rs
+│   │       ├── recipe.rs
+│   │       ├── sbom.rs
+│   │       ├── signing.rs
+│   │       ├── starlark_bridge.rs
+│   │       ├── timeout_utils.rs
+│   │       └── workflow.rs
+│   ├── config
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       └── lib.rs
+│   ├── errors
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── audit.rs
+│   │       ├── build.rs
+│   │       ├── config.rs
+│   │       ├── install.rs
+│   │       ├── lib.rs
+│   │       ├── network.rs
+│   │       ├── ops.rs
+│   │       ├── package.rs
+│   │       ├── state.rs
+│   │       ├── storage.rs
+│   │       └── version.rs
+│   ├── events
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── lib.rs
+│   │       └── progress
+│   │           ├── algorithms.rs
+│   │           ├── config.rs
+│   │           ├── manager.rs
+│   │           ├── mod.rs
+│   │           ├── speed.rs
+│   │           ├── tracker.rs
+│   │           └── update.rs
+│   ├── hash
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       └── lib.rs
+│   ├── index
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── cache.rs
+│   │       ├── lib.rs
+│   │       └── models.rs
+│   ├── install
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── atomic
+│   │       │   ├── filesystem.rs
+│   │       │   ├── installer.rs
+│   │       │   ├── linking.rs
+│   │       │   ├── mod.rs
+│   │       │   ├── rollback.rs
+│   │       │   └── transition.rs
+│   │       ├── installer.rs
+│   │       ├── lib.rs
+│   │       ├── operations.rs
+│   │       ├── parallel.rs
+│   │       ├── pipeline
+│   │       │   ├── batch.rs
+│   │       │   ├── config.rs
+│   │       │   ├── decompress.rs
+│   │       │   ├── download.rs
+│   │       │   ├── mod.rs
+│   │       │   ├── operation.rs
+│   │       │   ├── resource.rs
+│   │       │   └── staging.rs
+│   │       ├── python.rs
+│   │       ├── staging
+│   │       │   ├── directory.rs
+│   │       │   ├── guard.rs
+│   │       │   ├── manager.rs
+│   │       │   ├── mod.rs
+│   │       │   ├── utils.rs
+│   │       │   └── validation.rs
+│   │       └── validation
+│   │           ├── content
+│   │           │   ├── limits.rs
+│   │           │   ├── manifest.rs
+│   │           │   ├── mod.rs
+│   │           │   ├── tar.rs
+│   │           │   └── zstd.rs
+│   │           ├── format
+│   │           │   ├── detection.rs
+│   │           │   ├── extension.rs
+│   │           │   ├── mod.rs
+│   │           │   └── size_limits.rs
+│   │           ├── mod.rs
+│   │           ├── pipeline
+│   │           │   ├── context.rs
+│   │           │   ├── mod.rs
+│   │           │   ├── orchestrator.rs
+│   │           │   └── recovery.rs
+│   │           ├── security
+│   │           │   ├── mod.rs
+│   │           │   ├── paths.rs
+│   │           │   ├── permissions.rs
+│   │           │   ├── policies.rs
+│   │           │   └── symlinks.rs
+│   │           └── types.rs
+│   ├── manifest
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       └── lib.rs
+│   ├── net
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── client.rs
+│   │       ├── download
+│   │       │   ├── config.rs
+│   │       │   ├── core.rs
+│   │       │   ├── mod.rs
+│   │       │   ├── resume.rs
+│   │       │   ├── retry.rs
+│   │       │   ├── stream.rs
+│   │       │   └── validation.rs
+│   │       └── lib.rs
+│   ├── ops
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── build.rs
+│   │       ├── context.rs
+│   │       ├── health.rs
+│   │       ├── install.rs
+│   │       ├── keys.rs
+│   │       ├── lib.rs
+│   │       ├── maintenance.rs
+│   │       ├── query.rs
+│   │       ├── repository.rs
+│   │       ├── security.rs
+│   │       ├── self_update.rs
+│   │       ├── small_ops.rs
+│   │       ├── types.rs
+│   │       ├── uninstall.rs
+│   │       ├── update.rs
+│   │       └── upgrade.rs
+│   ├── package
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── error_helpers.rs
+│   │       ├── lib.rs
+│   │       ├── recipe.rs
+│   │       ├── sandbox.rs
+│   │       └── starlark
+│   │           ├── build_systems.rs
+│   │           ├── context.rs
+│   │           ├── cross.rs
+│   │           ├── features.rs
+│   │           ├── mod.rs
+│   │           └── parallel.rs
+│   ├── progress
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       └── lib.rs
+│   ├── resolver
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── execution.rs
+│   │       ├── graph.rs
+│   │       ├── lib.rs
+│   │       ├── resolver.rs
+│   │       └── sat
+│   │           ├── clause.rs
+│   │           ├── conflict_analysis.rs
+│   │           ├── mod.rs
+│   │           ├── solver.rs
+│   │           ├── types.rs
+│   │           └── variable_map.rs
+│   ├── root
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       └── lib.rs
+│   ├── state
+│   │   ├── build.rs
+│   │   ├── Cargo.toml
+│   │   ├── migrations
+│   │   │   ├── 0001_initial_schema.sql
+│   │   │   ├── 0002_add_build_deps.sql
+│   │   │   ├── 0003_add_package_files.sql
+│   │   │   ├── 0004_add_venv_tracking.sql
+│   │   │   └── 0005_add_package_map.sql
+│   │   └── src
+│   │       ├── lib.rs
+│   │       ├── manager.rs
+│   │       ├── models.rs
+│   │       ├── queries_runtime.rs
+│   │       └── queries.rs
+│   ├── store
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── archive.rs
+│   │       ├── archive.rs.backup
+│   │       ├── format_detection.rs
+│   │       ├── lib.rs
+│   │       └── package.rs
+│   └── types
+│       ├── Cargo.toml
+│       └── src
+│           ├── format.rs
+│           ├── lib.rs
+│           ├── package.rs
+│           ├── reports.rs
+│           ├── state.rs
+│           └── version.rs
+├── LICENSE.md
+├── README.md
+├── setup.sh
+├── STARLARK_API_DOCUMENTATION.md
+├── test_build
+│   ├── autotools
+│   │   ├── configure.ac
+│   │   ├── hello.c
+│   │   ├── Makefile.am
+│   │   └── recipe.star
+│   ├── cargo
+│   │   ├── Cargo.toml
+│   │   ├── recipe.star
+│   │   └── src
+│   │       └── main.rs
+│   ├── cmake
+│   │   ├── CMakeLists.txt
+│   │   ├── hello.c
+│   │   └── recipe.star
+│   ├── go
+│   │   ├── go.mod
+│   │   ├── main.go
+│   │   └── recipe.star
+│   ├── make
+│   │   ├── hello.c
+│   │   ├── Makefile
+│   │   └── test-make.star
+│   ├── meson
+│   │   ├── hello.c
+│   │   ├── meson.build
+│   │   └── recipe.star
+│   ├── nodejs-npm
+│   │   ├── hello.js
+│   │   ├── package.json
+│   │   └── recipe.star
+│   ├── nodejs-pnpm
+│   │   ├── hello.js
+│   │   └── package.json
+│   ├── nodejs-yarn
+│   │   ├── hello.js
+│   │   └── package.json
+│   ├── packages
+│   │   ├── hello-autotools-1.0.0
+│   │   │   └── bin
+│   │   │       └── hello-autotools
+│   │   ├── hello-autotools-1.0.0-1.arm64.sp
+│   │   ├── hello-cargo-1.0.0
+│   │   │   └── bin
+│   │   │       └── hello-cargo
+│   │   ├── hello-cargo-1.0.0-1.arm64.sp
+│   │   ├── hello-cmake-1.0.0
+│   │   │   └── bin
+│   │   │       └── hello-cmake
+│   │   ├── hello-cmake-1.0.0-1.arm64.sp
+│   │   ├── hello-go-1.0.0
+│   │   │   └── bin
+│   │   │       └── hello-go
+│   │   ├── hello-go-1.0.0-1.arm64.sp
+│   │   ├── hello-meson-1.0.0
+│   │   │   └── bin
+│   │   │       └── hello-meson
+│   │   ├── hello-meson-1.0.0-1.arm64.sp
+│   │   ├── manifest.toml
+│   │   ├── manual
+│   │   │   ├── hello-autotools-1.0.0
+│   │   │   │   └── bin
+│   │   │   │       └── hello-autotools
+│   │   │   ├── hello-autotools-1.0.0-1.arm64.sp
+│   │   │   ├── hello-cargo-1.0.0
+│   │   │   │   └── bin
+│   │   │   │       └── hello-cargo
+│   │   │   ├── hello-cargo-1.0.0-1.arm64.sp
+│   │   │   ├── manifest.toml
+│   │   │   └── sbom.spdx.json
+│   │   ├── sbom.spdx.json
+│   │   ├── test-make-1.0.0
+│   │   │   └── bin
+│   │   │       └── hello
+│   │   └── test-make-1.0.0-1.arm64.sp
+│   ├── python-pyproject
+│   │   ├── hello.py
+│   │   ├── pyproject.toml
+│   │   └── recipe.star
+│   └── python-setuppy
+│       ├── hello.py
+│       └── setup.py
+└── VENV_CLEANUP_IMPLEMENTATION.md
 ```
 
 ## Architecture Overview
@@ -1713,54 +1852,6 @@ echo "sps2 installed! Restart your shell or run: export PATH=\"/opt/pm/live/bin:
 - Verifies signature before replacing
 - Atomic replacement of binary
 - Preserves configuration and state
-
-## Implementation Guidelines
-
-### Testing Strategy
-
-#### Unit Testing
-- Mock implementations for `Store`, `StateManager`, `Index`, etc.
-- Use temp directories for filesystem operations
-- Inject mocks into `OpsCtx` for isolated testing
-- No network or APFS access in unit tests
-
-#### Integration Testing
-- Test complete workflows with real filesystem operations
-- Use isolated `/tmp` prefixes for safety
-- Verify atomic operations work correctly
-- Test rollback scenarios
-
-#### Test Fixtures
-- Include sample `.sp` files in `tests/fixtures/` for integration tests
-- Minimal packages: `hello-1.0.0-1.arm64.sp` with simple binary
-- Complex packages: With multiple dependencies for resolver tests
-- Invalid packages: For error handling tests
-
-#### Test Coverage Requirements
-- Every public API must have tests
-- Both success and error paths must be tested
-- Edge cases (empty state, corrupted data, etc.)
-- Concurrent operation handling
-
-#### Example Test Pattern
-```rust
-#[tokio::test]
-async fn update_skips_major_versions() {
-    let temp = TempDir::new().unwrap();
-    let mock_index = MockIndex::new()
-        .with_package("foo", "1.2.3")
-        .with_package("foo", "2.0.0");
-
-    let ctx = OpsCtx {
-        index: &mock_index,
-        // ... other mocks
-    };
-
-    // Assuming foo is installed with constraint "~=1.2.0"
-    let report = ctx.update(&["foo"]).await.unwrap();
-    assert_eq!(report.updated.len(), 0); // No update because 2.0.0 exceeds ~= constraint
-}
-```
 
 ### Performance Considerations
 

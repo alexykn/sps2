@@ -19,32 +19,40 @@ type Result<T> = std::result::Result<T, Error>;
 #[cfg(target_os = "macos")]
 mod apfs {
     use super::{CString, Error, OsStrExt, Path, Result, StorageError};
-    use libc::{c_char, c_int};
 
-    extern "C" {
-        fn clonefile(src: *const c_char, dst: *const c_char, flags: c_int) -> c_int;
-    }
+    // macOS clonefile flags for security and proper ownership handling
+    const CLONE_NOFOLLOW: u32 = 0x0001; // Don't follow symbolic links
+    const CLONE_NOOWNERCOPY: u32 = 0x0002; // Don't copy owner information
 
-    /// Clone a file or directory using APFS clonefile
+    /// Clone a file or directory using APFS clonefile with security flags
     #[allow(unsafe_code)]
     pub async fn clone_path(src: &Path, dst: &Path) -> Result<()> {
         let src_cstring =
-            CString::new(src.as_os_str().as_bytes()).map_err(|e| StorageError::InvalidPath {
+            CString::new(src.as_os_str().as_bytes()).map_err(|_| StorageError::InvalidPath {
                 path: src.display().to_string(),
             })?;
 
         let dst_cstring =
-            CString::new(dst.as_os_str().as_bytes()).map_err(|e| StorageError::InvalidPath {
+            CString::new(dst.as_os_str().as_bytes()).map_err(|_| StorageError::InvalidPath {
                 path: dst.display().to_string(),
             })?;
 
         tokio::task::spawn_blocking(move || {
             // SAFETY: clonefile is available on macOS and we're passing valid C strings
             unsafe {
-                if clonefile(src_cstring.as_ptr(), dst_cstring.as_ptr(), 0) != 0 {
-                    let err = std::io::Error::last_os_error();
+                let result = libc::clonefile(
+                    src_cstring.as_ptr(),
+                    dst_cstring.as_ptr(),
+                    CLONE_NOFOLLOW | CLONE_NOOWNERCOPY,
+                );
+
+                if result != 0 {
+                    let errno = *libc::__error();
                     return Err(StorageError::ApfsCloneFailed {
-                        message: err.to_string(),
+                        message: format!(
+                            "clonefile failed with code {result}, errno: {errno} ({})",
+                            std::io::Error::from_raw_os_error(errno)
+                        ),
                     }
                     .into());
                 }
@@ -315,7 +323,7 @@ pub async fn remove_dir_all(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Create a hard link
+/// Create a hard link with platform optimization
 ///
 /// # Errors
 ///
@@ -324,9 +332,90 @@ pub async fn remove_dir_all(path: &Path) -> Result<()> {
 /// - The destination already exists
 /// - The hard link operation fails (cross-device link, permissions, etc.)
 pub async fn hard_link(src: &Path, dst: &Path) -> Result<()> {
-    fs::hard_link(src, dst).await.map_err(|e| {
+    #[cfg(target_os = "macos")]
+    {
+        let src_cstring =
+            CString::new(src.as_os_str().as_bytes()).map_err(|_| StorageError::InvalidPath {
+                path: src.display().to_string(),
+            })?;
+
+        let dst_cstring =
+            CString::new(dst.as_os_str().as_bytes()).map_err(|_| StorageError::InvalidPath {
+                path: dst.display().to_string(),
+            })?;
+
+        tokio::task::spawn_blocking(move || {
+            let result = unsafe { libc::link(src_cstring.as_ptr(), dst_cstring.as_ptr()) };
+            if result != 0 {
+                let errno = unsafe { *libc::__error() };
+                return Err(StorageError::IoError {
+                    message: format!(
+                        "hard link failed with code {result}, errno: {errno} ({})",
+                        std::io::Error::from_raw_os_error(errno)
+                    ),
+                }
+                .into());
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|e| Error::internal(format!("hard link task failed: {e}")))?
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        fs::hard_link(src, dst).await.map_err(|e| {
+            StorageError::IoError {
+                message: format!("hard link failed: {e}"),
+            }
+            .into()
+        })
+    }
+}
+
+/// Create staging directory using platform-optimized methods
+///
+/// This function will clone an existing live directory if it exists,
+/// or create a new empty directory for fresh installations.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Directory creation fails
+/// - Clone operation fails
+/// - Parent directory creation fails
+pub async fn create_staging_directory(live_path: &Path, staging_path: &Path) -> Result<()> {
+    if exists(live_path).await {
+        // Ensure parent directory exists for staging path
+        if let Some(parent) = staging_path.parent() {
+            create_dir_all(parent).await?;
+        }
+
+        // Remove staging directory if it already exists (clonefile requires destination to not exist)
+        if exists(staging_path).await {
+            remove_dir_all(staging_path).await?;
+        }
+
+        // Clone the live directory to staging
+        clone_directory(live_path, staging_path).await?;
+    } else {
+        // Create empty staging directory for fresh installation
+        create_dir_all(staging_path).await?;
+    }
+
+    Ok(())
+}
+
+/// Rename a file or directory
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The rename operation fails (permissions, cross-device, etc.)
+pub async fn rename(src: &Path, dst: &Path) -> Result<()> {
+    fs::rename(src, dst).await.map_err(|e| {
         StorageError::IoError {
-            message: format!("hard link failed: {e}"),
+            message: format!("rename failed: {e}"),
         }
         .into()
     })
@@ -403,4 +492,25 @@ pub fn set_compression(_path: &Path) -> Result<()> {
 pub fn set_compression(_path: &Path) -> Result<()> {
     // No-op on non-macOS
     Ok(())
+}
+
+/// Remove a file
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The file removal operation fails (permissions, file not found, etc.)
+pub async fn remove_file(path: &Path) -> Result<()> {
+    fs::remove_file(path).await.map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            StorageError::PathNotFound {
+                path: path.display().to_string(),
+            }
+        } else {
+            StorageError::IoError {
+                message: format!("failed to remove file: {e}"),
+            }
+        }
+        .into()
+    })
 }

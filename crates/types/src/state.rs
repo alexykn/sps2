@@ -68,3 +68,27 @@ pub enum ChangeType {
     /// Package was downgraded
     Downgrade,
 }
+
+/// Phase of a two-phase commit transaction
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TransactionPhase {
+    /// The database changes are committed, and the system is ready for the filesystem swap
+    Prepared,
+    /// The filesystem swap is complete; only the final database activation is pending
+    Swapped,
+}
+
+/// Transaction journal for crash recovery
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransactionJournal {
+    /// New state ID being transitioned to
+    pub new_state_id: Uuid,
+    /// Parent state ID we're transitioning from
+    pub parent_state_id: Uuid,
+    /// Path to the staging directory
+    pub staging_path: std::path::PathBuf,
+    /// Current phase of the transaction
+    pub phase: TransactionPhase,
+    /// Operation type (install, uninstall, rollback, etc.)
+    pub operation: String,
+}

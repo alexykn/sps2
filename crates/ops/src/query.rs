@@ -51,7 +51,7 @@ pub async fn list_packages(ctx: &OpsCtx) -> Result<Vec<PackageInfo>, Error> {
         };
 
         // Get package size from state database
-        let size = Some(package.size as u64);
+        let size = Some(u64::try_from(package.size).unwrap_or(0));
 
         let package_info = PackageInfo {
             name: package.name.clone(),
@@ -126,7 +126,7 @@ pub async fn package_info(ctx: &OpsCtx, package_name: &str) -> Result<PackageInf
         installed_packages
             .iter()
             .find(|pkg| pkg.name == package_name)
-            .map(|pkg| pkg.size as u64)
+            .map(|pkg| u64::try_from(pkg.size).unwrap_or(0))
     } else {
         None
     };

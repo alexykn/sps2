@@ -17,7 +17,7 @@ pub mod queries {
 #[cfg(feature = "runtime-queries")]
 mod queries_runtime;
 
-pub use manager::StateManager;
+pub use manager::{StateManager, TransactionData};
 pub use models::{Package, PackageRef, State, StoreRef};
 
 use sps2_errors::Error;

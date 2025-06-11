@@ -324,17 +324,11 @@ exec python -c "import sys; from {module} import {func}; sys.exit({func}())"
 
         // Ensure parent directory exists
         if let Some(parent) = dest_venv.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(|e| InstallError::FilesystemError {
-                    operation: "create_venv_clone_parent".to_string(),
-                    path: parent.display().to_string(),
-                    message: e.to_string(),
-                })?;
+            sps2_root::create_dir_all(parent).await?;
         }
 
         // Use APFS clonefile for instant copy
-        crate::atomic::filesystem::apfs_clonefile(source_venv, dest_venv)?;
+        sps2_root::clone_directory(source_venv, dest_venv).await?;
 
         // Send cloned event
         if let Some(sender) = event_sender {
@@ -369,7 +363,7 @@ exec python -c "import sys; from {module} import {func}; sys.exit({func}())"
         }
 
         // Use regular recursive copy for non-APFS systems
-        crate::atomic::filesystem::copy_directory_recursive(source_venv, dest_venv).await?;
+        sps2_root::clone_directory(source_venv, dest_venv).await?;
 
         // Send cloned event
         if let Some(sender) = event_sender {

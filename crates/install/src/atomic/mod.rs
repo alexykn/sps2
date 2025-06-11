@@ -6,9 +6,7 @@
 //! - State transitions with rollback support
 //! - Platform-specific filesystem optimizations
 
-pub mod filesystem;
 pub mod installer;
-pub mod linking;
 pub mod rollback;
 pub mod transition;
 

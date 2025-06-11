@@ -239,11 +239,11 @@ impl StateManager {
         let old_live_backup = self.state_path.join(transition.from.to_string());
 
         // Ensure state_path directory exists before creating backup paths
-        tokio::fs::create_dir_all(&self.state_path).await?;
+        sps2_root::create_dir_all(&self.state_path).await?;
 
         // Ensure parent directory of live_path exists
         if let Some(live_parent) = self.live_path.parent() {
-            tokio::fs::create_dir_all(live_parent).await?;
+            sps2_root::create_dir_all(live_parent).await?;
         }
 
         // Remove old backup if it exists
@@ -253,9 +253,9 @@ impl StateManager {
 
         // Move current live to backup, then staging to live
         if sps2_root::exists(&self.live_path).await {
-            tokio::fs::rename(&self.live_path, &old_live_backup).await?;
+            sps2_root::rename(&self.live_path, &old_live_backup).await?;
         }
-        tokio::fs::rename(&transition.staging_path, &self.live_path).await?;
+        sps2_root::rename(&transition.staging_path, &self.live_path).await?;
 
         // Update active state
         queries::set_active_state(&mut tx, &transition.to).await?;
@@ -942,6 +942,187 @@ impl StateManager {
     pub async fn remove_package_map(&self, name: &str, version: &str) -> Result<(), Error> {
         let mut tx = self.pool.begin().await?;
         queries::remove_package_map(&mut tx, name, version).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    // ===== JOURNAL MANAGEMENT FOR TWO-PHASE COMMIT =====
+}
+
+/// Data needed for transaction preparation
+pub struct TransactionData<'a> {
+    /// Package references to be added during commit
+    pub package_refs: &'a [PackageRef],
+    /// Package references with venv paths to be added during commit
+    pub package_refs_with_venv: &'a [(PackageRef, String)],
+    /// Package files to be added during commit
+    pub package_files: &'a [(String, String, String, bool)], // (package_name, package_version, file_path, is_directory)
+}
+
+impl StateManager {
+    /// Returns the canonical path to the journal file
+    fn journal_path(&self) -> PathBuf {
+        self.state_path
+            .parent()
+            .expect("Base path must exist")
+            .join("transaction.json")
+    }
+
+    /// Atomically writes the journal file
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if file write or rename fails
+    pub async fn write_journal(
+        &self,
+        journal: &sps2_types::state::TransactionJournal,
+    ) -> Result<(), Error> {
+        let content = serde_json::to_vec(journal)
+            .map_err(|e| Error::internal(format!("Failed to serialize journal: {e}")))?;
+        // Write to a temporary file first, then rename for atomicity
+        let temp_path = self.journal_path().with_extension("json.tmp");
+        tokio::fs::write(&temp_path, content).await?;
+        tokio::fs::rename(&temp_path, self.journal_path()).await?;
+        Ok(())
+    }
+
+    /// Reads and deserializes the journal file, if it exists
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if file read or deserialization fails
+    pub async fn read_journal(
+        &self,
+    ) -> Result<Option<sps2_types::state::TransactionJournal>, Error> {
+        let path = self.journal_path();
+        if !sps2_root::exists(&path).await {
+            return Ok(None);
+        }
+        let content = tokio::fs::read(path).await?;
+        Ok(Some(serde_json::from_slice(&content).map_err(|e| {
+            Error::internal(format!("Failed to deserialize journal: {e}"))
+        })?))
+    }
+
+    /// Deletes the journal file upon successful completion
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if file deletion fails
+    pub async fn clear_journal(&self) -> Result<(), Error> {
+        let path = self.journal_path();
+        if sps2_root::exists(&path).await {
+            sps2_root::remove_file(&path).await?;
+        }
+        Ok(())
+    }
+
+    /// Phase 1 of 2PC: Prepare and commit database changes
+    ///
+    /// This method commits all database changes except the active state pointer,
+    /// then writes the journal file as the commit point.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database operations or journal write fails
+    pub async fn prepare_transaction(
+        &self,
+        staging_id: &Uuid,
+        parent_id: &Uuid,
+        staging_path: &std::path::Path,
+        operation: &str,
+        transition_data: &TransactionData<'_>,
+    ) -> Result<sps2_types::state::TransactionJournal, Error> {
+        // Start DB transaction
+        let mut tx = self.pool.begin().await?;
+
+        // Write all DB changes: new state record, package refs, file lists
+        // DO NOT update the `active_state` table yet
+        self.create_state_with_tx(&mut tx, staging_id, Some(parent_id), operation)
+            .await?;
+
+        // Add all package references to the database
+        for package_ref in transition_data.package_refs {
+            self.add_package_ref_with_tx(&mut tx, package_ref).await?;
+        }
+
+        // Add all packages with venv paths to the database
+        for (package_ref, venv_path) in transition_data.package_refs_with_venv {
+            self.add_package_ref_with_venv_tx(&mut tx, package_ref, Some(venv_path))
+                .await?;
+        }
+
+        // Add all stored package files to the database
+        for (package_name, package_version, file_path, is_directory) in
+            transition_data.package_files
+        {
+            queries::add_package_file(
+                &mut tx,
+                staging_id,
+                package_name,
+                package_version,
+                file_path,
+                *is_directory,
+            )
+            .await?;
+        }
+
+        // Commit the DB transaction
+        tx.commit().await?;
+
+        // Create the journal file on disk. This is the "commit point" for Phase 1
+        let journal = sps2_types::state::TransactionJournal {
+            new_state_id: *staging_id,
+            parent_state_id: *parent_id,
+            staging_path: staging_path.to_path_buf(),
+            phase: sps2_types::state::TransactionPhase::Prepared,
+            operation: operation.to_string(),
+        };
+        self.write_journal(&journal).await?;
+
+        Ok(journal)
+    }
+
+    /// Phase 2 of 2PC: Execute filesystem swap and finalize
+    ///
+    /// This method performs the filesystem operations and finalizes the transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if filesystem operations or database finalization fails
+    pub async fn execute_filesystem_swap_and_finalize(
+        &self,
+        mut journal: sps2_types::state::TransactionJournal,
+    ) -> Result<(), Error> {
+        // Atomically swap the staging directory with the live directory
+        sps2_root::atomic_swap(&journal.staging_path, &self.live_path).await?;
+
+        // Archive the old live directory (which is now at the journal's staging path)
+        let old_live_archive_path = self.state_path.join(journal.parent_state_id.to_string());
+        sps2_root::rename(&journal.staging_path, &old_live_archive_path).await?;
+
+        // Update the journal to the 'Swapped' phase. If a crash happens now,
+        // recovery will know the swap is done
+        journal.phase = sps2_types::state::TransactionPhase::Swapped;
+        self.write_journal(&journal).await?;
+
+        // Finalize the database by setting the new state as active
+        self.finalize_db_state(journal.new_state_id).await?;
+
+        // The transaction is fully complete. Delete the journal
+        self.clear_journal().await?;
+
+        Ok(())
+    }
+
+    /// Helper function for final DB state update, used by both commit and recovery
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if database update fails
+    pub async fn finalize_db_state(&self, new_active_id: Uuid) -> Result<(), Error> {
+        let mut tx = self.pool.begin().await?;
+        queries::set_active_state(&mut tx, &new_active_id).await?;
         tx.commit().await?;
         Ok(())
     }

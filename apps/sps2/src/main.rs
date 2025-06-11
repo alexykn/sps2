@@ -18,9 +18,11 @@ use clap::Parser;
 use sps2_config::Config;
 use sps2_events::{EventReceiver, EventSender};
 use sps2_ops::{OperationResult, OpsContextBuilder};
+use sps2_state::StateManager;
+use sps2_types::state::TransactionPhase;
 use std::process;
 use tokio::select;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 #[tokio::main]
 async fn main() {
@@ -60,6 +62,18 @@ async fn run(cli: Cli) -> Result<(), CliError> {
 
     // Perform startup checks and initialization
     setup.initialize().await?;
+
+    // --- RECOVERY LOGIC ---
+    // Check for and complete any interrupted transactions
+    if let Err(e) = recover_if_needed(setup.state()).await {
+        error!("CRITICAL ERROR: A previous operation was interrupted and could not be automatically recovered: {}", e);
+        if !cli.global.json {
+            eprintln!("CRITICAL ERROR: A previous operation was interrupted and could not be automatically recovered: {}", e);
+            eprintln!("The package manager is in a potentially inconsistent state. Please report this issue.");
+        }
+        return Err(e);
+    }
+    // --- END RECOVERY LOGIC ---
 
     // Create event channel
     let (event_sender, event_receiver) = tokio::sync::mpsc::unbounded_channel();
@@ -388,5 +402,34 @@ fn apply_cli_config(
         }
     }
 
+    Ok(())
+}
+
+/// Checks for and completes an interrupted transaction
+async fn recover_if_needed(state_manager: &StateManager) -> Result<(), CliError> {
+    if let Some(journal) = state_manager.read_journal().await? {
+        warn!("Warning: A previous operation was interrupted. Attempting to recover...");
+
+        match journal.phase {
+            TransactionPhase::Prepared => {
+                // The DB is prepared, but the FS swap didn't happen.
+                // We must complete the swap and finalize the state.
+                info!("Recovery: Completing filesystem swap and finalizing state");
+                state_manager
+                    .execute_filesystem_swap_and_finalize(journal)
+                    .await?;
+            }
+            TransactionPhase::Swapped => {
+                // The FS swap happened, but the DB wasn't finalized.
+                // We only need to finalize the DB state.
+                info!("Recovery: Finalizing database state");
+                state_manager
+                    .finalize_db_state(journal.new_state_id)
+                    .await?;
+                state_manager.clear_journal().await?;
+            }
+        }
+        warn!("Recovery successful.");
+    }
     Ok(())
 }

@@ -1,6 +1,6 @@
 //! Atomic installer implementation using APFS optimizations
 
-use crate::atomic::{linking, rollback, transition::StateTransition};
+use crate::atomic::{rollback, transition::StateTransition};
 use crate::python::{is_python_package, PythonVenvManager};
 use crate::{InstallContext, InstallResult, StagingManager};
 use sps2_errors::{Error, InstallError};
@@ -79,7 +79,7 @@ impl AtomicInstaller {
         }
 
         // Clone current state to staging directory
-        transition.create_staging(&self.live_path)?;
+        sps2_root::create_staging_directory(&self.live_path, &transition.staging_path).await?;
 
         if let Some(sender) = &context.event_sender {
             let _ = sender.send(Event::DebugLog {
@@ -186,8 +186,28 @@ impl AtomicInstaller {
             return Ok(result);
         }
 
-        // Commit the state transition
-        transition.commit(&self.live_path).await?;
+        // --- NEW 2PC COMMIT FLOW ---
+        // Phase 1: Prepare and commit the database changes
+        let transition_data = sps2_state::TransactionData {
+            package_refs: &transition.package_refs,
+            package_refs_with_venv: &transition.package_refs_with_venv,
+            package_files: &transition.package_files,
+        };
+        let journal = self
+            .state_manager
+            .prepare_transaction(
+                &transition.staging_id,
+                &transition.parent_id.unwrap_or_default(),
+                &transition.staging_path,
+                &transition.operation,
+                &transition_data,
+            )
+            .await?;
+
+        // Phase 2: Execute filesystem swap and finalize
+        self.state_manager
+            .execute_filesystem_swap_and_finalize(journal)
+            .await?;
 
         if let Some(sender) = &context.event_sender {
             let _ = sender.send(Event::StateTransition {
@@ -506,7 +526,7 @@ impl AtomicInstaller {
 
             if metadata.is_dir() {
                 // Create directory if it doesn't exist
-                tokio::fs::create_dir_all(&dest_path).await?;
+                sps2_root::create_dir_all(&dest_path).await?;
 
                 // Track directory
                 let relative_path = dest_path
@@ -527,7 +547,7 @@ impl AtomicInstaller {
             } else if metadata.is_file() {
                 // Ensure parent directory exists
                 if let Some(parent) = dest_path.parent() {
-                    tokio::fs::create_dir_all(parent).await?;
+                    sps2_root::create_dir_all(parent).await?;
                 }
 
                 // Remove existing file if it exists
@@ -536,7 +556,7 @@ impl AtomicInstaller {
                 }
 
                 // Create hard link
-                linking::create_hard_link(&src_path, &dest_path)?;
+                sps2_root::hard_link(&src_path, &dest_path).await?;
 
                 // Track file
                 let relative_path = dest_path
@@ -551,7 +571,7 @@ impl AtomicInstaller {
 
                 // Ensure parent directory exists
                 if let Some(parent) = dest_path.parent() {
-                    tokio::fs::create_dir_all(parent).await?;
+                    sps2_root::create_dir_all(parent).await?;
                 }
 
                 // Remove existing symlink if it exists
@@ -716,7 +736,7 @@ impl AtomicInstaller {
         }
 
         // Clone current state to staging directory
-        transition.create_staging(&self.live_path)?;
+        sps2_root::create_staging_directory(&self.live_path, &transition.staging_path).await?;
 
         if let Some(sender) = &context.event_sender {
             let _ = sender.send(Event::DebugLog {
@@ -825,8 +845,28 @@ impl AtomicInstaller {
             return Ok(result);
         }
 
-        // Commit the state transition
-        transition.commit(&self.live_path).await?;
+        // --- NEW 2PC COMMIT FLOW ---
+        // Phase 1: Prepare and commit the database changes
+        let transition_data = sps2_state::TransactionData {
+            package_refs: &transition.package_refs,
+            package_refs_with_venv: &transition.package_refs_with_venv,
+            package_files: &transition.package_files,
+        };
+        let journal = self
+            .state_manager
+            .prepare_transaction(
+                &transition.staging_id,
+                &transition.parent_id.unwrap_or_default(),
+                &transition.staging_path,
+                &transition.operation,
+                &transition_data,
+            )
+            .await?;
+
+        // Phase 2: Execute filesystem swap and finalize
+        self.state_manager
+            .execute_filesystem_swap_and_finalize(journal)
+            .await?;
 
         if let Some(sender) = &context.event_sender {
             let _ = sender.send(Event::StateTransition {
@@ -948,13 +988,7 @@ impl AtomicInstaller {
 
         // Remove the venv directory if it exists
         if venv_path_buf.exists() {
-            tokio::fs::remove_dir_all(venv_path_buf)
-                .await
-                .map_err(|e| InstallError::FilesystemError {
-                    operation: "remove_venv".to_string(),
-                    path: venv_path_buf.display().to_string(),
-                    message: e.to_string(),
-                })?;
+            sps2_root::remove_dir_all(venv_path_buf).await?;
 
             if let Some(sender) = &context.event_sender {
                 let _ = sender.send(Event::PythonVenvRemoved {

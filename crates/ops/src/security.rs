@@ -87,7 +87,7 @@ pub async fn audit(
 
         let package_hash =
             sps2_hash::Hash::from_hex(&package.hash).map_err(|e| OpsError::OperationFailed {
-                message: format!("Invalid package hash: {}", e),
+                message: format!("Invalid package hash: {e}"),
             })?;
 
         let package_audit = audit_system
