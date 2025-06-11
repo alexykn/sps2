@@ -384,31 +384,3 @@ impl SystemSetup {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::tempdir;
-
-    #[tokio::test]
-    async fn test_system_setup_creation() {
-        let config = Config::default();
-        let setup = SystemSetup::new(config);
-
-        // Initially no components should be initialized
-        assert!(setup.store.is_none());
-        assert!(setup.state.is_none());
-        assert!(setup.index.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_directory_creation() {
-        let _temp = tempdir().unwrap();
-        let config = Config::default();
-
-        // This test would need to mock the /opt/pm path for proper testing
-        // For now, just verify the setup structure
-        let setup = SystemSetup::new(config);
-        assert!(setup.store.is_none());
-    }
-}

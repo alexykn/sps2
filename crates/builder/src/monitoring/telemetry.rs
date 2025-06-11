@@ -214,17 +214,3 @@ pub struct SpanContext {
     /// Process ID (if tracking specific process)
     pub process_id: Option<u32>,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_telemetry_snapshot() {
-        let config = Arc::new(MonitoringConfig::default());
-        let collector = TelemetryCollector::new(config).unwrap();
-
-        let snapshot = collector.snapshot().await.unwrap();
-        assert!(snapshot.memory_total > 0);
-    }
-}

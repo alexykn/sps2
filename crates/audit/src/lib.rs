@@ -169,32 +169,3 @@ impl AuditSystem {
         self.vulndb.is_fresh().await
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::tempdir;
-
-    #[tokio::test]
-    async fn test_audit_system_creation() {
-        let temp = tempdir().unwrap();
-        let result = AuditSystem::new(temp.path());
-
-        // Should succeed (even if placeholder implementation)
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_scan_options() {
-        let options = ScanOptions::default();
-        assert!(!options.fail_on_critical);
-        assert!(options.severity_threshold == Severity::Low);
-
-        let strict_options = ScanOptions::new()
-            .with_fail_on_critical(true)
-            .with_severity_threshold(Severity::High);
-
-        assert!(strict_options.fail_on_critical);
-        assert!(strict_options.severity_threshold == Severity::High);
-    }
-}

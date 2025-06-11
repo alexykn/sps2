@@ -3725,42 +3725,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sps2-integration-tests"
-version = "0.1.0"
-dependencies = [
- "async-compression",
- "blake3",
- "futures",
- "httpmock",
- "rand 0.8.5",
- "reqwest",
- "serde_json",
- "sps2-audit",
- "sps2-builder",
- "sps2-config",
- "sps2-errors",
- "sps2-events",
- "sps2-hash",
- "sps2-index",
- "sps2-install",
- "sps2-manifest",
- "sps2-net",
- "sps2-ops",
- "sps2-package",
- "sps2-resolver",
- "sps2-root",
- "sps2-state",
- "sps2-store",
- "sps2-types",
- "sqlx",
- "tar",
- "tempfile",
- "tokio",
- "toml",
- "uuid",
-]
-
-[[package]]
 name = "sps2-manifest"
 version = "0.1.0"
 dependencies = [

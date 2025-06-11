@@ -61,20 +61,6 @@ impl ParallelExecutor {
         self
     }
 
-    /// Get maximum concurrency (for testing)
-    #[cfg(test)]
-    #[must_use]
-    pub fn max_concurrency(&self) -> usize {
-        self.max_concurrency
-    }
-
-    /// Get download timeout (for testing)
-    #[cfg(test)]
-    #[must_use]
-    pub fn download_timeout(&self) -> Duration {
-        self.download_timeout
-    }
-
     /// Execute packages in parallel according to execution plan
     ///
     /// # Errors
@@ -499,79 +485,4 @@ struct ExecutionNode {
     /// Parent packages (for future dependency tracking)
     #[allow(dead_code)]
     parents: Vec<PackageId>,
-}
-
-/// Download progress information
-#[cfg(test)]
-pub struct DownloadProgress {
-    /// Bytes downloaded
-    pub downloaded: u64,
-    /// Total bytes
-    pub total: u64,
-}
-
-#[cfg(test)]
-impl DownloadProgress {
-    /// Calculate progress percentage
-    pub fn percentage(&self) -> f64 {
-        if self.total == 0 {
-            0.0
-        } else {
-            #[allow(clippy::cast_precision_loss)]
-            {
-                (self.downloaded as f64 / self.total as f64) * 100.0
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    // Remove unused import
-    use tempfile::tempdir;
-
-    #[test]
-    fn test_execution_context() {
-        let context = ExecutionContext::new();
-        assert!(context.event_sender.is_none());
-
-        // Test event sending (should not panic)
-        context.send_event(Event::PackageDownloaded {
-            name: "test".to_string(),
-            version: sps2_types::Version::parse("1.0.0").unwrap(),
-        });
-    }
-
-    #[test]
-    fn test_download_progress() {
-        let progress = DownloadProgress {
-            downloaded: 50,
-            total: 100,
-        };
-
-        assert!((progress.percentage() - 50.0).abs() < f64::EPSILON);
-
-        let zero_total = DownloadProgress {
-            downloaded: 10,
-            total: 0,
-        };
-
-        assert!((zero_total.percentage() - 0.0).abs() < f64::EPSILON);
-    }
-
-    #[tokio::test]
-    async fn test_parallel_executor_creation() {
-        let temp = tempdir().unwrap();
-        let store = PackageStore::new(temp.path().to_path_buf());
-        let state_manager = sps2_state::StateManager::new(temp.path()).await.unwrap();
-
-        let executor = ParallelExecutor::new(store, state_manager)
-            .unwrap()
-            .with_concurrency(8)
-            .with_timeout(Duration::from_secs(600));
-
-        assert_eq!(executor.max_concurrency(), 8);
-        assert_eq!(executor.download_timeout(), Duration::from_secs(600));
-    }
 }

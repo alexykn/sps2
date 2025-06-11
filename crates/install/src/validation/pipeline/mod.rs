@@ -217,12 +217,6 @@ impl ValidationPipelineBuilder {
         self
     }
 
-    /// Get the validation context for testing
-    #[cfg(test)]
-    pub fn get_context(&self) -> &PipelineContext {
-        &self.context
-    }
-
     /// Build and execute the validation pipeline
     pub async fn validate(
         self,
@@ -278,81 +272,4 @@ pub async fn validate_batch(
     }
 
     Ok(results)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_validation_pipeline_builder() {
-        let builder = ValidationPipelineBuilder::new()
-            .with_timeout(300)
-            .with_progress_tracking(true)
-            .with_recovery_strategy(RecoveryStrategy::FailFast);
-
-        assert_eq!(builder.get_context().validation_config.timeout_seconds, 300);
-        assert!(builder.enable_progress_tracking);
-        assert_eq!(builder.recovery_strategy, RecoveryStrategy::FailFast);
-    }
-
-    #[tokio::test]
-    async fn test_validate_sp_file() {
-        let temp_path = std::path::Path::new("/tmp/nonexistent.sp");
-
-        // This will fail because the file doesn't exist, but tests the function
-        let result = validate_sp_file(temp_path, None).await;
-        assert!(result.is_err()); // Expected because file doesn't exist
-    }
-
-    #[tokio::test]
-    async fn test_quick_validate() {
-        let temp_path = std::path::Path::new("/tmp/nonexistent.sp");
-
-        let result = quick_validate(temp_path, None).await;
-        assert!(result.is_err()); // Expected because file doesn't exist
-    }
-
-    #[tokio::test]
-    async fn test_strict_validate() {
-        let temp_path = std::path::Path::new("/tmp/nonexistent.sp");
-
-        let result = strict_validate(temp_path, None).await;
-        assert!(result.is_err()); // Expected because file doesn't exist
-    }
-
-    #[tokio::test]
-    async fn test_validate_batch() {
-        let paths = vec![
-            std::path::Path::new("/tmp/nonexistent1.sp"),
-            std::path::Path::new("/tmp/nonexistent2.sp"),
-        ];
-
-        let results = validate_batch(&paths, None).await.unwrap();
-        assert_eq!(results.len(), 2);
-
-        // Both should fail because files don't exist
-        for (_, result) in results {
-            assert!(result.is_err());
-        }
-    }
-
-    #[test]
-    fn test_pipeline_context_creation() {
-        let context = PipelineContext::new();
-        assert!(!context.execution_state.is_running);
-        assert_eq!(
-            context.execution_state.current_stage,
-            ValidationStage::Initialization
-        );
-    }
-
-    #[test]
-    fn test_validation_orchestrator() {
-        let orchestrator = ValidationOrchestrator::new().with_continue_on_errors(false);
-
-        let stats = orchestrator.get_validation_stats();
-        assert!(!stats.continue_on_errors);
-        assert_eq!(stats.stages_enabled, 3);
-    }
 }

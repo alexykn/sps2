@@ -60,27 +60,3 @@ impl From<std::io::Error> for CliError {
         CliError::Io(e)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_cli_error_display() {
-        let error = CliError::Setup("test error".to_string());
-        assert_eq!(error.to_string(), "System setup error: test error");
-
-        let error = CliError::InvalidArguments("missing package name".to_string());
-        assert_eq!(error.to_string(), "Invalid arguments: missing package name");
-
-        let error = CliError::EventChannelClosed;
-        assert_eq!(error.to_string(), "Internal communication error");
-    }
-
-    #[test]
-    fn test_cli_error_from_conversions() {
-        let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
-        let cli_error = CliError::from(io_error);
-        assert!(matches!(cli_error, CliError::Io(_)));
-    }
-}

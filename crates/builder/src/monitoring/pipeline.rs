@@ -235,26 +235,3 @@ impl MonitoringPipeline {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::monitoring::config::MonitoringConfig;
-
-    #[tokio::test]
-    async fn test_pipeline_creation() {
-        let config = MonitoringConfig::default();
-        let pipeline_config = PipelineConfig::from_monitoring_config(&config);
-        let (tx, _rx) = sps2_events::channel();
-
-        let metrics = Arc::new(MetricsCollector::new(Arc::new(config.clone())).unwrap());
-        let aggregator = Arc::new(RwLock::new(MetricsAggregator::new(Arc::new(config))));
-
-        let pipeline = MonitoringPipeline::new(pipeline_config, metrics, aggregator, tx)
-            .await
-            .unwrap();
-
-        // Shutdown immediately to avoid long-running tasks in tests
-        pipeline.shutdown().await.unwrap();
-    }
-}

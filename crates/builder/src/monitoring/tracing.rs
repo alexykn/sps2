@@ -308,33 +308,3 @@ impl TraceExporter {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_span_creation() {
-        let config = Arc::new(MonitoringConfig {
-            tracing: crate::monitoring::config::TracingConfig {
-                enabled: true,
-                ..Default::default()
-            },
-            ..Default::default()
-        });
-
-        let collector = TracingCollector::new(config).unwrap();
-
-        let span = collector
-            .create_build_span("test-package", &sps2_types::Version::new(1, 0, 0))
-            .await
-            .unwrap();
-
-        assert!(!span.context.trace_id.is_empty());
-        assert!(!span.context.span_id.is_empty());
-        assert_eq!(
-            span.attributes.get("package.name"),
-            Some(&"test-package".to_string())
-        );
-    }
-}

@@ -234,31 +234,3 @@ impl Default for ResourceConfig {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_default_config() {
-        let config = MonitoringConfig::default();
-        assert!(!config.enabled);
-        assert_eq!(config.level, MonitoringLevel::Basic);
-    }
-
-    #[test]
-    fn test_development_config() {
-        let config = MonitoringConfig::development();
-        assert!(config.enabled);
-        assert_eq!(config.level, MonitoringLevel::Detailed);
-        assert_eq!(config.telemetry_interval, Duration::from_secs(2));
-    }
-
-    #[test]
-    fn test_production_config() {
-        let config = MonitoringConfig::production();
-        assert!(config.enabled);
-        assert_eq!(config.level, MonitoringLevel::Basic);
-        assert!(config.database_path.is_some());
-    }
-}

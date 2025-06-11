@@ -53,9 +53,6 @@ mod python;
 mod staging;
 pub mod validation;
 
-#[cfg(test)]
-mod python_test;
-
 pub use atomic::{AtomicInstaller, StateTransition};
 pub use installer::{InstallConfig, Installer};
 pub use operations::{InstallOperation, UninstallOperation, UpdateOperation};

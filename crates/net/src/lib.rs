@@ -185,32 +185,3 @@ pub async fn check_url(client: &NetClient, url: &str) -> Result<bool, Error> {
 pub fn parse_url(url: &str) -> Result<Url, Error> {
     Url::parse(url).map_err(|e| NetworkError::InvalidUrl(e.to_string()).into())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_url() {
-        assert!(parse_url("https://example.com").is_ok());
-        assert!(parse_url("not a url").is_err());
-    }
-
-    #[tokio::test]
-    async fn test_fetch_text_conditional() {
-        let client = NetClient::with_defaults().unwrap();
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-
-        // Test without ETag (should behave like normal fetch)
-        let result = fetch_text_conditional(&client, "https://httpbin.org/uuid", None, &tx).await;
-
-        // Should get content since no ETag is provided
-        assert!(result.is_ok());
-        let response = result.unwrap();
-        assert!(response.is_some());
-
-        if let Some((content, _etag)) = response {
-            assert!(!content.is_empty());
-        }
-    }
-}

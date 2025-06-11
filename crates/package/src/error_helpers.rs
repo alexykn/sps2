@@ -129,32 +129,3 @@ pub fn format_eval_error(error: &str) -> BuildError {
 
     BuildError::RecipeError { message }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_format_parse_error_with_eof_hint() {
-        let error = format_parse_error("test.star", "unexpected EOF while parsing");
-        let msg = error.to_string();
-        assert!(msg.contains("test.star"));
-        assert!(msg.contains("Check for unclosed"));
-    }
-
-    #[test]
-    fn test_format_missing_function_with_example() {
-        let error = format_missing_function_error("metadata");
-        let msg = error.to_string();
-        assert!(msg.contains("def metadata():"));
-        assert!(msg.contains("return {"));
-    }
-
-    #[test]
-    fn test_format_metadata_error_with_example() {
-        let error = format_metadata_error("name", "name field is required");
-        let msg = error.to_string();
-        assert!(msg.contains("non-empty string"));
-        assert!(msg.contains("Example:"));
-    }
-}

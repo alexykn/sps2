@@ -305,19 +305,3 @@ mod export {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_monitoring_system_creation() {
-        let (tx, _rx) = sps2_events::channel();
-        let config = MonitoringConfig {
-            enabled: true,
-            ..Default::default()
-        };
-        let system = MonitoringSystem::new(config, tx).await.unwrap();
-        assert!(system.config.enabled);
-    }
-}

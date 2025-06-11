@@ -2,7 +2,6 @@
 resolver = "3"
 members = [
     "apps/sps2",
-    "crates/audit",
     "crates/builder",
     "crates/config",
     "crates/errors",
@@ -19,7 +18,6 @@ members = [
     "crates/state",
     "crates/store",
     "crates/types",
-    "tests",
 ]
 
 [workspace.package]

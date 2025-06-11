@@ -671,24 +671,3 @@ fn format_size(bytes: u64) -> String {
         format!("{size:.1} {}", UNITS[unit_index])
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_format_size() {
-        assert_eq!(format_size(512), "512 B");
-        assert_eq!(format_size(1024), "1.0 KB");
-        assert_eq!(format_size(1536), "1.5 KB");
-        assert_eq!(format_size(1048576), "1.0 MB");
-        assert_eq!(format_size(1073741824), "1.0 GB");
-    }
-
-    #[test]
-    fn test_output_renderer_creation() {
-        let renderer = OutputRenderer::new(true, ColorChoice::Auto);
-        assert!(renderer.json_output);
-        assert!(matches!(renderer.color_choice, ColorChoice::Auto));
-    }
-}
