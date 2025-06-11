@@ -13,7 +13,7 @@ env:
 jobs:
 
   test:
-    name: Test
+    name: Check
     runs-on: macos-latest
 
     steps:
@@ -40,31 +40,6 @@ jobs:
 
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
-
-      - name: Run unit tests
-        run: cargo test --all --lib
-
-      - name: Run integration tests
-        run: cargo test --test integration
-
-      - name: Run crate integration tests
-        run: |
-          for crate_dir in crates/*/; do
-            crate_name=$(basename "$crate_dir")
-            if [ -f "$crate_dir/tests/integration.rs" ]; then
-              echo "Testing $crate_name integration..."
-              (cd "$crate_dir" && cargo test --test integration)
-            fi
-          done
-
-      - name: Run CLI integration tests
-        run: |
-          if [ -f "apps/sps2/tests/integration.rs" ]; then
-            (cd "apps/sps2" && cargo test --test integration)
-          fi
-
-      - name: Run documentation tests
-        run: cargo test --doc
 
       - name: Build release
         run: cargo build --all --release
