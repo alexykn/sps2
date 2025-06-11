@@ -35,6 +35,7 @@ pub trait BuildExecutor: Send + Sync + std::fmt::Debug {
 }
 
 /// Build context exposed to Starlark recipes
+#[allow(clippy::needless_lifetimes)]
 #[derive(Debug, Clone, ProvidesStaticType, NoSerialize, Allocative)]
 pub struct BuildContext {
     #[allocative(skip)]
