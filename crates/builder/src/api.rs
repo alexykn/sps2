@@ -120,6 +120,68 @@ impl BuilderApi {
         Ok(download_path)
     }
 
+    /// Clone a git repository
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Network access is disabled
+    /// - The URL is invalid
+    /// - The git clone fails
+    pub async fn git(&mut self, url: &str, ref_: &str) -> Result<PathBuf, Error> {
+        if !self.allow_network {
+            return Err(BuildError::NetworkDisabled {
+                url: url.to_string(),
+            }
+            .into());
+        }
+
+        // Check if already cloned
+        if let Some(path) = self.downloads.get(url) {
+            return Ok(path.clone());
+        }
+
+        // Extract repository name from URL
+        let repo_name = url
+            .split('/')
+            .next_back()
+            .and_then(|s| s.strip_suffix(".git").or(Some(s)))
+            .ok_or_else(|| BuildError::InvalidUrl {
+                url: url.to_string(),
+            })?;
+
+        let clone_path = self.working_dir.join(repo_name);
+
+        // Clone using git command (better compatibility than git2 crate)
+        let output = tokio::process::Command::new("git")
+            .args([
+                "clone",
+                "--depth",
+                "1",
+                "--branch",
+                ref_,
+                url,
+                &clone_path.display().to_string(),
+            ])
+            .current_dir(&self.working_dir)
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            return Err(BuildError::GitCloneFailed {
+                message: format!(
+                    "Failed to clone {}: {}",
+                    url,
+                    String::from_utf8_lossy(&output.stderr)
+                ),
+            }
+            .into());
+        }
+
+        self.downloads.insert(url.to_string(), clone_path.clone());
+        Ok(clone_path)
+    }
+
     /// Apply a patch file
     ///
     /// # Errors

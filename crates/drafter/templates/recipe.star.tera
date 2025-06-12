@@ -1,0 +1,60 @@
+def metadata():
+    """Package metadata"""
+    return {
+        "name": "{{ name }}",
+        "version": "{{ version }}",
+        "description": """{{ description | default(value='TODO: Add package description') }}""",
+        "license": "{{ license | default(value='TODO: Specify license') }}"
+        {%- if homepage %},
+        "homepage": "{{ homepage }}"
+        {%- endif %}
+    }
+
+def build(ctx):
+    # Clean up any leftover files from previous builds
+    cleanup(ctx)
+
+    {%- if source_url %}
+    {%- if is_git_source %}
+    # Clone git repository
+    git(ctx, "{{ source_url }}", "{{ git_ref | default(value='HEAD') }}")
+    {%- else %}
+    # Download source
+    # TODO: Replace with actual BLAKE3 hash after verification
+    fetch(ctx, "{{ source_url }}", "{{ source_hash | default(value='TODO_CALCULATE_HASH') }}")
+    extract(ctx)
+    {%- endif %}
+    {%- endif %}
+
+    {%- if needs_network %}
+    # Allow network access for dependency downloads
+    allow_network(ctx, True)
+    {%- endif %}
+
+    {%- if dependencies %}
+    # Detected dependencies - please review and adjust as needed
+    {%- for dep in dependencies %}
+    # {{ dep.original }}{% if dep.sps2_name != dep.original %} -> {{ dep.sps2_name }}{% endif %}
+    {%- endfor %}
+    {%- endif %}
+
+    # Build using {{ build_system }} build system
+    {{ build_function }}(ctx
+    {%- if build_args %}, [
+        {%- for arg in build_args %}
+        "{{ arg }}"{% if not loop.last %},{% endif %}
+        {%- endfor %}
+    ]{% endif %})
+
+    {%- if build_system == "unknown" %}
+    # TODO: Build system could not be detected automatically.
+    # Please add appropriate build commands here.
+    # Common examples:
+    # - autotools(ctx)
+    # - cmake(ctx, ["-DCMAKE_BUILD_TYPE=Release"])
+    # - meson(ctx, ["--buildtype=release"])
+    # - cargo(ctx, ["--release"])
+    # - python(ctx)
+    # - go(ctx)
+    # - nodejs(ctx)
+    {%- endif %}

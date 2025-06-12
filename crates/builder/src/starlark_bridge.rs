@@ -41,6 +41,10 @@ impl BuildExecutor for StarlarkBridge {
         self.api.fetch(url, hash).await
     }
 
+    async fn git(&mut self, url: &str, ref_: &str) -> Result<PathBuf, Error> {
+        self.api.git(url, ref_).await
+    }
+
     async fn make(&mut self, args: &[String]) -> Result<(), Error> {
         self.api.make(args, &self.env).await?;
         Ok(())

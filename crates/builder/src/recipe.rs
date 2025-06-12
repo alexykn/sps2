@@ -123,6 +123,13 @@ async fn execute_build_step(
         BuildStep::Fetch { url, blake3 } => {
             api.fetch(url, blake3).await?;
         }
+        BuildStep::Extract => {
+            // Extract is handled automatically after fetch
+            api.extract_downloads().await?;
+        }
+        BuildStep::Git { url, ref_ } => {
+            api.git(url, ref_).await?;
+        }
         BuildStep::Configure { args } => {
             api.configure(args, environment).await?;
         }

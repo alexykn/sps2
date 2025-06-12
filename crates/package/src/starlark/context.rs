@@ -22,6 +22,7 @@ use std::sync::Arc;
 #[async_trait::async_trait]
 pub trait BuildExecutor: Send + Sync + std::fmt::Debug {
     async fn fetch(&mut self, url: &str, hash: &str) -> Result<PathBuf, Error>;
+    async fn git(&mut self, url: &str, ref_: &str) -> Result<PathBuf, Error>;
     async fn make(&mut self, args: &[String]) -> Result<(), Error>;
     async fn install(&mut self) -> Result<(), Error>;
     async fn configure(&mut self, args: &[String]) -> Result<(), Error>;
@@ -212,6 +213,21 @@ pub fn build_context_functions(builder: &mut GlobalsBuilder) {
         build_ctx.add_step(BuildStep::Fetch {
             url: url.to_string(),
             blake3,
+        });
+        Ok(NoneType)
+    }
+
+    /// Clone a git repository
+    fn git<'v>(ctx: Value<'v>, url: &str, ref_: Option<&str>) -> anyhow::Result<NoneType> {
+        // Unpack BuildContext from the Value
+        let build_ctx = ctx
+            .downcast_ref::<BuildContext>()
+            .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
+
+        let git_ref = ref_.unwrap_or("HEAD").to_string();
+        build_ctx.add_step(BuildStep::Git {
+            url: url.to_string(),
+            ref_: git_ref,
         });
         Ok(NoneType)
     }

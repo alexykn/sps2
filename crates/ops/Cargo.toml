@@ -21,6 +21,7 @@ sps2-package = { path = "../package" }
 sps2-index = { path = "../index" }
 sps2-audit = { path = "../audit" }
 sps2-hash = { path = "../hash" }
+sps2-drafter = { path = "../drafter" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["fs"] }

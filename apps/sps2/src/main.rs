@@ -273,6 +273,21 @@ async fn execute_command(
             let result = sps2_ops::self_update(&ctx, skip_verify, force).await?;
             Ok(OperationResult::Success(result))
         }
+
+        Commands::Draft { source, output } => {
+            sps2_ops::draft_recipe(
+                &ctx,
+                source.path,
+                source.git,
+                source.url,
+                source.archive,
+                output,
+            )
+            .await?;
+            Ok(OperationResult::Success(
+                "Recipe draft generated successfully".to_string(),
+            ))
+        }
     }
 }
 

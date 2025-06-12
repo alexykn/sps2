@@ -22,6 +22,7 @@ mod types;
 
 // Import command modules
 mod build;
+mod draft;
 mod install;
 mod uninstall;
 mod update;
@@ -42,6 +43,7 @@ pub use types::{
 
 // Re-export operation functions
 pub use build::build;
+pub use draft::draft_recipe;
 pub use install::install;
 pub use small_ops::{
     audit, check_health, cleanup, history, list_packages, package_info, reposync, rollback,

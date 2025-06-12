@@ -92,4 +92,19 @@ pub enum BuildError {
 
     #[error("license compliance error: {message}")]
     LicenseComplianceError { message: String },
+
+    #[error("draft metadata extraction failed: {message}")]
+    DraftMetadataFailed { message: String },
+
+    #[error("draft template rendering failed: {message}")]
+    DraftTemplateFailed { message: String },
+
+    #[error("draft source preparation failed: {message}")]
+    DraftSourceFailed { message: String },
+
+    #[error("unsupported archive format: {format}")]
+    UnsupportedArchiveFormat { format: String },
+
+    #[error("git clone failed: {message}")]
+    GitCloneFailed { message: String },
 }

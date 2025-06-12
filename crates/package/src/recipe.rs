@@ -66,6 +66,11 @@ pub enum BuildStep {
         url: String,
         blake3: String,
     },
+    Extract,
+    Git {
+        url: String,
+        ref_: String,
+    },
     ApplyPatch {
         path: String,
     },
