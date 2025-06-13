@@ -361,7 +361,7 @@ BSD 3-Clause License. See [LICENSE.md](LICENSE.md) for details.
 
 sps2 stands on the shoulders of giants:
 
-- [moss & boulder](https://github.com/AerynOS/os-tools) from OS/AerynOS - Inspiration for atomic updates, content-addressed storage, and stateful package management
+- [moss & boulder](https://github.com/AerynOS/os-tools) from AerynOS - atomic updates, content-addressed storage, and stateful package management
 - [Homebrew](https://brew.sh/) - Inspiration for macOS-native packaging
 - [Starlark](https://github.com/bazelbuild/starlark) - For the build recipe language
 
