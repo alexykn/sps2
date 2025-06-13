@@ -141,7 +141,10 @@ impl CargoBuildSystem {
         let cargo_content = fs::read_to_string(&cargo_toml).await?;
 
         // Simple parsing - in production would use toml crate
-        if cargo_content.contains("[[bin]]") || cargo_content.contains("[package]") {
+        if cargo_content.contains("[[bin]]")
+            || cargo_content.contains("[package]")
+            || cargo_content.contains("[workspace]")
+        {
             // Look for executables in target/release
             if target_dir.exists() {
                 let mut entries = fs::read_dir(&target_dir).await?;
@@ -173,6 +176,13 @@ impl CargoBuildSystem {
         }
 
         Ok(binaries)
+    }
+
+    /// Check if this is a workspace project
+    async fn is_workspace(&self, ctx: &BuildSystemContext) -> Result<bool, Error> {
+        let cargo_toml = ctx.source_dir.join("Cargo.toml");
+        let cargo_content = fs::read_to_string(&cargo_toml).await?;
+        Ok(cargo_content.contains("[workspace]"))
     }
 
     /// Parse cargo test output
@@ -339,7 +349,15 @@ impl BuildSystem for CargoBuildSystem {
         let binaries = self.find_built_binaries(ctx).await?;
 
         if binaries.is_empty() {
-            // Try cargo install as fallback
+            // Check if this is a workspace project
+            if self.is_workspace(ctx).await? {
+                return Err(BuildError::InstallFailed {
+                    message: "No binaries found for workspace project. The build may have failed or the workspace may not contain any binary targets.".to_string(),
+                }
+                .into());
+            }
+
+            // Try cargo install as fallback for single-crate projects
             // Since cargo install --root expects an actual directory path, we need to install
             // to a temp location and then move files to the staging dir with BUILD_PREFIX structure
             let temp_install_dir = ctx.build_dir.join("cargo_install_temp");
@@ -361,7 +379,7 @@ impl BuildSystem for CargoBuildSystem {
 
             if !result.success {
                 return Err(BuildError::InstallFailed {
-                    message: "No binaries found to install".to_string(),
+                    message: format!("cargo install failed: {}", result.stderr),
                 }
                 .into());
             }

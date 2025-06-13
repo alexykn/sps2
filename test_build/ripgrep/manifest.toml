@@ -22,4 +22,4 @@ format = "legacy"
 [dependencies]
 
 [sbom]
-spdx = "128861857cbf4deed7170d257af3350e8884b2aa6944a68f3ac2367743da5f74"
+spdx = "73e514e1d29f9d2cd8fc29870ff3f765481bf6e02ae591f90212687daab0a7b4"
