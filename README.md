@@ -70,8 +70,11 @@ sps2 install "curl>=8.0.0,<9.0.0"
 # Install from local .sp file
 sps2 install ./package-1.0.0-1.arm64.sp
 
-# Install after building (use install() in recipe)
-sps2 build my-package.star  # If recipe has install() at the end
+# Build and install (only if recipe has install() as last step)
+sps2 build my-package.star
+
+# Build without installing
+sps2 build my-package.star -o ./packages/
 ```
 
 ### Generating Build Recipes
@@ -263,8 +266,8 @@ def metadata():
     return {
         "name": "helix",
         "version": "25.1.1",
-        "description": """A post-modern modal text editor.""",
-        "license": "MPL2"
+        "description": "A post-modern modal text editor.",
+        "license": "MIT"
     }
 
 def build(ctx):
@@ -289,8 +292,8 @@ def metadata():
     return {
         "name": "pkgconf",
         "version": "2.4.3",
-        "description": """A system for managing library compile/link flags""",
-        "license": "CUSTOM"
+        "description": "A system for managing library compile/link flags",
+        "license": "ISC"
     }
 
 def build(ctx):
@@ -313,25 +316,21 @@ def metadata():
         "version": "8.5.0",
         "description": "Command line tool for transferring data",
         "homepage": "https://curl.se",
-        "license": "CUSTOM",
-        "depends": ["openssl>=3.0.0", "zlib~=1.2.11"],
-        "build_depends": ["pkg-config>=0.29", "autoconf>=2.71"]
+        "license": "CUSTOM"
     }
 
 def build(ctx):
+    # Clean up any leftover files from previous builds
+    cleanup(ctx)
+
     # Fetch source archive
     fetch(ctx, "https://curl.se/download/curl-8.5.0.tar.gz")
 
     # Configure with autotools
-    configure(ctx, [
-        "--prefix=" + ctx.PREFIX,
-        "--with-openssl",
-        "--with-zlib"
-    ])
+    configure(ctx, ["--with-openssl", "--with-zlib"])
 
     # Build and install
-    make(ctx, ["-j" + str(ctx.JOBS)])
-    make(ctx, ["install", "DESTDIR=stage"])
+    make(ctx)
 ```
 
 ## Contributing
