@@ -88,416 +88,6 @@ cargo sqlx prepare
 
 **Note**: We avoid `sys-info` due to GPL-2.0 license. Load average detection uses `num_cpus` only.
 
-## Project Structure
-
-```
-.
-├── apps
-│   └── sps2
-│       ├── Cargo.toml
-│       └── src
-│           ├── cli.rs
-│           ├── display.rs
-│           ├── error.rs
-│           ├── events.rs
-│           ├── main.rs
-│           └── setup.rs
-├── Cargo.lock
-├── Cargo.toml
-├── crates
-│   ├── audit
-│   │   ├── Cargo.toml
-│   │   └── src
-│   │       ├── lib.rs
-│   │       ├── sbom_parser.rs
-│   │       ├── scanner.rs
-│   │       ├── types.rs
-│   │       └── vulndb
-│   │           ├── cache.rs
-│   │           ├── database.rs
-│   │           ├── manager.rs
-│   │           ├── mod.rs
-│   │           ├── parser.rs
-│   │           ├── schema.rs
-│   │           ├── sources
-│   │           │   ├── github.rs
-│   │           │   ├── mod.rs
-│   │           │   ├── nvd.rs
-│   │           │   └── osv.rs
-│   │           ├── statistics.rs
-│   │           └── updater.rs
-│   ├── builder
-│   │   ├── Cargo.toml
-│   │   └── src
-│   │       ├── api.rs
-│   │       ├── archive.rs
-│   │       ├── build_systems
-│   │       │   ├── autotools.rs
-│   │       │   ├── cargo.rs
-│   │       │   ├── cmake.rs
-│   │       │   ├── core.rs
-│   │       │   ├── go.rs
-│   │       │   ├── meson.rs
-│   │       │   ├── mod.rs
-│   │       │   ├── nodejs.rs
-│   │       │   └── python.rs
-│   │       ├── builder.rs
-│   │       ├── cache
-│   │       │   └── mod.rs
-│   │       ├── compression.rs
-│   │       ├── config.rs
-│   │       ├── cross.rs
-│   │       ├── dependencies
-│   │       │   └── mod.rs
-│   │       ├── environment
-│   │       │   ├── core.rs
-│   │       │   ├── dependencies.rs
-│   │       │   ├── directories.rs
-│   │       │   ├── execution.rs
-│   │       │   ├── hermetic.rs
-│   │       │   ├── isolation.rs
-│   │       │   ├── mod.rs
-│   │       │   ├── sandbox.rs
-│   │       │   ├── types.rs
-│   │       │   └── variables.rs
-│   │       ├── error_handling
-│   │       │   └── mod.rs
-│   │       ├── events.rs
-│   │       ├── fileops.rs
-│   │       ├── format.rs
-│   │       ├── lib.rs
-│   │       ├── manifest.rs
-│   │       ├── monitoring
-│   │       │   ├── aggregator.rs
-│   │       │   ├── config.rs
-│   │       │   ├── metrics.rs
-│   │       │   ├── mod.rs
-│   │       │   ├── pipeline.rs
-│   │       │   ├── telemetry.rs
-│   │       │   └── tracing.rs
-│   │       ├── orchestration
-│   │       │   └── mod.rs
-│   │       ├── packaging.rs
-│   │       ├── quality_assurance
-│   │       │   ├── config.rs
-│   │       │   ├── linters
-│   │       │   │   ├── cargo.rs
-│   │       │   │   ├── clang.rs
-│   │       │   │   ├── eslint.rs
-│   │       │   │   ├── generic.rs
-│   │       │   │   ├── mod.rs
-│   │       │   │   └── python.rs
-│   │       │   ├── mod.rs
-│   │       │   ├── pipeline.rs
-│   │       │   ├── policy
-│   │       │   │   ├── license.rs
-│   │       │   │   ├── mod.rs
-│   │       │   │   ├── permissions.rs
-│   │       │   │   └── size.rs
-│   │       │   ├── reports.rs
-│   │       │   ├── scanners
-│   │       │   │   ├── cargo_audit.rs
-│   │       │   │   ├── mod.rs
-│   │       │   │   ├── npm_audit.rs
-│   │       │   │   ├── python_scanner.rs
-│   │       │   │   └── trivy.rs
-│   │       │   └── types.rs
-│   │       ├── quality.rs
-│   │       ├── recipe.rs
-│   │       ├── sbom.rs
-│   │       ├── signing.rs
-│   │       ├── starlark_bridge.rs
-│   │       ├── timeout_utils.rs
-│   │       └── workflow.rs
-│   ├── config
-│   │   ├── Cargo.toml
-│   │   └── src
-│   │       └── lib.rs
-│   ├── errors
-│   │   ├── Cargo.toml
-│   │   └── src
-│   │       ├── audit.rs
-│   │       ├── build.rs
-│   │       ├── config.rs
-│   │       ├── install.rs
-│   │       ├── lib.rs
-│   │       ├── network.rs
-│   │       ├── ops.rs
-│   │       ├── package.rs
-│   │       ├── state.rs
-│   │       ├── storage.rs
-│   │       └── version.rs
-│   ├── events
-│   │   ├── Cargo.toml
-│   │   └── src
-│   │       ├── lib.rs
-│   │       └── progress
-│   │           ├── algorithms.rs
-│   │           ├── config.rs
-│   │           ├── manager.rs
-│   │           ├── mod.rs
-│   │           ├── speed.rs
-│   │           ├── tracker.rs
-│   │           └── update.rs
-│   ├── hash
-│   │   ├── Cargo.toml
-│   │   └── src
-│   │       └── lib.rs
-│   ├── index
-│   │   ├── Cargo.toml
-│   │   └── src
-│   │       ├── cache.rs
-│   │       ├── lib.rs
-│   │       └── models.rs
-│   ├── install
-│   │   ├── Cargo.toml
-│   │   └── src
-│   │       ├── atomic
-│   │       │   ├── filesystem.rs
-│   │       │   ├── installer.rs
-│   │       │   ├── linking.rs
-│   │       │   ├── mod.rs
-│   │       │   ├── rollback.rs
-│   │       │   └── transition.rs
-│   │       ├── installer.rs
-│   │       ├── lib.rs
-│   │       ├── operations.rs
-│   │       ├── parallel.rs
-│   │       ├── pipeline
-│   │       │   ├── batch.rs
-│   │       │   ├── config.rs
-│   │       │   ├── decompress.rs
-│   │       │   ├── download.rs
-│   │       │   ├── mod.rs
-│   │       │   ├── operation.rs
-│   │       │   ├── resource.rs
-│   │       │   └── staging.rs
-│   │       ├── python.rs
-│   │       ├── staging
-│   │       │   ├── directory.rs
-│   │       │   ├── guard.rs
-│   │       │   ├── manager.rs
-│   │       │   ├── mod.rs
-│   │       │   ├── utils.rs
-│   │       │   └── validation.rs
-│   │       └── validation
-│   │           ├── content
-│   │           │   ├── limits.rs
-│   │           │   ├── manifest.rs
-│   │           │   ├── mod.rs
-│   │           │   ├── tar.rs
-│   │           │   └── zstd.rs
-│   │           ├── format
-│   │           │   ├── detection.rs
-│   │           │   ├── extension.rs
-│   │           │   ├── mod.rs
-│   │           │   └── size_limits.rs
-│   │           ├── mod.rs
-│   │           ├── pipeline
-│   │           │   ├── context.rs
-│   │           │   ├── mod.rs
-│   │           │   ├── orchestrator.rs
-│   │           │   └── recovery.rs
-│   │           ├── security
-│   │           │   ├── mod.rs
-│   │           │   ├── paths.rs
-│   │           │   ├── permissions.rs
-│   │           │   ├── policies.rs
-│   │           │   └── symlinks.rs
-│   │           └── types.rs
-│   ├── manifest
-│   │   ├── Cargo.toml
-│   │   └── src
-│   │       └── lib.rs
-│   ├── net
-│   │   ├── Cargo.toml
-│   │   └── src
-│   │       ├── client.rs
-│   │       ├── download
-│   │       │   ├── config.rs
-│   │       │   ├── core.rs
-│   │       │   ├── mod.rs
-│   │       │   ├── resume.rs
-│   │       │   ├── retry.rs
-│   │       │   ├── stream.rs
-│   │       │   └── validation.rs
-│   │       └── lib.rs
-│   ├── ops
-│   │   ├── Cargo.toml
-│   │   └── src
-│   │       ├── build.rs
-│   │       ├── context.rs
-│   │       ├── health.rs
-│   │       ├── install.rs
-│   │       ├── keys.rs
-│   │       ├── lib.rs
-│   │       ├── maintenance.rs
-│   │       ├── query.rs
-│   │       ├── repository.rs
-│   │       ├── security.rs
-│   │       ├── self_update.rs
-│   │       ├── small_ops.rs
-│   │       ├── types.rs
-│   │       ├── uninstall.rs
-│   │       ├── update.rs
-│   │       └── upgrade.rs
-│   ├── package
-│   │   ├── Cargo.toml
-│   │   └── src
-│   │       ├── error_helpers.rs
-│   │       ├── lib.rs
-│   │       ├── recipe.rs
-│   │       ├── sandbox.rs
-│   │       └── starlark
-│   │           ├── build_systems.rs
-│   │           ├── context.rs
-│   │           ├── cross.rs
-│   │           ├── features.rs
-│   │           ├── mod.rs
-│   │           └── parallel.rs
-│   ├── progress
-│   │   ├── Cargo.toml
-│   │   └── src
-│   │       └── lib.rs
-│   ├── resolver
-│   │   ├── Cargo.toml
-│   │   └── src
-│   │       ├── execution.rs
-│   │       ├── graph.rs
-│   │       ├── lib.rs
-│   │       ├── resolver.rs
-│   │       └── sat
-│   │           ├── clause.rs
-│   │           ├── conflict_analysis.rs
-│   │           ├── mod.rs
-│   │           ├── solver.rs
-│   │           ├── types.rs
-│   │           └── variable_map.rs
-│   ├── root
-│   │   ├── Cargo.toml
-│   │   └── src
-│   │       └── lib.rs
-│   ├── state
-│   │   ├── build.rs
-│   │   ├── Cargo.toml
-│   │   ├── migrations
-│   │   │   ├── 0001_initial_schema.sql
-│   │   │   ├── 0002_add_build_deps.sql
-│   │   │   ├── 0003_add_package_files.sql
-│   │   │   ├── 0004_add_venv_tracking.sql
-│   │   │   └── 0005_add_package_map.sql
-│   │   └── src
-│   │       ├── lib.rs
-│   │       ├── manager.rs
-│   │       ├── models.rs
-│   │       ├── queries_runtime.rs
-│   │       └── queries.rs
-│   ├── store
-│   │   ├── Cargo.toml
-│   │   └── src
-│   │       ├── archive.rs
-│   │       ├── archive.rs.backup
-│   │       ├── format_detection.rs
-│   │       ├── lib.rs
-│   │       └── package.rs
-│   └── types
-│       ├── Cargo.toml
-│       └── src
-│           ├── format.rs
-│           ├── lib.rs
-│           ├── package.rs
-│           ├── reports.rs
-│           ├── state.rs
-│           └── version.rs
-├── LICENSE.md
-├── README.md
-├── setup.sh
-├── STARLARK_API_DOCUMENTATION.md
-├── test_build
-│   ├── autotools
-│   │   ├── configure.ac
-│   │   ├── hello.c
-│   │   ├── Makefile.am
-│   │   └── recipe.star
-│   ├── cargo
-│   │   ├── Cargo.toml
-│   │   ├── recipe.star
-│   │   └── src
-│   │       └── main.rs
-│   ├── cmake
-│   │   ├── CMakeLists.txt
-│   │   ├── hello.c
-│   │   └── recipe.star
-│   ├── go
-│   │   ├── go.mod
-│   │   ├── main.go
-│   │   └── recipe.star
-│   ├── make
-│   │   ├── hello.c
-│   │   ├── Makefile
-│   │   └── test-make.star
-│   ├── meson
-│   │   ├── hello.c
-│   │   ├── meson.build
-│   │   └── recipe.star
-│   ├── nodejs-npm
-│   │   ├── hello.js
-│   │   ├── package.json
-│   │   └── recipe.star
-│   ├── nodejs-pnpm
-│   │   ├── hello.js
-│   │   └── package.json
-│   ├── nodejs-yarn
-│   │   ├── hello.js
-│   │   └── package.json
-│   ├── packages
-│   │   ├── hello-autotools-1.0.0
-│   │   │   └── bin
-│   │   │       └── hello-autotools
-│   │   ├── hello-autotools-1.0.0-1.arm64.sp
-│   │   ├── hello-cargo-1.0.0
-│   │   │   └── bin
-│   │   │       └── hello-cargo
-│   │   ├── hello-cargo-1.0.0-1.arm64.sp
-│   │   ├── hello-cmake-1.0.0
-│   │   │   └── bin
-│   │   │       └── hello-cmake
-│   │   ├── hello-cmake-1.0.0-1.arm64.sp
-│   │   ├── hello-go-1.0.0
-│   │   │   └── bin
-│   │   │       └── hello-go
-│   │   ├── hello-go-1.0.0-1.arm64.sp
-│   │   ├── hello-meson-1.0.0
-│   │   │   └── bin
-│   │   │       └── hello-meson
-│   │   ├── hello-meson-1.0.0-1.arm64.sp
-│   │   ├── manifest.toml
-│   │   ├── manual
-│   │   │   ├── hello-autotools-1.0.0
-│   │   │   │   └── bin
-│   │   │   │       └── hello-autotools
-│   │   │   ├── hello-autotools-1.0.0-1.arm64.sp
-│   │   │   ├── hello-cargo-1.0.0
-│   │   │   │   └── bin
-│   │   │   │       └── hello-cargo
-│   │   │   ├── hello-cargo-1.0.0-1.arm64.sp
-│   │   │   ├── manifest.toml
-│   │   │   └── sbom.spdx.json
-│   │   ├── sbom.spdx.json
-│   │   ├── test-make-1.0.0
-│   │   │   └── bin
-│   │   │       └── hello
-│   │   └── test-make-1.0.0-1.arm64.sp
-│   ├── python-pyproject
-│   │   ├── hello.py
-│   │   ├── pyproject.toml
-│   │   └── recipe.star
-│   └── python-setuppy
-│       ├── hello.py
-│       └── setup.py
-└── VENV_CLEANUP_IMPLEMENTATION.md
-```
-
 ## Architecture Overview
 
 ### Crate Dependencies
@@ -1950,3 +1540,413 @@ sps2 audit [--all|--package <name>] [--fail-on critical]
 - **Integrated**: Reuses existing SBOM infrastructure
 
 This audit system will provide enterprise-grade supply chain security without compromising user privacy or adding network dependencies to the core package management operations.
+
+### Project Structure
+
+```
+.
+├── apps
+│   └── sps2
+│       ├── Cargo.toml
+│       └── src
+│           ├── cli.rs
+│           ├── display.rs
+│           ├── error.rs
+│           ├── events.rs
+│           ├── main.rs
+│           └── setup.rs
+├── Cargo.lock
+├── Cargo.toml
+├── crates
+│   ├── audit
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── lib.rs
+│   │       ├── sbom_parser.rs
+│   │       ├── scanner.rs
+│   │       ├── types.rs
+│   │       └── vulndb
+│   │           ├── cache.rs
+│   │           ├── database.rs
+│   │           ├── manager.rs
+│   │           ├── mod.rs
+│   │           ├── parser.rs
+│   │           ├── schema.rs
+│   │           ├── sources
+│   │           │   ├── github.rs
+│   │           │   ├── mod.rs
+│   │           │   ├── nvd.rs
+│   │           │   └── osv.rs
+│   │           ├── statistics.rs
+│   │           └── updater.rs
+│   ├── builder
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── api.rs
+│   │       ├── archive.rs
+│   │       ├── build_systems
+│   │       │   ├── autotools.rs
+│   │       │   ├── cargo.rs
+│   │       │   ├── cmake.rs
+│   │       │   ├── core.rs
+│   │       │   ├── go.rs
+│   │       │   ├── meson.rs
+│   │       │   ├── mod.rs
+│   │       │   ├── nodejs.rs
+│   │       │   └── python.rs
+│   │       ├── builder.rs
+│   │       ├── cache
+│   │       │   └── mod.rs
+│   │       ├── compression.rs
+│   │       ├── config.rs
+│   │       ├── cross.rs
+│   │       ├── dependencies
+│   │       │   └── mod.rs
+│   │       ├── environment
+│   │       │   ├── core.rs
+│   │       │   ├── dependencies.rs
+│   │       │   ├── directories.rs
+│   │       │   ├── execution.rs
+│   │       │   ├── hermetic.rs
+│   │       │   ├── isolation.rs
+│   │       │   ├── mod.rs
+│   │       │   ├── sandbox.rs
+│   │       │   ├── types.rs
+│   │       │   └── variables.rs
+│   │       ├── error_handling
+│   │       │   └── mod.rs
+│   │       ├── events.rs
+│   │       ├── fileops.rs
+│   │       ├── format.rs
+│   │       ├── lib.rs
+│   │       ├── manifest.rs
+│   │       ├── monitoring
+│   │       │   ├── aggregator.rs
+│   │       │   ├── config.rs
+│   │       │   ├── metrics.rs
+│   │       │   ├── mod.rs
+│   │       │   ├── pipeline.rs
+│   │       │   ├── telemetry.rs
+│   │       │   └── tracing.rs
+│   │       ├── orchestration
+│   │       │   └── mod.rs
+│   │       ├── packaging.rs
+│   │       ├── quality_assurance
+│   │       │   ├── config.rs
+│   │       │   ├── linters
+│   │       │   │   ├── cargo.rs
+│   │       │   │   ├── clang.rs
+│   │       │   │   ├── eslint.rs
+│   │       │   │   ├── generic.rs
+│   │       │   │   ├── mod.rs
+│   │       │   │   └── python.rs
+│   │       │   ├── mod.rs
+│   │       │   ├── pipeline.rs
+│   │       │   ├── policy
+│   │       │   │   ├── license.rs
+│   │       │   │   ├── mod.rs
+│   │       │   │   ├── permissions.rs
+│   │       │   │   └── size.rs
+│   │       │   ├── reports.rs
+│   │       │   ├── scanners
+│   │       │   │   ├── cargo_audit.rs
+│   │       │   │   ├── mod.rs
+│   │       │   │   ├── npm_audit.rs
+│   │       │   │   ├── python_scanner.rs
+│   │       │   │   └── trivy.rs
+│   │       │   └── types.rs
+│   │       ├── quality.rs
+│   │       ├── recipe.rs
+│   │       ├── sbom.rs
+│   │       ├── signing.rs
+│   │       ├── starlark_bridge.rs
+│   │       ├── timeout_utils.rs
+│   │       └── workflow.rs
+│   ├── config
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       └── lib.rs
+│   ├── errors
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── audit.rs
+│   │       ├── build.rs
+│   │       ├── config.rs
+│   │       ├── install.rs
+│   │       ├── lib.rs
+│   │       ├── network.rs
+│   │       ├── ops.rs
+│   │       ├── package.rs
+│   │       ├── state.rs
+│   │       ├── storage.rs
+│   │       └── version.rs
+│   ├── events
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── lib.rs
+│   │       └── progress
+│   │           ├── algorithms.rs
+│   │           ├── config.rs
+│   │           ├── manager.rs
+│   │           ├── mod.rs
+│   │           ├── speed.rs
+│   │           ├── tracker.rs
+│   │           └── update.rs
+│   ├── hash
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       └── lib.rs
+│   ├── index
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── cache.rs
+│   │       ├── lib.rs
+│   │       └── models.rs
+│   ├── install
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── atomic
+│   │       │   ├── filesystem.rs
+│   │       │   ├── installer.rs
+│   │       │   ├── linking.rs
+│   │       │   ├── mod.rs
+│   │       │   ├── rollback.rs
+│   │       │   └── transition.rs
+│   │       ├── installer.rs
+│   │       ├── lib.rs
+│   │       ├── operations.rs
+│   │       ├── parallel.rs
+│   │       ├── pipeline
+│   │       │   ├── batch.rs
+│   │       │   ├── config.rs
+│   │       │   ├── decompress.rs
+│   │       │   ├── download.rs
+│   │       │   ├── mod.rs
+│   │       │   ├── operation.rs
+│   │       │   ├── resource.rs
+│   │       │   └── staging.rs
+│   │       ├── python.rs
+│   │       ├── staging
+│   │       │   ├── directory.rs
+│   │       │   ├── guard.rs
+│   │       │   ├── manager.rs
+│   │       │   ├── mod.rs
+│   │       │   ├── utils.rs
+│   │       │   └── validation.rs
+│   │       └── validation
+│   │           ├── content
+│   │           │   ├── limits.rs
+│   │           │   ├── manifest.rs
+│   │           │   ├── mod.rs
+│   │           │   ├── tar.rs
+│   │           │   └── zstd.rs
+│   │           ├── format
+│   │           │   ├── detection.rs
+│   │           │   ├── extension.rs
+│   │           │   ├── mod.rs
+│   │           │   └── size_limits.rs
+│   │           ├── mod.rs
+│   │           ├── pipeline
+│   │           │   ├── context.rs
+│   │           │   ├── mod.rs
+│   │           │   ├── orchestrator.rs
+│   │           │   └── recovery.rs
+│   │           ├── security
+│   │           │   ├── mod.rs
+│   │           │   ├── paths.rs
+│   │           │   ├── permissions.rs
+│   │           │   ├── policies.rs
+│   │           │   └── symlinks.rs
+│   │           └── types.rs
+│   ├── manifest
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       └── lib.rs
+│   ├── net
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── client.rs
+│   │       ├── download
+│   │       │   ├── config.rs
+│   │       │   ├── core.rs
+│   │       │   ├── mod.rs
+│   │       │   ├── resume.rs
+│   │       │   ├── retry.rs
+│   │       │   ├── stream.rs
+│   │       │   └── validation.rs
+│   │       └── lib.rs
+│   ├── ops
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── build.rs
+│   │       ├── context.rs
+│   │       ├── health.rs
+│   │       ├── install.rs
+│   │       ├── keys.rs
+│   │       ├── lib.rs
+│   │       ├── maintenance.rs
+│   │       ├── query.rs
+│   │       ├── repository.rs
+│   │       ├── security.rs
+│   │       ├── self_update.rs
+│   │       ├── small_ops.rs
+│   │       ├── types.rs
+│   │       ├── uninstall.rs
+│   │       ├── update.rs
+│   │       └── upgrade.rs
+│   ├── package
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── error_helpers.rs
+│   │       ├── lib.rs
+│   │       ├── recipe.rs
+│   │       ├── sandbox.rs
+│   │       └── starlark
+│   │           ├── build_systems.rs
+│   │           ├── context.rs
+│   │           ├── cross.rs
+│   │           ├── features.rs
+│   │           ├── mod.rs
+│   │           └── parallel.rs
+│   ├── progress
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       └── lib.rs
+│   ├── resolver
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── execution.rs
+│   │       ├── graph.rs
+│   │       ├── lib.rs
+│   │       ├── resolver.rs
+│   │       └── sat
+│   │           ├── clause.rs
+│   │           ├── conflict_analysis.rs
+│   │           ├── mod.rs
+│   │           ├── solver.rs
+│   │           ├── types.rs
+│   │           └── variable_map.rs
+│   ├── root
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       └── lib.rs
+│   ├── state
+│   │   ├── build.rs
+│   │   ├── Cargo.toml
+│   │   ├── migrations
+│   │   │   ├── 0001_initial_schema.sql
+│   │   │   ├── 0002_add_build_deps.sql
+│   │   │   ├── 0003_add_package_files.sql
+│   │   │   ├── 0004_add_venv_tracking.sql
+│   │   │   └── 0005_add_package_map.sql
+│   │   └── src
+│   │       ├── lib.rs
+│   │       ├── manager.rs
+│   │       ├── models.rs
+│   │       ├── queries_runtime.rs
+│   │       └── queries.rs
+│   ├── store
+│   │   ├── Cargo.toml
+│   │   └── src
+│   │       ├── archive.rs
+│   │       ├── archive.rs.backup
+│   │       ├── format_detection.rs
+│   │       ├── lib.rs
+│   │       └── package.rs
+│   └── types
+│       ├── Cargo.toml
+│       └── src
+│           ├── format.rs
+│           ├── lib.rs
+│           ├── package.rs
+│           ├── reports.rs
+│           ├── state.rs
+│           └── version.rs
+├── LICENSE.md
+├── README.md
+├── setup.sh
+├── STARLARK_API_DOCUMENTATION.md
+├── test_build
+│   ├── autotools
+│   │   ├── configure.ac
+│   │   ├── hello.c
+│   │   ├── Makefile.am
+│   │   └── recipe.star
+│   ├── cargo
+│   │   ├── Cargo.toml
+│   │   ├── recipe.star
+│   │   └── src
+│   │       └── main.rs
+│   ├── cmake
+│   │   ├── CMakeLists.txt
+│   │   ├── hello.c
+│   │   └── recipe.star
+│   ├── go
+│   │   ├── go.mod
+│   │   ├── main.go
+│   │   └── recipe.star
+│   ├── make
+│   │   ├── hello.c
+│   │   ├── Makefile
+│   │   └── test-make.star
+│   ├── meson
+│   │   ├── hello.c
+│   │   ├── meson.build
+│   │   └── recipe.star
+│   ├── nodejs-npm
+│   │   ├── hello.js
+│   │   ├── package.json
+│   │   └── recipe.star
+│   ├── nodejs-pnpm
+│   │   ├── hello.js
+│   │   └── package.json
+│   ├── nodejs-yarn
+│   │   ├── hello.js
+│   │   └── package.json
+│   ├── packages
+│   │   ├── hello-autotools-1.0.0
+│   │   │   └── bin
+│   │   │       └── hello-autotools
+│   │   ├── hello-autotools-1.0.0-1.arm64.sp
+│   │   ├── hello-cargo-1.0.0
+│   │   │   └── bin
+│   │   │       └── hello-cargo
+│   │   ├── hello-cargo-1.0.0-1.arm64.sp
+│   │   ├── hello-cmake-1.0.0
+│   │   │   └── bin
+│   │   │       └── hello-cmake
+│   │   ├── hello-cmake-1.0.0-1.arm64.sp
+│   │   ├── hello-go-1.0.0
+│   │   │   └── bin
+│   │   │       └── hello-go
+│   │   ├── hello-go-1.0.0-1.arm64.sp
+│   │   ├── hello-meson-1.0.0
+│   │   │   └── bin
+│   │   │       └── hello-meson
+│   │   ├── hello-meson-1.0.0-1.arm64.sp
+│   │   ├── manifest.toml
+│   │   ├── manual
+│   │   │   ├── hello-autotools-1.0.0
+│   │   │   │   └── bin
+│   │   │   │       └── hello-autotools
+│   │   │   ├── hello-autotools-1.0.0-1.arm64.sp
+│   │   │   ├── hello-cargo-1.0.0
+│   │   │   │   └── bin
+│   │   │   │       └── hello-cargo
+│   │   │   ├── hello-cargo-1.0.0-1.arm64.sp
+│   │   │   ├── manifest.toml
+│   │   │   └── sbom.spdx.json
+│   │   ├── sbom.spdx.json
+│   │   ├── test-make-1.0.0
+│   │   │   └── bin
+│   │   │       └── hello
+│   │   └── test-make-1.0.0-1.arm64.sp
+│   ├── python-pyproject
+│   │   ├── hello.py
+│   │   ├── pyproject.toml
+│   │   └── recipe.star
+│   └── python-setuppy
+│       ├── hello.py
+│       └── setup.py
+└── VENV_CLEANUP_IMPLEMENTATION.md
+```
