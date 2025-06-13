@@ -348,7 +348,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 
 ## Security
 
-- Packages are signed with [Minisign](https://jedisct1.github.io/minisign/)
+- Packages are signed with [Minisign](https://jedisct1.github.io/minisign/) // TODO
 - All downloads are verified against BLAKE3 hashes [BLAKE3](https://github.com/BLAKE3-team/BLAKE3)
 - SBOM (Software Bill of Materials) generated for every package
 - Offline CVE scanning via integrated vulnerability database
