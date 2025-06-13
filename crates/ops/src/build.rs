@@ -72,10 +72,19 @@ pub async fn build(
         PathBuf::from,
     );
 
+    // Canonicalize recipe path to ensure it's absolute
+    let canonical_recipe_path =
+        recipe_path
+            .canonicalize()
+            .map_err(|e| OpsError::InvalidRecipe {
+                path: recipe_path.display().to_string(),
+                reason: format!("failed to canonicalize recipe path: {e}"),
+            })?;
+
     let build_context = BuildContext::new(
         package_name.clone(),
         package_version.clone(),
-        recipe_path.to_path_buf(),
+        canonical_recipe_path,
         output_directory,
     )
     .with_event_sender(ctx.tx.clone());

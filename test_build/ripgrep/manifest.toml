@@ -1,0 +1,25 @@
+[format_version]
+major = 1
+minor = 0
+patch = 0
+
+[package]
+name = "ripgrep"
+version = "14.1.1"
+revision = 1
+arch = "arm64"
+description = """
+ripgrep is a line-oriented search tool that recursively searches the current
+directory for a regex pattern while respecting gitignore rules. ripgrep has
+first class support on Windows, macOS and Linux.
+"""
+homepage = "https://github.com/BurntSushi/ripgrep"
+license = "Unlicense OR MIT"
+
+[package.compression]
+format = "legacy"
+
+[dependencies]
+
+[sbom]
+spdx = "128861857cbf4deed7170d257af3350e8884b2aa6944a68f3ac2367743da5f74"

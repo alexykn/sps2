@@ -60,6 +60,11 @@ impl BuilderApi {
         self
     }
 
+    /// Update the working directory (used after git clone to point to the correct source)
+    pub fn set_working_dir(&mut self, new_working_dir: PathBuf) {
+        self.working_dir = new_working_dir;
+    }
+
     /// Download and verify a file
     ///
     /// # Errors
@@ -70,12 +75,7 @@ impl BuilderApi {
     /// - The download fails
     /// - The file hash doesn't match the expected hash
     pub async fn fetch(&mut self, url: &str, expected_hash: &str) -> Result<PathBuf, Error> {
-        if !self.allow_network {
-            return Err(BuildError::NetworkDisabled {
-                url: url.to_string(),
-            }
-            .into());
-        }
+        // Fetch operations always have network access - they're source fetching, not build operations
 
         // Check if already downloaded
         if let Some(path) = self.downloads.get(url) {
@@ -129,12 +129,7 @@ impl BuilderApi {
     /// - The URL is invalid
     /// - The git clone fails
     pub async fn git(&mut self, url: &str, ref_: &str) -> Result<PathBuf, Error> {
-        if !self.allow_network {
-            return Err(BuildError::NetworkDisabled {
-                url: url.to_string(),
-            }
-            .into());
-        }
+        // Git operations always have network access - they're source fetching, not build operations
 
         // Check if already cloned
         if let Some(path) = self.downloads.get(url) {
@@ -153,19 +148,35 @@ impl BuilderApi {
         let clone_path = self.working_dir.join(repo_name);
 
         // Clone using git command (better compatibility than git2 crate)
-        let output = tokio::process::Command::new("git")
-            .args([
-                "clone",
-                "--depth",
-                "1",
-                "--branch",
-                ref_,
-                url,
-                &clone_path.display().to_string(),
-            ])
-            .current_dir(&self.working_dir)
-            .output()
-            .await?;
+        let output = if ref_ == "HEAD" {
+            // For HEAD, don't use --branch flag
+            tokio::process::Command::new("git")
+                .args([
+                    "clone",
+                    "--depth",
+                    "1",
+                    url,
+                    &clone_path.display().to_string(),
+                ])
+                .current_dir(&self.working_dir)
+                .output()
+                .await?
+        } else {
+            // For specific branches/tags, use --branch
+            tokio::process::Command::new("git")
+                .args([
+                    "clone",
+                    "--depth",
+                    "1",
+                    "--branch",
+                    ref_,
+                    url,
+                    &clone_path.display().to_string(),
+                ])
+                .current_dir(&self.working_dir)
+                .output()
+                .await?
+        };
 
         if !output.status.success() {
             return Err(BuildError::GitCloneFailed {
@@ -179,6 +190,11 @@ impl BuilderApi {
         }
 
         self.downloads.insert(url.to_string(), clone_path.clone());
+
+        // Update working directory to the cloned path so subsequent operations
+        // (like cargo build) work in the correct directory
+        self.set_working_dir(clone_path.clone());
+
         Ok(clone_path)
     }
 
@@ -216,7 +232,8 @@ impl BuilderApi {
         self.extract_downloads().await?;
 
         // Create build system context
-        let ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
+        let mut ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
+        ctx.network_allowed = self.allow_network;
         let autotools_system = AutotoolsBuildSystem::new();
 
         // Configure
@@ -257,6 +274,7 @@ impl BuilderApi {
 
         let mut ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
         ctx.build_dir = build_dir;
+        ctx.network_allowed = self.allow_network;
 
         let cmake_system = CMakeBuildSystem::new();
 
@@ -297,6 +315,7 @@ impl BuilderApi {
 
         let mut ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
         ctx.build_dir = build_dir;
+        ctx.network_allowed = self.allow_network;
 
         let meson_system = MesonBuildSystem::new();
 
@@ -337,7 +356,8 @@ impl BuilderApi {
         self.extract_downloads().await?;
 
         // Create build system context
-        let ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
+        let mut ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
+        ctx.network_allowed = self.allow_network;
         let cargo_system = CargoBuildSystem::new();
 
         // Configure (checks Cargo.toml, sets up environment)
@@ -373,7 +393,8 @@ impl BuilderApi {
         self.extract_downloads().await?;
 
         // Create build system context
-        let ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
+        let mut ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
+        ctx.network_allowed = self.allow_network;
         let go_system = GoBuildSystem::new();
 
         // Configure if needed (this will handle go mod vendor, etc)
@@ -409,7 +430,8 @@ impl BuilderApi {
         self.extract_downloads().await?;
 
         // Create build system context
-        let ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
+        let mut ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
+        ctx.network_allowed = self.allow_network;
         let python_system = PythonBuildSystem::new();
 
         // Configure (detects build backend, sets up environment)
@@ -454,7 +476,8 @@ impl BuilderApi {
         self.extract_downloads().await?;
 
         // Create build system context
-        let ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
+        let mut ctx = BuildSystemContext::new(env.clone(), self.working_dir.clone());
+        ctx.network_allowed = self.allow_network;
         let nodejs_system = NodeJsBuildSystem::new();
 
         // Configure (detects package manager, sets up environment)
