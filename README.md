@@ -4,8 +4,7 @@ A modern, atomic package manager for macOS ARM64 with rollback capabilities and 
 
 ## Early Development Notice
 
-**This project is in the early stages of development.** It is not yet recommended for production use. The API, package format, and internal architecture are still subject to change. There is no public package repository yet. 
-We welcome contributors who are excited about building the future of package management on macOS.
+**This project is in the early stages of development.** It is not yet recommended for production use. The API, package format, and internal architecture are still subject to change. There is no public package repository yet.
 
 ### Current Status
 
