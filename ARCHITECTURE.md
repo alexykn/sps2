@@ -1,5 +1,8 @@
 # Project Overview
-sps2 is a modern package manager written in Rust, designed exclusively for macOS ARM64 (Apple Silicon). Built from the ground up with atomic operations, rollback capabilities, and a clean async architecture. This is a completely new package manager with its own package format, build system, and distribution infrastructure.
+
+## NOTE
+
+This document was written before I started building, before the first line of code. By now it is a bit outdated, needs some corrections, updates and changes. This will happpen when I find time for it, actually building this is more important right now. Anyway it is like ninety-percent-ishly aligned with the actual implementation so might still be worth reading.
 
 ## Installation
 
