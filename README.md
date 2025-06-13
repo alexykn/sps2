@@ -77,6 +77,9 @@ sps2 build my-package.star
 sps2 build my-package.star -o ./packages/
 ```
 
+#### NOTE
+You can find some working .sp packages in the test_build/ dir. Pretty messy right now, I'll structure that better sometime.
+
 ### Generating Build Recipes
 
 Use the `draft` command to automatically generate recipes:
