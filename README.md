@@ -25,7 +25,7 @@ A modern, atomic package manager for macOS ARM64 with rollback capabilities and 
 
 ## Installation
 
-**You can find some working .sp packages in the test_build/ dir. Pretty messy right now, I'll structure that better sometime.**
+**Some working .sp packages in the test_build/ dir. Layout is messy, will eventually clean that up.**
 
 ### Prerequisites
 
