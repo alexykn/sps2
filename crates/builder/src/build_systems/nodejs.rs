@@ -259,7 +259,7 @@ impl NodeJsBuildSystem {
     /// Find and copy built artifacts
     async fn copy_built_artifacts(&self, ctx: &BuildSystemContext) -> Result<(), Error> {
         let staging_dir = ctx.env.staging_dir();
-        let prefix_path = staging_dir.join(ctx.env.get_build_prefix().trim_start_matches('/'));
+        let prefix_path = staging_dir.join(ctx.env.get_live_prefix().trim_start_matches('/'));
 
         // Common output directories
         let possible_dirs = vec!["dist", "build", "out", "lib"];
@@ -565,11 +565,11 @@ impl BuildSystem for NodeJsBuildSystem {
         // Copy built artifacts to staging
         self.copy_built_artifacts(ctx).await?;
 
-        // Also copy package.json for metadata with BUILD_PREFIX structure
+        // Also copy package.json for metadata with LIVE_PREFIX structure
         let package_json_src = ctx.source_dir.join("package.json");
         if package_json_src.exists() {
             let staging_dir = ctx.env.staging_dir();
-            let prefix_path = staging_dir.join(ctx.env.get_build_prefix().trim_start_matches('/'));
+            let prefix_path = staging_dir.join(ctx.env.get_live_prefix().trim_start_matches('/'));
             let package_json_dest = prefix_path.join("package.json");
             fs::copy(&package_json_src, &package_json_dest).await?;
         }

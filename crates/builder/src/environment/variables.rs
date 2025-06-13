@@ -59,7 +59,8 @@ impl BuildEnvironment {
             .insert("PREFIX".to_string(), "/opt/pm/live".to_string());
 
         // Set BUILD_PREFIX to package-specific prefix (e.g., /hello-1.0.0)
-        // This is used by build systems for their --prefix arguments
+        // This is used for staging directory structure, not for build system --prefix arguments
+        // Build systems now use LIVE_PREFIX (/opt/pm/live) for --prefix arguments
         self.env_vars.insert(
             "BUILD_PREFIX".to_string(),
             format!("/{}-{}", self.context.name, self.context.version),

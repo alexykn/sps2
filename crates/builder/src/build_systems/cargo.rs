@@ -384,9 +384,9 @@ impl BuildSystem for CargoBuildSystem {
                 .into());
             }
 
-            // Move files from temp install to staging with BUILD_PREFIX structure
+            // Move files from temp install to staging with LIVE_PREFIX structure
             let staging_dir = ctx.env.staging_dir();
-            let prefix_path = staging_dir.join(ctx.env.get_build_prefix().trim_start_matches('/'));
+            let prefix_path = staging_dir.join(ctx.env.get_live_prefix().trim_start_matches('/'));
 
             // Move bin directory
             let temp_bin = temp_install_dir.join("bin");
@@ -407,9 +407,9 @@ impl BuildSystem for CargoBuildSystem {
             // Clean up temp directory
             let _ = fs::remove_dir_all(&temp_install_dir).await;
         } else {
-            // Manually copy binaries to staging with BUILD_PREFIX structure
+            // Manually copy binaries to staging with LIVE_PREFIX structure
             let staging_dir = ctx.env.staging_dir();
-            let prefix_path = staging_dir.join(ctx.env.get_build_prefix().trim_start_matches('/'));
+            let prefix_path = staging_dir.join(ctx.env.get_live_prefix().trim_start_matches('/'));
             let staging_bin = prefix_path.join("bin");
             fs::create_dir_all(&staging_bin).await?;
 

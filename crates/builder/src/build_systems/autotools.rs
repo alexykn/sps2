@@ -97,9 +97,9 @@ impl AutotoolsBuildSystem {
     fn get_configure_args(&self, ctx: &BuildSystemContext, user_args: &[String]) -> Vec<String> {
         let mut args = vec![];
 
-        // Add prefix - use BUILD_PREFIX from environment
+        // Add prefix - use LIVE_PREFIX for runtime installation location
         if !user_args.iter().any(|arg| arg.starts_with("--prefix=")) {
-            args.push(format!("--prefix={}", ctx.env.get_build_prefix()));
+            args.push(format!("--prefix={}", ctx.env.get_live_prefix()));
         }
 
         // Handle cross-compilation

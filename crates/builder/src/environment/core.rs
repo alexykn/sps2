@@ -10,6 +10,9 @@ use sps2_types::Version;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+/// Live prefix where packages are installed at runtime
+pub const LIVE_PREFIX: &str = "/opt/pm/live";
+
 /// Build environment for isolated package building
 #[derive(Clone, Debug)]
 pub struct BuildEnvironment {
@@ -115,6 +118,12 @@ impl BuildEnvironment {
     #[must_use]
     pub fn get_build_prefix(&self) -> String {
         format!("/{}-{}", self.context.name, self.context.version)
+    }
+
+    /// Get the live prefix where packages are installed at runtime
+    #[must_use]
+    pub fn get_live_prefix(&self) -> &'static str {
+        LIVE_PREFIX
     }
 
     /// Get dependencies prefix

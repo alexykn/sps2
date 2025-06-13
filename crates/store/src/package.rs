@@ -55,24 +55,22 @@ impl StoredPackage {
     /// Get the files directory
     #[must_use]
     pub fn files_path(&self) -> PathBuf {
-        // Check for new package structure with version first (<package-name>-<version>/)
+        // New structure: files are under opt/pm/live
+        let live_path = self.path.join("opt/pm/live");
+        if live_path.exists() {
+            return live_path; // Return the live path directly
+        }
+
+        // Legacy: Check for package-version directory
         let package_name = &self.manifest.package.name;
         let package_version = &self.manifest.package.version;
         let versioned_path = self.path.join(format!("{package_name}-{package_version}"));
-
         if versioned_path.exists() {
-            versioned_path
-        } else {
-            // Check for new package structure without version (<package-name>/)
-            let new_style_path = self.path.join(package_name);
-
-            if new_style_path.exists() {
-                new_style_path
-            } else {
-                // Fall back to old structure (files/)
-                self.path.join("files")
-            }
+            return versioned_path;
         }
+
+        // Fallback to package name without version
+        self.path.join(package_name)
     }
 
     /// Get the blobs directory

@@ -136,11 +136,10 @@ impl PythonBuildSystem {
             args.push(ctx.source_dir.join("vendor").display().to_string());
         }
 
-        // Add prefix for installation - use package-specific prefix within staging
+        // Add prefix for installation - use LIVE_PREFIX within staging
         args.push("--prefix".to_string());
         let staging_dir = ctx.env.staging_dir();
-        let prefix_in_staging =
-            staging_dir.join(ctx.env.get_build_prefix().trim_start_matches('/'));
+        let prefix_in_staging = staging_dir.join(ctx.env.get_live_prefix().trim_start_matches('/'));
         args.push(prefix_in_staging.display().to_string());
 
         // Add no-deps to avoid installing dependencies (they should be handled by sps2)
@@ -769,8 +768,7 @@ impl BuildSystem for PythonBuildSystem {
 
         // Fix shebangs in installed scripts
         let staging_dir = ctx.env.staging_dir();
-        let prefix_in_staging =
-            staging_dir.join(ctx.env.get_build_prefix().trim_start_matches('/'));
+        let prefix_in_staging = staging_dir.join(ctx.env.get_live_prefix().trim_start_matches('/'));
         let scripts_dir = prefix_in_staging.join("bin");
         if scripts_dir.exists() {
             self.fix_shebangs(&scripts_dir, ctx).await?;
@@ -785,10 +783,9 @@ impl BuildSystem for PythonBuildSystem {
     fn get_env_vars(&self, ctx: &BuildSystemContext) -> HashMap<String, String> {
         let mut vars = HashMap::new();
 
-        // Set PYTHONPATH to include staging directory with BUILD_PREFIX
+        // Set PYTHONPATH to include staging directory with LIVE_PREFIX
         let staging_dir = ctx.env.staging_dir();
-        let prefix_in_staging =
-            staging_dir.join(ctx.env.get_build_prefix().trim_start_matches('/'));
+        let prefix_in_staging = staging_dir.join(ctx.env.get_live_prefix().trim_start_matches('/'));
         let site_packages = prefix_in_staging.join("lib/python*/site-packages");
         vars.insert(
             "PYTHONPATH".to_string(),

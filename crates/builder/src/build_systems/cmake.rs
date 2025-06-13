@@ -43,14 +43,14 @@ impl CMakeBuildSystem {
         // Always specify source directory
         args.push(ctx.source_dir.display().to_string());
 
-        // Add install prefix - use BUILD_PREFIX from environment
+        // Add install prefix - use LIVE_PREFIX for runtime installation location
         if !user_args
             .iter()
             .any(|arg| arg.starts_with("-DCMAKE_INSTALL_PREFIX="))
         {
             args.push(format!(
                 "-DCMAKE_INSTALL_PREFIX={}",
-                ctx.env.get_build_prefix()
+                ctx.env.get_live_prefix()
             ));
         }
 

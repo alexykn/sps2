@@ -117,9 +117,9 @@ impl MesonBuildSystem {
             args.push(ctx.source_dir.display().to_string());
         }
 
-        // Add prefix - use BUILD_PREFIX from environment
+        // Add prefix - use LIVE_PREFIX for runtime installation location
         if !user_args.iter().any(|arg| arg.starts_with("--prefix=")) {
-            args.push(format!("--prefix={}", ctx.env.get_build_prefix()));
+            args.push(format!("--prefix={}", ctx.env.get_live_prefix()));
         }
 
         // Add default arguments
