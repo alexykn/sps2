@@ -25,8 +25,6 @@ A modern, atomic package manager for macOS ARM64 with rollback capabilities and 
 
 ## Installation
 
-**Some working .sp packages in the test_build/ dir. Layout is messy, will eventually clean that up.**
-
 ### Prerequisites
 
 - macOS with Apple Silicon
@@ -58,6 +56,8 @@ sps2 --version
 ## Quick Start
 
 ### Installing Packages
+
+**Some working .sp packages in the test_build/ dir. Layout is messy, will eventually clean that up.**
 
 ```bash
 # Install from repository (when available)
