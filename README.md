@@ -8,9 +8,9 @@ A modern, atomic package manager for macOS ARM64 with rollback capabilities and 
 
 ### Current Status
 
-- ✅ **Working**: `draft`, `build`, `install`, `uninstall`, `rollback`, `history`, `list`, `vulndb update`
+- ✅ **Working**: `install`, `uninstall`, `rollback`, `history`, `list`, `vulndb update`, `check-health`
 - 🚧 **In Progress**: `draft` and `build` (functional but incomplete)
-- ⚠️ **Untested**: `update`, `upgrade`, `info`, `search`, `reposync`, `cleanup`, `check-health`, `audit`, `self-update`
+- ⚠️ **Untested**: `update`, `upgrade`, `info`, `search`, `reposync`, `cleanup`, `audit`, `self-update`
 
 ## Features
 
