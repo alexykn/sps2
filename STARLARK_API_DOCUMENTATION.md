@@ -1,8 +1,23 @@
-# spsv2 Starlark Build Script API Documentation
+# sps2 Starlark Build Script API Documentation
 
 ## Overview
 
-spsv2 uses Starlark (a Python-like language) for build scripts. Each package recipe is a `.star` file that defines metadata and build instructions.
+sps2 uses Starlark (a Python-like language) for build scripts. Each package recipe is a `.star` file that defines metadata and build instructions. The builder automatically handles packaging - you just need to specify how to build the software.
+
+**Tip**: Use `sps2 draft` to automatically generate recipes from Git repositories or source archives:
+```bash
+# Generate recipe from Git repository
+sps2 draft -g "https://github.com/BurntSushi/ripgrep"
+
+# Generate recipe from source archive
+sps2 draft -u "https://example.com/package-1.0.tar.gz"
+
+# Generate recipe from local directory
+sps2 draft -p ./my-project
+
+# Generate recipe from local archive
+sps2 draft -a ./my-archive.tar.gz
+```
 
 ## Basic Structure
 
@@ -32,172 +47,287 @@ def build(ctx):
 The `ctx` parameter in the `build()` function provides these read-only attributes:
 
 - `ctx.NAME` - Package name from metadata
-- `ctx.VERSION` - Package version from metadata  
+- `ctx.VERSION` - Package version from metadata
 - `ctx.PREFIX` - Final installation prefix (e.g., `/opt/pm/live`)
-- `ctx.BUILD_PREFIX` - Staging directory prefix (empty string, meaning install directly to `stage/`)
 - `ctx.JOBS` - Number of parallel build jobs (integer)
 
-## Build Functions
+## Core Build Functions
 
-### Important Note on Staging
+### cleanup(ctx)
+Clean up the staging directory. This removes all files from the staging directory but keeps the directory itself.
 
-When building packages, files should be installed to the `stage/` directory in the build environment. Do NOT include the final installation prefix path in the staging directory structure. For example:
-
-- ✅ CORRECT: `stage/bin/myapp`, `stage/lib/libfoo.so`
-- ❌ WRONG: `stage/opt/pm/live/bin/myapp`
-
-The `ctx.PREFIX` variable contains the final installation prefix (e.g., `/opt/pm/live`) and should be used for:
-- Configure scripts: `--prefix=${ctx.PREFIX}`
-- Compile-time paths that will be embedded in binaries
-- NOT for staging directory paths
-
-### Basic Build Operations
-
-#### fetch(ctx, url, hash?)
-Fetch and extract source archive.
-```starlark
-fetch(ctx, "https://example.com/package-1.0.0.tar.gz")
-fetch(ctx, "https://example.com/package-1.0.0.tar.gz", "blake3:abc123...")
-```
-
-#### command(ctx, cmd)
-Execute arbitrary shell command. Can accept string or list.
-```starlark
-command(ctx, "mkdir -p build")
-command(ctx, "echo 'Hello' > README")
-command(ctx, ["gcc", "-o", "output", "input.c"])
-```
-
-#### apply_patch(ctx, path)
-Apply a patch file to the source.
-```starlark
-apply_patch(ctx, "fix-build.patch")
-```
-
-#### install(ctx)
-Request installation of the built package after .sp creation.
-
-**Important**: This does NOT run `make install`. Instead:
-- Build systems should install files to staging directory during their build steps
-- The `install()` function requests that the generated .sp package be installed after build
-- Must be the LAST step in the recipe if used
-- The actual installation happens after the .sp package is created
-
-```starlark
-# Example: autotools project
-configure(ctx, ["--prefix=" + ctx.PREFIX])
-make(ctx, ["-j" + str(ctx.JOBS)])
-make(ctx, ["install", "DESTDIR=stage"])  # Install to staging
-install(ctx)  # Request .sp package installation (must be last!)
-
-# Example: simple project without install()
-cargo(ctx, ["build", "--release"])
-command(ctx, "mkdir -p stage/bin")  # Files go directly in stage/
-command(ctx, "cp target/release/myapp stage/bin/")
-# No install() - package is created but not installed
-```
-
-#### cleanup(ctx)
-Clean up the staging directory after build. This removes all files from the staging directory but keeps the directory itself.
-
-This is useful when:
-- Multiple build attempts may have left files with different prefixes
-- You want to ensure a clean staging directory before rebuilding
-- Testing different build configurations
+**Best practice**: Always call this at the start of your build to ensure a clean environment.
 
 ```starlark
 def build(ctx):
-    # Build and install to staging
-    meson(ctx, ["--buildtype=release"])
-    
-    # Clean up staging directory to remove any leftover files
+    # Clean up any leftover files from previous builds
     cleanup(ctx)
-    
-    # Rebuild with different configuration
-    meson(ctx, ["--buildtype=debug"])
+
+    # Continue with build...
 ```
 
-### Build System Functions
+### git(ctx, url, ref)
+Clone a git repository. This is the preferred method for fetching source code.
 
-#### make(ctx, args?)
-Run make with optional arguments.
 ```starlark
-make(ctx)                           # Simple make
-make(ctx, ["-j" + str(ctx.JOBS)])   # Parallel make
-make(ctx, ["install", "PREFIX=/usr"]) # Make with target and vars
+# Clone latest commit from default branch
+git(ctx, "https://github.com/BurntSushi/ripgrep", "HEAD")
+
+# Clone specific tag
+git(ctx, "https://github.com/helix-editor/helix", "v25.1.1")
+
+# Clone specific commit
+git(ctx, "https://github.com/user/repo", "abc123def456")
 ```
 
-#### configure(ctx, args?)
-Run configure script (typically for autotools).
+### fetch(ctx, url, hash?)
+Fetch and extract source archive from URL.
+
 ```starlark
-configure(ctx)                                          # Basic configure
-configure(ctx, ["--prefix=" + ctx.PREFIX, "--disable-static"])  # With options
+# Basic fetch
+fetch(ctx, "https://curl.se/download/curl-8.5.0.tar.gz")
+
+# Fetch with explicit BLAKE3 hash verification
+fetch(ctx, "https://example.com/package-1.0.0.tar.gz", "blake3:abc123...")
 ```
 
-#### autotools(ctx, args?)
-Run full autotools sequence (configure && make && make install).
+### allow_network(ctx, enabled)
+Enable or disable network access during build. Network is disabled by default for hermetic builds.
+
 ```starlark
-autotools(ctx)
-autotools(ctx, ["--enable-shared", "--disable-static"])
+# Enable network for dependency downloads (Cargo, Go modules, npm, etc.)
+allow_network(ctx, True)
 ```
 
-#### cmake(ctx, args?)
-Run CMake build.
+### command(ctx, cmd)
+Execute arbitrary shell command. **Use sparingly** - prefer build system functions.
+
 ```starlark
-cmake(ctx, ["-DCMAKE_INSTALL_PREFIX=" + ctx.PREFIX, 
-           "-DCMAKE_BUILD_TYPE=Release"])
+# Only use for special cases not covered by build system functions
+command(ctx, "special-build-script.sh")
 ```
 
-#### meson(ctx, args?)
-Run Meson build.
+### apply_patch(ctx, path)
+Apply a patch file to the source.
+
 ```starlark
-meson(ctx, ["--prefix=" + ctx.PREFIX, "--buildtype=release"])
+apply_patch(ctx, "fix-macos-build.patch")
 ```
 
-#### cargo(ctx, args?)
-Run Cargo (Rust) build.
+### install(ctx)
+Request installation of the built package after .sp creation.
+
+**Important**:
+- Optional - omit if you only want to build, not install
+- Must be the LAST step in the recipe if used
+- The builder automatically handles packaging
+
 ```starlark
-cargo(ctx, ["build", "--release"])
+def build(ctx):
+    cleanup(ctx)
+    git(ctx, "https://github.com/example/app", "HEAD")
+    cargo(ctx, ["--release"])
+    install(ctx)  # Auto-install after build (optional)
 ```
 
-#### go(ctx, args?)
-Run Go build.
+## Build System Functions
+
+The builder automatically handles proper installation, prefix configuration, and packaging for each build system. Since sps2 uses a fixed installation prefix (`/opt/pm/live`), you don't need to specify `--prefix` or similar options - the builder configures this for you.
+
+### cargo(ctx, args?)
+Build Rust projects with Cargo. The builder automatically handles release builds and binary collection.
+
 ```starlark
-go(ctx, ["build", "-o", "myapp"])
+# Simple release build
+cargo(ctx, ["--release"])
+
+# With features
+cargo(ctx, ["--release", "--features", "ssl,compression"])
+
+# With tests
+cargo(ctx, ["test"])
+cargo(ctx, ["--release"])
+```
+
+### meson(ctx, args?)
+Build projects using Meson. The builder handles the full Meson/Ninja workflow and sets the prefix automatically.
+
+```starlark
+# Simple release build
+meson(ctx, ["--buildtype=release"])
+
+# With additional options
+meson(ctx, ["--buildtype=release", "-Dgtk_doc=false"])
+```
+
+### cmake(ctx, args?)
+Build projects using CMake. The builder automatically configures the install prefix.
+
+```starlark
+cmake(ctx, [
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-GNinja"  # Use Ninja generator
+])
+
+# With additional options
+cmake(ctx, [
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DBUILD_SHARED_LIBS=ON",
+    "-DWITH_SSL=ON"
+])
+```
+
+### configure(ctx, args?)
+Run configure script (typically for autotools projects). The builder automatically sets the prefix.
+
+```starlark
+configure(ctx)  # Basic configure
+configure(ctx, ["--with-ssl", "--enable-shared"])  # With options
+```
+
+### make(ctx, args?)
+Run make. The builder handles parallel jobs automatically.
+
+```starlark
+# After configure
+make(ctx)
+
+# With specific target
+make(ctx, ["check"])  # Run tests
+```
+
+### autotools(ctx, args?)
+Complete autotools workflow (configure, make, make install). The builder handles prefix configuration.
+
+```starlark
+autotools(ctx)  # Basic autotools build
+autotools(ctx, ["--enable-shared", "--disable-static"])  # With options
+```
+
+### go(ctx, args?)
+Build Go projects. The builder handles binary installation automatically.
+
+```starlark
+# Download dependencies first
+go(ctx, ["mod", "download"])
+
+# Build
+go(ctx, ["build", "./cmd/myapp"])
+
+# Run tests
 go(ctx, ["test", "./..."])
-go(ctx, ["mod", "vendor"])
 ```
 
-#### python(ctx, args?)
-Run Python build.
+### python(ctx, args?)
+Build Python projects. The builder manages installation paths automatically.
+
 ```starlark
+# Using setup.py
 python(ctx, ["setup.py", "build"])
-python(ctx, ["setup.py", "install", "--prefix=/opt"])
+python(ctx, ["setup.py", "install"])
+
+# Using pip
 python(ctx, ["-m", "pip", "install", "."])
 ```
 
-#### nodejs(ctx, args?)
-Run Node.js/npm build.
+### nodejs(ctx, args?)
+Build Node.js projects.
+
 ```starlark
-nodejs(ctx, ["npm", "install"])
+# npm
+nodejs(ctx, ["npm", "ci"])
 nodejs(ctx, ["npm", "run", "build"])
-nodejs(ctx, ["yarn", "install"])
-nodejs(ctx, ["pnpm", "install"])
+
+# yarn
+nodejs(ctx, ["yarn", "install", "--frozen-lockfile"])
+nodejs(ctx, ["yarn", "build"])
+
+# pnpm
+nodejs(ctx, ["pnpm", "install", "--frozen-lockfile"])
+nodejs(ctx, ["pnpm", "run", "build"])
 ```
 
-### Build System Detection
+## Real-World Examples
 
-#### detect_build_system(ctx)
-Automatically detect the build system.
+### Rust Application (ripgrep)
+
 ```starlark
-detect_build_system(ctx)
+def metadata():
+    """Package metadata"""
+    return {
+        "name": "ripgrep",
+        "version": "14.1.1",
+        "description": """ripgrep is a line-oriented search tool that recursively searches the current
+                        directory for a regex pattern while respecting gitignore rules. ripgrep has
+                        first class support on Windows, macOS and Linux.""",
+        "license": "MIT",
+        "homepage": "https://github.com/BurntSushi/ripgrep"
+    }
+
+def build(ctx):
+    # Clean up any leftover files from previous builds
+    cleanup(ctx)
+
+    # Clone git repository
+    git(ctx, "https://github.com/BurntSushi/ripgrep", "HEAD")
+
+    # Allow network access for dependency downloads
+    allow_network(ctx, True)
+
+    # Build using cargo build system
+    cargo(ctx, ["--release"])
 ```
 
-#### set_build_system(ctx, name)
-Manually set the build system.
+### Rust Editor (helix)
+
 ```starlark
-set_build_system(ctx, "cmake")  # Options: autotools, cmake, meson, cargo, go, python, nodejs
+def metadata():
+    """Package metadata"""
+    return {
+        "name": "helix",
+        "version": "25.1.1",
+        "description": "A post-modern modal text editor.",
+        "license": "MIT"
+    }
+
+def build(ctx):
+    # Clean up any leftover files from previous builds
+    cleanup(ctx)
+
+    # Clone git repository
+    git(ctx, "https://github.com/helix-editor/helix", "HEAD")
+
+    # Allow network access for dependency downloads
+    allow_network(ctx, True)
+
+    # Build using cargo build system
+    cargo(ctx, ["--release"])
 ```
+
+### C Library (pkgconf)
+
+```starlark
+def metadata():
+    """Package metadata"""
+    return {
+        "name": "pkgconf",
+        "version": "2.4.3",
+        "description": "A system for managing library compile/link flags",
+        "license": "ISC"
+    }
+
+def build(ctx):
+    # Clean up any leftover files from previous builds
+    cleanup(ctx)
+
+    # Clone git repository
+    git(ctx, "https://github.com/pkgconf/pkgconf", "HEAD")
+
+    # Build using meson build system
+    meson(ctx, ["--buildtype=release"])
+```
+
+## Advanced Features
 
 ### Feature Management
 
@@ -218,7 +348,6 @@ disable_feature(ctx, "docs")
 #### with_features(ctx, features, callback)
 Execute steps conditionally based on features.
 ```starlark
-# Execute callback if all features are enabled
 with_features(ctx, ["ssl", "zlib"], lambda: [
     configure(ctx, ["--with-ssl", "--with-zlib"]),
     make(ctx)
@@ -244,14 +373,13 @@ checkpoint(ctx, "before_tests")
 #### try_recover(ctx, strategy, callback)
 Try steps with recovery strategy.
 ```starlark
-# Execute callback with recovery strategy
 try_recover(ctx, "retry", lambda: [
     configure(ctx, ["--host=aarch64-apple-darwin"]),
     make(ctx)
 ])  # Strategies: retry, continue, abort
 ```
 
-### Cross-Compilation
+### Cross-Compilation - (Sps2 is only for macos on arm, we allow this anyway)
 
 #### set_target(ctx, triple)
 Set target triple for cross-compilation.
@@ -280,7 +408,6 @@ set_parallelism(ctx, ctx.JOBS * 2)
 #### parallel_steps(ctx, callback)
 Execute multiple build steps in parallel.
 ```starlark
-# Execute steps in parallel
 parallel_steps(ctx, lambda: [
     command(ctx, "make -C lib1"),
     command(ctx, "make -C lib2"),
@@ -296,207 +423,16 @@ set_resource_hints(ctx, memory_mb=8192)  # Hint: needs 8GB RAM
 set_resource_hints(ctx, cpu=8, memory_mb=16384)  # Both hints
 ```
 
-## Complete Examples
+## Important Notes
 
-### Simple C Program
-```starlark
-def metadata():
-    return {
-        "name": "hello-world",
-        "version": "1.0.0",
-        "description": "Simple hello world program",
-        "license": "MIT"
-    }
-
-def build(ctx):
-    # Create source
-    command(ctx, "mkdir -p src")
-    command(ctx, "cat > src/hello.c << 'EOF'\n#include <stdio.h>\nint main() { printf(\"Hello!\\n\"); return 0; }\nEOF")
-    
-    # Create Makefile
-    command(ctx, "echo 'hello: src/hello.c' > Makefile")
-    command(ctx, "echo '\t$(CC) -o hello src/hello.c' >> Makefile")
-    
-    # Build
-    make(ctx, ["-j" + str(ctx.JOBS)])
-    
-    # Install
-    command(ctx, "mkdir -p stage/bin")
-    command(ctx, "cp hello stage/bin/")
-```
-
-### CMake Project
-```starlark
-def metadata():
-    return {
-        "name": "cmake-app",
-        "version": "2.0.0",
-        "description": "Application built with CMake",
-        "depends": ["libssl>=1.1.1", "zlib~=1.2"],
-        "build_depends": ["cmake>=3.16", "gcc>=9.0"]
-    }
-
-def build(ctx):
-    # Fetch source
-    fetch(ctx, "https://example.com/app-2.0.0.tar.gz")
-    
-    # Configure with CMake
-    cmake(ctx, [
-        "-DCMAKE_INSTALL_PREFIX=" + ctx.PREFIX,
-        "-DCMAKE_BUILD_TYPE=Release",
-        "-DWITH_SSL=ON",
-        "-S", ".",
-        "-B", "build"
-    ])
-    
-    # Build
-    command(ctx, "cd build")
-    make(ctx, ["-C", "build", "-j" + str(ctx.JOBS)])
-    
-    # Test
-    make(ctx, ["-C", "build", "test"])
-    
-    # Install
-    make(ctx, ["-C", "build", "install", "DESTDIR=$(pwd)/stage"])
-```
-
-### Autotools Project with Features
-```starlark
-def metadata():
-    return {
-        "name": "gnu-app",
-        "version": "3.5.0",
-        "description": "GNU application",
-        "license": "GPL-3.0"
-    }
-
-def build(ctx):
-    fetch(ctx, "https://gnu.org/app-3.5.0.tar.gz")
-    
-    # Enable optional features
-    enable_feature(ctx, "nls")
-    enable_feature(ctx, "shared")
-    disable_feature(ctx, "static")
-    
-    # Configure with features
-    configure(ctx, [
-        "--prefix=" + ctx.PREFIX,
-        "--enable-nls",
-        "--enable-shared",
-        "--disable-static"
-    ])
-    
-    # Build with parallel jobs
-    make(ctx, ["-j" + str(ctx.JOBS)])
-    
-    # Install to staging
-    make(ctx, ["install", "DESTDIR=stage"])
-    
-    # Request package installation after build
-    install(ctx)
-```
-
-### Cross-Compilation Example
-```starlark
-def metadata():
-    return {
-        "name": "cross-app",
-        "version": "1.0.0",
-        "description": "Cross-compiled application"
-    }
-
-def build(ctx):
-    fetch(ctx, "https://example.com/app-1.0.0.tar.gz")
-    
-    # Set cross-compilation target
-    set_target(ctx, "aarch64-linux-gnu")
-    
-    # Set toolchain
-    set_toolchain(ctx, "CC", "aarch64-linux-gnu-gcc")
-    set_toolchain(ctx, "CXX", "aarch64-linux-gnu-g++")
-    
-    # Configure for cross-compilation
-    configure(ctx, [
-        "--host=aarch64-linux-gnu",
-        "--prefix=" + ctx.PREFIX
-    ])
-    
-    make(ctx, ["-j" + str(ctx.JOBS)])
-    install(ctx)
-```
-
-### Go Application Example
-```starlark
-def metadata():
-    return {
-        "name": "go-app",
-        "version": "1.2.0",
-        "description": "Go application example",
-        "build_depends": ["go>=1.20"]
-    }
-
-def build(ctx):
-    fetch(ctx, "https://github.com/example/go-app/archive/v1.2.0.tar.gz")
-    
-    # Download dependencies
-    go(ctx, ["mod", "download"])
-    
-    # Build the application
-    go(ctx, ["build", "-ldflags", "-s -w", "-o", "go-app", "./cmd/app"])
-    
-    # Run tests
-    go(ctx, ["test", "./..."])
-    
-    # Install
-    command(ctx, "mkdir -p stage" + ctx.PREFIX + "/bin")
-    command(ctx, "cp go-app stage" + ctx.PREFIX + "/bin/")
-```
-
-### Python Package Example
-```starlark
-def metadata():
-    return {
-        "name": "python-app",
-        "version": "2.1.0",
-        "description": "Python application",
-        "depends": ["python3>=3.8"],
-        "build_depends": ["python3-pip", "python3-setuptools"]
-    }
-
-def build(ctx):
-    fetch(ctx, "https://pypi.org/packages/source/p/python-app/python-app-2.1.0.tar.gz")
-    
-    # Build Python package
-    python(ctx, ["setup.py", "build"])
-    
-    # Install with prefix
-    python(ctx, ["setup.py", "install", "--prefix=" + ctx.PREFIX, "--root=stage"])
-```
-
-### Node.js Application Example  
-```starlark
-def metadata():
-    return {
-        "name": "node-app",
-        "version": "3.0.0",
-        "description": "Node.js web application",
-        "depends": ["nodejs>=18.0"],
-        "build_depends": ["npm"]
-    }
-
-def build(ctx):
-    fetch(ctx, "https://github.com/example/node-app/archive/v3.0.0.tar.gz")
-    
-    # Install dependencies
-    nodejs(ctx, ["npm", "ci", "--production"])
-    
-    # Build the application
-    nodejs(ctx, ["npm", "run", "build"])
-    
-    # Install to staging
-    command(ctx, "mkdir -p stage" + ctx.PREFIX + "/lib/node-app")
-    command(ctx, "cp -r dist node_modules package.json stage" + ctx.PREFIX + "/lib/node-app/")
-```
+1. **Use draft for recipes** - Run `sps2 draft` to generate recipes automatically rather than writing from scratch.
+2. **Minimal manual commands** - The builder handles packaging automatically. Avoid manual `mkdir`, `cp`, `mv` commands.
+3. **Always cleanup first** - Start with `cleanup(ctx)` to ensure a clean build environment.
+4. **Use git when possible** - `git()` is preferred over `fetch()` for better reproducibility.
+5. **Enable network judiciously** - Only enable network when needed for dependency downloads.
+6. **No prefix configuration needed** - The builder automatically configures the correct prefix for all build systems.
+7. **No direct file manipulation** - Let the build systems handle file installation.
+8. **install() is optional** - Only use if you want automatic installation after build.
 
 ## Build Systems Implementation Status
 
@@ -507,35 +443,15 @@ def build(ctx):
 - ✅ cargo (cargo function)
 - ✅ make (make function)
 - ✅ go (go function)
-- ✅ python (python function)  
+- ✅ python (python function)
 - ✅ nodejs (nodejs function)
 
-## Important Notes
+## Best Practices Summary
 
-1. **No println!** - All output goes through the Event channel, not stdout
-2. **File paths** - Always use absolute paths or paths relative to build directory
-3. **Staging** - Install to `stage$(ctx.PREFIX)` not directly to `ctx.PREFIX`
-4. **Dependencies** - Use semantic versioning in metadata dependencies
-5. **Error handling** - Methods currently don't return errors but will in future versions
-6. **install() behavior**:
-   - Does NOT run `make install` or equivalent
-   - Only requests that the generated .sp package be installed
-   - Must be the LAST step in recipe if used
-   - Optional - omit if you only want to build, not install
-
-## API Changes in Latest Version
-
-The Starlark API has been refactored to use global functions instead of methods:
-- All build operations are now global functions that take `ctx` as the first parameter
-- This change was made to work around Starlark 0.13's argument handling limitations
-- The functionality remains the same, only the calling syntax has changed
-
-## Future Enhancements
-
-Recent improvements:
-- ✅ Native Go, Python, and Node.js build system functions - Now exposed!
-- ✅ Enhanced error recovery mechanisms - on_error(), checkpoint(), try_recover() implemented
-- ✅ Better resource management for parallel builds - set_parallelism(), set_resource_hints() implemented
-- ✅ BLAKE3 hash verification in fetch() - Already implemented
-- ✅ More sophisticated conditional execution with with_features() - Fully implemented
-- ✅ Enhanced parallel_steps() implementation - Fully implemented
+1. Use `sps2 draft` to generate initial recipes from source repositories
+2. Start builds with `cleanup(ctx)`
+3. Use `git()` or `fetch()` to get source
+4. Enable network if needed with `allow_network(ctx, True)`
+5. Call the appropriate build system function
+6. Let the builder handle packaging automatically
+7. Optionally add `install(ctx)` at the end for auto-installation
