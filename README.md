@@ -258,7 +258,7 @@ sps2 uses an innovative atomic update system:
 
 ## Building Your Own Packages
 
-sps2 uses Starlark (Python-like) scripts for package recipes. See the [Starlark API Documentation](STARLARK_API_DOCUMENTATION.md) for the complete reference.
+sps2 uses Starlark (Python-like) scripts for package recipes. See [Starlark API Documentation](STARLARK_API_DOCUMENTATION.md)
 
 ### Example: Rust Application (Helix Editor)
 
