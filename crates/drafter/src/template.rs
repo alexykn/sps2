@@ -38,11 +38,11 @@ struct DependencyContext {
 }
 
 /// Render recipe template with metadata and build info
-pub async fn render(
+pub fn render(
     metadata: &RecipeMetadata,
     build_info: &BuildInfo,
     source: &SourceLocation,
-    source_dir: &std::path::Path,
+    source_hash: Option<String>,
 ) -> Result<String> {
     // Create Tera instance with embedded template
     let mut tera = Tera::default();
@@ -54,12 +54,7 @@ pub async fn render(
             message: format!("Failed to load template: {e}"),
         })?;
 
-    // Calculate source hash if we have a directory and it's not a git source
-    let source_hash = if matches!(source, SourceLocation::Git(_)) {
-        None
-    } else {
-        calculate_source_hash(source_dir).await.ok()
-    };
+    // Source hash is already determined by the caller
 
     // Determine if this is a git source
     let is_git_source = matches!(source, SourceLocation::Git(_));
@@ -125,16 +120,4 @@ fn extract_source_url(source: &SourceLocation) -> Option<String> {
             None
         }
     }
-}
-
-/// Calculate BLAKE3 hash for a source location
-pub async fn calculate_source_hash(source_dir: &std::path::Path) -> Result<String> {
-    // Calculate hash of the entire source directory
-    let hash = sps2_hash::Hash::hash_directory(source_dir)
-        .await
-        .map_err(|e| BuildError::DraftSourceFailed {
-            message: format!("Failed to calculate source hash: {e}"),
-        })?;
-
-    Ok(hash.to_hex())
 }

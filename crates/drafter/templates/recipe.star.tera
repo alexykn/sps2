@@ -20,9 +20,7 @@ def build(ctx):
     git(ctx, "{{ source_url }}", "{{ git_ref | default(value='HEAD') }}")
     {%- else %}
     # Download source
-    # TODO: Replace with actual BLAKE3 hash after verification
     fetch(ctx, "{{ source_url }}", "{{ source_hash | default(value='TODO_CALCULATE_HASH') }}")
-    extract(ctx)
     {%- endif %}
     {%- endif %}
 

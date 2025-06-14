@@ -117,6 +117,10 @@ impl BuilderApi {
 
         self.downloads
             .insert(url.to_string(), download_path.clone());
+
+        // Automatically extract the downloaded archive
+        self.extract_single_download(&download_path).await?;
+
         Ok(download_path)
     }
 
@@ -617,23 +621,33 @@ impl BuilderApi {
     /// Returns an error if any archive extraction fails.
     pub async fn extract_downloads(&self) -> Result<(), Error> {
         for path in self.downloads.values() {
-            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                match ext {
-                    "gz" | "tgz" => {
-                        self.extract_tar_gz(path).await?;
-                    }
-                    "bz2" => {
-                        self.extract_tar_bz2(path).await?;
-                    }
-                    "xz" => {
-                        self.extract_tar_xz(path).await?;
-                    }
-                    "zip" => {
-                        self.extract_zip(path).await?;
-                    }
-                    _ => {
-                        // Unknown format, skip extraction
-                    }
+            self.extract_single_download(path).await?;
+        }
+        Ok(())
+    }
+
+    /// Extract a single downloaded file
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if archive extraction fails.
+    async fn extract_single_download(&self, path: &Path) -> Result<(), Error> {
+        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            match ext {
+                "gz" | "tgz" => {
+                    self.extract_tar_gz(path).await?;
+                }
+                "bz2" => {
+                    self.extract_tar_bz2(path).await?;
+                }
+                "xz" => {
+                    self.extract_tar_xz(path).await?;
+                }
+                "zip" => {
+                    self.extract_zip(path).await?;
+                }
+                _ => {
+                    // Unknown format, skip extraction
                 }
             }
         }
@@ -647,7 +661,7 @@ impl BuilderApi {
     /// Returns an error if the tar command fails.
     async fn extract_tar_gz(&self, path: &Path) -> Result<(), Error> {
         let output = tokio::process::Command::new("tar")
-            .args(["-xzf", &path.display().to_string()])
+            .args(["-xzf", &path.display().to_string(), "--strip-components=1"])
             .current_dir(&self.working_dir)
             .output()
             .await?;
@@ -673,7 +687,7 @@ impl BuilderApi {
     /// Returns an error if the tar command fails.
     async fn extract_tar_bz2(&self, path: &Path) -> Result<(), Error> {
         let output = tokio::process::Command::new("tar")
-            .args(["-xjf", &path.display().to_string()])
+            .args(["-xjf", &path.display().to_string(), "--strip-components=1"])
             .current_dir(&self.working_dir)
             .output()
             .await?;
@@ -699,7 +713,7 @@ impl BuilderApi {
     /// Returns an error if the tar command fails.
     async fn extract_tar_xz(&self, path: &Path) -> Result<(), Error> {
         let output = tokio::process::Command::new("tar")
-            .args(["-xJf", &path.display().to_string()])
+            .args(["-xJf", &path.display().to_string(), "--strip-components=1"])
             .current_dir(&self.working_dir)
             .output()
             .await?;

@@ -37,11 +37,11 @@ impl SourceLocation {
 
 /// Prepare source directory from various source locations
 ///
-/// Returns (optional temp dir to keep alive, actual source directory path)
+/// Returns (optional temp dir to keep alive, actual source directory path, optional archive hash)
 pub async fn prepare(
     source: &SourceLocation,
     event_tx: Option<&sps2_events::EventSender>,
-) -> Result<(Option<TempDir>, PathBuf)> {
+) -> Result<(Option<TempDir>, PathBuf, Option<String>)> {
     match source {
         SourceLocation::Local(path) => prepare_local(path),
         SourceLocation::Git(url) => prepare_git(url, event_tx).await,
@@ -51,7 +51,7 @@ pub async fn prepare(
 }
 
 /// Prepare from local directory
-fn prepare_local(path: &Path) -> Result<(Option<TempDir>, PathBuf)> {
+fn prepare_local(path: &Path) -> Result<(Option<TempDir>, PathBuf, Option<String>)> {
     if !path.exists() {
         return Err(BuildError::DraftSourceFailed {
             message: format!("Local path does not exist: {}", path.display()),
@@ -66,14 +66,14 @@ fn prepare_local(path: &Path) -> Result<(Option<TempDir>, PathBuf)> {
         .into());
     }
 
-    Ok((None, path.to_path_buf()))
+    Ok((None, path.to_path_buf(), None))
 }
 
 /// Prepare from git repository
 async fn prepare_git(
     url: &str,
     event_tx: Option<&sps2_events::EventSender>,
-) -> Result<(Option<TempDir>, PathBuf)> {
+) -> Result<(Option<TempDir>, PathBuf, Option<String>)> {
     // Send progress event
     if let Some(tx) = event_tx {
         let _ = tx.send(sps2_events::Event::OperationStarted {
@@ -119,14 +119,14 @@ async fn prepare_git(
         .into());
     }
 
-    Ok((Some(temp_dir), repo_path))
+    Ok((Some(temp_dir), repo_path, None))
 }
 
 /// Prepare from URL download
 async fn prepare_url(
     url: &str,
     event_tx: Option<&sps2_events::EventSender>,
-) -> Result<(Option<TempDir>, PathBuf)> {
+) -> Result<(Option<TempDir>, PathBuf, Option<String>)> {
     // Send progress event
     if let Some(tx) = event_tx {
         let _ = tx.send(sps2_events::Event::OperationStarted {
@@ -154,7 +154,14 @@ async fn prepare_url(
     let bytes = response.bytes().await.map_err(|e| {
         sps2_errors::NetworkError::DownloadFailed(format!("Failed to download {url}: {e}"))
     })?;
-    tokio::fs::write(&download_path, bytes).await?;
+    tokio::fs::write(&download_path, &bytes).await?;
+
+    // Hash the downloaded archive
+    let hash = sps2_hash::Hash::hash_file(&download_path)
+        .await
+        .map_err(|e| BuildError::DraftSourceFailed {
+            message: format!("Failed to hash downloaded file: {e}"),
+        })?;
 
     // Extract the archive
     let extract_dir = temp_dir.path().join("extracted");
@@ -164,14 +171,14 @@ async fn prepare_url(
     // Find the actual source directory (might be nested)
     let source_dir = find_source_root(&extract_dir).await?;
 
-    Ok((Some(temp_dir), source_dir))
+    Ok((Some(temp_dir), source_dir, Some(hash.to_hex())))
 }
 
 /// Prepare from local archive
 async fn prepare_archive(
     path: &Path,
     event_tx: Option<&sps2_events::EventSender>,
-) -> Result<(Option<TempDir>, PathBuf)> {
+) -> Result<(Option<TempDir>, PathBuf, Option<String>)> {
     if !path.exists() {
         return Err(BuildError::DraftSourceFailed {
             message: format!("Archive file does not exist: {}", path.display()),
@@ -190,13 +197,21 @@ async fn prepare_archive(
         message: format!("Failed to create temp directory: {e}"),
     })?;
 
+    // Hash the archive file
+    let hash =
+        sps2_hash::Hash::hash_file(path)
+            .await
+            .map_err(|e| BuildError::DraftSourceFailed {
+                message: format!("Failed to hash archive file: {e}"),
+            })?;
+
     let extract_dir = temp_dir.path().to_path_buf();
     crate::archive::extract(path, &extract_dir).await?;
 
     // Find the actual source directory (might be nested)
     let source_dir = find_source_root(&extract_dir).await?;
 
-    Ok((Some(temp_dir), source_dir))
+    Ok((Some(temp_dir), source_dir, Some(hash.to_hex())))
 }
 
 /// Find the actual source root within an extracted directory

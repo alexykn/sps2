@@ -87,7 +87,7 @@ impl Drafter {
         }
 
         // Prepare source directory
-        let (_temp_dir, source_dir) = self.prepare_source().await?;
+        let (_temp_dir, source_dir, archive_hash) = self.prepare_source().await?;
 
         // Extract metadata
         let metadata = self.extract_metadata(&source_dir).await?;
@@ -96,9 +96,8 @@ impl Drafter {
         let build_info = self.detect_build_system(&source_dir).await?;
 
         // Generate recipe
-        let recipe_content = self
-            .generate_recipe(&metadata, &build_info, &source_dir)
-            .await?;
+        let recipe_content =
+            self.generate_recipe(&metadata, &build_info, &source_dir, archive_hash)?;
 
         Ok(DraftResult {
             recipe_content,
@@ -107,7 +106,7 @@ impl Drafter {
     }
 
     /// Prepare source directory based on source location
-    async fn prepare_source(&self) -> Result<(Option<TempDir>, PathBuf)> {
+    async fn prepare_source(&self) -> Result<(Option<TempDir>, PathBuf, Option<String>)> {
         source::prepare(&self.source_location, self.event_tx.as_ref()).await
     }
 
@@ -122,13 +121,22 @@ impl Drafter {
     }
 
     /// Generate recipe from metadata and build info
-    async fn generate_recipe(
+    fn generate_recipe(
         &self,
         metadata: &RecipeMetadata,
         build_info: &BuildInfo,
-        source_dir: &Path,
+        _source_dir: &Path,
+        archive_hash: Option<String>,
     ) -> Result<String> {
-        template::render(metadata, build_info, &self.source_location, source_dir).await
+        // For archives, we already have the hash from prepare_source
+        // For local directories, we could calculate a directory hash as fallback
+        let source_hash = if matches!(self.source_location, source::SourceLocation::Git(_)) {
+            None
+        } else {
+            archive_hash
+        };
+
+        template::render(metadata, build_info, &self.source_location, source_hash)
     }
 }
 
