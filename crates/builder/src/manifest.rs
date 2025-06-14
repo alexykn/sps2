@@ -56,7 +56,13 @@ pub async fn generate_sbom(
     config: &crate::BuildConfig,
     environment: &BuildEnvironment,
 ) -> Result<SbomFiles, Error> {
-    let generator = SbomGenerator::new().with_config(config.sbom_config.clone());
+    let mut sbom_config = config.sbom_config.clone();
+    
+    // Set package name and version from build context
+    sbom_config.package_name = Some(environment.package_name().to_string());
+    sbom_config.package_version = Some(environment.context.version.to_string());
+    
+    let generator = SbomGenerator::new().with_config(sbom_config);
 
     let staging_dir = environment.staging_dir();
     let sbom_dir = environment.build_prefix().join("sbom");
