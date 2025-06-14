@@ -91,7 +91,8 @@ impl AtomicInstaller {
             });
         }
 
-        // Get packages from the parent state to ensure they are carried over
+        // APFS clonefile already copies all existing packages, so we don't need to re-link them.
+        // We only need to carry forward the package references and file information in the database.
         if let Some(parent_id) = transition.parent_id {
             let parent_packages = self
                 .state_manager
@@ -99,67 +100,60 @@ impl AtomicInstaller {
                 .await?;
 
             for pkg in parent_packages {
-                // Re-link the files for each old package into the new staging directory
                 // Skip if this package is being replaced/updated
                 let is_being_replaced = resolved_packages.iter().any(|(pkg_id, _)| {
                     pkg_id.name == pkg.name && pkg_id.version.to_string() == pkg.version
                 });
 
                 if !is_being_replaced {
-                    // Get the store path using the hash - no fallbacks allowed
-                    let hash = Hash::from_hex(&pkg.hash).map_err(|e| {
-                        InstallError::AtomicOperationFailed {
-                            message: format!("Invalid hash in database for {}: {}", pkg.name, e),
-                        }
-                    })?;
-                    let store_path = self.store.package_path(&hash);
+                    // Just add the package reference - no need to re-link files
+                    let package_id = sps2_resolver::PackageId::new(pkg.name.clone(), pkg.version());
+                    let is_python = pkg.venv_path.is_some();
 
-                    if store_path.exists() {
-                        let package_id =
-                            sps2_resolver::PackageId::new(pkg.name.clone(), pkg.version());
+                    if !is_python {
+                        let package_ref = PackageRef {
+                            state_id: transition.staging_id,
+                            package_id: package_id.clone(),
+                            hash: pkg.hash.clone(),
+                            size: pkg.size,
+                        };
+                        transition.package_refs.push(package_ref);
+                    } else if let Some(venv_path) = &pkg.venv_path {
+                        // For Python packages, add with venv path
+                        let package_ref = PackageRef {
+                            state_id: transition.staging_id,
+                            package_id: package_id.clone(),
+                            hash: pkg.hash.clone(),
+                            size: pkg.size,
+                        };
+                        transition
+                            .package_refs_with_venv
+                            .push((package_ref, venv_path.clone()));
+                    }
 
-                        // Check if it's a Python package
-                        let is_python = pkg.venv_path.is_some();
+                    // Carry forward package file information from parent state
+                    // This is needed so the new state knows which files belong to this package
+                    let mut tx = self.state_manager.begin_transaction().await?;
+                    let file_paths = sps2_state::queries::get_package_files(
+                        &mut tx,
+                        &parent_id,
+                        &pkg.name,
+                        &pkg.version,
+                    )
+                    .await?;
+                    tx.commit().await?;
 
-                        if let Some(sender) = &context.event_sender {
-                            let _ = sender.send(Event::DebugLog {
-                                message: format!(
-                                    "Re-linking existing package {} from parent state",
-                                    pkg.name
-                                ),
-                                context: std::collections::HashMap::new(),
-                            });
-                        }
-
-                        self.link_package_to_staging(
-                            &mut transition,
-                            &store_path,
-                            &package_id,
-                            is_python,
-                        )
-                        .await?;
-
-                        // Add the existing package to transition.package_refs so it's recorded in the new state
-                        if !is_python {
-                            let package_ref = PackageRef {
-                                state_id: transition.staging_id,
-                                package_id: package_id.clone(),
-                                hash: pkg.hash.clone(), // Use the hash from the database
-                                size: pkg.size,
-                            };
-                            transition.package_refs.push(package_ref);
-                        } else if let Some(venv_path) = &pkg.venv_path {
-                            // For Python packages, add with venv path
-                            let package_ref = PackageRef {
-                                state_id: transition.staging_id,
-                                package_id: package_id.clone(),
-                                hash: pkg.hash.clone(),
-                                size: pkg.size,
-                            };
-                            transition
-                                .package_refs_with_venv
-                                .push((package_ref, venv_path.clone()));
-                        }
+                    // Add file paths to transition (we'll need to enhance this to include is_directory info)
+                    // For now, we'll check if the path exists and is a directory
+                    for file_path in file_paths {
+                        let staging_file = transition.staging_path.join(&file_path);
+                        let is_directory = staging_file.is_dir();
+                        transition.package_files.push((
+                            pkg.name.clone(),
+                            pkg.version.clone(),
+                            file_path,
+                            is_directory,
+                        ));
                     }
                 }
             }
@@ -748,7 +742,8 @@ impl AtomicInstaller {
             });
         }
 
-        // Get packages from the parent state to carry over non-removed packages
+        // APFS clonefile already copies all existing packages, so we don't need to re-link them.
+        // We only need to remove the packages being uninstalled and carry forward other package references.
         let mut result = InstallResult::new(transition.staging_id);
 
         if let Some(parent_id) = transition.parent_id {
@@ -783,57 +778,52 @@ impl AtomicInstaller {
                         });
                     }
                 } else {
-                    // Keep this package - re-link it to staging
-                    let hash = Hash::from_hex(&pkg.hash).map_err(|e| {
-                        InstallError::AtomicOperationFailed {
-                            message: format!("Invalid hash in database for {}: {}", pkg.name, e),
-                        }
-                    })?;
-                    let store_path = self.store.package_path(&hash);
+                    // Keep this package - just add the reference, no need to re-link files
+                    let package_id = PackageId::new(pkg.name.clone(), pkg.version());
+                    let is_python = pkg.venv_path.is_some();
 
-                    if store_path.exists() {
-                        let package_id = PackageId::new(pkg.name.clone(), pkg.version());
-                        let is_python = pkg.venv_path.is_some();
+                    if !is_python {
+                        let package_ref = PackageRef {
+                            state_id: transition.staging_id,
+                            package_id: package_id.clone(),
+                            hash: pkg.hash.clone(),
+                            size: pkg.size,
+                        };
+                        transition.package_refs.push(package_ref);
+                    } else if let Some(venv_path) = &pkg.venv_path {
+                        // For Python packages, add with venv path
+                        let package_ref = PackageRef {
+                            state_id: transition.staging_id,
+                            package_id: package_id.clone(),
+                            hash: pkg.hash.clone(),
+                            size: pkg.size,
+                        };
+                        transition
+                            .package_refs_with_venv
+                            .push((package_ref, venv_path.clone()));
+                    }
 
-                        if let Some(sender) = &context.event_sender {
-                            let _ = sender.send(Event::DebugLog {
-                                message: format!(
-                                    "Re-linking existing package {} from parent state",
-                                    pkg.name
-                                ),
-                                context: std::collections::HashMap::new(),
-                            });
-                        }
+                    // Carry forward package file information from parent state
+                    let mut tx = self.state_manager.begin_transaction().await?;
+                    let file_paths = sps2_state::queries::get_package_files(
+                        &mut tx,
+                        &parent_id,
+                        &pkg.name,
+                        &pkg.version,
+                    )
+                    .await?;
+                    tx.commit().await?;
 
-                        self.link_package_to_staging(
-                            &mut transition,
-                            &store_path,
-                            &package_id,
-                            is_python,
-                        )
-                        .await?;
-
-                        // Add the existing package to transition.package_refs so it's recorded in the new state
-                        if !is_python {
-                            let package_ref = PackageRef {
-                                state_id: transition.staging_id,
-                                package_id: package_id.clone(),
-                                hash: pkg.hash.clone(),
-                                size: pkg.size,
-                            };
-                            transition.package_refs.push(package_ref);
-                        } else if let Some(venv_path) = &pkg.venv_path {
-                            // For Python packages, add with venv path
-                            let package_ref = PackageRef {
-                                state_id: transition.staging_id,
-                                package_id: package_id.clone(),
-                                hash: pkg.hash.clone(),
-                                size: pkg.size,
-                            };
-                            transition
-                                .package_refs_with_venv
-                                .push((package_ref, venv_path.clone()));
-                        }
+                    // Add file paths to transition
+                    for file_path in file_paths {
+                        let staging_file = transition.staging_path.join(&file_path);
+                        let is_directory = staging_file.is_dir();
+                        transition.package_files.push((
+                            pkg.name.clone(),
+                            pkg.version.clone(),
+                            file_path,
+                            is_directory,
+                        ));
                     }
                 }
             }
