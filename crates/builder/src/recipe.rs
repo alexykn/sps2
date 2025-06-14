@@ -167,7 +167,7 @@ async fn execute_build_step(
             api.apply_patch(Path::new(path), environment).await?;
         }
         BuildStep::Command { program, args } => {
-            execute_command_step(program, args, environment).await?;
+            execute_command_step(program, args, api, environment).await?;
         }
         BuildStep::SetEnv { key, value } => {
             environment.set_env_var(key.clone(), value.clone())?;
@@ -248,6 +248,7 @@ async fn execute_build_step(
 async fn execute_command_step(
     program: &str,
     args: &[String],
+    api: &BuilderApi,
     environment: &mut BuildEnvironment,
 ) -> Result<(), Error> {
     // Process arguments to handle DESTDIR properly
@@ -268,7 +269,7 @@ async fn execute_command_step(
 
     let arg_refs: Vec<&str> = processed_args.iter().map(String::as_str).collect();
     environment
-        .execute_command(program, &arg_refs, None)
+        .execute_command(program, &arg_refs, Some(&api.working_dir))
         .await?;
     Ok(())
 }
@@ -318,8 +319,9 @@ async fn execute_parallel_steps(
 /// Clean up the staging directory for the current package
 async fn cleanup_staging_directory(environment: &BuildEnvironment) -> Result<(), Error> {
     let staging_dir = environment.staging_dir();
+    let source_dir = environment.build_prefix().join("src");
 
-    // Only clean if the staging directory exists
+    // Clean staging directory if it exists
     if staging_dir.exists() {
         // Remove all contents but keep the directory itself
         let mut entries = fs::read_dir(&staging_dir).await?;
@@ -337,6 +339,29 @@ async fn cleanup_staging_directory(environment: &BuildEnvironment) -> Result<(),
             environment.context(),
             Event::DebugLog {
                 message: format!("Cleaned staging directory: {}", staging_dir.display()),
+                context: std::collections::HashMap::new(),
+            },
+        );
+    }
+
+    // Clean source directory if it exists
+    if source_dir.exists() {
+        // Remove all contents but keep the directory itself
+        let mut entries = fs::read_dir(&source_dir).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if path.is_dir() {
+                fs::remove_dir_all(&path).await?;
+            } else {
+                fs::remove_file(&path).await?;
+            }
+        }
+
+        // Send event about cleanup
+        send_event(
+            environment.context(),
+            Event::DebugLog {
+                message: format!("Cleaned source directory: {}", source_dir.display()),
                 context: std::collections::HashMap::new(),
             },
         );

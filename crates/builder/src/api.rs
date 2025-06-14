@@ -12,7 +12,7 @@ use tokio::fs;
 #[derive(Clone)]
 pub struct BuilderApi {
     /// Working directory for source extraction
-    working_dir: PathBuf,
+    pub(crate) working_dir: PathBuf,
     /// Downloaded files
     downloads: HashMap<String, PathBuf>,
     /// Network client for downloads
