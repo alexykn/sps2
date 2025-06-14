@@ -24,6 +24,10 @@ pub struct SbomConfig {
     pub exclude_patterns: Vec<String>,
     /// Include package dependencies in SBOM
     pub include_dependencies: bool,
+    /// Package name to use in SBOM (overrides path-based detection)
+    pub package_name: Option<String>,
+    /// Package version to use in SBOM
+    pub package_version: Option<String>,
 }
 
 impl Default for SbomConfig {
@@ -38,6 +42,8 @@ impl Default for SbomConfig {
                 "./*.la".to_string(),
             ],
             include_dependencies: true,
+            package_name: None,
+            package_version: None,
         }
     }
 }
@@ -63,6 +69,20 @@ impl SbomConfig {
     #[must_use]
     pub fn include_dependencies(mut self, include: bool) -> Self {
         self.include_dependencies = include;
+        self
+    }
+
+    /// Set package name
+    #[must_use]
+    pub fn with_package_name(mut self, name: String) -> Self {
+        self.package_name = Some(name);
+        self
+    }
+
+    /// Set package version
+    #[must_use]
+    pub fn with_package_version(mut self, version: String) -> Self {
+        self.package_version = Some(version);
         self
     }
 }
@@ -207,6 +227,16 @@ impl SbomGenerator {
             source_dir.display().to_string(),
         ];
 
+        // Add package name and version if available
+        if let Some(package_name) = &self.config.package_name {
+            args.push("--source-name".to_string());
+            args.push(package_name.clone());
+        }
+        if let Some(package_version) = &self.config.package_version {
+            args.push("--source-version".to_string());
+            args.push(package_version.clone());
+        }
+
         // Add exclusions
         for pattern in &self.config.exclude_patterns {
             args.push("--exclude".to_string());
@@ -246,6 +276,16 @@ impl SbomGenerator {
             format!("cyclonedx-json={}", output_path.display()),
             source_dir.display().to_string(),
         ];
+
+        // Add package name and version if available
+        if let Some(package_name) = &self.config.package_name {
+            args.push("--source-name".to_string());
+            args.push(package_name.clone());
+        }
+        if let Some(package_version) = &self.config.package_version {
+            args.push("--source-version".to_string());
+            args.push(package_version.clone());
+        }
 
         // Add exclusions
         for pattern in &self.config.exclude_patterns {
