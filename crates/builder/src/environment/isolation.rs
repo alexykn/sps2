@@ -6,7 +6,7 @@
 
 use super::core::BuildEnvironment;
 use sps2_errors::{BuildError, Error};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 impl BuildEnvironment {
     /// Verify build environment isolation is properly set up
@@ -160,18 +160,36 @@ impl BuildEnvironment {
         if let Some(path) = self.env_vars.get("PATH") {
             let path_components: Vec<&str> = path.split(':').collect();
 
-            // Verify deps bin directory is first in PATH
-            if !path_components.is_empty() {
-                let deps_bin = self.deps_prefix.join("bin");
-                let first_path = Path::new(path_components[0]);
+            // Verify system paths come first
+            if path_components.is_empty() || !path_components[0].starts_with("/usr/bin") {
+                return Err(BuildError::SandboxViolation {
+                    message: "System paths not first in PATH".to_string(),
+                }
+                .into());
+            }
 
-                // It's OK if deps_bin doesn't exist yet (no build deps installed)
-                // But if it exists, it should be first in PATH
-                if deps_bin.exists() && first_path != deps_bin {
-                    return Err(BuildError::SandboxViolation {
-                        message: "deps/bin not first in PATH".to_string(),
+            // If deps exists, verify it comes after system paths but before /opt/pm/live/bin
+            let deps_bin = self.deps_prefix.join("bin");
+            if deps_bin.exists() {
+                let deps_bin_str = deps_bin.to_string_lossy();
+                let mut found_system = false;
+
+                for component in &path_components {
+                    if component.starts_with("/usr/")
+                        || component.starts_with("/bin")
+                        || component.starts_with("/sbin")
+                    {
+                        found_system = true;
+                    } else if *component == deps_bin_str {
+                        if !found_system {
+                            return Err(BuildError::SandboxViolation {
+                                message: "deps/bin appears before system paths in PATH".to_string(),
+                            }
+                            .into());
+                        }
+                        // deps/bin found in correct position (after system paths)
+                        break;
                     }
-                    .into());
                 }
             }
 

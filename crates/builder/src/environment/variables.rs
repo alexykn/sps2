@@ -108,15 +108,27 @@ impl BuildEnvironment {
         ];
 
         // Start with a minimal PATH containing only system essentials
-        self.env_vars.insert(
-            "PATH".to_string(),
-            "/usr/bin:/bin:/usr/sbin:/sbin".to_string(),
-        );
+        // Then add /opt/pm/live/bin and homebrew paths AFTER system tools
+        let mut path_components =
+            vec!["/usr/bin", "/bin", "/usr/sbin", "/sbin", "/opt/pm/live/bin"];
 
-        // Copy essential variables from host environment
+        // Add homebrew paths if they exist (check both Intel and ARM locations)
+        if std::path::Path::new("/opt/homebrew/bin").exists() {
+            path_components.push("/opt/homebrew/bin");
+        }
+        if std::path::Path::new("/usr/local/bin").exists() {
+            path_components.push("/usr/local/bin");
+        }
+
+        self.env_vars
+            .insert("PATH".to_string(), path_components.join(":"));
+
+        // Copy essential variables from host environment (except PATH)
         for var in essential_vars {
-            if let Ok(value) = std::env::var(var) {
-                self.env_vars.insert(var.to_string(), value);
+            if var != "PATH" {
+                if let Ok(value) = std::env::var(var) {
+                    self.env_vars.insert(var.to_string(), value);
+                }
             }
         }
 
@@ -140,13 +152,35 @@ impl BuildEnvironment {
         let deps_pkgconfig = format!("{deps_prefix_display}/lib/pkgconfig");
         let deps_share = format!("{deps_prefix_display}/share");
 
-        // Prepend build deps to PATH (highest priority)
+        // Insert build deps right after system paths but before /opt/pm/live/bin
+        // This ensures system tools take precedence, then deps, then installed packages
         let current_path = self.env_vars.get("PATH").cloned().unwrap_or_default();
-        let new_path = if current_path.is_empty() {
-            deps_bin
-        } else {
-            format!("{deps_bin}:{current_path}")
-        };
+        let path_parts: Vec<&str> = current_path.split(':').collect();
+
+        // Find where system paths end (after /sbin)
+        let mut system_end_idx = 0;
+        for (i, part) in path_parts.iter().enumerate() {
+            if *part == "/sbin" {
+                system_end_idx = i + 1;
+                break;
+            }
+        }
+
+        // Build new PATH: system paths, deps, then everything else
+        let mut new_path_components = Vec::new();
+
+        // Add system paths
+        new_path_components.extend_from_slice(&path_parts[..system_end_idx]);
+
+        // Add deps bin
+        new_path_components.push(&deps_bin);
+
+        // Add remaining paths (/opt/pm/live/bin, homebrew, etc.)
+        if system_end_idx < path_parts.len() {
+            new_path_components.extend_from_slice(&path_parts[system_end_idx..]);
+        }
+
+        let new_path = new_path_components.join(":");
         self.env_vars.insert("PATH".to_string(), new_path);
 
         // PKG_CONFIG_PATH for dependency discovery
