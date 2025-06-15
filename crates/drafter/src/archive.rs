@@ -1,12 +1,11 @@
 //! Archive extraction utilities
 
 use crate::Result;
-use flate2::read::GzDecoder;
+use async_compression::tokio::bufread::{BzDecoder, GzipDecoder, XzDecoder};
 use sps2_errors::BuildError;
-use std::fs::File;
 use std::path::{Path, PathBuf};
 use tar::Archive as TarArchive;
-use tokio::task;
+use tokio::io::{AsyncRead, BufReader};
 
 /// Extract an archive to a destination directory
 pub async fn extract(archive_path: &Path, dest_dir: &Path) -> Result<()> {
@@ -46,10 +45,7 @@ pub async fn extract(archive_path: &Path, dest_dir: &Path) -> Result<()> {
             if archive_path.to_string_lossy().ends_with(".tar.bz2")
                 || archive_path.extension() == Some(std::ffi::OsStr::new("tbz2"))
             {
-                Err(BuildError::DraftSourceFailed {
-                    message: "TODO: .tar.bz2 extraction not yet implemented".to_string(),
-                }
-                .into())
+                extract_tar_bz2(archive_path, dest_dir).await
             } else {
                 Err(BuildError::DraftSourceFailed {
                     message: "Unsupported archive format: plain .bz2 files".to_string(),
@@ -61,10 +57,7 @@ pub async fn extract(archive_path: &Path, dest_dir: &Path) -> Result<()> {
             if archive_path.to_string_lossy().ends_with(".tar.xz")
                 || archive_path.extension() == Some(std::ffi::OsStr::new("txz"))
             {
-                Err(BuildError::DraftSourceFailed {
-                    message: "TODO: .tar.xz extraction not yet implemented".to_string(),
-                }
-                .into())
+                extract_tar_xz(archive_path, dest_dir).await
             } else {
                 Err(BuildError::DraftSourceFailed {
                     message: "Unsupported archive format: plain .xz files".to_string(),
@@ -81,30 +74,109 @@ pub async fn extract(archive_path: &Path, dest_dir: &Path) -> Result<()> {
 
 /// Extract a tar.gz archive
 async fn extract_tar_gz(archive_path: PathBuf, dest_dir: PathBuf) -> Result<()> {
-    task::spawn_blocking(move || {
-        let tar_gz = File::open(&archive_path).map_err(|e| BuildError::DraftSourceFailed {
-            message: format!("Failed to open archive: {e}"),
+    extract_compressed_tar(archive_path, dest_dir, CompressionType::Gzip).await
+}
+
+/// Extract a tar.bz2 archive
+async fn extract_tar_bz2(archive_path: PathBuf, dest_dir: PathBuf) -> Result<()> {
+    extract_compressed_tar(archive_path, dest_dir, CompressionType::Bzip2).await
+}
+
+/// Extract a tar.xz archive
+async fn extract_tar_xz(archive_path: PathBuf, dest_dir: PathBuf) -> Result<()> {
+    extract_compressed_tar(archive_path, dest_dir, CompressionType::Xz).await
+}
+
+/// Compression types
+enum CompressionType {
+    Gzip,
+    Bzip2,
+    Xz,
+}
+
+/// Extract a compressed tar archive
+async fn extract_compressed_tar(
+    archive_path: PathBuf,
+    dest_dir: PathBuf,
+    compression: CompressionType,
+) -> Result<()> {
+    // Create a temporary file to decompress to
+    let temp_file = tempfile::NamedTempFile::new().map_err(|e| BuildError::DraftSourceFailed {
+        message: format!("Failed to create temp file: {e}"),
+    })?;
+    let temp_path = temp_file.path().to_path_buf();
+
+    // Decompress the archive
+    {
+        use tokio::fs::File;
+        use tokio::io::AsyncWriteExt;
+
+        let input_file =
+            File::open(&archive_path)
+                .await
+                .map_err(|e| BuildError::DraftSourceFailed {
+                    message: format!("Failed to open archive: {e}"),
+                })?;
+
+        let mut output_file =
+            File::create(&temp_path)
+                .await
+                .map_err(|e| BuildError::DraftSourceFailed {
+                    message: format!("Failed to create temp file: {e}"),
+                })?;
+
+        let reader = BufReader::new(input_file);
+        let mut decoder: Box<dyn AsyncRead + Unpin> = match compression {
+            CompressionType::Gzip => Box::new(GzipDecoder::new(reader)),
+            CompressionType::Bzip2 => Box::new(BzDecoder::new(reader)),
+            CompressionType::Xz => Box::new(XzDecoder::new(reader)),
+        };
+
+        tokio::io::copy(&mut decoder, &mut output_file)
+            .await
+            .map_err(|e| BuildError::DraftSourceFailed {
+                message: format!("Failed to decompress archive: {e}"),
+            })?;
+
+        output_file
+            .flush()
+            .await
+            .map_err(|e| BuildError::DraftSourceFailed {
+                message: format!("Failed to flush temp file: {e}"),
+            })?;
+    }
+
+    // Extract the decompressed tar file
+    let temp_path_for_task = temp_path.clone();
+    tokio::task::spawn_blocking(move || {
+        use std::fs::File;
+
+        let tar = File::open(&temp_path_for_task).map_err(|e| BuildError::DraftSourceFailed {
+            message: format!("Failed to open decompressed file: {e}"),
         })?;
-        let tar = GzDecoder::new(tar_gz);
         let mut archive = TarArchive::new(tar);
 
         archive
             .unpack(&dest_dir)
             .map_err(|e| BuildError::DraftSourceFailed {
-                message: format!("Failed to extract tar.gz: {e}"),
+                message: format!("Failed to extract tar: {e}"),
             })?;
 
-        Ok(())
+        Ok::<(), crate::Error>(())
     })
     .await
     .map_err(|e| BuildError::DraftSourceFailed {
         message: format!("Task join error: {e}"),
-    })?
+    })??;
+
+    Ok(())
 }
 
 /// Extract a plain tar archive
 async fn extract_tar(archive_path: PathBuf, dest_dir: PathBuf) -> Result<()> {
-    task::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
+        use std::fs::File;
+
         let tar = File::open(&archive_path).map_err(|e| BuildError::DraftSourceFailed {
             message: format!("Failed to open archive: {e}"),
         })?;
@@ -116,7 +188,7 @@ async fn extract_tar(archive_path: PathBuf, dest_dir: PathBuf) -> Result<()> {
                 message: format!("Failed to extract tar: {e}"),
             })?;
 
-        Ok(())
+        Ok::<(), crate::Error>(())
     })
     .await
     .map_err(|e| BuildError::DraftSourceFailed {
@@ -126,7 +198,9 @@ async fn extract_tar(archive_path: PathBuf, dest_dir: PathBuf) -> Result<()> {
 
 /// Extract a zip archive
 async fn extract_zip(archive_path: PathBuf, dest_dir: PathBuf) -> Result<()> {
-    task::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
+        use std::fs::File;
+
         let file = File::open(&archive_path).map_err(|e| BuildError::DraftSourceFailed {
             message: format!("Failed to open archive: {e}"),
         })?;
@@ -181,7 +255,7 @@ async fn extract_zip(archive_path: PathBuf, dest_dir: PathBuf) -> Result<()> {
             }
         }
 
-        Ok(())
+        Ok::<(), crate::Error>(())
     })
     .await
     .map_err(|e| BuildError::DraftSourceFailed {

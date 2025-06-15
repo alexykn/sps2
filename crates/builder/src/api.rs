@@ -658,103 +658,277 @@ impl BuilderApi {
     ///
     /// # Errors
     ///
-    /// Returns an error if the tar command fails.
+    /// Returns an error if extraction fails.
     async fn extract_tar_gz(&self, path: &Path) -> Result<(), Error> {
-        let output = tokio::process::Command::new("tar")
-            .args(["-xzf", &path.display().to_string(), "--strip-components=1"])
-            .current_dir(&self.working_dir)
-            .output()
-            .await?;
-
-        if !output.status.success() {
-            return Err(BuildError::ExtractionFailed {
-                message: format!(
-                    "Failed to extract {}: {}",
-                    path.display(),
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-            }
-            .into());
-        }
-
-        Ok(())
+        self.extract_compressed_tar(path, CompressionType::Gzip)
+            .await
     }
 
     /// Extract tar.bz2 archive
     ///
     /// # Errors
     ///
-    /// Returns an error if the tar command fails.
+    /// Returns an error if extraction fails.
     async fn extract_tar_bz2(&self, path: &Path) -> Result<(), Error> {
-        let output = tokio::process::Command::new("tar")
-            .args(["-xjf", &path.display().to_string(), "--strip-components=1"])
-            .current_dir(&self.working_dir)
-            .output()
-            .await?;
-
-        if !output.status.success() {
-            return Err(BuildError::ExtractionFailed {
-                message: format!(
-                    "Failed to extract {}: {}",
-                    path.display(),
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-            }
-            .into());
-        }
-
-        Ok(())
+        self.extract_compressed_tar(path, CompressionType::Bzip2)
+            .await
     }
 
     /// Extract tar.xz archive
     ///
     /// # Errors
     ///
-    /// Returns an error if the tar command fails.
+    /// Returns an error if extraction fails.
     async fn extract_tar_xz(&self, path: &Path) -> Result<(), Error> {
-        let output = tokio::process::Command::new("tar")
-            .args(["-xJf", &path.display().to_string(), "--strip-components=1"])
-            .current_dir(&self.working_dir)
-            .output()
-            .await?;
-
-        if !output.status.success() {
-            return Err(BuildError::ExtractionFailed {
-                message: format!(
-                    "Failed to extract {}: {}",
-                    path.display(),
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-            }
-            .into());
-        }
-
-        Ok(())
+        self.extract_compressed_tar(path, CompressionType::Xz).await
     }
 
     /// Extract zip archive
     ///
     /// # Errors
     ///
-    /// Returns an error if the unzip command fails.
+    /// Returns an error if extraction fails.
     async fn extract_zip(&self, path: &Path) -> Result<(), Error> {
-        let output = tokio::process::Command::new("unzip")
-            .args(["-q", &path.display().to_string()])
-            .current_dir(&self.working_dir)
-            .output()
-            .await?;
+        let working_dir = self.working_dir.clone();
+        let path_buf = path.to_path_buf();
+        tokio::task::spawn_blocking(move || {
+            use std::fs::File;
+            use zip::ZipArchive;
 
-        if !output.status.success() {
-            return Err(BuildError::ExtractionFailed {
-                message: format!(
-                    "Failed to extract {}: {}",
-                    path.display(),
-                    String::from_utf8_lossy(&output.stderr)
-                ),
+            let file = File::open(&path_buf).map_err(|e| BuildError::ExtractionFailed {
+                message: format!("Failed to open zip archive: {e}"),
+            })?;
+
+            let mut archive = ZipArchive::new(file).map_err(|e| BuildError::ExtractionFailed {
+                message: format!("Failed to read zip archive: {e}"),
+            })?;
+
+            // Check if archive has a single top-level directory
+            let strip_components = usize::from(should_strip_zip_components(&mut archive)?);
+
+            for i in 0..archive.len() {
+                let mut file = archive
+                    .by_index(i)
+                    .map_err(|e| BuildError::ExtractionFailed {
+                        message: format!("Failed to read zip entry: {e}"),
+                    })?;
+
+                let outpath = match file.enclosed_name() {
+                    Some(path) => {
+                        // Strip components if needed
+                        let components: Vec<_> = path.components().collect();
+                        if strip_components > 0 && components.len() > strip_components {
+                            working_dir
+                                .join(components[strip_components..].iter().collect::<PathBuf>())
+                        } else if strip_components == 0 {
+                            working_dir.join(path)
+                        } else {
+                            continue; // Skip files at the stripped level
+                        }
+                    }
+                    None => continue,
+                };
+
+                if file.name().ends_with('/') {
+                    std::fs::create_dir_all(&outpath).map_err(|e| {
+                        BuildError::ExtractionFailed {
+                            message: format!("Failed to create directory: {e}"),
+                        }
+                    })?;
+                } else {
+                    if let Some(p) = outpath.parent() {
+                        if !p.exists() {
+                            std::fs::create_dir_all(p).map_err(|e| {
+                                BuildError::ExtractionFailed {
+                                    message: format!("Failed to create parent directory: {e}"),
+                                }
+                            })?;
+                        }
+                    }
+                    let mut outfile =
+                        File::create(&outpath).map_err(|e| BuildError::ExtractionFailed {
+                            message: format!("Failed to create file: {e}"),
+                        })?;
+                    std::io::copy(&mut file, &mut outfile).map_err(|e| {
+                        BuildError::ExtractionFailed {
+                            message: format!("Failed to extract file: {e}"),
+                        }
+                    })?;
+                }
+
+                // Set permissions on Unix
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    if let Some(mode) = file.unix_mode() {
+                        std::fs::set_permissions(&outpath, std::fs::Permissions::from_mode(mode))
+                            .ok();
+                    }
+                }
             }
-            .into());
+
+            Ok::<(), Error>(())
+        })
+        .await
+        .map_err(|e| BuildError::ExtractionFailed {
+            message: format!("Task join error: {e}"),
+        })?
+    }
+
+    /// Extract compressed tar archive using async-compression
+    async fn extract_compressed_tar(
+        &self,
+        path: &Path,
+        compression: CompressionType,
+    ) -> Result<(), Error> {
+        use async_compression::tokio::bufread::{BzDecoder, GzipDecoder, XzDecoder};
+        use tokio::io::{AsyncWriteExt, BufReader};
+
+        // Create a temporary file to decompress to
+        let temp_file =
+            tempfile::NamedTempFile::new().map_err(|e| BuildError::ExtractionFailed {
+                message: format!("Failed to create temp file: {e}"),
+            })?;
+        let temp_path = temp_file.path().to_path_buf();
+
+        // Decompress the archive
+        {
+            use tokio::fs::File;
+
+            let input_file = File::open(path)
+                .await
+                .map_err(|e| BuildError::ExtractionFailed {
+                    message: format!("Failed to open archive: {e}"),
+                })?;
+
+            let mut output_file =
+                File::create(&temp_path)
+                    .await
+                    .map_err(|e| BuildError::ExtractionFailed {
+                        message: format!("Failed to create temp file: {e}"),
+                    })?;
+
+            let reader = BufReader::new(input_file);
+
+            // Use specific decoders instead of trait objects to avoid Send issues
+            match compression {
+                CompressionType::Gzip => {
+                    let mut decoder = GzipDecoder::new(reader);
+                    tokio::io::copy(&mut decoder, &mut output_file)
+                        .await
+                        .map_err(|e| BuildError::ExtractionFailed {
+                            message: format!("Failed to decompress gzip archive: {e}"),
+                        })?;
+                }
+                CompressionType::Bzip2 => {
+                    let mut decoder = BzDecoder::new(reader);
+                    tokio::io::copy(&mut decoder, &mut output_file)
+                        .await
+                        .map_err(|e| BuildError::ExtractionFailed {
+                            message: format!("Failed to decompress bzip2 archive: {e}"),
+                        })?;
+                }
+                CompressionType::Xz => {
+                    let mut decoder = XzDecoder::new(reader);
+                    tokio::io::copy(&mut decoder, &mut output_file)
+                        .await
+                        .map_err(|e| BuildError::ExtractionFailed {
+                            message: format!("Failed to decompress xz archive: {e}"),
+                        })?;
+                }
+            }
+
+            output_file
+                .flush()
+                .await
+                .map_err(|e| BuildError::ExtractionFailed {
+                    message: format!("Failed to flush temp file: {e}"),
+                })?;
         }
+
+        // Extract the decompressed tar file
+        let working_dir = self.working_dir.clone();
+        let temp_path_for_task = temp_path.clone();
+        tokio::task::spawn_blocking(move || {
+            use std::fs::File;
+            use tar::Archive;
+
+            let tar =
+                File::open(&temp_path_for_task).map_err(|e| BuildError::ExtractionFailed {
+                    message: format!("Failed to open decompressed file: {e}"),
+                })?;
+            let mut archive = Archive::new(tar);
+
+            // Strip the first component (common for source archives)
+            for entry in archive.entries()? {
+                let mut entry = entry?;
+                let path = entry.path()?;
+
+                // Skip if path has no components or only one component
+                let components: Vec<_> = path.components().collect();
+                if components.len() <= 1 {
+                    continue;
+                }
+
+                // Create new path without first component
+                let new_path = components[1..].iter().collect::<PathBuf>();
+                let dest_path = working_dir.join(&new_path);
+
+                entry
+                    .unpack(&dest_path)
+                    .map_err(|e| BuildError::ExtractionFailed {
+                        message: format!("Failed to extract entry: {e}"),
+                    })?;
+            }
+
+            Ok::<(), Error>(())
+        })
+        .await
+        .map_err(|e| BuildError::ExtractionFailed {
+            message: format!("Task join error: {e}"),
+        })??;
 
         Ok(())
     }
+}
+
+/// Compression types
+enum CompressionType {
+    Gzip,
+    Bzip2,
+    Xz,
+}
+
+/// Check if a zip archive should have its first component stripped
+fn should_strip_zip_components(
+    archive: &mut zip::ZipArchive<std::fs::File>,
+) -> Result<bool, Error> {
+    let mut top_level_dirs = std::collections::HashSet::new();
+    let mut has_files_at_root = false;
+
+    for i in 0..archive.len() {
+        let file = archive
+            .by_index(i)
+            .map_err(|e| BuildError::ExtractionFailed {
+                message: format!("Failed to read zip entry: {e}"),
+            })?;
+
+        if let Some(path) = file.enclosed_name() {
+            let components: Vec<_> = path.components().collect();
+            if components.is_empty() {
+                continue;
+            }
+
+            if components.len() == 1 {
+                if file.name().ends_with('/') {
+                    top_level_dirs.insert(components[0].as_os_str().to_string_lossy().to_string());
+                } else {
+                    has_files_at_root = true;
+                }
+            }
+        }
+    }
+
+    // Strip if there's exactly one directory at top level and no files
+    Ok(top_level_dirs.len() == 1 && !has_files_at_root)
 }
