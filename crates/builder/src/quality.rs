@@ -4,7 +4,7 @@ use crate::events::send_event;
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::{BuildError, Error};
 use sps2_events::Event;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::fs;
 
 /// Run quality checks on the built package
@@ -12,6 +12,9 @@ pub async fn run_quality_checks(
     context: &BuildContext,
     environment: &BuildEnvironment,
 ) -> Result<(), Error> {
+    // Remove .la files (obsolete on macOS and cause relocatability issues)
+    remove_la_files(context, environment).await?;
+
     // Scan for hardcoded paths (relocatability check)
     scan_for_hardcoded_paths(context, environment).await
 }
@@ -164,4 +167,81 @@ async fn scan_file_for_hardcoded_paths(
     }
 
     Ok(None)
+}
+
+/// Remove .la files from the staging directory
+///
+/// .la files are libtool archives that are obsolete on macOS and contain
+/// hardcoded build paths that break relocatability. Major package managers
+/// like Homebrew actively remove them.
+async fn remove_la_files(
+    context: &BuildContext,
+    environment: &BuildEnvironment,
+) -> Result<(), Error> {
+    let staging_dir = environment.staging_dir();
+
+    // Skip if staging directory doesn't exist
+    if !staging_dir.exists() {
+        return Ok(());
+    }
+
+    // Find all .la files
+    let mut la_files = Vec::new();
+    find_la_files_recursive(staging_dir, &mut la_files).await?;
+
+    if la_files.is_empty() {
+        return Ok(());
+    }
+
+    send_event(
+        context,
+        Event::OperationStarted {
+            operation: format!("Removing {} obsolete .la files", la_files.len()),
+        },
+    );
+
+    // Remove all .la files
+    for file in &la_files {
+        fs::remove_file(file).await?;
+    }
+
+    send_event(
+        context,
+        Event::OperationCompleted {
+            operation: format!("Removed {} .la files", la_files.len()),
+            success: true,
+        },
+    );
+
+    Ok(())
+}
+
+/// Recursively find all .la files in a directory
+fn find_la_files_recursive<'a>(
+    dir: &'a Path,
+    files: &'a mut Vec<PathBuf>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Error>> + 'a>> {
+    Box::pin(async move {
+        if !dir.exists() {
+            return Ok(());
+        }
+
+        let Ok(mut entries) = fs::read_dir(dir).await else {
+            return Ok(());
+        };
+
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+
+            if path.is_dir() {
+                // Recursively search subdirectories
+                find_la_files_recursive(&path, files).await?;
+            } else if path.extension().and_then(|e| e.to_str()) == Some("la") {
+                // Found a .la file
+                files.push(path);
+            }
+        }
+
+        Ok(())
+    })
 }
