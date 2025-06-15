@@ -738,7 +738,7 @@ async fn update_dylib_dependencies_quality(
                 if new_dep_path.contains(&build_deps_pattern) {
                     new_dep_path = new_dep_path.replace(&build_deps_pattern, actual_prefix);
                 }
-                
+
                 // Handle case where deps might be under actual_prefix (like /opt/pm/live/deps)
                 let live_deps_pattern = format!("{}/deps", actual_prefix);
                 if new_dep_path.contains(&live_deps_pattern) {
