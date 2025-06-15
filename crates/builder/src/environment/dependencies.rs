@@ -5,6 +5,7 @@ use sps2_errors::{BuildError, Error};
 use sps2_events::Event;
 use sps2_resolver::{InstalledPackage, ResolutionContext};
 use sps2_state::StateManager;
+use sps2_store::StoredPackage;
 use sps2_types::package::PackageSpec;
 use sps2_types::Version;
 use std::path::Path;
@@ -72,32 +73,32 @@ impl BuildEnvironment {
     ) -> Result<(), Error> {
         // Check if this is an already-installed package (marked by resolver with Local action and empty path)
         if matches!(&node.action, sps2_resolver::NodeAction::Local) {
-            match &node.path {
-                None => {
-                    // No path means already installed
-                    self.send_event(Event::DebugLog {
-                        message: format!(
-                            "{} {} is already installed, skipping",
-                            node.name, node.version
-                        ),
-                        context: std::collections::HashMap::new(),
-                    });
-                    return Ok(());
-                }
-                Some(path) if path.as_os_str().is_empty() => {
-                    // Empty path also means already installed
-                    self.send_event(Event::DebugLog {
-                        message: format!(
-                            "{} {} is already installed, skipping",
-                            node.name, node.version
-                        ),
-                        context: std::collections::HashMap::new(),
-                    });
-                    return Ok(());
-                }
-                _ => {
-                    // Has a real path, so it's a local file to install
-                }
+            let is_empty_or_none = match &node.path {
+                None => true,
+                Some(path) => path.as_os_str().is_empty(),
+            };
+
+            if is_empty_or_none {
+                // Already installed - link from store to deps directory
+                self.send_event(Event::DebugLog {
+                    message: format!(
+                        "{} {} is already installed, linking from store",
+                        node.name, node.version
+                    ),
+                    context: std::collections::HashMap::new(),
+                });
+
+                // Link the already-installed package from store to deps prefix
+                self.link_installed_package_to_deps(&node.name, &node.version)
+                    .await?;
+
+                self.send_event(Event::PackageInstalled {
+                    name: node.name.clone(),
+                    version: node.version.clone(),
+                    path: self.deps_prefix.display().to_string(),
+                });
+
+                return Ok(());
             }
         }
 
@@ -276,5 +277,364 @@ impl BuildEnvironment {
         }
 
         Ok(installed)
+    }
+
+    /// Link an already-installed package from the store to the deps directory
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the package cannot be found in the store or linking fails.
+    async fn link_installed_package_to_deps(
+        &self,
+        name: &str,
+        version: &Version,
+    ) -> Result<(), Error> {
+        let Some(store) = &self.store else {
+            return Err(BuildError::MissingBuildDep {
+                name: "package store not configured".to_string(),
+            }
+            .into());
+        };
+
+        // Get package hash from state
+        let base_path = std::path::Path::new("/opt/pm");
+        let state = StateManager::new(base_path).await?;
+        let hash_str = state
+            .get_package_hash(name, &version.to_string())
+            .await?
+            .ok_or_else(|| BuildError::MissingBuildDep {
+                name: format!("{} {}", name, version),
+            })?;
+
+        // Parse hash string
+        let hash =
+            sps2_hash::Hash::from_hex(&hash_str).map_err(|_| BuildError::MissingBuildDep {
+                name: format!("invalid hash for {} {}", name, version),
+            })?;
+
+        // Get stored package
+        let stored_package = StoredPackage::load(&store.package_path(&hash)).await?;
+
+        // Create deps directory if it doesn't exist
+        fs::create_dir_all(&self.deps_prefix).await?;
+
+        // Copy package contents to deps directory with path replacement
+        // We need to copy (not link) and replace /opt/pm/live paths with deps paths
+        self.copy_package_with_path_replacement(&stored_package, &self.deps_prefix)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Copy a package from store to deps with path replacement
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if copying or path replacement fails.
+    async fn copy_package_with_path_replacement(
+        &self,
+        stored_package: &StoredPackage,
+        dest_dir: &Path,
+    ) -> Result<(), Error> {
+        let files_path = stored_package.files_path();
+        let old_prefix = "/opt/pm/live";
+        let new_prefix = self.deps_prefix.display().to_string();
+
+        // Walk through all files in the package
+        self.copy_directory_with_replacement(&files_path, dest_dir, old_prefix, &new_prefix)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Recursively copy directory with path replacement in text files
+    async fn copy_directory_with_replacement(
+        &self,
+        src_dir: &Path,
+        dest_dir: &Path,
+        old_prefix: &str,
+        new_prefix: &str,
+    ) -> Result<(), Error> {
+        // Create destination directory
+        fs::create_dir_all(dest_dir).await?;
+
+        let mut entries = fs::read_dir(src_dir).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let file_type = entry.file_type().await?;
+            let src_path = entry.path();
+            let file_name = entry.file_name();
+            let dest_path = dest_dir.join(&file_name);
+
+            if file_type.is_dir() {
+                // Recursively copy subdirectory
+                Box::pin(self.copy_directory_with_replacement(
+                    &src_path, &dest_path, old_prefix, new_prefix,
+                ))
+                .await?;
+            } else if file_type.is_symlink() {
+                // Copy symlink as-is
+                let target = fs::read_link(&src_path).await?;
+                if let Err(e) = fs::symlink(&target, &dest_path).await {
+                    // If symlink fails, try to remove and recreate
+                    if dest_path.exists() {
+                        fs::remove_file(&dest_path).await?;
+                        fs::symlink(&target, &dest_path).await?;
+                    } else {
+                        return Err(e.into());
+                    }
+                }
+            } else {
+                // Regular file - first copy it
+                fs::copy(&src_path, &dest_path).await?;
+
+                // Copy file permissions
+                let metadata = fs::metadata(&src_path).await?;
+                let perms = metadata.permissions();
+                fs::set_permissions(&dest_path, perms).await?;
+
+                // Check if it's a dylib that needs path updates
+                if let Some(ext) = dest_path.extension() {
+                    if ext == "dylib" || dest_path.to_string_lossy().contains(".dylib.") {
+                        self.update_dylib_paths(&dest_path, old_prefix, new_prefix)
+                            .await?;
+                    }
+                }
+
+                // Check if it's a text file that needs path replacement
+                if self.is_text_file(&src_path).await? {
+                    // Try to do in-place text replacement
+                    match fs::read_to_string(&dest_path).await {
+                        Ok(content) => {
+                            if content.contains(old_prefix) {
+                                let new_content = content.replace(old_prefix, new_prefix);
+                                fs::write(&dest_path, new_content).await?;
+                            }
+                        }
+                        Err(_) => {
+                            // Not a valid UTF-8 file, skip text replacement
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Check if a file is likely a text file that needs path replacement
+    async fn is_text_file(&self, path: &Path) -> Result<bool, Error> {
+        // Check by extension first
+        if let Some(ext) = path.extension() {
+            let ext_str = ext.to_string_lossy().to_lowercase();
+            let text_extensions = [
+                // Headers
+                "h", "hpp", "hxx", "hh", "h++", // Source files
+                "c", "cpp", "cc", "cxx", "c++", "m", "mm", // Build files
+                "pc", "cmake", "am", "in", "ac", "mk", "make", // Scripts
+                "py", "pl", "rb", "sh", "bash", "zsh", "fish", // Config files
+                "conf", "cfg", "ini", "toml", "yaml", "yml", "json", // Other text files
+                "txt", "md", "rst", "xml", "html", "css", "js",
+                // Library files that might have paths
+                "la", "prl",
+            ];
+
+            if text_extensions.contains(&ext_str.as_str()) {
+                return Ok(true);
+            }
+        }
+
+        // Check for files without extension that might be scripts
+        if let Some(file_name) = path.file_name() {
+            let name_str = file_name.to_string_lossy();
+            // Common script names without extension
+            if name_str == "configure" || name_str.starts_with("config.") {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    /// Update paths in a dylib file using install_name_tool
+    async fn update_dylib_paths(
+        &self,
+        dylib_path: &Path,
+        old_prefix: &str,
+        new_prefix: &str,
+    ) -> Result<(), Error> {
+        // First, get the current install name and dependencies
+        let output = Command::new("otool")
+            .args(["-L", &dylib_path.to_string_lossy()])
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            // If otool fails, skip this file
+            return Ok(());
+        }
+
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        let lines: Vec<&str> = output_str.lines().collect();
+
+        if lines.is_empty() {
+            return Ok(());
+        }
+
+        // Update install name
+        self.update_dylib_install_name(&lines, dylib_path, old_prefix, new_prefix)
+            .await?;
+
+        // Update dependency paths
+        self.update_dylib_dependencies(&lines, dylib_path, old_prefix, new_prefix)
+            .await?;
+
+        // Update RPATHs
+        self.update_dylib_rpaths(dylib_path, old_prefix, new_prefix)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Update the install name of a dylib
+    async fn update_dylib_install_name(
+        &self,
+        lines: &[&str],
+        dylib_path: &Path,
+        old_prefix: &str,
+        new_prefix: &str,
+    ) -> Result<(), Error> {
+        // First line after the header is the install name (for dylibs)
+        // Format: "    /opt/pm/live/lib/libgmp.10.dylib (compatibility version ...)"
+        if lines.len() > 1 {
+            let first_dep = lines[1].trim();
+            if let Some(space_pos) = first_dep.find(" (") {
+                let install_name = &first_dep[..space_pos];
+                if install_name.contains(old_prefix) {
+                    let new_install_name = install_name.replace(old_prefix, new_prefix);
+
+                    // Update the install name
+                    let result = Command::new("install_name_tool")
+                        .args(["-id", &new_install_name, &dylib_path.to_string_lossy()])
+                        .output()
+                        .await?;
+
+                    if !result.status.success() {
+                        self.send_event(Event::Warning {
+                            message: format!(
+                                "Failed to update install name for {}: {}",
+                                dylib_path.display(),
+                                String::from_utf8_lossy(&result.stderr)
+                            ),
+                            context: None,
+                        });
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Update dependency paths in a dylib
+    async fn update_dylib_dependencies(
+        &self,
+        lines: &[&str],
+        dylib_path: &Path,
+        old_prefix: &str,
+        new_prefix: &str,
+    ) -> Result<(), Error> {
+        for line in lines.iter().skip(1) {
+            let trimmed = line.trim();
+            if let Some(space_pos) = trimmed.find(" (") {
+                let dep_path = &trimmed[..space_pos];
+                if dep_path.contains(old_prefix) {
+                    let new_dep_path = dep_path.replace(old_prefix, new_prefix);
+
+                    // Update the dependency path
+                    let result = Command::new("install_name_tool")
+                        .args([
+                            "-change",
+                            dep_path,
+                            &new_dep_path,
+                            &dylib_path.to_string_lossy(),
+                        ])
+                        .output()
+                        .await?;
+
+                    if !result.status.success() {
+                        self.send_event(Event::Warning {
+                            message: format!(
+                                "Failed to update dependency {} in {}: {}",
+                                dep_path,
+                                dylib_path.display(),
+                                String::from_utf8_lossy(&result.stderr)
+                            ),
+                            context: None,
+                        });
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Update RPATHs in a dylib
+    async fn update_dylib_rpaths(
+        &self,
+        dylib_path: &Path,
+        old_prefix: &str,
+        new_prefix: &str,
+    ) -> Result<(), Error> {
+        let rpath_output = Command::new("otool")
+            .args(["-l", &dylib_path.to_string_lossy()])
+            .output()
+            .await?;
+
+        if rpath_output.status.success() {
+            let rpath_str = String::from_utf8_lossy(&rpath_output.stdout);
+            let mut lines = rpath_str.lines();
+
+            while let Some(line) = lines.next() {
+                if line.contains("LC_RPATH") {
+                    // Skip the cmdsize line
+                    let _ = lines.next();
+                    // Get the path line
+                    if let Some(path_line) = lines.next() {
+                        if path_line.contains("path ") {
+                            if let Some(path_start) = path_line.find("path ") {
+                                let path_part = &path_line[path_start + 5..];
+                                if let Some(space_pos) = path_part.find(" (") {
+                                    let rpath = &path_part[..space_pos];
+                                    if rpath.contains(old_prefix) {
+                                        let new_rpath = rpath.replace(old_prefix, new_prefix);
+
+                                        // First delete the old rpath
+                                        let _ = Command::new("install_name_tool")
+                                            .args([
+                                                "-delete_rpath",
+                                                rpath,
+                                                &dylib_path.to_string_lossy(),
+                                            ])
+                                            .output()
+                                            .await;
+
+                                        // Then add the new one
+                                        let _ = Command::new("install_name_tool")
+                                            .args([
+                                                "-add_rpath",
+                                                &new_rpath,
+                                                &dylib_path.to_string_lossy(),
+                                            ])
+                                            .output()
+                                            .await;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 }

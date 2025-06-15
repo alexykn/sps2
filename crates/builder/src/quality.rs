@@ -419,6 +419,7 @@ async fn replace_placeholder_paths(
 ) -> Result<(), Error> {
     let staging_dir = environment.staging_dir();
     let actual_prefix = "/opt/pm/live";
+    let build_prefix = environment.build_prefix().display().to_string();
 
     // Skip if staging directory doesn't exist
     if !staging_dir.exists() {
@@ -428,20 +429,20 @@ async fn replace_placeholder_paths(
     send_event(
         context,
         Event::OperationStarted {
-            operation: "Replacing placeholder paths for relocatable packages".to_string(),
+            operation: "Replacing placeholder and build paths for relocatable packages".to_string(),
         },
     );
 
     let mut replaced_count = 0;
 
     // Recursively find and replace in all files
-    replaced_count += replace_in_directory(staging_dir, actual_prefix).await?;
+    replaced_count += replace_in_directory(staging_dir, actual_prefix, &build_prefix).await?;
 
     if replaced_count > 0 {
         send_event(
             context,
             Event::OperationCompleted {
-                operation: format!("Replaced placeholder paths in {} files", replaced_count),
+                operation: format!("Replaced paths in {} files", replaced_count),
                 success: true,
             },
         );
@@ -449,7 +450,7 @@ async fn replace_placeholder_paths(
         send_event(
             context,
             Event::OperationCompleted {
-                operation: "No placeholder paths found to replace".to_string(),
+                operation: "No paths found to replace".to_string(),
                 success: true,
             },
         );
@@ -462,6 +463,7 @@ async fn replace_placeholder_paths(
 fn replace_in_directory<'a>(
     dir: &'a Path,
     actual_prefix: &'a str,
+    build_prefix: &'a str,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<usize, Error>> + 'a>> {
     Box::pin(async move {
         let mut replaced_count = 0;
@@ -476,12 +478,18 @@ fn replace_in_directory<'a>(
             let path = entry.path();
 
             if path.is_dir() {
-                replaced_count += replace_in_directory(&path, actual_prefix).await?;
-            } else if path.is_file()
-                && should_replace_in_file(&path).await?
-                && replace_placeholders_in_file(&path, actual_prefix).await?
-            {
-                replaced_count += 1;
+                replaced_count += replace_in_directory(&path, actual_prefix, build_prefix).await?;
+            } else if path.is_file() {
+                // Check if it's a dylib that needs special handling
+                if is_dylib(&path) {
+                    if update_dylib_paths_quality(&path, actual_prefix, build_prefix).await? {
+                        replaced_count += 1;
+                    }
+                } else if should_replace_in_file(&path).await?
+                    && replace_placeholders_in_file(&path, actual_prefix, build_prefix).await?
+                {
+                    replaced_count += 1;
+                }
             }
         }
 
@@ -493,6 +501,7 @@ fn replace_in_directory<'a>(
 async fn replace_placeholders_in_file(
     file_path: &Path,
     actual_prefix: &str,
+    build_prefix: &str,
 ) -> Result<bool, Error> {
     // Read the file content
     let content = match fs::read_to_string(file_path).await {
@@ -500,18 +509,34 @@ async fn replace_placeholders_in_file(
         Err(_) => return Ok(false), // Skip binary files
     };
 
-    // Check if file contains our placeholder
-    if !content.contains(crate::BUILD_PLACEHOLDER_PREFIX) {
-        return Ok(false);
+    let mut new_content = content.clone();
+    let mut replaced = false;
+
+    // Replace placeholder paths
+    if new_content.contains(crate::BUILD_PLACEHOLDER_PREFIX) {
+        new_content = new_content.replace(crate::BUILD_PLACEHOLDER_PREFIX, actual_prefix);
+        replaced = true;
     }
 
-    // Replace all occurrences
-    let new_content = content.replace(crate::BUILD_PLACEHOLDER_PREFIX, actual_prefix);
+    // Replace build paths (like /opt/pm/build/package/version/deps)
+    if new_content.contains(build_prefix) {
+        new_content = new_content.replace(build_prefix, actual_prefix);
+        replaced = true;
+    }
 
-    // Write back to file
-    fs::write(file_path, new_content).await?;
+    // Also replace specific build deps paths
+    let build_deps_pattern = format!("{}/deps", build_prefix);
+    if new_content.contains(&build_deps_pattern) {
+        new_content = new_content.replace(&build_deps_pattern, actual_prefix);
+        replaced = true;
+    }
 
-    Ok(true)
+    if replaced {
+        // Write back to file
+        fs::write(file_path, new_content).await?;
+    }
+
+    Ok(replaced)
 }
 
 /// Check if we should replace placeholders in this file
@@ -559,4 +584,272 @@ async fn should_replace_in_file(path: &Path) -> Result<bool, Error> {
     }
 
     Ok(false)
+}
+
+/// Check if a file is a dylib
+fn is_dylib(path: &Path) -> bool {
+    if let Some(ext) = path.extension() {
+        ext == "dylib" || path.to_string_lossy().contains(".dylib.")
+    } else {
+        false
+    }
+}
+
+/// Update paths in a dylib file for the quality check phase
+async fn update_dylib_paths_quality(
+    dylib_path: &Path,
+    actual_prefix: &str,
+    build_prefix: &str,
+) -> Result<bool, Error> {
+    use tokio::process::Command;
+
+    // First, get the current install name and dependencies
+    let output = Command::new("otool")
+        .args(["-L", &dylib_path.to_string_lossy()])
+        .output()
+        .await?;
+
+    if !output.status.success() {
+        // If otool fails, skip this file
+        return Ok(false);
+    }
+
+    let output_str = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = output_str.lines().collect();
+
+    if lines.is_empty() {
+        return Ok(false);
+    }
+
+    let mut updated = false;
+
+    // Update install name
+    if update_dylib_install_name_quality(&lines, dylib_path, actual_prefix, build_prefix).await? {
+        updated = true;
+    }
+
+    // Update dependency paths
+    if update_dylib_dependencies_quality(&lines, dylib_path, actual_prefix, build_prefix).await? {
+        updated = true;
+    }
+
+    // Update RPATHs
+    if update_dylib_rpaths_quality(dylib_path, actual_prefix, build_prefix).await? {
+        updated = true;
+    }
+
+    Ok(updated)
+}
+
+/// Update the install name of a dylib in quality phase
+async fn update_dylib_install_name_quality(
+    lines: &[&str],
+    dylib_path: &Path,
+    actual_prefix: &str,
+    build_prefix: &str,
+) -> Result<bool, Error> {
+    use tokio::process::Command;
+
+    // First line after the header is the install name (for dylibs)
+    if lines.len() > 1 {
+        let first_dep = lines[1].trim();
+        if let Some(space_pos) = first_dep.find(" (") {
+            let install_name = &first_dep[..space_pos];
+
+            // Check if it contains placeholder, build paths, or live/deps paths
+            let live_deps_pattern = format!("{}/deps", actual_prefix);
+            let needs_update = install_name.contains(crate::BUILD_PLACEHOLDER_PREFIX)
+                || install_name.contains(build_prefix)
+                || install_name.contains(&live_deps_pattern);
+
+            if needs_update {
+                let mut new_install_name = install_name.to_string();
+
+                // Replace placeholder paths first
+                if new_install_name.contains(crate::BUILD_PLACEHOLDER_PREFIX) {
+                    new_install_name =
+                        new_install_name.replace(crate::BUILD_PLACEHOLDER_PREFIX, actual_prefix);
+                }
+
+                // Replace build paths
+                if new_install_name.contains(build_prefix) {
+                    new_install_name = new_install_name.replace(build_prefix, actual_prefix);
+                }
+
+                // Also handle deps paths specifically
+                let build_deps_pattern = format!("{}/deps", build_prefix);
+                if new_install_name.contains(&build_deps_pattern) {
+                    new_install_name = new_install_name.replace(&build_deps_pattern, actual_prefix);
+                }
+
+                // Update the install name
+                let result = Command::new("install_name_tool")
+                    .args(["-id", &new_install_name, &dylib_path.to_string_lossy()])
+                    .output()
+                    .await?;
+
+                if result.status.success() {
+                    return Ok(true);
+                }
+            }
+        }
+    }
+    Ok(false)
+}
+
+/// Update dependency paths in a dylib in quality phase
+async fn update_dylib_dependencies_quality(
+    lines: &[&str],
+    dylib_path: &Path,
+    actual_prefix: &str,
+    build_prefix: &str,
+) -> Result<bool, Error> {
+    use tokio::process::Command;
+
+    let mut updated = false;
+
+    for line in lines.iter().skip(1) {
+        let trimmed = line.trim();
+        if let Some(space_pos) = trimmed.find(" (") {
+            let dep_path = &trimmed[..space_pos];
+
+            // Check if it contains placeholder, build paths, or live/deps paths
+            let live_deps_pattern = format!("{}/deps", actual_prefix);
+            let needs_update = dep_path.contains(crate::BUILD_PLACEHOLDER_PREFIX)
+                || dep_path.contains(build_prefix)
+                || dep_path.contains(&live_deps_pattern);
+
+            if needs_update {
+                let mut new_dep_path = dep_path.to_string();
+
+                // Replace placeholder paths first
+                if new_dep_path.contains(crate::BUILD_PLACEHOLDER_PREFIX) {
+                    new_dep_path =
+                        new_dep_path.replace(crate::BUILD_PLACEHOLDER_PREFIX, actual_prefix);
+                }
+
+                // Replace build paths
+                if new_dep_path.contains(build_prefix) {
+                    new_dep_path = new_dep_path.replace(build_prefix, actual_prefix);
+                }
+
+                // Also handle deps paths specifically
+                let build_deps_pattern = format!("{}/deps", build_prefix);
+                if new_dep_path.contains(&build_deps_pattern) {
+                    new_dep_path = new_dep_path.replace(&build_deps_pattern, actual_prefix);
+                }
+                
+                // Handle case where deps might be under actual_prefix (like /opt/pm/live/deps)
+                let live_deps_pattern = format!("{}/deps", actual_prefix);
+                if new_dep_path.contains(&live_deps_pattern) {
+                    new_dep_path = new_dep_path.replace(&live_deps_pattern, actual_prefix);
+                }
+
+                // Only update if the old and new paths are different
+                if dep_path != new_dep_path {
+                    // Update the dependency path
+                    let result = Command::new("install_name_tool")
+                        .args([
+                            "-change",
+                            dep_path,
+                            &new_dep_path,
+                            &dylib_path.to_string_lossy(),
+                        ])
+                        .output()
+                        .await?;
+
+                    if result.status.success() {
+                        updated = true;
+                    }
+                }
+            }
+        }
+    }
+    Ok(updated)
+}
+
+/// Update RPATHs in a dylib in quality phase
+async fn update_dylib_rpaths_quality(
+    dylib_path: &Path,
+    actual_prefix: &str,
+    build_prefix: &str,
+) -> Result<bool, Error> {
+    use tokio::process::Command;
+
+    let rpath_output = Command::new("otool")
+        .args(["-l", &dylib_path.to_string_lossy()])
+        .output()
+        .await?;
+
+    if !rpath_output.status.success() {
+        return Ok(false);
+    }
+
+    let rpath_str = String::from_utf8_lossy(&rpath_output.stdout);
+    let mut lines = rpath_str.lines();
+    let mut updated = false;
+
+    while let Some(line) = lines.next() {
+        if line.contains("LC_RPATH") {
+            // Skip the cmdsize line
+            let _ = lines.next();
+            // Get the path line
+            if let Some(path_line) = lines.next() {
+                if path_line.contains("path ") {
+                    if let Some(path_start) = path_line.find("path ") {
+                        let path_part = &path_line[path_start + 5..];
+                        if let Some(space_pos) = path_part.find(" (") {
+                            let rpath = &path_part[..space_pos];
+
+                            // Check if it contains placeholder, build paths, or live/deps paths
+                            let live_deps_pattern = format!("{}/deps", actual_prefix);
+                            let needs_update = rpath.contains(crate::BUILD_PLACEHOLDER_PREFIX)
+                                || rpath.contains(build_prefix)
+                                || rpath.contains(&live_deps_pattern);
+
+                            if needs_update {
+                                let mut new_rpath = rpath.to_string();
+
+                                // Replace placeholder paths first
+                                if new_rpath.contains(crate::BUILD_PLACEHOLDER_PREFIX) {
+                                    new_rpath = new_rpath
+                                        .replace(crate::BUILD_PLACEHOLDER_PREFIX, actual_prefix);
+                                }
+
+                                // Replace build paths
+                                if new_rpath.contains(build_prefix) {
+                                    new_rpath = new_rpath.replace(build_prefix, actual_prefix);
+                                }
+
+                                // Also handle deps paths specifically
+                                let build_deps_pattern = format!("{}/deps", build_prefix);
+                                if new_rpath.contains(&build_deps_pattern) {
+                                    new_rpath =
+                                        new_rpath.replace(&build_deps_pattern, actual_prefix);
+                                }
+
+                                // First delete the old rpath
+                                let _ = Command::new("install_name_tool")
+                                    .args(["-delete_rpath", rpath, &dylib_path.to_string_lossy()])
+                                    .output()
+                                    .await;
+
+                                // Then add the new one
+                                let result = Command::new("install_name_tool")
+                                    .args(["-add_rpath", &new_rpath, &dylib_path.to_string_lossy()])
+                                    .output()
+                                    .await;
+
+                                if result.is_ok() {
+                                    updated = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(updated)
 }
