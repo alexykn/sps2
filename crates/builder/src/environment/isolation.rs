@@ -115,7 +115,11 @@ impl BuildEnvironment {
     fn verify_compiler_flags(&self) -> Result<(), Error> {
         // Check CFLAGS
         if let Some(cflags) = self.env_vars.get("CFLAGS") {
-            if !cflags.contains(&format!("{}/include", self.deps_prefix.display())) {
+            // Accept either the actual deps prefix or our placeholder prefix
+            let deps_include = format!("{}/include", self.deps_prefix.display());
+            let placeholder_include = format!("{}/deps/include", crate::BUILD_PLACEHOLDER_PREFIX);
+
+            if !cflags.contains(&deps_include) && !cflags.contains(&placeholder_include) {
                 return Err(BuildError::SandboxViolation {
                     message: "CFLAGS not properly configured for isolation".to_string(),
                 }
@@ -133,7 +137,11 @@ impl BuildEnvironment {
 
         // Check LDFLAGS
         if let Some(ldflags) = self.env_vars.get("LDFLAGS") {
-            if !ldflags.contains(&format!("{}/lib", self.deps_prefix.display())) {
+            // Accept either the actual deps prefix or our placeholder prefix
+            let deps_lib = format!("{}/lib", self.deps_prefix.display());
+            let placeholder_lib = format!("{}/deps/lib", crate::BUILD_PLACEHOLDER_PREFIX);
+
+            if !ldflags.contains(&deps_lib) && !ldflags.contains(&placeholder_lib) {
                 return Err(BuildError::SandboxViolation {
                     message: "LDFLAGS not properly configured for isolation".to_string(),
                 }

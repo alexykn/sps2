@@ -38,6 +38,10 @@
 //! This crate handles building packages from Starlark recipes with
 //! isolated environments, dependency management, and SBOM generation.
 
+/// Placeholder prefix used during builds to enable relocatable packages
+/// This gets replaced with the actual installation prefix during packaging
+pub const BUILD_PLACEHOLDER_PREFIX: &str = "/SPS2_PLACEHOLDER_PREFIX_REPLACE_ME";
+
 mod api;
 mod archive;
 mod build_systems;

@@ -20,6 +20,9 @@ pub async fn run_quality_checks(
         fix_macos_rpaths(context, environment).await?;
     }
 
+    // Replace placeholder paths with actual prefix for relocatable packages
+    replace_placeholder_paths(context, environment).await?;
+
     // Scan for hardcoded paths (relocatability check)
     scan_for_hardcoded_paths(context, environment).await
 }
@@ -163,7 +166,8 @@ async fn scan_file_for_hardcoded_paths(
     };
 
     // Check if content contains the build prefix
-    if content.contains(build_prefix) {
+    // But ignore our placeholder prefix - that's expected and will be replaced
+    if content.contains(build_prefix) && !content.contains(crate::BUILD_PLACEHOLDER_PREFIX) {
         return Ok(Some(format!(
             "{} (contains '{}')",
             file_path.display(),
@@ -406,4 +410,153 @@ async fn is_macos_binary(path: &Path) -> Result<bool, Error> {
     } else {
         Ok(false)
     }
+}
+
+/// Replace placeholder paths with actual installation prefix
+async fn replace_placeholder_paths(
+    context: &BuildContext,
+    environment: &BuildEnvironment,
+) -> Result<(), Error> {
+    let staging_dir = environment.staging_dir();
+    let actual_prefix = "/opt/pm/live";
+
+    // Skip if staging directory doesn't exist
+    if !staging_dir.exists() {
+        return Ok(());
+    }
+
+    send_event(
+        context,
+        Event::OperationStarted {
+            operation: "Replacing placeholder paths for relocatable packages".to_string(),
+        },
+    );
+
+    let mut replaced_count = 0;
+
+    // Recursively find and replace in all files
+    replaced_count += replace_in_directory(staging_dir, actual_prefix).await?;
+
+    if replaced_count > 0 {
+        send_event(
+            context,
+            Event::OperationCompleted {
+                operation: format!("Replaced placeholder paths in {} files", replaced_count),
+                success: true,
+            },
+        );
+    } else {
+        send_event(
+            context,
+            Event::OperationCompleted {
+                operation: "No placeholder paths found to replace".to_string(),
+                success: true,
+            },
+        );
+    }
+
+    Ok(())
+}
+
+/// Recursively replace placeholders in directory
+fn replace_in_directory<'a>(
+    dir: &'a Path,
+    actual_prefix: &'a str,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<usize, Error>> + 'a>> {
+    Box::pin(async move {
+        let mut replaced_count = 0;
+
+        if !dir.exists() {
+            return Ok(0);
+        }
+
+        let mut entries = fs::read_dir(dir).await?;
+
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+
+            if path.is_dir() {
+                replaced_count += replace_in_directory(&path, actual_prefix).await?;
+            } else if path.is_file()
+                && should_replace_in_file(&path).await?
+                && replace_placeholders_in_file(&path, actual_prefix).await?
+            {
+                replaced_count += 1;
+            }
+        }
+
+        Ok(replaced_count)
+    })
+}
+
+/// Replace placeholders in a single file using native Rust
+async fn replace_placeholders_in_file(
+    file_path: &Path,
+    actual_prefix: &str,
+) -> Result<bool, Error> {
+    // Read the file content
+    let content = match fs::read_to_string(file_path).await {
+        Ok(content) => content,
+        Err(_) => return Ok(false), // Skip binary files
+    };
+
+    // Check if file contains our placeholder
+    if !content.contains(crate::BUILD_PLACEHOLDER_PREFIX) {
+        return Ok(false);
+    }
+
+    // Replace all occurrences
+    let new_content = content.replace(crate::BUILD_PLACEHOLDER_PREFIX, actual_prefix);
+
+    // Write back to file
+    fs::write(file_path, new_content).await?;
+
+    Ok(true)
+}
+
+/// Check if we should replace placeholders in this file
+async fn should_replace_in_file(path: &Path) -> Result<bool, Error> {
+    // Get file extension
+    if let Some(extension) = path.extension() {
+        let ext = extension.to_string_lossy().to_lowercase();
+
+        // Text files we should process
+        let text_extensions = [
+            "h", "hpp", "hh", "hxx", "h++", // C/C++ headers
+            "c", "cpp", "cc", "cxx", "c++", // C/C++ source
+            "pc", "cmake", "make", "mk", // Build files
+            "py", "rb", "pl", "sh", "bash", // Scripts
+            "txt", "conf", "cfg", "ini", // Config files
+            "json", "yaml", "yml", "toml", // Data files
+            "xml", "plist", // macOS files
+        ];
+
+        if text_extensions.contains(&ext.as_str()) {
+            return Ok(true);
+        }
+    }
+
+    // Check files without extensions (like shell scripts)
+    if path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|n| n.starts_with('.') || !n.contains('.'))
+        .unwrap_or(false)
+    {
+        // Try to detect if it's a text file using the file command
+        use tokio::process::Command;
+
+        let output = Command::new("file")
+            .arg("--mime-type")
+            .arg(path.display().to_string())
+            .output()
+            .await?;
+
+        if output.status.success() {
+            let mime = String::from_utf8_lossy(&output.stdout);
+            return Ok(mime.contains("text/"));
+        }
+    }
+
+    Ok(false)
 }

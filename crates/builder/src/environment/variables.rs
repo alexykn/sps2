@@ -73,25 +73,24 @@ impl BuildEnvironment {
             .insert("MAKEFLAGS".to_string(), format!("-j{}", Self::cpu_count()));
 
         // Compiler flags for dependency isolation
-        let deps_prefix_display = self.deps_prefix.display();
+        // Use placeholder prefix for build paths to enable relocatable packages
+        let placeholder_deps = format!("{}/deps", crate::BUILD_PLACEHOLDER_PREFIX);
         self.env_vars.insert(
             "CFLAGS".to_string(),
-            format!("-I{deps_prefix_display}/include"),
+            format!("-I{placeholder_deps}/include"),
         );
         self.env_vars.insert(
             "CPPFLAGS".to_string(),
-            format!("-I{deps_prefix_display}/include"),
+            format!("-I{placeholder_deps}/include"),
         );
-        self.env_vars.insert(
-            "LDFLAGS".to_string(),
-            format!("-L{deps_prefix_display}/lib"),
-        );
+        self.env_vars
+            .insert("LDFLAGS".to_string(), format!("-L{placeholder_deps}/lib"));
 
         // Prevent system library contamination
         // LIBRARY_PATH is used by compiler/linker at build time
         self.env_vars.insert(
             "LIBRARY_PATH".to_string(),
-            format!("{deps_prefix_display}/lib"),
+            format!("{}/lib", placeholder_deps),
         );
         // Note: We don't set LD_LIBRARY_PATH or DYLD_LIBRARY_PATH as they're
         // considered dangerous for isolation and are runtime variables, not build-time
@@ -138,7 +137,6 @@ impl BuildEnvironment {
         let deps_prefix_display = self.deps_prefix.display();
         let deps_bin = format!("{deps_prefix_display}/bin");
         let deps_lib = format!("{deps_prefix_display}/lib");
-        let deps_include = format!("{deps_prefix_display}/include");
         let deps_pkgconfig = format!("{deps_prefix_display}/lib/pkgconfig");
         let deps_share = format!("{deps_prefix_display}/share");
 
@@ -162,27 +160,32 @@ impl BuildEnvironment {
         );
 
         // Update compiler flags to include build dep paths
+        // Use placeholder paths to keep packages relocatable
+        let placeholder_deps = format!("{}/deps", crate::BUILD_PLACEHOLDER_PREFIX);
+        let placeholder_include = format!("{}/include", placeholder_deps);
+        let placeholder_lib = format!("{}/lib", placeholder_deps);
+
         let current_cflags = self.env_vars.get("CFLAGS").cloned().unwrap_or_default();
         let new_cflags = if current_cflags.is_empty() {
-            format!("-I{deps_include}")
+            format!("-I{placeholder_include}")
         } else {
-            format!("{current_cflags} -I{deps_include}")
+            format!("{current_cflags} -I{placeholder_include}")
         };
         self.env_vars.insert("CFLAGS".to_string(), new_cflags);
 
         let current_cppflags = self.env_vars.get("CPPFLAGS").cloned().unwrap_or_default();
         let new_cppflags = if current_cppflags.is_empty() {
-            format!("-I{deps_include}")
+            format!("-I{placeholder_include}")
         } else {
-            format!("{current_cppflags} -I{deps_include}")
+            format!("{current_cppflags} -I{placeholder_include}")
         };
         self.env_vars.insert("CPPFLAGS".to_string(), new_cppflags);
 
         let current_ldflags = self.env_vars.get("LDFLAGS").cloned().unwrap_or_default();
         let new_ldflags = if current_ldflags.is_empty() {
-            format!("-L{deps_lib}")
+            format!("-L{placeholder_lib}")
         } else {
-            format!("{current_ldflags} -L{deps_lib}")
+            format!("{current_ldflags} -L{placeholder_lib}")
         };
         self.env_vars.insert("LDFLAGS".to_string(), new_ldflags);
 
