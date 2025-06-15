@@ -3848,6 +3848,7 @@ dependencies = [
  "sps2-net",
  "sps2-package",
  "sps2-resolver",
+ "sps2-state",
  "sps2-store",
  "sps2-types",
  "sysinfo",

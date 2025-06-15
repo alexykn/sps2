@@ -236,7 +236,7 @@ impl DependencyResolver {
         }
 
         // Resolve using standard resolver
-        let resolution = self.resolver.resolve(resolution_context).await?;
+        let resolution = self.resolver.resolve_with_sat(resolution_context).await?;
 
         // Build dependency graph
         let mut graph = DependencyGraph::new();

@@ -3,8 +3,10 @@
 use super::core::BuildEnvironment;
 use sps2_errors::{BuildError, Error};
 use sps2_events::Event;
-use sps2_resolver::ResolutionContext;
+use sps2_resolver::{InstalledPackage, ResolutionContext};
+use sps2_state::StateManager;
 use sps2_types::package::PackageSpec;
+use sps2_types::Version;
 use std::path::Path;
 use tokio::fs;
 use tokio::process::Command;
@@ -33,13 +35,19 @@ impl BuildEnvironment {
             count: 1, // Single package resolved
         });
 
+        // Get installed packages to check before resolving from repository
+        let installed_packages = Self::get_installed_packages().await.unwrap_or_default();
+
         // Resolve build dependencies
         let mut resolution_context = ResolutionContext::new();
         for dep in build_deps {
             resolution_context = resolution_context.add_build_dep(dep);
         }
 
-        let resolution = resolver.resolve(resolution_context).await?;
+        // Include installed packages to check before repository resolution
+        resolution_context = resolution_context.with_installed_packages(installed_packages);
+
+        let resolution = resolver.resolve_with_sat(resolution_context).await?;
 
         // Install build dependencies to deps prefix
         for node in resolution.packages_in_order() {
@@ -62,6 +70,37 @@ impl BuildEnvironment {
         &self,
         node: &sps2_resolver::ResolvedNode,
     ) -> Result<(), Error> {
+        // Check if this is an already-installed package (marked by resolver with Local action and empty path)
+        if matches!(&node.action, sps2_resolver::NodeAction::Local) {
+            match &node.path {
+                None => {
+                    // No path means already installed
+                    self.send_event(Event::DebugLog {
+                        message: format!(
+                            "{} {} is already installed, skipping",
+                            node.name, node.version
+                        ),
+                        context: std::collections::HashMap::new(),
+                    });
+                    return Ok(());
+                }
+                Some(path) if path.as_os_str().is_empty() => {
+                    // Empty path also means already installed
+                    self.send_event(Event::DebugLog {
+                        message: format!(
+                            "{} {} is already installed, skipping",
+                            node.name, node.version
+                        ),
+                        context: std::collections::HashMap::new(),
+                    });
+                    return Ok(());
+                }
+                _ => {
+                    // Has a real path, so it's a local file to install
+                }
+            }
+        }
+
         let Some(_installer) = &self.installer else {
             return Err(BuildError::MissingBuildDep {
                 name: "installer not configured".to_string(),
@@ -220,5 +259,22 @@ impl BuildEnvironment {
         }
 
         Ok(())
+    }
+
+    /// Get currently installed packages from system state
+    async fn get_installed_packages() -> Result<Vec<InstalledPackage>, Error> {
+        // Create a minimal state manager to check installed packages
+        let base_path = std::path::Path::new("/opt/pm");
+        let state = StateManager::new(base_path).await?;
+
+        let packages = state.get_installed_packages().await?;
+
+        let mut installed = Vec::new();
+        for pkg in packages {
+            let version = Version::parse(&pkg.version)?;
+            installed.push(InstalledPackage::new(pkg.name, version));
+        }
+
+        Ok(installed)
     }
 }

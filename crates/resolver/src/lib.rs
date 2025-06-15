@@ -18,8 +18,26 @@ pub use resolver::Resolver;
 pub use sat::{solve_dependencies, DependencyProblem, DependencySolution};
 
 use sps2_types::package::PackageSpec;
+use sps2_types::Version;
 use std::collections::HashMap;
 use std::path::PathBuf;
+
+/// Simple representation of an installed package
+#[derive(Clone, Debug)]
+pub struct InstalledPackage {
+    /// Package name
+    pub name: String,
+    /// Package version
+    pub version: Version,
+}
+
+impl InstalledPackage {
+    /// Create new installed package
+    #[must_use]
+    pub fn new(name: String, version: Version) -> Self {
+        Self { name, version }
+    }
+}
 
 /// Resolution context for packages
 #[derive(Clone, Debug)]
@@ -30,6 +48,8 @@ pub struct ResolutionContext {
     pub build_deps: Vec<PackageSpec>,
     /// Local package files to include
     pub local_files: Vec<PathBuf>,
+    /// Already installed packages that can satisfy dependencies
+    pub installed_packages: Vec<InstalledPackage>,
 }
 
 impl ResolutionContext {
@@ -40,6 +60,7 @@ impl ResolutionContext {
             runtime_deps: Vec::new(),
             build_deps: Vec::new(),
             local_files: Vec::new(),
+            installed_packages: Vec::new(),
         }
     }
 
@@ -61,6 +82,13 @@ impl ResolutionContext {
     #[must_use]
     pub fn add_local_file(mut self, path: PathBuf) -> Self {
         self.local_files.push(path);
+        self
+    }
+
+    /// Add installed packages
+    #[must_use]
+    pub fn with_installed_packages(mut self, packages: Vec<InstalledPackage>) -> Self {
+        self.installed_packages = packages;
         self
     }
 }

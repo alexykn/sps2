@@ -44,6 +44,70 @@ impl RecipeEngine {
         self.execute_internal(recipe, None)
     }
 
+    /// Extract metadata only without executing build steps
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The recipe fails to parse as valid Starlark
+    /// - The metadata function fails or returns invalid data
+    /// - Required metadata fields are missing or invalid
+    pub fn extract_metadata(&self, recipe: &Recipe) -> Result<RecipeMetadata, Error> {
+        // Parse the recipe
+        let recipe_path = recipe.path.as_deref().unwrap_or("recipe.star");
+        let ast = AstModule::parse(recipe_path, recipe.content.clone(), &Dialect::Standard)
+            .map_err(|e| format_parse_error(recipe_path, &e.to_string()))?;
+
+        // Create module and evaluator
+        let module = Module::new();
+        let mut eval = Evaluator::new(&module);
+        let _ = eval.set_max_callstack_size(1000);
+
+        // Evaluate the recipe with globals
+        eval.eval_module(ast, &self.globals)
+            .map_err(|e| format_eval_error(&e.to_string()))?;
+
+        // Drop the evaluator before freezing
+        drop(eval);
+
+        // Freeze the module to access functions
+        let frozen_module = module.freeze().map_err(|e| BuildError::RecipeError {
+            message: format!("Failed to freeze module: {e:?}"),
+        })?;
+
+        // Call metadata function
+        let metadata_fn = frozen_module
+            .get("metadata")
+            .map_err(|_| format_missing_function_error("metadata"))?;
+
+        let metadata_module = Module::new();
+        let mut metadata_eval = Evaluator::new(&metadata_module);
+        let _ = metadata_eval.set_max_callstack_size(1000);
+
+        let metadata_value = metadata_eval
+            .eval_function(metadata_fn.value(), &[], &[])
+            .map_err(|e| format_eval_error(&format!("metadata() failed: {e}")))?;
+
+        let metadata = parse_metadata(metadata_value)?;
+
+        // Validate metadata
+        if metadata.name.is_empty() {
+            return Err(BuildError::RecipeError {
+                message: "Package name not set in metadata()".to_string(),
+            }
+            .into());
+        }
+
+        if metadata.version.is_empty() {
+            return Err(BuildError::RecipeError {
+                message: "Package version not set in metadata()".to_string(),
+            }
+            .into());
+        }
+
+        Ok(metadata)
+    }
+
     /// Execute a recipe with executor integration
     ///
     /// # Errors

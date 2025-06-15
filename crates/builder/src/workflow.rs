@@ -175,11 +175,18 @@ impl Builder {
         context: &BuildContext,
         environment: &mut BuildEnvironment,
     ) -> Result<(Vec<String>, sps2_package::RecipeMetadata, bool), Error> {
-        // Execute recipe
-        let (runtime_deps, build_deps, recipe_metadata, install_requested) =
-            execute_recipe(&self.config, context, environment).await?;
+        // First, extract metadata to get build dependencies without executing build steps
+        let recipe = sps2_package::load_recipe(&context.recipe_path).await?;
+        let recipe_metadata = sps2_package::extract_recipe_metadata(&recipe)?;
 
-        // Setup build dependencies in isolated environment
+        // Extract build dependencies as PackageSpec
+        let build_deps: Vec<sps2_types::package::PackageSpec> = recipe_metadata
+            .build_deps
+            .iter()
+            .map(|dep| sps2_types::package::PackageSpec::parse(dep))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Setup build dependencies BEFORE executing build steps
         if !build_deps.is_empty() {
             send_event(
                 context,
@@ -200,6 +207,10 @@ impl Builder {
                 },
             );
         }
+
+        // Now execute the recipe with build dependencies already set up
+        let (runtime_deps, _build_deps, _metadata, install_requested) =
+            execute_recipe(&self.config, context, environment).await?;
 
         Ok((runtime_deps, recipe_metadata, install_requested))
     }

@@ -203,9 +203,28 @@ impl BuildSystem for AutotoolsBuildSystem {
         let mut cmd_args = vec![configure_path];
         cmd_args.extend(configure_args);
 
+        // Run configure - properly quote environment variables with spaces
+        let cmd_str = cmd_args
+            .into_iter()
+            .map(|arg| {
+                // Quote environment variable assignments that contain spaces
+                if arg.contains('=') && arg.contains(' ') {
+                    let parts: Vec<&str> = arg.splitn(2, '=').collect();
+                    if parts.len() == 2 {
+                        format!("{}=\"{}\"", parts[0], parts[1])
+                    } else {
+                        arg
+                    }
+                } else {
+                    arg
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+
         // Run configure
         let result = ctx
-            .execute("sh", &["-c", &cmd_args.join(" ")], Some(&ctx.build_dir))
+            .execute("sh", &["-c", &cmd_str], Some(&ctx.build_dir))
             .await?;
 
         if !result.success {

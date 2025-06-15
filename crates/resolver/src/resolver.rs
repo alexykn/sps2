@@ -40,65 +40,6 @@ impl Resolver {
         Self { index }
     }
 
-    /// Resolve dependencies for the given context
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - A package is not found in the index
-    /// - There are dependency cycles in the resolution graph
-    /// - Version parsing fails
-    /// - Package specifications are invalid
-    pub async fn resolve(&self, context: ResolutionContext) -> Result<ResolutionResult, Error> {
-        use tokio::time::{timeout, Duration};
-
-        // Add overall timeout for dependency resolution
-        let resolution_timeout = Duration::from_secs(120); // 2 minutes
-
-        timeout(resolution_timeout, async {
-            let mut graph = DependencyGraph::new();
-            let mut visited = HashSet::new();
-
-            // Process runtime dependencies
-            for spec in &context.runtime_deps {
-                self.resolve_package(spec, DepKind::Runtime, &mut graph, &mut visited)
-                    .await?;
-            }
-
-            // Process build dependencies
-            for spec in &context.build_deps {
-                self.resolve_package(spec, DepKind::Build, &mut graph, &mut visited)
-                    .await?;
-            }
-
-            // Process local files
-            for path in &context.local_files {
-                Self::resolve_local_file(path, &mut graph).await?;
-            }
-
-            // Check for cycles
-            if graph.has_cycles() {
-                return Err(PackageError::DependencyCycle {
-                    package: "unknown".to_string(),
-                }
-                .into());
-            }
-
-            // Create execution plan
-            let sorted = graph.topological_sort()?;
-            let execution_plan = ExecutionPlan::from_sorted_packages(&sorted, &graph);
-
-            Ok(ResolutionResult {
-                nodes: graph.nodes,
-                execution_plan,
-            })
-        })
-        .await
-        .map_err(|_| PackageError::ResolutionTimeout {
-            message: "Dependency resolution timed out after 2 minutes".to_string(),
-        })?
-    }
-
     /// Resolve dependencies using SAT solver for more accurate resolution
     ///
     /// This method converts the dependency problem to a SAT problem and uses
@@ -120,20 +61,97 @@ impl Resolver {
         let resolution_timeout = Duration::from_secs(120);
 
         timeout(resolution_timeout, async {
-            // Create SAT problem and collect dependencies
-            let (mut problem, package_deps) = Self::create_sat_problem(&context);
+            let mut graph = DependencyGraph::new();
+            let mut already_satisfied = HashSet::new();
 
-            // Add available versions and constraints
-            let mut version_entries =
-                self.add_package_versions_to_problem(&mut problem, &package_deps);
+            // First, check installed packages for each dependency
+            let mut remaining_package_deps: HashMap<String, Vec<(PackageSpec, DepKind)>> =
+                HashMap::new();
 
-            // Process transitive dependencies
-            self.process_transitive_dependencies(&mut problem, &mut version_entries);
+            // Check runtime dependencies against installed packages
+            for spec in &context.runtime_deps {
+                if let Some(installed) = context
+                    .installed_packages
+                    .iter()
+                    .find(|pkg| pkg.name == spec.name && spec.version_spec.matches(&pkg.version))
+                {
+                    // Package is already installed and satisfies spec
+                    let package_id =
+                        PackageId::new(installed.name.clone(), installed.version.clone());
+                    already_satisfied.insert(package_id.clone());
 
-            // Solve and convert to dependency graph
-            let solution = crate::sat::solve_dependencies(problem).await?;
-            let mut graph =
-                Self::create_dependency_graph_from_solution(&solution, &version_entries)?;
+                    let node = ResolvedNode::local(
+                        installed.name.clone(),
+                        installed.version.clone(),
+                        std::path::PathBuf::new(), // Empty path for installed packages
+                        Vec::new(), // No dependencies to resolve for already installed packages
+                    );
+                    graph.add_node(node);
+                } else {
+                    // Need to resolve from repository
+                    remaining_package_deps
+                        .entry(spec.name.clone())
+                        .or_default()
+                        .push((spec.clone(), DepKind::Runtime));
+                }
+            }
+
+            // Check build dependencies against installed packages
+            for spec in &context.build_deps {
+                if let Some(installed) = context
+                    .installed_packages
+                    .iter()
+                    .find(|pkg| pkg.name == spec.name && spec.version_spec.matches(&pkg.version))
+                {
+                    // Package is already installed and satisfies spec
+                    let package_id =
+                        PackageId::new(installed.name.clone(), installed.version.clone());
+                    if !already_satisfied.contains(&package_id) {
+                        already_satisfied.insert(package_id);
+
+                        let node = ResolvedNode::local(
+                            installed.name.clone(),
+                            installed.version.clone(),
+                            std::path::PathBuf::new(), // Empty path for installed packages
+                            Vec::new(), // No dependencies to resolve for already installed packages
+                        );
+                        graph.add_node(node);
+                    }
+                } else {
+                    // Need to resolve from repository
+                    remaining_package_deps
+                        .entry(spec.name.clone())
+                        .or_default()
+                        .push((spec.clone(), DepKind::Build));
+                }
+            }
+
+            // If we have remaining dependencies to resolve, use SAT solver
+            if !remaining_package_deps.is_empty() {
+                // Create SAT problem for remaining dependencies
+                let (mut problem, package_deps) =
+                    Self::create_sat_problem_from_deps(&remaining_package_deps);
+
+                // Add available versions and constraints
+                let mut version_entries =
+                    self.add_package_versions_to_problem(&mut problem, &package_deps);
+
+                // Process transitive dependencies
+                self.process_transitive_dependencies(&mut problem, &mut version_entries);
+
+                // Solve and convert to dependency graph
+                let solution = crate::sat::solve_dependencies(problem).await?;
+                let sat_graph =
+                    Self::create_dependency_graph_from_solution(&solution, &version_entries)?;
+
+                // Merge SAT results into main graph
+                for (id, node) in sat_graph.nodes {
+                    graph.nodes.insert(id.clone(), node);
+                }
+                for (from, tos) in sat_graph.edges {
+                    graph.edges.insert(from, tos);
+                }
+            }
 
             // Handle local files
             for path in &context.local_files {
@@ -155,34 +173,24 @@ impl Resolver {
         })?
     }
 
-    /// Create SAT problem and collect dependency specifications
-    fn create_sat_problem(
-        context: &ResolutionContext,
+    /// Create SAT problem from already-collected dependencies
+    fn create_sat_problem_from_deps(
+        package_deps: &HashMap<String, Vec<(PackageSpec, DepKind)>>,
     ) -> (
         DependencyProblem,
         HashMap<String, Vec<(PackageSpec, DepKind)>>,
     ) {
         let mut problem = DependencyProblem::new();
-        let mut package_deps: HashMap<String, Vec<(PackageSpec, DepKind)>> = HashMap::new();
 
-        // Collect all package specifications
-        for spec in &context.runtime_deps {
-            package_deps
-                .entry(spec.name.clone())
-                .or_default()
-                .push((spec.clone(), DepKind::Runtime));
-            problem.require_package(spec.name.clone());
+        // Clone the package_deps for return
+        let deps_clone = package_deps.clone();
+
+        // Add required packages to the problem
+        for name in package_deps.keys() {
+            problem.require_package(name.clone());
         }
 
-        for spec in &context.build_deps {
-            package_deps
-                .entry(spec.name.clone())
-                .or_default()
-                .push((spec.clone(), DepKind::Build));
-            problem.require_package(spec.name.clone());
-        }
-
-        (problem, package_deps)
+        (problem, deps_clone)
     }
 
     /// Add available package versions to the SAT problem
@@ -449,125 +457,6 @@ impl Resolver {
                 }
             }
         }
-    }
-
-    /// Resolve a single package and its dependencies with depth limiting
-    async fn resolve_package(
-        &self,
-        spec: &PackageSpec,
-        dep_kind: DepKind,
-        graph: &mut DependencyGraph,
-        visited: &mut HashSet<PackageId>,
-    ) -> Result<(), Error> {
-        self.resolve_package_with_depth(spec, dep_kind, graph, visited, 0)
-            .await
-    }
-
-    /// Resolve a single package and its dependencies with recursion depth limit
-    async fn resolve_package_with_depth(
-        &self,
-        spec: &PackageSpec,
-        dep_kind: DepKind,
-        graph: &mut DependencyGraph,
-        visited: &mut HashSet<PackageId>,
-        depth: usize,
-    ) -> Result<(), Error> {
-        const MAX_RECURSION_DEPTH: usize = 100;
-
-        if depth > MAX_RECURSION_DEPTH {
-            return Err(PackageError::DependencyCycle {
-                package: format!("depth limit exceeded for {}", spec.name),
-            }
-            .into());
-        }
-        // Find best version matching the spec
-        let (version_str, version_entry) = self
-            .index
-            .find_best_version_with_string(spec)
-            .ok_or_else(|| PackageError::NotFound {
-                name: spec.name.clone(),
-            })?;
-
-        let version = Version::parse(version_str)?;
-        let package_id = PackageId::new(spec.name.clone(), version.clone());
-
-        // Skip if already processed
-        if visited.contains(&package_id) {
-            return Ok(());
-        }
-        visited.insert(package_id.clone());
-
-        // Create dependency edges
-        let mut deps = Vec::new();
-
-        // Add runtime dependencies
-        for dep_spec_str in &version_entry.dependencies.runtime {
-            let dep_spec = PackageSpec::parse(dep_spec_str)?;
-            let edge = DepEdge::new(
-                dep_spec.name.clone(),
-                dep_spec.version_spec.clone(),
-                DepKind::Runtime,
-            );
-            deps.push(edge);
-        }
-
-        // Add build dependencies (only if this is a build dependency)
-        if dep_kind == DepKind::Build {
-            for dep_spec_str in &version_entry.dependencies.build {
-                let dep_spec = PackageSpec::parse(dep_spec_str)?;
-                let edge = DepEdge::new(
-                    dep_spec.name.clone(),
-                    dep_spec.version_spec.clone(),
-                    DepKind::Build,
-                );
-                deps.push(edge);
-            }
-        }
-
-        // Create resolved node with URL resolution
-        let node = ResolvedNode::download(
-            spec.name.clone(),
-            version,
-            Self::resolve_download_url(&version_entry.download_url)?,
-            deps.clone(),
-        );
-
-        graph.add_node(node);
-
-        // Recursively resolve dependencies
-        for edge in &deps {
-            let dep_spec = PackageSpec {
-                name: edge.name.clone(),
-                version_spec: edge.spec.clone(),
-            };
-
-            Box::pin(self.resolve_package_with_depth(
-                &dep_spec,
-                edge.kind,
-                graph,
-                visited,
-                depth + 1,
-            ))
-            .await?;
-
-            // Find resolved dependency in graph and add edge (FIXED: single resolution)
-            if let Some(dep_node) = graph.nodes.values().find(|n| n.name == edge.name) {
-                let dep_id = dep_node.package_id();
-                // Edge direction: dep_id -> package_id (dependency points to dependent)
-                // If curl depends on openssl, edge is from openssl to curl
-                graph.add_edge(&dep_id, &package_id);
-            }
-
-            // Check for cycles after each dependency addition
-            if graph.has_cycles() {
-                return Err(PackageError::DependencyCycle {
-                    package: package_id.name.clone(),
-                }
-                .into());
-            }
-        }
-
-        Ok(())
     }
 
     /// Resolve a local package file

@@ -49,3 +49,16 @@ pub fn execute_recipe(recipe: &Recipe) -> Result<RecipeResult, Error> {
     let engine = RecipeEngine::new();
     engine.execute(recipe)
 }
+
+/// Extract metadata from a recipe without executing build steps
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The recipe fails to parse as valid Starlark
+/// - The metadata function fails or returns invalid data
+/// - Required metadata fields are missing or invalid
+pub fn extract_recipe_metadata(recipe: &Recipe) -> Result<RecipeMetadata, Error> {
+    let engine = RecipeEngine::new();
+    engine.extract_metadata(recipe)
+}

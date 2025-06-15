@@ -133,7 +133,7 @@ impl InstallOperation {
             },
         );
 
-        let resolution = match self.resolver.resolve(resolution_context).await {
+        let resolution = match self.resolver.resolve_with_sat(resolution_context).await {
             Ok(result) => result,
             Err(e) => {
                 // Emit helpful error event for resolution failures
