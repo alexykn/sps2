@@ -64,6 +64,44 @@ impl CMakeBuildSystem {
             }
         }
 
+        // Set RPATH for macOS to ensure binaries can find their libraries
+        if cfg!(target_os = "macos") {
+            // Set install RPATH to where libraries will be installed
+            if !user_args
+                .iter()
+                .any(|arg| arg.starts_with("-DCMAKE_INSTALL_RPATH="))
+            {
+                args.push(format!(
+                    "-DCMAKE_INSTALL_RPATH={}/lib",
+                    ctx.env.get_live_prefix()
+                ));
+            }
+
+            // Enable macOS RPATH support
+            if !user_args
+                .iter()
+                .any(|arg| arg.starts_with("-DCMAKE_MACOSX_RPATH="))
+            {
+                args.push("-DCMAKE_MACOSX_RPATH=ON".to_string());
+            }
+
+            // Don't use install RPATH during build (use build RPATH)
+            if !user_args
+                .iter()
+                .any(|arg| arg.starts_with("-DCMAKE_BUILD_WITH_INSTALL_RPATH="))
+            {
+                args.push("-DCMAKE_BUILD_WITH_INSTALL_RPATH=OFF".to_string());
+            }
+
+            // Add RPATH entries for all linked library directories
+            if !user_args
+                .iter()
+                .any(|arg| arg.starts_with("-DCMAKE_INSTALL_RPATH_USE_LINK_PATH="))
+            {
+                args.push("-DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON".to_string());
+            }
+        }
+
         // Handle cross-compilation
         if let Some(cross) = &ctx.cross_compilation {
             // Use toolchain file if available

@@ -121,7 +121,26 @@ impl AutotoolsBuildSystem {
         if let Some(cxxflags) = ctx.get_all_env_vars().get("CXXFLAGS") {
             args.push(format!("CXXFLAGS={cxxflags}"));
         }
-        if let Some(ldflags) = ctx.get_all_env_vars().get("LDFLAGS") {
+
+        // Handle LDFLAGS with RPATH for macOS
+        let mut ldflags = ctx
+            .get_all_env_vars()
+            .get("LDFLAGS")
+            .cloned()
+            .unwrap_or_default();
+
+        if cfg!(target_os = "macos") {
+            // Add RPATH to the library directory for runtime linking
+            let rpath_flag = format!("-Wl,-rpath,{}/lib", ctx.env.get_live_prefix());
+            if !ldflags.contains(&rpath_flag) {
+                if !ldflags.is_empty() {
+                    ldflags.push(' ');
+                }
+                ldflags.push_str(&rpath_flag);
+            }
+        }
+
+        if !ldflags.is_empty() {
             args.push(format!("LDFLAGS={ldflags}"));
         }
 

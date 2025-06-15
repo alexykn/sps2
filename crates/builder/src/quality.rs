@@ -15,6 +15,11 @@ pub async fn run_quality_checks(
     // Remove .la files (obsolete on macOS and cause relocatability issues)
     remove_la_files(context, environment).await?;
 
+    // Fix RPATH issues on macOS binaries if needed
+    if cfg!(target_os = "macos") {
+        fix_macos_rpaths(context, environment).await?;
+    }
+
     // Scan for hardcoded paths (relocatability check)
     scan_for_hardcoded_paths(context, environment).await
 }
@@ -244,4 +249,161 @@ fn find_la_files_recursive<'a>(
 
         Ok(())
     })
+}
+
+/// Fix RPATH issues on macOS binaries
+///
+/// This ensures all executables and libraries have proper RPATH entries
+/// to find their dependencies at runtime.
+async fn fix_macos_rpaths(
+    context: &BuildContext,
+    environment: &BuildEnvironment,
+) -> Result<(), Error> {
+    use tokio::process::Command;
+
+    let staging_dir = environment.staging_dir();
+    let live_prefix = environment.build_prefix();
+    let lib_path = format!("{}/lib", live_prefix.display());
+
+    // Skip if staging directory doesn't exist
+    if !staging_dir.exists() {
+        return Ok(());
+    }
+
+    send_event(
+        context,
+        Event::OperationStarted {
+            operation: "Checking and fixing RPATH entries".to_string(),
+        },
+    );
+
+    // Find all executables and dynamic libraries
+    let mut binaries = Vec::new();
+    find_binaries_recursive(staging_dir, &mut binaries).await?;
+
+    let mut fixed_count = 0;
+
+    for binary_path in &binaries {
+        // Check if binary needs RPATH fix using otool
+        let output = Command::new("otool")
+            .args(["-l", &binary_path.display().to_string()])
+            .output()
+            .await?;
+
+        if output.status.success() {
+            let output_str = String::from_utf8_lossy(&output.stdout);
+
+            // Check if it has LC_RPATH pointing to our lib directory
+            let has_correct_rpath =
+                output_str.contains("LC_RPATH") && output_str.contains(&lib_path);
+
+            // Check if it has @rpath references (needs RPATH)
+            let needs_rpath = output_str.contains("@rpath/");
+
+            if needs_rpath && !has_correct_rpath {
+                // Add RPATH using install_name_tool
+                let result = Command::new("install_name_tool")
+                    .args(["-add_rpath", &lib_path, &binary_path.display().to_string()])
+                    .output()
+                    .await?;
+
+                if result.status.success() {
+                    fixed_count += 1;
+                } else {
+                    // Log warning but don't fail the build
+                    send_event(
+                        context,
+                        Event::Warning {
+                            message: format!(
+                                "Failed to add RPATH to {}: {}",
+                                binary_path.display(),
+                                String::from_utf8_lossy(&result.stderr)
+                            ),
+                            context: Some("RPATH fix".to_string()),
+                        },
+                    );
+                }
+            }
+        }
+    }
+
+    if fixed_count > 0 {
+        send_event(
+            context,
+            Event::OperationCompleted {
+                operation: format!("Fixed RPATH entries for {} binaries", fixed_count),
+                success: true,
+            },
+        );
+    } else {
+        send_event(
+            context,
+            Event::OperationCompleted {
+                operation: "All RPATH entries are correct".to_string(),
+                success: true,
+            },
+        );
+    }
+
+    Ok(())
+}
+
+/// Recursively find all binary files (executables and libraries)
+fn find_binaries_recursive<'a>(
+    dir: &'a Path,
+    files: &'a mut Vec<PathBuf>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Error>> + 'a>> {
+    Box::pin(async move {
+        if !dir.exists() {
+            return Ok(());
+        }
+
+        let Ok(mut entries) = fs::read_dir(dir).await else {
+            return Ok(());
+        };
+
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+
+            if path.is_dir() {
+                // Skip certain directories
+                if let Some(name) = path.file_name() {
+                    let name_str = name.to_string_lossy();
+                    if name_str == "share" || name_str == "include" || name_str == "man" {
+                        continue;
+                    }
+                }
+
+                // Recursively search subdirectories
+                find_binaries_recursive(&path, files).await?;
+            } else if path.is_file() {
+                // Check if it's a binary file
+                if is_macos_binary(&path).await? {
+                    files.push(path);
+                }
+            }
+        }
+
+        Ok(())
+    })
+}
+
+/// Check if a file is a macOS binary (Mach-O executable or library)
+async fn is_macos_binary(path: &Path) -> Result<bool, Error> {
+    use tokio::process::Command;
+
+    // Use file command to check if it's a Mach-O binary
+    let output = Command::new("file")
+        .arg(path.display().to_string())
+        .output()
+        .await?;
+
+    if output.status.success() {
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        Ok(output_str.contains("Mach-O")
+            && (output_str.contains("executable")
+                || output_str.contains("dynamically linked shared library")))
+    } else {
+        Ok(false)
+    }
 }

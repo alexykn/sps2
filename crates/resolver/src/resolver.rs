@@ -10,10 +10,9 @@ use sps2_errors::{Error, PackageError};
 use sps2_index::{IndexManager, VersionEntry};
 use sps2_manifest::Manifest;
 use sps2_types::package::PackageSpec;
-use sps2_types::version::{VersionConstraint, VersionSpec};
+use sps2_types::version::VersionConstraint;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::str::FromStr;
 
 /// Type alias for version entries map to reduce complexity
 type VersionEntriesMap<'a> = HashMap<(String, Version), (&'a VersionEntry, DepKind)>;
@@ -583,7 +582,6 @@ impl Resolver {
         let mut deps = Vec::new();
 
         for dep in &manifest.dependencies.runtime {
-            let _spec = VersionSpec::from_str(dep)?;
             // Parse dependency spec
             let dep_spec = PackageSpec::parse(dep)?;
             let edge = DepEdge::new(
