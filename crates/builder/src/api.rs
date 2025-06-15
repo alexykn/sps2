@@ -874,6 +874,13 @@ impl BuilderApi {
                 let new_path = components[1..].iter().collect::<PathBuf>();
                 let dest_path = working_dir.join(&new_path);
 
+                // Ensure parent directory exists
+                if let Some(parent) = dest_path.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| BuildError::ExtractionFailed {
+                        message: format!("Failed to create parent directory: {e}"),
+                    })?;
+                }
+
                 entry
                     .unpack(&dest_path)
                     .map_err(|e| BuildError::ExtractionFailed {
