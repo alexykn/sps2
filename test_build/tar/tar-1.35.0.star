@@ -10,11 +10,10 @@ def metadata():
 def build(ctx):
     # Clean up any leftover files from previous builds
     cleanup(ctx)
-    # Clone git repository
-    git(ctx, "https://git.savannah.gnu.org/git/tar.git", "HEAD")
+    # Fetch release tarball
+    fetch(ctx, "https://ftp.gnu.org/gnu/tar/tar-1.35.tar.gz", "4df558b0bda4627ee8125dd434c04e1b20046a4273742476c9f92102b1b1dae7")
 
-    # Bootstrap the project (required for git version)
-    command(ctx, "./bootstrap")
-    
     # Build using autotools build system
-    autotools(ctx)
+    # No bootstrap needed for release tarballs
+    # On macOS, we need to explicitly link with iconv
+    autotools(ctx, ["LIBS=-liconv"])
