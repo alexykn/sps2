@@ -126,8 +126,8 @@ impl BuildEnvironment {
                 .into());
             }
 
-            // Ensure no system paths are referenced (allow homebrew for development)
-            if cflags.contains("/usr/local") {
+            // Ensure no system paths are referenced
+            if cflags.contains("/usr/local") || cflags.contains("/opt/homebrew") {
                 return Err(BuildError::SandboxViolation {
                     message: "CFLAGS contains system paths".to_string(),
                 }
@@ -148,8 +148,13 @@ impl BuildEnvironment {
                 .into());
             }
 
-            // Allow common build system paths for development
-            // Note: In production, these would be more restricted
+            // Ensure no system paths are referenced
+            if ldflags.contains("/usr/local") || ldflags.contains("/opt/homebrew") {
+                return Err(BuildError::SandboxViolation {
+                    message: "LDFLAGS contains system paths".to_string(),
+                }
+                .into());
+            }
         }
 
         Ok(())
@@ -193,9 +198,8 @@ impl BuildEnvironment {
                 }
             }
 
-            // Allow common build system and coreutils paths for development
-            // In production, PATH would be more strictly controlled
-            // For now, we allow standard system paths needed for building
+            // PATH is strictly controlled to only include system essentials and sps2 paths
+            // No external package managers (Homebrew, MacPorts, etc.) are allowed
         } else {
             return Err(BuildError::SandboxViolation {
                 message: "PATH not set".to_string(),

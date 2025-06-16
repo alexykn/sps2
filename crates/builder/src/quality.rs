@@ -130,6 +130,55 @@ fn scan_directory_for_hardcoded_paths<'a>(
     })
 }
 
+/// Check binary files (executables and libraries) for hardcoded build paths
+async fn check_binary_for_build_paths(
+    file_path: &Path,
+    build_prefix: &str,
+) -> Result<Option<String>, Error> {
+    use tokio::process::Command;
+
+    // Use strings command to extract text from binary
+    let output = Command::new("strings")
+        .arg(file_path.display().to_string())
+        .output()
+        .await?;
+
+    if output.status.success() {
+        let strings_output = String::from_utf8_lossy(&output.stdout);
+
+        // Check if any strings contain the build prefix
+        if strings_output.contains(build_prefix) {
+            // Also check with otool for dynamic libraries
+            if file_path.extension().and_then(|e| e.to_str()) == Some("dylib") {
+                // Check RPATHs specifically
+                let otool_output = Command::new("otool")
+                    .args(["-l", &file_path.display().to_string()])
+                    .output()
+                    .await?;
+
+                if otool_output.status.success() {
+                    let otool_str = String::from_utf8_lossy(&otool_output.stdout);
+                    if otool_str.contains(build_prefix) {
+                        return Ok(Some(format!(
+                            "{} (contains RPATH or load path with '{}')",
+                            file_path.display(),
+                            build_prefix
+                        )));
+                    }
+                }
+            }
+
+            return Ok(Some(format!(
+                "{} (contains string '{}')",
+                file_path.display(),
+                build_prefix
+            )));
+        }
+    }
+
+    Ok(None)
+}
+
 /// Scan individual file for hardcoded paths
 async fn scan_file_for_hardcoded_paths(
     file_path: &Path,
@@ -138,12 +187,11 @@ async fn scan_file_for_hardcoded_paths(
     // Skip non-text files and certain file types that are expected to contain paths
     if let Some(extension) = file_path.extension() {
         let ext = extension.to_string_lossy().to_lowercase();
-        // Skip binary-ish files that might contain false positives
+        // Skip truly binary files that might contain false positives
+        // But DO check dynamic libraries for hardcoded paths
         if matches!(
             ext.as_str(),
-            "so" | "dylib"
-                | "a"
-                | "o"
+            "a" | "o"
                 | "png"
                 | "jpg"
                 | "jpeg"
@@ -156,6 +204,11 @@ async fn scan_file_for_hardcoded_paths(
                 | "xz"
         ) {
             return Ok(None);
+        }
+
+        // For dynamic libraries, use special checking
+        if matches!(ext.as_str(), "so" | "dylib") {
+            return check_binary_for_build_paths(file_path, build_prefix).await;
         }
     }
 
@@ -263,8 +316,6 @@ async fn fix_macos_rpaths(
     context: &BuildContext,
     environment: &BuildEnvironment,
 ) -> Result<(), Error> {
-    use tokio::process::Command;
-
     let staging_dir = environment.staging_dir();
     let live_prefix = environment.build_prefix();
     let lib_path = format!("{}/lib", live_prefix.display());
@@ -288,46 +339,8 @@ async fn fix_macos_rpaths(
     let mut fixed_count = 0;
 
     for binary_path in &binaries {
-        // Check if binary needs RPATH fix using otool
-        let output = Command::new("otool")
-            .args(["-l", &binary_path.display().to_string()])
-            .output()
-            .await?;
-
-        if output.status.success() {
-            let output_str = String::from_utf8_lossy(&output.stdout);
-
-            // Check if it has LC_RPATH pointing to our lib directory
-            let has_correct_rpath =
-                output_str.contains("LC_RPATH") && output_str.contains(&lib_path);
-
-            // Check if it has @rpath references (needs RPATH)
-            let needs_rpath = output_str.contains("@rpath/");
-
-            if needs_rpath && !has_correct_rpath {
-                // Add RPATH using install_name_tool
-                let result = Command::new("install_name_tool")
-                    .args(["-add_rpath", &lib_path, &binary_path.display().to_string()])
-                    .output()
-                    .await?;
-
-                if result.status.success() {
-                    fixed_count += 1;
-                } else {
-                    // Log warning but don't fail the build
-                    send_event(
-                        context,
-                        Event::Warning {
-                            message: format!(
-                                "Failed to add RPATH to {}: {}",
-                                binary_path.display(),
-                                String::from_utf8_lossy(&result.stderr)
-                            ),
-                            context: Some("RPATH fix".to_string()),
-                        },
-                    );
-                }
-            }
+        if fix_single_binary_rpath(context, binary_path, &lib_path).await? {
+            fixed_count += 1;
         }
     }
 
@@ -350,6 +363,111 @@ async fn fix_macos_rpaths(
     }
 
     Ok(())
+}
+
+/// Fix RPATH entries for a single binary
+async fn fix_single_binary_rpath(
+    context: &BuildContext,
+    binary_path: &Path,
+    lib_path: &str,
+) -> Result<bool, Error> {
+    use tokio::process::Command;
+
+    // Check if binary needs RPATH fix using otool
+    let output = Command::new("otool")
+        .args(["-l", &binary_path.display().to_string()])
+        .output()
+        .await?;
+
+    if !output.status.success() {
+        return Ok(false);
+    }
+
+    let output_str = String::from_utf8_lossy(&output.stdout);
+    let mut has_correct_rpath = false;
+    let mut rpaths_to_remove = Vec::new();
+
+    // Parse RPATHs from otool output
+    let mut lines = output_str.lines();
+    while let Some(line) = lines.next() {
+        if line.contains("LC_RPATH") {
+            // Skip cmdsize line
+            let _ = lines.next();
+            // Get the path line
+            if let Some(path_line) = lines.next() {
+                if path_line.contains("path ") {
+                    if let Some(path_start) = path_line.find("path ") {
+                        let path_part = &path_line[path_start + 5..];
+                        if let Some(space_pos) = path_part.find(" (") {
+                            let rpath = &path_part[..space_pos];
+
+                            // Check if this is our correct lib path
+                            if rpath == lib_path {
+                                has_correct_rpath = true;
+                            }
+                            // Check if this is a build path that needs removal
+                            else if rpath.contains("/opt/pm/build/")
+                                || rpath.contains("/opt/homebrew/")
+                                || rpath.contains("/usr/local/")
+                                || rpath.contains("/tmp/")
+                            {
+                                rpaths_to_remove.push(rpath.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Remove bad RPATHs
+    let mut removed_any = false;
+    for bad_rpath in &rpaths_to_remove {
+        let result = Command::new("install_name_tool")
+            .args([
+                "-delete_rpath",
+                bad_rpath,
+                &binary_path.display().to_string(),
+            ])
+            .output()
+            .await?;
+
+        if result.status.success() {
+            removed_any = true;
+        }
+    }
+
+    // Check if it has @rpath references (needs RPATH)
+    let needs_rpath = output_str.contains("@rpath/");
+
+    // Add correct RPATH if needed and not already present
+    if needs_rpath && !has_correct_rpath {
+        // Add RPATH using install_name_tool
+        let result = Command::new("install_name_tool")
+            .args(["-add_rpath", lib_path, &binary_path.display().to_string()])
+            .output()
+            .await?;
+
+        if result.status.success() {
+            Ok(true)
+        } else {
+            // Log warning but don't fail the build
+            send_event(
+                context,
+                Event::Warning {
+                    message: format!(
+                        "Failed to add RPATH to {}: {}",
+                        binary_path.display(),
+                        String::from_utf8_lossy(&result.stderr)
+                    ),
+                    context: Some("RPATH fix".to_string()),
+                },
+            );
+            Ok(false)
+        }
+    } else {
+        Ok(removed_any)
+    }
 }
 
 /// Recursively find all binary files (executables and libraries)

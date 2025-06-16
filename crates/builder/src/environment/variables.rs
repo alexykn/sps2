@@ -108,17 +108,8 @@ impl BuildEnvironment {
         ];
 
         // Start with a minimal PATH containing only system essentials
-        // Then add /opt/pm/live/bin and homebrew paths AFTER system tools
-        let mut path_components =
-            vec!["/usr/bin", "/bin", "/usr/sbin", "/sbin", "/opt/pm/live/bin"];
-
-        // Add homebrew paths if they exist (check both Intel and ARM locations)
-        if std::path::Path::new("/opt/homebrew/bin").exists() {
-            path_components.push("/opt/homebrew/bin");
-        }
-        if std::path::Path::new("/usr/local/bin").exists() {
-            path_components.push("/usr/local/bin");
-        }
+        // Then add /opt/pm/live/bin for sps2-installed tools
+        let path_components = ["/usr/bin", "/bin", "/usr/sbin", "/sbin", "/opt/pm/live/bin"];
 
         self.env_vars
             .insert("PATH".to_string(), path_components.join(":"));
@@ -175,7 +166,7 @@ impl BuildEnvironment {
         // Add deps bin
         new_path_components.push(&deps_bin);
 
-        // Add remaining paths (/opt/pm/live/bin, homebrew, etc.)
+        // Add remaining paths (/opt/pm/live/bin, etc.)
         if system_end_idx < path_parts.len() {
             new_path_components.extend_from_slice(&path_parts[system_end_idx..]);
         }
