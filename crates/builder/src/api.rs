@@ -897,6 +897,49 @@ impl BuilderApi {
 
         Ok(())
     }
+
+    /// Copy source files from a directory to the working directory
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The source path doesn't exist
+    /// - File copy operations fail
+    /// - Directory creation fails
+    pub async fn copy(
+        &mut self,
+        src_path: Option<&str>,
+        context: &crate::BuildContext,
+    ) -> Result<(), Error> {
+        use crate::fileops::copy_source_files;
+
+        // Determine source path
+        let source_dir = if let Some(path) = src_path {
+            PathBuf::from(path)
+        } else {
+            // Use recipe directory if no path specified
+            context
+                .recipe_path
+                .parent()
+                .ok_or_else(|| BuildError::RecipeError {
+                    message: "Invalid recipe path".to_string(),
+                })?
+                .to_path_buf()
+        };
+
+        // Check if source directory exists
+        if !source_dir.exists() {
+            return Err(BuildError::Failed {
+                message: format!("Source directory does not exist: {}", source_dir.display()),
+            }
+            .into());
+        }
+
+        // Copy source files from the source directory to working directory
+        copy_source_files(&source_dir, &self.working_dir, context).await?;
+
+        Ok(())
+    }
 }
 
 /// Compression types

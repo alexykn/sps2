@@ -8,7 +8,7 @@ use tokio::fs;
 pub fn copy_directory_recursive<'a>(
     src: &'a Path,
     dst: &'a Path,
-) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Error>> + 'a>> {
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Error>> + Send + 'a>> {
     Box::pin(async move {
         fs::create_dir_all(dst).await?;
 

@@ -161,4 +161,8 @@ pub enum BuildStep {
     },
     // Cleanup staging directory
     Cleanup,
+    // Copy source files
+    Copy {
+        src_path: Option<String>,
+    },
 }

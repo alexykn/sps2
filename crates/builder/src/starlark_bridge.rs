@@ -99,4 +99,9 @@ impl BuildExecutor for StarlarkBridge {
         self.api.apply_patch(patch_path, &self.env).await?;
         Ok(())
     }
+
+    async fn copy(&mut self, src_path: Option<&str>) -> Result<(), Error> {
+        self.api.copy(src_path, &self.env.context).await?;
+        Ok(())
+    }
 }

@@ -34,6 +34,7 @@ pub trait BuildExecutor: Send + Sync + std::fmt::Debug {
     async fn python(&mut self, args: &[String]) -> Result<(), Error>;
     async fn nodejs(&mut self, args: &[String]) -> Result<(), Error>;
     async fn apply_patch(&mut self, patch_path: &Path) -> Result<(), Error>;
+    async fn copy(&mut self, src_path: Option<&str>) -> Result<(), Error>;
 }
 
 /// Build context exposed to Starlark recipes
@@ -393,6 +394,19 @@ pub fn build_context_functions(builder: &mut GlobalsBuilder) {
             .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
 
         build_ctx.add_step(BuildStep::Cleanup);
+        Ok(NoneType)
+    }
+
+    /// Copy source files from recipe directory to build directory
+    fn copy<'v>(ctx: Value<'v>, src_path: Option<&str>) -> anyhow::Result<NoneType> {
+        // Unpack BuildContext from the Value
+        let build_ctx = ctx
+            .downcast_ref::<BuildContext>()
+            .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
+
+        build_ctx.add_step(BuildStep::Copy {
+            src_path: src_path.map(str::to_string),
+        });
         Ok(NoneType)
     }
 }

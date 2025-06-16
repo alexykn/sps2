@@ -1,7 +1,6 @@
 //! Starlark recipe execution and build step management
 
 use crate::events::send_event;
-use crate::fileops::copy_source_files;
 use crate::timeout_utils::with_optional_timeout;
 use crate::{BuildConfig, BuildContext, BuildEnvironment, BuilderApi};
 use sps2_errors::{BuildError, Error};
@@ -35,19 +34,6 @@ pub async fn execute_recipe(
     // Create builder API
     let working_dir = environment.build_prefix().join("src");
     fs::create_dir_all(&working_dir).await?;
-
-    // Copy source files from recipe directory to working directory (if any exist)
-    let recipe_dir = context
-        .recipe_path
-        .parent()
-        .ok_or_else(|| BuildError::RecipeError {
-            message: "Invalid recipe path".to_string(),
-        })?;
-
-    // Only copy source files if there are non-.star files in the recipe directory
-    if has_source_files(recipe_dir).await? {
-        copy_source_files(recipe_dir, &working_dir, context).await?;
-    }
 
     let mut api = BuilderApi::new(working_dir.clone())?;
     let _result = api.allow_network(config.allow_network);
@@ -239,6 +225,10 @@ async fn execute_build_step(
             // Clean up the staging directory
             cleanup_staging_directory(environment).await?;
         }
+        BuildStep::Copy { src_path } => {
+            // Copy source files from recipe directory to working directory
+            api.copy(src_path.as_deref(), &environment.context).await?;
+        }
     }
 
     Ok(())
@@ -368,18 +358,4 @@ async fn cleanup_staging_directory(environment: &BuildEnvironment) -> Result<(),
     }
 
     Ok(())
-}
-
-/// Check if a directory contains source files (non-.star files)
-async fn has_source_files(dir: &Path) -> Result<bool, Error> {
-    let mut entries = fs::read_dir(dir).await?;
-    while let Some(entry) = entries.next_entry().await? {
-        let entry_path = entry.path();
-        if entry_path.is_dir() {
-            return Ok(true); // Any directory counts as source files
-        } else if entry_path.extension().is_none_or(|ext| ext != "star") {
-            return Ok(true); // Any non-.star file counts as source files
-        }
-    }
-    Ok(false)
 }
