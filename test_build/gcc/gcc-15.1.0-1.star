@@ -38,70 +38,55 @@ def build(ctx):
     # using local source for now
     copy(ctx)
 
-    # 3. Configure the build optimized for macOS ARM64
-    autotools(ctx, [
-        # === Core Dependencies ===
-        "--with-gmp=" + ctx.PREFIX,
-        "--with-mpfr=" + ctx.PREFIX,
-        "--with-mpc=" + ctx.PREFIX,
-        "--with-isl=" + ctx.PREFIX,
-        "--with-zstd=" + ctx.PREFIX,
+    # Apply the Darwin patch from Homebrew (required for macOS support)
+    apply_patch(ctx, "gcc-15.1.0-darwin.patch")
+    
+    # Set environment variables for the build
+    # Add rpath to help find libraries at runtime
+    set_env(ctx, "LDFLAGS", "-L" + ctx.PREFIX + "/lib -L/usr/lib -Wl,-rpath," + ctx.PREFIX + "/lib -Wl,-rpath,/usr/lib")
+    set_env(ctx, "CPPFLAGS", "-I" + ctx.PREFIX + "/include")
+    set_env(ctx, "DYLD_LIBRARY_PATH", ctx.PREFIX + "/lib:/usr/lib")
+    
+    # Also set BOOT_LDFLAGS for GCC's internal build process
+    set_env(ctx, "BOOT_LDFLAGS", "-Wl,-headerpad_max_install_names -Wl,-rpath," + ctx.PREFIX + "/lib -Wl,-rpath,/usr/lib")
 
-        # === Language Support ===
-        "--enable-languages=c,c++",  # Start with C/C++, add others as needed
+    # 3. Create build directory (GCC requires out-of-source builds)
+    command(ctx, ["mkdir", "-p", "build"])
 
-        # === ARM64 Architecture Optimization ===
-        "--target=aarch64-apple-darwin",  # Explicit target for ARM64 macOS
-        "--with-arch=armv8-a",           # ARMv8-A architecture
-        "--with-tune=generic",           # Generic tuning for broad compatibility
-        "--with-cpu=generic",            # Generic CPU setting
-
-        # === Build Configuration ===
-        "--enable-shared",               # Build shared libraries
-        "--disable-multilib",            # Single architecture (ARM64 only)
-        "--enable-threads=posix",        # POSIX threads support
-
-        # === Optimization and Performance ===
-        "--enable-lto",                  # Link-time optimization support
-        "--enable-plugin",               # Plugin support for LTO
-        "--enable-checking=release",     # Optimized checking for release builds
-
-        # === macOS Integration ===
-        "--with-system-zlib",            # Use macOS system zlib
-        "--enable-host-shared",          # Build host code with -fPIC for better shared lib support
-        "--disable-nls",                 # Disable Native Language Support for simpler build
-
-        # === Security Features ===
-        "--enable-default-pie",          # Position Independent Executables by default
-        "--enable-default-ssp",          # Stack Smashing Protection by default
-
-        # === Native Toolchain ===
-        # Let configure auto-detect macOS native assembler and linker
-        # No --with-gnu-as or --with-gnu-ld flags (use native tools)
-
-        # === Build Speed vs Quality Trade-off ===
-        "--enable-bootstrap",
-
-        # === Additional Optimizations ===
-        "--enable-__cxa_atexit",        # Use __cxa_atexit for C++ destructors
-        "--enable-clocale=generic",      # Generic C locale support
-        "--enable-gnu-unique-object",    # Enable gnu_unique_object relocation
-        "--enable-linker-build-id",      # Enable build-id in binaries
-        "--enable-plugin",               # Enable plugin support
-        "--enable-gold=default",         # Use gold linker when available
-
-        # === Disable Unnecessary Features ===
-        "--disable-libstdcxx-debug",     # Skip debug version of libstdc++
-        "--disable-libgomp",             # Skip OpenMP runtime (can enable if needed)
-        "--disable-libatomic",           # Skip atomic library (can enable if needed)
-        "--disable-libitm",              # Skip transactional memory library
-        "--disable-libsanitizer",        # Skip sanitizer runtimes initially
-
-        # === Set reasonable defaults ===
-        "--with-diagnostics-color=auto", # Colored diagnostics
-        "--enable-objc-gc=auto",         # Objective-C garbage collection (auto-detect)
-    ])
-
-    # 4. Optional: Install the package after building
-    # Uncomment the next line if you want automatic installation
-    # install(ctx)
+    # 4. Configure the build optimized for macOS ARM64
+    # Note: GCC on macOS requires specific handling
+    
+    # Build triple for Darwin (following Homebrew's approach)
+    build_triple = "aarch64-apple-darwin24"
+    
+    # Get SDK path
+    sdk_path = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+    
+    # Run configure from build directory with all options
+    configure_cmd = "cd build && ../configure " + \
+        "--prefix=" + ctx.PREFIX + " " + \
+        "--build=" + build_triple + " " + \
+        "--with-sysroot=" + sdk_path + " " + \
+        "--with-native-system-header-dir=/usr/include " + \
+        "--with-gmp=" + ctx.PREFIX + " " + \
+        "--with-mpfr=" + ctx.PREFIX + " " + \
+        "--with-mpc=" + ctx.PREFIX + " " + \
+        "--with-isl=" + ctx.PREFIX + " " + \
+        "--with-zstd=" + ctx.PREFIX + " " + \
+        "--enable-languages=c,c++,objc,obj-c++,fortran " + \
+        "--disable-multilib " + \
+        "--enable-checking=release " + \
+        "--with-gcc-major-version-only " + \
+        "--with-system-zlib " + \
+        "--disable-nls " + \
+        "--disable-bootstrap"
+    
+    command(ctx, ["sh", "-c", configure_cmd])
+    
+    # 5. Build GCC in the build directory
+    # Pass BOOT_LDFLAGS to ensure proper library paths during build
+    make_cmd = "cd build && make -j" + str(ctx.JOBS) + " BOOT_LDFLAGS='-Wl,-headerpad_max_install_names -Wl,-rpath," + ctx.PREFIX + "/lib -Wl,-rpath,/usr/lib'"
+    command(ctx, ["sh", "-c", make_cmd])
+    
+    # 6. Install GCC from the build directory
+    command(ctx, ["sh", "-c", "cd build && make install"])
