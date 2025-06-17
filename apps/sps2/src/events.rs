@@ -335,6 +335,15 @@ impl EventHandler {
                 self.show_status(&format!("Rolled back from {} to {}", from, to));
             }
 
+            // Warning events
+            Event::Warning { message, context } => {
+                if let Some(context) = context {
+                    self.show_warning(&format!("{}: {}", message, context));
+                } else {
+                    self.show_warning(&message);
+                }
+            }
+
             // Error events
             Event::Error { message, details } => {
                 if let Some(details) = details {
@@ -422,5 +431,13 @@ impl EventHandler {
     fn show_error(&self, message: &str) {
         // Use multi_progress to avoid interfering with progress bars
         self.multi_progress.println(message).unwrap_or(());
+    }
+
+    /// Show warning message
+    fn show_warning(&self, message: &str) {
+        // Use multi_progress to avoid interfering with progress bars
+        self.multi_progress
+            .println(format!("WARNING: {}", message))
+            .unwrap_or(());
     }
 }

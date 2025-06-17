@@ -3,7 +3,7 @@
 use crate::events::send_event;
 use crate::manifest::generate_sbom_and_manifest;
 use crate::packaging::create_and_sign_package;
-use crate::quality::run_quality_checks;
+use crate::post_validation::run_quality_pipeline;
 use crate::recipe::execute_recipe;
 use crate::{BuildConfig, BuildContext, BuildEnvironment, BuildResult};
 use sps2_errors::Error;
@@ -98,7 +98,7 @@ impl Builder {
             .await?;
 
         // Run quality checks
-        run_quality_checks(&context, &environment).await?;
+        run_quality_pipeline(&context, &environment).await?;
 
         // Generate SBOM and create manifest
         let (sbom_files, manifest) = generate_sbom_and_manifest(

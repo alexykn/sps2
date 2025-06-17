@@ -60,7 +60,7 @@ mod manifest;
 mod monitoring;
 mod orchestration;
 mod packaging;
-mod quality;
+pub mod post_validation;
 pub mod quality_assurance;
 mod recipe;
 mod sbom;
