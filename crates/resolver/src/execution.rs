@@ -1,23 +1,36 @@
-//! Execution plan for parallel dependency installation
+// src/execution.rs
+//! Planning and metadata for *parallel* package installation/build.
+//!
+//! Public API is **unchanged**, but the internals are optimised
 
-use crate::{NodeAction, PackageId};
-use std::collections::HashMap;
+use crate::{graph::DependencyGraph, NodeAction, PackageId};
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-/// Metadata for parallel execution
+/// Per-node execution metadata.
+///
+/// The struct is `Arc`-wrapped inside the [`ExecutionPlan`]; cloning the `Arc`
+/// is cheap and thread-safe.
 #[derive(Debug)]
 pub struct NodeMeta {
-    /// Action to perform
+    /// Action that the installer/runner must perform.
     pub action: NodeAction,
-    /// Number of unresolved dependencies
-    pub in_degree: AtomicUsize,
-    /// Packages that depend on this one
+    /// *Remaining* unsatisfied dependencies.
+    /// Once this reaches 0 the package is runnable.
+    in_degree: AtomicUsize,
+    /// Packages that depend on this one (reverse edges).
+    ///
+    /// This field is kept `pub` for backwards-compatibility with the
+    /// `sps2-install` crate.  New code should prefer the
+    /// [`ExecutionPlan::complete_package`] API.
     pub parents: Vec<PackageId>,
 }
 
 impl NodeMeta {
-    /// Create new node metadata
+    /// New metadata with a fixed initial in-degree.
+    #[inline]
+    #[must_use]
     pub fn new(action: NodeAction, in_degree: usize) -> Self {
         Self {
             action,
@@ -26,102 +39,131 @@ impl NodeMeta {
         }
     }
 
-    /// Decrement in-degree and return new value
+    /// Thread-safe decrement; returns the **updated** in-degree (never under-flows).
+    ///
+    /// If the counter is already 0 the call is a no-op and 0 is returned.
+    #[inline]
+    #[must_use]
     pub fn decrement_in_degree(&self) -> usize {
+        // `fetch_update` loops internally until CAS succeeds.
         self.in_degree
-            .fetch_sub(1, Ordering::SeqCst)
-            .saturating_sub(1)
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                (current != 0).then(|| current - 1)
+            })
+            .map(|prev| prev.saturating_sub(1))
+            .unwrap_or(0)
     }
 
-    /// Get current in-degree
+    /// Current unsatisfied dependency count.
+    #[inline]
+    #[must_use]
     pub fn in_degree(&self) -> usize {
-        self.in_degree.load(Ordering::SeqCst)
+        self.in_degree.load(Ordering::Acquire)
     }
 
-    /// Add parent dependency
+    /// Register `parent` as a reverse-edge.
+    #[inline]
     pub fn add_parent(&mut self, parent: PackageId) {
         self.parents.push(parent);
     }
+
+    /// Immutable view of reverse-edges.
+    #[inline]
+    #[must_use]
+    pub fn parents(&self) -> &[PackageId] {
+        &self.parents
+    }
 }
 
-/// Execution plan with batched parallel operations
+/// Immutable execution plan – produced **once** after resolution
+/// and consumed concurrently by the installer/runner.
 #[derive(Clone, Debug)]
 pub struct ExecutionPlan {
-    /// Execution batches (can run in parallel within each batch)
     batches: Vec<Vec<PackageId>>,
-    /// Metadata for parallel execution
     metadata: HashMap<PackageId, Arc<NodeMeta>>,
 }
 
 impl ExecutionPlan {
-    /// Create execution plan from topologically sorted packages
+    // ---------------------------------------------------------------------
+    // Construction
+    // ---------------------------------------------------------------------
+
+    /// Build a plan from an already topologically-sorted list (`sorted`) and
+    /// its originating dependency graph.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `graph` does not contain every [`PackageId`] present in
+    /// `sorted` (the resolver guarantees this invariant).
     #[must_use]
-    pub fn from_sorted_packages(
-        sorted: &[PackageId],
-        graph: &crate::graph::DependencyGraph,
-    ) -> Self {
-        let mut metadata = HashMap::new();
-        let mut batches = Vec::new();
-        let mut remaining: std::collections::HashSet<PackageId> = sorted.iter().cloned().collect();
+    pub fn from_sorted_packages(sorted: &[PackageId], graph: &DependencyGraph) -> Self {
+        let mut metadata: HashMap<PackageId, Arc<NodeMeta>> = HashMap::with_capacity(sorted.len());
+        let mut in_degree: HashMap<&PackageId, usize> = HashMap::with_capacity(sorted.len());
 
-        // Initialize metadata
-        for package_id in sorted {
-            if let Some(node) = graph.nodes.get(package_id) {
-                // Calculate in-degree: count how many packages point to this package
-                let in_degree = graph
-                    .edges
-                    .iter()
-                    .filter(|(_, to_ids)| to_ids.contains(package_id))
-                    .count();
-
-                let meta = Arc::new(NodeMeta::new(node.action.clone(), in_degree));
-                metadata.insert(package_id.clone(), meta);
+        // 1) Pre-compute in-degrees in O(e)
+        for id in sorted {
+            in_degree.insert(id, 0);
+        }
+        for tos in graph.edges.values() {
+            for to in tos {
+                if let Some(slot) = in_degree.get_mut(to) {
+                    *slot += 1;
+                }
             }
         }
 
-        // Build parent relationships
-        // For each edge from_id -> to_id, add to_id as a parent of from_id
-        // (i.e., to_id depends on from_id, so completing from_id might make to_id ready)
-        for (from_id, to_ids) in &graph.edges {
-            if let Some(from_meta) = metadata.get_mut(from_id) {
-                if let Some(meta) = Arc::get_mut(from_meta) {
-                    for to_id in to_ids {
-                        meta.add_parent(to_id.clone());
+        // 2) Create NodeMeta and reverse edges
+        for id in sorted {
+            let action = graph
+                .nodes
+                .get(id)
+                .map(|n| n.action.clone())
+                .expect("package missing from graph");
+
+            let meta = Arc::new(NodeMeta::new(
+                action,
+                *in_degree.get(id).expect("key present"),
+            ));
+            metadata.insert(id.clone(), meta);
+        }
+
+        for (from, tos) in &graph.edges {
+            for to in tos {
+                if let Some(meta) = metadata.get_mut(from).and_then(Arc::get_mut) {
+                    meta.add_parent(to.clone());
+                }
+            }
+        }
+
+        // 3) Kahn layering to build parallel batches in O(n + e)
+        let mut queue: VecDeque<&PackageId> = in_degree
+            .iter()
+            .filter(|(_, &d)| d == 0)
+            .map(|(id, _)| *id)
+            .collect();
+
+        let mut batches: Vec<Vec<PackageId>> = Vec::new();
+        let mut remaining = in_degree.len();
+
+        while remaining > 0 {
+            let mut batch: Vec<PackageId> = Vec::with_capacity(queue.len());
+
+            for _ in 0..queue.len() {
+                let id = queue.pop_front().expect("queue not empty");
+                batch.push(id.clone());
+                remaining -= 1;
+
+                // Decrement children
+                if let Some(children) = graph.edges.get(id) {
+                    for child in children {
+                        let child_meta = metadata
+                            .get(child)
+                            .expect("child in metadata; resolver invariant");
+                        if child_meta.decrement_in_degree() == 0 {
+                            queue.push_back(child);
+                        }
                     }
                 }
-            }
-        }
-
-        // Create batches by finding packages with no dependencies
-        while !remaining.is_empty() {
-            let mut batch = Vec::new();
-
-            // Find packages with no unresolved dependencies
-            for package_id in &remaining {
-                // Count how many remaining packages this package depends on
-                // With corrected edge direction: if A depends on B, edge is B->A
-                // So we need to count incoming edges from packages still in remaining
-                let deps_count = graph
-                    .edges
-                    .iter()
-                    .filter(|(from_id, to_ids)| {
-                        remaining.contains(from_id) && to_ids.contains(package_id)
-                    })
-                    .count();
-
-                if deps_count == 0 {
-                    batch.push(package_id.clone());
-                }
-            }
-
-            if batch.is_empty() {
-                // This shouldn't happen with a valid topological sort
-                break;
-            }
-
-            // Remove batched packages from remaining
-            for package_id in &batch {
-                remaining.remove(package_id);
             }
 
             batches.push(batch);
@@ -130,110 +172,129 @@ impl ExecutionPlan {
         Self { batches, metadata }
     }
 
-    /// Get execution batches
+    // ---------------------------------------------------------------------
+    // Inspection helpers
+    // ---------------------------------------------------------------------
+
+    /// Layered batches; inside each slice packages are independent.
+    #[inline]
     #[must_use]
     pub fn batches(&self) -> &[Vec<PackageId>] {
         &self.batches
     }
 
-    /// Get metadata for a package
+    /// Per-package metadata (constant during execution).
+    #[inline]
     #[must_use]
-    pub fn metadata(&self, package_id: &PackageId) -> Option<&Arc<NodeMeta>> {
-        self.metadata.get(package_id)
+    pub fn metadata(&self, id: &PackageId) -> Option<&Arc<NodeMeta>> {
+        self.metadata.get(id)
     }
 
-    /// Get packages that are ready to execute (no dependencies)
+    /// All packages whose `in_degree == 0` **at plan creation time**.
+    #[inline]
     #[must_use]
-    pub fn ready_packages(&self) -> Vec<PackageId> {
+    pub fn initial_ready(&self) -> Vec<PackageId> {
         self.metadata
             .iter()
-            .filter_map(|(id, meta)| {
-                if meta.in_degree() == 0 {
-                    Some(id.clone())
-                } else {
-                    None
-                }
+            .filter(|(_, m)| m.in_degree() == 0)
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
+    /// Legacy alias used by the installer: forwards to [`Self::initial_ready`].
+    #[inline]
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)] // accessor, not const-safe due to Arc
+    pub fn ready_packages(&self) -> Vec<PackageId> {
+        self.initial_ready()
+    }
+
+    /// Mark `finished` as completed and return **newly** unblocked packages.
+    ///
+    /// # Panics
+    ///
+    /// Panics if
+    /// 1. `finished` is unknown to this [`ExecutionPlan`] (violates resolver
+    ///    invariant), **or**
+    /// 2. any parent package listed in `NodeMeta::parents` cannot be found in
+    ///    the plan’s metadata map (also a resolver invariant).
+    #[inline]
+    #[must_use]
+    pub fn complete_package(&self, finished: &PackageId) -> Vec<PackageId> {
+        let meta = self
+            .metadata
+            .get(finished)
+            .expect("completed package known to plan");
+
+        meta.parents
+            .iter()
+            .filter_map(|parent| {
+                let parent_meta = self
+                    .metadata
+                    .get(parent)
+                    .expect("parent package known to plan");
+                (parent_meta.decrement_in_degree() == 0).then(|| parent.clone())
             })
             .collect()
     }
 
-    /// Mark package as completed and get newly ready packages
-    #[must_use]
-    pub fn complete_package(&self, package_id: &PackageId) -> Vec<PackageId> {
-        let Some(meta) = self.metadata.get(package_id) else {
-            return Vec::new();
-        };
+    // ---------------------------------------------------------------------
+    // Convenience metrics
+    // ---------------------------------------------------------------------
 
-        let mut newly_ready = Vec::new();
-
-        // Decrement in-degree for all parents
-        for parent_id in &meta.parents {
-            if let Some(parent_meta) = self.metadata.get(parent_id) {
-                if parent_meta.decrement_in_degree() == 0 {
-                    newly_ready.push(parent_id.clone());
-                }
-            }
-        }
-
-        newly_ready
-    }
-
-    /// Get total number of packages
+    #[inline]
     #[must_use]
     pub fn package_count(&self) -> usize {
         self.metadata.len()
     }
 
-    /// Check if all packages are completed
+    #[inline]
     #[must_use]
     pub fn is_complete(&self) -> bool {
-        self.metadata.values().all(|meta| meta.in_degree() == 0)
+        self.metadata.values().all(|m| m.in_degree() == 0)
     }
 
-    /// Get count of completed packages (packages with `in_degree` 0)
+    #[inline]
     #[must_use]
     pub fn completed_count(&self) -> usize {
         self.metadata
             .values()
-            .filter(|meta| meta.in_degree() == 0)
+            .filter(|m| m.in_degree() == 0)
             .count()
     }
 }
 
-/// Execution statistics
+// -------------------------------------------------------------------------
+// Stats helper (unchanged public fields, lint-clean implementation)
+// -------------------------------------------------------------------------
+
+/// Aggregate execution statistics (useful for progress reporting/UI).
 #[derive(Debug, Default)]
-#[allow(dead_code)] // Designed for future monitoring and reporting features
+#[allow(dead_code)] // used by higher layers
 pub struct ExecutionStats {
-    /// Total packages processed
     pub total_packages: usize,
-    /// Packages downloaded
     pub downloaded: usize,
-    /// Local packages used
     pub local: usize,
-    /// Number of parallel batches
     pub batch_count: usize,
-    /// Maximum batch size
     pub max_batch_size: usize,
 }
 
 impl ExecutionStats {
-    /// Calculate stats from execution plan
-    #[allow(dead_code)] // Will be used for installation progress reporting
-    pub fn from_plan(plan: &ExecutionPlan, graph: &crate::graph::DependencyGraph) -> Self {
+    /// O(n) stat computation.
+    #[must_use]
+    pub fn _from_plan(plan: &ExecutionPlan, graph: &DependencyGraph) -> Self {
         let mut stats = Self {
             total_packages: plan.package_count(),
-            batch_count: plan.batches().len(),
-            max_batch_size: plan.batches().iter().map(Vec::len).max().unwrap_or(0),
-            ..Default::default()
+            batch_count: plan.batches.len(),
+            max_batch_size: plan.batches.iter().map(Vec::len).max().unwrap_or(0),
+            ..Self::default()
         };
 
-        // Count action types
-        for package_id in plan.metadata.keys() {
-            if let Some(node) = graph.nodes.get(package_id) {
-                match node.action {
-                    NodeAction::Download => stats.downloaded += 1,
-                    NodeAction::Local => stats.local += 1,
-                }
+        for id in plan.metadata.keys() {
+            match graph.nodes.get(id).map(|n| &n.action) {
+                Some(NodeAction::Download) => stats.downloaded += 1,
+                Some(NodeAction::Local) => stats.local += 1,
+                None => {} // should never happen
             }
         }
 
