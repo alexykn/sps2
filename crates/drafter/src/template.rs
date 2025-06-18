@@ -17,7 +17,6 @@ struct TemplateContext {
 
     // Source information
     source_url: Option<String>,
-    source_hash: Option<String>,
     is_git_source: bool,
     git_ref: Option<String>,
 
@@ -42,7 +41,6 @@ pub fn render(
     metadata: &RecipeMetadata,
     build_info: &BuildInfo,
     source: &SourceLocation,
-    source_hash: Option<String>,
 ) -> Result<String> {
     // Create Tera instance with embedded template
     let mut tera = Tera::default();
@@ -54,7 +52,7 @@ pub fn render(
             message: format!("Failed to load template: {e}"),
         })?;
 
-    // Source hash is already determined by the caller
+    // No source hash - fetch() no longer requires validation
 
     // Determine if this is a git source
     let is_git_source = matches!(source, SourceLocation::Git(_));
@@ -70,7 +68,6 @@ pub fn render(
 
         // Source information
         source_url: extract_source_url(source),
-        source_hash,
         is_git_source,
         git_ref: if is_git_source {
             Some("HEAD".to_string())

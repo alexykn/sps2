@@ -28,7 +28,7 @@ def build(ctx):
     cleanup(ctx)
 
     # 2. Fetch the source code from the official mirror.
-    fetch(ctx, "https://libisl.sourceforge.io/isl-0.27.tar.bz2", "dc0c6f639e52d4567fd2539714befcf353b41f0e8360abf9949fcedd10933112")
+    fetch(ctx, "https://libisl.sourceforge.io/isl-0.27.tar.bz2")
 
     # 3. Configure, build, and stage the package using the autotools helper.
     autotools(ctx, [

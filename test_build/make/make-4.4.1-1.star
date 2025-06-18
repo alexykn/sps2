@@ -15,7 +15,7 @@ def build(ctx):
     cleanup(ctx)
 
     # 2. Fetch the source archive from the official GNU FTP server
-    fetch(ctx, "https://ftp.gnu.org/gnu/make/make-4.4.1.tar.gz", "a7d8aee97b7e9a525ef561afa84eea0d929f246e3aafa420231c0602151cf9eb")
+    fetch(ctx, "https://ftp.gnu.org/gnu/make/make-4.4.1.tar.gz")
     # 3. Force GCC to avoid clang issues
     set_env(ctx, "CC", "gcc")
     set_env(ctx, "CXX", "g++")

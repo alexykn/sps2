@@ -21,7 +21,10 @@ use std::sync::Arc;
 /// Trait for actual build operations that can be implemented by the builder crate
 #[async_trait::async_trait]
 pub trait BuildExecutor: Send + Sync + std::fmt::Debug {
-    async fn fetch(&mut self, url: &str, hash: &str) -> Result<PathBuf, Error>;
+    async fn fetch(&mut self, url: &str) -> Result<PathBuf, Error>;
+    async fn fetch_md5(&mut self, url: &str, expected_md5: &str) -> Result<PathBuf, Error>;
+    async fn fetch_sha256(&mut self, url: &str, expected_sha256: &str) -> Result<PathBuf, Error>;
+    async fn fetch_blake3(&mut self, url: &str, expected_blake3: &str) -> Result<PathBuf, Error>;
     async fn git(&mut self, url: &str, ref_: &str) -> Result<PathBuf, Error>;
     async fn make(&mut self, args: &[String]) -> Result<(), Error>;
     async fn install(&mut self) -> Result<(), Error>;
@@ -204,16 +207,56 @@ impl<'v> UnpackValue<'v> for BuildContext {
 #[allow(clippy::unnecessary_wraps)]
 pub fn build_context_functions(builder: &mut GlobalsBuilder) {
     /// Fetch a source archive
-    fn fetch<'v>(ctx: Value<'v>, url: &str, hash: Option<&str>) -> anyhow::Result<NoneType> {
+    fn fetch<'v>(ctx: Value<'v>, url: &str) -> anyhow::Result<NoneType> {
         // Unpack BuildContext from the Value
         let build_ctx = ctx
             .downcast_ref::<BuildContext>()
             .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
 
-        let blake3 = hash.unwrap_or("<blake3-placeholder>").to_string();
         build_ctx.add_step(BuildStep::Fetch {
             url: url.to_string(),
-            blake3,
+        });
+        Ok(NoneType)
+    }
+
+    /// Fetch a source archive with MD5 validation
+    fn fetch_md5<'v>(ctx: Value<'v>, url: &str, md5_hash: &str) -> anyhow::Result<NoneType> {
+        // Unpack BuildContext from the Value
+        let build_ctx = ctx
+            .downcast_ref::<BuildContext>()
+            .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
+
+        build_ctx.add_step(BuildStep::FetchMd5 {
+            url: url.to_string(),
+            md5: md5_hash.to_string(),
+        });
+        Ok(NoneType)
+    }
+
+    /// Fetch a source archive with SHA256 validation
+    fn fetch_sha256<'v>(ctx: Value<'v>, url: &str, sha256_hash: &str) -> anyhow::Result<NoneType> {
+        // Unpack BuildContext from the Value
+        let build_ctx = ctx
+            .downcast_ref::<BuildContext>()
+            .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
+
+        build_ctx.add_step(BuildStep::FetchSha256 {
+            url: url.to_string(),
+            sha256: sha256_hash.to_string(),
+        });
+        Ok(NoneType)
+    }
+
+    /// Fetch a source archive with BLAKE3 validation
+    fn fetch_blake3<'v>(ctx: Value<'v>, url: &str, blake3_hash: &str) -> anyhow::Result<NoneType> {
+        // Unpack BuildContext from the Value
+        let build_ctx = ctx
+            .downcast_ref::<BuildContext>()
+            .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
+
+        build_ctx.add_step(BuildStep::FetchBlake3 {
+            url: url.to_string(),
+            blake3: blake3_hash.to_string(),
         });
         Ok(NoneType)
     }

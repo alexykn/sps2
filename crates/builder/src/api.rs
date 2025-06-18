@@ -1,6 +1,8 @@
 //! Builder API for Starlark recipes
 
 use crate::{BuildCommandResult, BuildEnvironment};
+use md5::{Digest, Md5};
+use sha2::{Digest as Sha2Digest, Sha256};
 use sps2_errors::{BuildError, Error};
 use sps2_hash::Hash;
 use sps2_net::{NetClient, NetConfig};
@@ -65,7 +67,7 @@ impl BuilderApi {
         self.working_dir = new_working_dir;
     }
 
-    /// Download and verify a file
+    /// Download a file
     ///
     /// # Errors
     ///
@@ -73,8 +75,7 @@ impl BuilderApi {
     /// - Network access is disabled
     /// - The URL is invalid
     /// - The download fails
-    /// - The file hash doesn't match the expected hash
-    pub async fn fetch(&mut self, url: &str, expected_hash: &str) -> Result<PathBuf, Error> {
+    pub async fn fetch(&mut self, url: &str) -> Result<PathBuf, Error> {
         // Fetch operations always have network access - they're source fetching, not build operations
 
         // Check if already downloaded
@@ -103,23 +104,121 @@ impl BuilderApi {
             })?;
         fs::write(&download_path, &bytes).await?;
 
-        // Verify hash
-        let actual_hash = Hash::hash_file(&download_path).await?;
-        if actual_hash.to_hex() != expected_hash {
-            fs::remove_file(&download_path).await?;
-            return Err(BuildError::HashMismatch {
-                file: filename.to_string(),
-                expected: expected_hash.to_string(),
-                actual: actual_hash.to_hex(),
-            }
-            .into());
-        }
+        // No hash verification - files are downloaded without validation
 
         self.downloads
             .insert(url.to_string(), download_path.clone());
 
         // Automatically extract the downloaded archive
         self.extract_single_download(&download_path).await?;
+
+        Ok(download_path)
+    }
+
+    /// Download and verify a file with MD5 hash
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The URL is invalid
+    /// - The download fails
+    /// - The file hash doesn't match the expected MD5 hash
+    pub async fn fetch_md5(&mut self, url: &str, expected_md5: &str) -> Result<PathBuf, Error> {
+        let download_path = self.fetch(url).await?;
+
+        // Verify MD5 hash
+        let bytes = tokio::fs::read(&download_path).await?;
+        let mut hasher = Md5::new();
+        hasher.update(&bytes);
+        let actual_md5 = format!("{:x}", hasher.finalize());
+
+        if actual_md5.to_lowercase() != expected_md5.to_lowercase() {
+            tokio::fs::remove_file(&download_path).await?;
+            let filename = download_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown");
+            return Err(BuildError::HashMismatch {
+                file: filename.to_string(),
+                expected: expected_md5.to_string(),
+                actual: actual_md5,
+            }
+            .into());
+        }
+
+        Ok(download_path)
+    }
+
+    /// Download and verify a file with SHA256 hash
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The URL is invalid
+    /// - The download fails
+    /// - The file hash doesn't match the expected SHA256 hash
+    pub async fn fetch_sha256(
+        &mut self,
+        url: &str,
+        expected_sha256: &str,
+    ) -> Result<PathBuf, Error> {
+        let download_path = self.fetch(url).await?;
+
+        // Verify SHA256 hash
+        let bytes = tokio::fs::read(&download_path).await?;
+        let mut hasher = Sha256::new();
+        Sha2Digest::update(&mut hasher, &bytes);
+        let actual_sha256 = format!("{:x}", hasher.finalize());
+
+        if actual_sha256.to_lowercase() != expected_sha256.to_lowercase() {
+            tokio::fs::remove_file(&download_path).await?;
+            let filename = download_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown");
+            return Err(BuildError::HashMismatch {
+                file: filename.to_string(),
+                expected: expected_sha256.to_string(),
+                actual: actual_sha256,
+            }
+            .into());
+        }
+
+        Ok(download_path)
+    }
+
+    /// Download and verify a file with BLAKE3 hash
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The URL is invalid
+    /// - The download fails
+    /// - The file hash doesn't match the expected BLAKE3 hash
+    pub async fn fetch_blake3(
+        &mut self,
+        url: &str,
+        expected_blake3: &str,
+    ) -> Result<PathBuf, Error> {
+        let download_path = self.fetch(url).await?;
+
+        // Verify BLAKE3 hash
+        let actual_hash = Hash::hash_file(&download_path).await?;
+        let actual_blake3 = actual_hash.to_hex();
+
+        if actual_blake3.to_lowercase() != expected_blake3.to_lowercase() {
+            tokio::fs::remove_file(&download_path).await?;
+            let filename = download_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown");
+            return Err(BuildError::HashMismatch {
+                file: filename.to_string(),
+                expected: expected_blake3.to_string(),
+                actual: actual_blake3,
+            }
+            .into());
+        }
 
         Ok(download_path)
     }

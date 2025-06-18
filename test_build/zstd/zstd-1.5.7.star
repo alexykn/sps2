@@ -12,7 +12,7 @@ def build(ctx):
     # Clean up any leftover files from previous builds
     cleanup(ctx)
     # Download source
-    fetch(ctx, "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz", "730dca31244abd219e995f03a55d95b2cfb4b3e16cda055a79fa6f30a4f0e1db")
+    fetch(ctx, "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz")
 
     # Build using make (preferred method according to zstd docs)
     # The make() function automatically handles parallel jobs and prefix configuration

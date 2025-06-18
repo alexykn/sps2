@@ -64,6 +64,17 @@ pub struct RecipeMetadata {
 pub enum BuildStep {
     Fetch {
         url: String,
+    },
+    FetchMd5 {
+        url: String,
+        md5: String,
+    },
+    FetchSha256 {
+        url: String,
+        sha256: String,
+    },
+    FetchBlake3 {
+        url: String,
         blake3: String,
     },
     Extract,

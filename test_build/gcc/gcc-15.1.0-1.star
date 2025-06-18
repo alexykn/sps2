@@ -32,8 +32,7 @@ def build(ctx):
     cleanup(ctx)
 
     # 2. Fetch the source archive from the official GNU FTP server
-    #fetch(ctx, "https://ftp.gnu.org/gnu/gcc/gcc-15.1.0/gcc-15.1.0.tar.gz",
-    #      "237f49dc296fce30af526426c06906bb1e774b0ec08b75aa4caef04442167f90")
+    #fetch(ctx, "https://ftp.gnu.org/gnu/gcc/gcc-15.1.0/gcc-15.1.0.tar.gz")
 
     # using local source for now
     copy(ctx)

@@ -22,7 +22,7 @@ def build(ctx):
     cleanup(ctx)
 
     # 2. Fetch the source code from the official GNU FTP server.
-    fetch(ctx, "https://ftp.gnu.org/gnu/m4/m4-1.4.20.tar.gz", "02f8c3df3c3f095e251165e4820528c653b700e8a7c36e276c4ac5fe3cd37d8e")
+    fetch(ctx, "https://ftp.gnu.org/gnu/m4/m4-1.4.20.tar.gz")
 
     # 3. Configure, build, and stage the package. M4 has a standard
     # autotools build process with no special flags required.

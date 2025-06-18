@@ -37,11 +37,11 @@ impl SourceLocation {
 
 /// Prepare source directory from various source locations
 ///
-/// Returns (optional temp dir to keep alive, actual source directory path, optional archive hash)
+/// Returns (optional temp dir to keep alive, actual source directory path)
 pub async fn prepare(
     source: &SourceLocation,
     event_tx: Option<&sps2_events::EventSender>,
-) -> Result<(Option<TempDir>, PathBuf, Option<String>)> {
+) -> Result<(Option<TempDir>, PathBuf)> {
     match source {
         SourceLocation::Local(path) => prepare_local(path),
         SourceLocation::Git(url) => prepare_git(url, event_tx).await,
@@ -51,7 +51,7 @@ pub async fn prepare(
 }
 
 /// Prepare from local directory
-fn prepare_local(path: &Path) -> Result<(Option<TempDir>, PathBuf, Option<String>)> {
+fn prepare_local(path: &Path) -> Result<(Option<TempDir>, PathBuf)> {
     if !path.exists() {
         return Err(BuildError::DraftSourceFailed {
             message: format!("Local path does not exist: {}", path.display()),
@@ -66,14 +66,14 @@ fn prepare_local(path: &Path) -> Result<(Option<TempDir>, PathBuf, Option<String
         .into());
     }
 
-    Ok((None, path.to_path_buf(), None))
+    Ok((None, path.to_path_buf()))
 }
 
 /// Prepare from git repository
 async fn prepare_git(
     url: &str,
     event_tx: Option<&sps2_events::EventSender>,
-) -> Result<(Option<TempDir>, PathBuf, Option<String>)> {
+) -> Result<(Option<TempDir>, PathBuf)> {
     // Send progress event
     if let Some(tx) = event_tx {
         let _ = tx.send(sps2_events::Event::OperationStarted {
@@ -119,14 +119,14 @@ async fn prepare_git(
         .into());
     }
 
-    Ok((Some(temp_dir), repo_path, None))
+    Ok((Some(temp_dir), repo_path))
 }
 
 /// Prepare from URL download
 async fn prepare_url(
     url: &str,
     event_tx: Option<&sps2_events::EventSender>,
-) -> Result<(Option<TempDir>, PathBuf, Option<String>)> {
+) -> Result<(Option<TempDir>, PathBuf)> {
     // Send progress event
     if let Some(tx) = event_tx {
         let _ = tx.send(sps2_events::Event::OperationStarted {
@@ -156,12 +156,7 @@ async fn prepare_url(
     })?;
     tokio::fs::write(&download_path, &bytes).await?;
 
-    // Hash the downloaded archive
-    let hash = sps2_hash::Hash::hash_file(&download_path)
-        .await
-        .map_err(|e| BuildError::DraftSourceFailed {
-            message: format!("Failed to hash downloaded file: {e}"),
-        })?;
+    // No hash calculation needed - files are downloaded without validation
 
     // Extract the archive
     let extract_dir = temp_dir.path().join("extracted");
@@ -171,14 +166,14 @@ async fn prepare_url(
     // Find the actual source directory (might be nested)
     let source_dir = find_source_root(&extract_dir).await?;
 
-    Ok((Some(temp_dir), source_dir, Some(hash.to_hex())))
+    Ok((Some(temp_dir), source_dir))
 }
 
 /// Prepare from local archive
 async fn prepare_archive(
     path: &Path,
     event_tx: Option<&sps2_events::EventSender>,
-) -> Result<(Option<TempDir>, PathBuf, Option<String>)> {
+) -> Result<(Option<TempDir>, PathBuf)> {
     if !path.exists() {
         return Err(BuildError::DraftSourceFailed {
             message: format!("Archive file does not exist: {}", path.display()),
@@ -197,13 +192,7 @@ async fn prepare_archive(
         message: format!("Failed to create temp directory: {e}"),
     })?;
 
-    // Hash the archive file
-    let hash =
-        sps2_hash::Hash::hash_file(path)
-            .await
-            .map_err(|e| BuildError::DraftSourceFailed {
-                message: format!("Failed to hash archive file: {e}"),
-            })?;
+    // No hash calculation needed - archives are processed without validation
 
     let extract_dir = temp_dir.path().to_path_buf();
     crate::archive::extract(path, &extract_dir).await?;
@@ -211,7 +200,7 @@ async fn prepare_archive(
     // Find the actual source directory (might be nested)
     let source_dir = find_source_root(&extract_dir).await?;
 
-    Ok((Some(temp_dir), source_dir, Some(hash.to_hex())))
+    Ok((Some(temp_dir), source_dir))
 }
 
 /// Find the actual source root within an extracted directory

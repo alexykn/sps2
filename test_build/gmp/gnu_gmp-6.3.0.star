@@ -24,7 +24,7 @@ def build(ctx):
     cleanup(ctx)
 
     # 2. Fetch the source code from the official GMP website.
-    fetch(ctx, "https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz", "fffe4996713928ae19331c8ef39129e46d3bf5b7182820656fd4639435cd83a4")
+    fetch(ctx, "https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz")
 
     # 3. Configure, build, and stage the package using the autotools helper.
     # The `autotools` function runs the full `./configure && make && make install` workflow.

@@ -37,8 +37,20 @@ impl StarlarkBridge {
 
 #[async_trait::async_trait]
 impl BuildExecutor for StarlarkBridge {
-    async fn fetch(&mut self, url: &str, hash: &str) -> Result<PathBuf, Error> {
-        self.api.fetch(url, hash).await
+    async fn fetch(&mut self, url: &str) -> Result<PathBuf, Error> {
+        self.api.fetch(url).await
+    }
+
+    async fn fetch_md5(&mut self, url: &str, expected_md5: &str) -> Result<PathBuf, Error> {
+        self.api.fetch_md5(url, expected_md5).await
+    }
+
+    async fn fetch_sha256(&mut self, url: &str, expected_sha256: &str) -> Result<PathBuf, Error> {
+        self.api.fetch_sha256(url, expected_sha256).await
+    }
+
+    async fn fetch_blake3(&mut self, url: &str, expected_blake3: &str) -> Result<PathBuf, Error> {
+        self.api.fetch_blake3(url, expected_blake3).await
     }
 
     async fn git(&mut self, url: &str, ref_: &str) -> Result<PathBuf, Error> {

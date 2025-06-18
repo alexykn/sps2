@@ -20,7 +20,7 @@ def build(ctx):
     git(ctx, "{{ source_url }}", "{{ git_ref | default(value='HEAD') }}")
     {%- else %}
     # Download source
-    fetch(ctx, "{{ source_url }}", "{{ source_hash | default(value='TODO_CALCULATE_HASH') }}")
+    fetch(ctx, "{{ source_url }}")
     {%- endif %}
     {%- endif %}
 

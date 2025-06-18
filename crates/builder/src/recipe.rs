@@ -109,16 +109,82 @@ async fn execute_build_step(
     environment: &mut BuildEnvironment,
 ) -> Result<(), Error> {
     match step {
-        BuildStep::Fetch { url, blake3 } => {
-            api.fetch(url, blake3).await?;
+        // Fetch operations
+        BuildStep::Fetch { url } => {
+            api.fetch(url).await?;
+        }
+        BuildStep::FetchMd5 { url, md5 } => {
+            api.fetch_md5(url, md5).await?;
+        }
+        BuildStep::FetchSha256 { url, sha256 } => {
+            api.fetch_sha256(url, sha256).await?;
+        }
+        BuildStep::FetchBlake3 { url, blake3 } => {
+            api.fetch_blake3(url, blake3).await?;
         }
         BuildStep::Extract => {
-            // Extract is handled automatically after fetch
             api.extract_downloads().await?;
         }
         BuildStep::Git { url, ref_ } => {
             api.git(url, ref_).await?;
         }
+
+        // Build system operations
+        step if matches!(
+            step,
+            BuildStep::Configure { .. }
+                | BuildStep::Make { .. }
+                | BuildStep::Autotools { .. }
+                | BuildStep::Cmake { .. }
+                | BuildStep::Meson { .. }
+                | BuildStep::Cargo { .. }
+                | BuildStep::Go { .. }
+                | BuildStep::Python { .. }
+                | BuildStep::NodeJs { .. }
+        ) =>
+        {
+            execute_build_system_step(step, api, environment).await?;
+        }
+
+        // Basic operations
+        BuildStep::Install => {
+            api.install(environment).await?;
+        }
+        BuildStep::ApplyPatch { path } => {
+            api.apply_patch(Path::new(path), environment).await?;
+        }
+        BuildStep::Command { program, args } => {
+            execute_command_step(program, args, api, environment).await?;
+        }
+        BuildStep::SetEnv { key, value } => {
+            environment.set_env_var(key.clone(), value.clone())?;
+        }
+        BuildStep::AllowNetwork { enabled } => {
+            let _result = api.allow_network(*enabled);
+        }
+        BuildStep::Cleanup => {
+            cleanup_staging_directory(environment).await?;
+        }
+        BuildStep::Copy { src_path } => {
+            api.copy(src_path.as_deref(), &environment.context).await?;
+        }
+
+        // Advanced features
+        _ => {
+            execute_advanced_step(step, api, environment).await?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Execute build system specific steps
+async fn execute_build_system_step(
+    step: &BuildStep,
+    api: &mut BuilderApi,
+    environment: &mut BuildEnvironment,
+) -> Result<(), Error> {
+    match step {
         BuildStep::Configure { args } => {
             api.configure(args, environment).await?;
         }
@@ -146,38 +212,31 @@ async fn execute_build_step(
         BuildStep::NodeJs { args } => {
             api.nodejs(args, environment).await?;
         }
-        BuildStep::Install => {
-            api.install(environment).await?;
-        }
-        BuildStep::ApplyPatch { path } => {
-            api.apply_patch(Path::new(path), environment).await?;
-        }
-        BuildStep::Command { program, args } => {
-            execute_command_step(program, args, api, environment).await?;
-        }
-        BuildStep::SetEnv { key, value } => {
-            environment.set_env_var(key.clone(), value.clone())?;
-        }
-        BuildStep::AllowNetwork { enabled } => {
-            let _result = api.allow_network(*enabled);
-        }
-        // New build system detection
+        _ => unreachable!("Only build system steps should be passed to this function"),
+    }
+    Ok(())
+}
+
+/// Execute advanced features and experimental steps
+async fn execute_advanced_step(
+    step: &BuildStep,
+    api: &mut BuilderApi,
+    environment: &mut BuildEnvironment,
+) -> Result<(), Error> {
+    match step {
+        // Build system detection
         BuildStep::DetectBuildSystem => {
             // TODO: Implement build system detection
-            // For now, just log it as a no-op
         }
         BuildStep::SetBuildSystem { name: _ } => {
             // TODO: Store build system preference
-            // For now, just log it as a no-op
         }
         // Feature flags
         BuildStep::EnableFeature { name: _ } => {
             // TODO: Enable feature in build context
-            // For now, just log it as a no-op
         }
         BuildStep::DisableFeature { name: _ } => {
             // TODO: Disable feature in build context
-            // For now, just log it as a no-op
         }
         BuildStep::WithFeatures { features: _, steps } => {
             execute_conditional_steps(steps, api, environment).await?;
@@ -191,25 +250,20 @@ async fn execute_build_step(
         }
         BuildStep::OnError { handler: _ } => {
             // TODO: Register error handler
-            // For now, just log it as a no-op
         }
         BuildStep::Checkpoint { name: _ } => {
             // TODO: Create checkpoint for recovery
-            // For now, just log it as a no-op
         }
         // Cross-compilation
         BuildStep::SetTarget { triple: _ } => {
             // TODO: Configure cross-compilation target
-            // For now, just log it as a no-op
         }
         BuildStep::SetToolchain { name: _, path: _ } => {
             // TODO: Configure toolchain component
-            // For now, just log it as a no-op
         }
         // Parallel execution
         BuildStep::SetParallelism { jobs: _ } => {
             // TODO: Update parallelism level
-            // For now, just log it as a no-op
         }
         BuildStep::ParallelSteps { steps } => {
             execute_parallel_steps(steps, api, environment).await?;
@@ -219,18 +273,11 @@ async fn execute_build_step(
             memory_mb: _,
         } => {
             // TODO: Set resource hints for scheduler
-            // For now, just log it as a no-op
         }
-        BuildStep::Cleanup => {
-            // Clean up the staging directory
-            cleanup_staging_directory(environment).await?;
-        }
-        BuildStep::Copy { src_path } => {
-            // Copy source files from recipe directory to working directory
-            api.copy(src_path.as_deref(), &environment.context).await?;
+        _ => {
+            // This should not happen if the main match is correct
         }
     }
-
     Ok(())
 }
 

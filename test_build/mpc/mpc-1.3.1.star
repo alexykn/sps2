@@ -27,7 +27,7 @@ def build(ctx):
     cleanup(ctx)
 
     # 2. Fetch the source code from the official GNU FTP server.
-    fetch(ctx, "https://ftp.gnu.org/gnu/mpc/mpc-1.3.1.tar.gz", "86d083c43c08e98d4470c006a01e0df727c8ff56ddd2956b170566ba8c9a46de")
+    fetch(ctx, "https://ftp.gnu.org/gnu/mpc/mpc-1.3.1.tar.gz")
 
     # 3. Configure, build, and stage the package using the autotools helper.
     autotools(ctx, [

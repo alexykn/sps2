@@ -25,7 +25,7 @@ def build(ctx):
     cleanup(ctx)
 
     # 2. Fetch the source code from the official MPFR website.
-    fetch(ctx, "https://www.mpfr.org/mpfr-current/mpfr-4.2.2.tar.gz", "bbcf3bda14e2c10203a0f266efba71507bc7c94f863a8a30b3120405cb41d7d8")
+    fetch(ctx, "https://www.mpfr.org/mpfr-current/mpfr-4.2.2.tar.gz")
 
     # 3. Configure, build, and stage the package using the autotools helper.
     autotools(ctx, [

@@ -30,7 +30,7 @@ def build(ctx):
     cleanup(ctx)
 
     # 2. Fetch the source code from the official Git repository
-    fetch(ctx, "https://github.com/curl/curl/releases/download/curl-8_14_1/curl-8.14.1.tar.bz2", "11afb4250beeda00a1c6d00d12374da703d8bc367d292fd4d00da74aa4f84790")
+    fetch(ctx, "https://github.com/curl/curl/releases/download/curl-8_14_1/curl-8.14.1.tar.bz2")
 
     # 3. Configure the build using CMake.
     # The sps2 `cmake` function handles the complete configure, build,

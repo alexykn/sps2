@@ -491,10 +491,11 @@ set_resource_hints(ctx, cpu=8, memory_mb=16384)  # Both hints
 2. **Minimal manual commands** - The builder handles packaging automatically. Avoid manual `mkdir`, `cp`, `mv` commands.
 3. **Always cleanup first** - Start with `cleanup(ctx)` to ensure a clean build environment.
 4. **Use git when possible** - `git()` is preferred over `fetch()` for better reproducibility.
-5. **Enable network judiciously** - Only enable network when needed for dependency downloads.
-6. **No prefix configuration needed** - The builder automatically configures the correct prefix for all build systems.
-7. **No direct file manipulation** - Let the build systems handle file installation.
-8. **install() is optional** - Only use if you want automatic installation after build.
+5. **Hash validation is optional** - Use `fetch()` for convenience or `fetch_md5()`, `fetch_sha256()`, `fetch_blake3()` when hash validation is needed.
+6. **Enable network judiciously** - Only enable network when needed for dependency downloads.
+7. **No prefix configuration needed** - The builder automatically configures the correct prefix for all build systems.
+8. **No direct file manipulation** - Let the build systems handle file installation.
+9. **install() is optional** - Only use if you want automatic installation after build.
 
 ## Build Systems Implementation Status
 
@@ -512,7 +513,7 @@ set_resource_hints(ctx, cpu=8, memory_mb=16384)  # Both hints
 
 1. Use `sps2 draft` to generate initial recipes from source repositories
 2. Start builds with `cleanup(ctx)`
-3. Use `git()` or `fetch()` to get source
+3. Use `git()` or `fetch()` to get source (or `fetch_md5()`, `fetch_sha256()`, `fetch_blake3()` for hash validation)
 4. Enable network if needed with `allow_network(ctx, True)`
 5. Call the appropriate build system function
 6. Let the builder handle packaging automatically

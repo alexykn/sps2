@@ -12,7 +12,7 @@ def build(ctx):
     cleanup(ctx)
     # Download source
     # TODO: Replace with actual BLAKE3 hash after verification
-    fetch(ctx, "https://ftp.gnu.org/gnu/ncurses/ncurses-6.5.tar.gz", "9b92fc2351e0bccaf0943069e8bfb0286613ebd0c0787edc78442e3bb1b37e23")
+    fetch(ctx, "https://ftp.gnu.org/gnu/ncurses/ncurses-6.5.tar.gz")
     extract(ctx)
 
     # Build using autotools build system

@@ -24,7 +24,7 @@ def build(ctx):
     cleanup(ctx)
 
     # 2. Fetch the source code from the GNU FTP server.
-    fetch(ctx, "https://ftp.gnu.org/gnu/binutils/binutils-2.44.tar.gz", "c7808a2027fb40e616c10b4673dac0ad57f043be4166e7700df780c613005b55")
+    fetch(ctx, "https://ftp.gnu.org/gnu/binutils/binutils-2.44.tar.gz")
 
     # 3. Configure the build using the autotools helper with standard flags.
     autotools(ctx, [
