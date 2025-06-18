@@ -17,6 +17,10 @@ def metadata():
             "openssl",
             "zlib",
             "nghttp2",
+            "brotli",
+            "libssh2",
+            "libidn2",
+            "libpsl",
         ],
         "build_depends": []
     }
@@ -47,6 +51,10 @@ def build(ctx):
         "-DCURL_ZLIB=ON",
         "-DUSE_NGHTTP2=ON",      # For HTTP/2 support
         "-DENABLE_IPV6=ON",      # Enable IPv6 support
+        "-DCURL_USE_LIBSSH2=ON", # SSH support
+        "-DUSE_LIBIDN2=ON",      # International domain names
+        "-DCURL_BROTLI=ON",      # Brotli compression
+        "-DCURL_USE_LIBPSL=ON",  # Public suffix list
 
         # Disable features not typically needed for a runtime package
         "-DBUILD_TESTING=OFF",
