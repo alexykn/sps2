@@ -224,4 +224,104 @@ impl BuildEnvironment {
         // Note: We don't set LD_LIBRARY_PATH or DYLD_LIBRARY_PATH as they're
         // considered dangerous for isolation and are runtime variables, not build-time
     }
+
+    /// Apply default compiler flags for optimization and security
+    ///
+    /// This method sets recommended compiler flags for macOS ARM64 builds.
+    /// It preserves existing flags while adding optimizations.
+    pub fn apply_default_compiler_flags(&mut self) {
+        // Detect target architecture
+        let arch = std::env::consts::ARCH;
+        let is_arm64 = arch == "aarch64";
+        let is_macos = cfg!(target_os = "macos");
+
+        // Base C/C++ optimization flags
+        let mut base_cflags = vec![
+            "-O2",                      // Standard optimization level
+            "-pipe",                    // Use pipes instead of temp files
+            "-fstack-protector-strong", // Stack protection for security
+        ];
+
+        // Architecture-specific optimizations for Apple Silicon
+        if is_arm64 && is_macos {
+            // Use apple-m1 as a baseline for all Apple Silicon
+            // This is compatible with M1, M2, M3, and newer
+            base_cflags.extend(&[
+                "-mcpu=apple-m1", // Target Apple Silicon baseline
+                "-mtune=native",  // Tune for the build machine
+            ]);
+        }
+
+        // Merge C flags with existing ones
+        self.merge_compiler_flags("CFLAGS", &base_cflags);
+        self.merge_compiler_flags("CXXFLAGS", &base_cflags);
+
+        // Linker flags for macOS
+        if is_macos {
+            let linker_flags = vec![
+                "-Wl,-dead_strip", // Remove unused code
+            ];
+            self.merge_compiler_flags("LDFLAGS", &linker_flags);
+        }
+
+        // Rust-specific optimizations
+        if is_arm64 && is_macos {
+            // Set RUSTFLAGS for cargo builds
+            let rust_flags = ["-C", "target-cpu=apple-m1", "-C", "opt-level=2"];
+            let rust_flags_str = rust_flags.join(" ");
+
+            if let Some(existing) = self.env_vars.get("RUSTFLAGS") {
+                if !existing.is_empty() {
+                    self.env_vars.insert(
+                        "RUSTFLAGS".to_string(),
+                        format!("{} {}", rust_flags_str, existing),
+                    );
+                } else {
+                    self.env_vars
+                        .insert("RUSTFLAGS".to_string(), rust_flags_str);
+                }
+            } else {
+                self.env_vars
+                    .insert("RUSTFLAGS".to_string(), rust_flags_str);
+            }
+        }
+
+        // Go-specific optimizations
+        if is_arm64 && is_macos {
+            // CGO flags inherit from CFLAGS/LDFLAGS automatically
+            // but we can set explicit Go flags
+            self.env_vars
+                .insert("GOFLAGS".to_string(), "-buildmode=pie".to_string());
+        }
+
+        // Python-specific architecture flag
+        if is_arm64 && is_macos {
+            self.env_vars
+                .insert("ARCHFLAGS".to_string(), "-arch arm64".to_string());
+        }
+
+        // CMake-specific variables (will be picked up by CMake build system)
+        if is_arm64 && is_macos {
+            self.env_vars
+                .insert("CMAKE_OSX_ARCHITECTURES".to_string(), "arm64".to_string());
+        }
+    }
+
+    /// Helper to merge compiler flags without duplicating
+    fn merge_compiler_flags(&mut self, var_name: &str, new_flags: &[&str]) {
+        let existing = self.env_vars.get(var_name).cloned().unwrap_or_default();
+
+        // Convert new flags to string
+        let new_flags_str = new_flags.join(" ");
+
+        // Merge with existing flags
+        let merged = if existing.is_empty() {
+            new_flags_str
+        } else {
+            // Prepend optimization flags so user flags can override
+            format!("{} {}", new_flags_str, existing)
+        };
+
+        self.env_vars.insert(var_name.to_string(), merged);
+    }
 }

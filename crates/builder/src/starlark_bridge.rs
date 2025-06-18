@@ -116,4 +116,10 @@ impl BuildExecutor for StarlarkBridge {
         self.api.copy(src_path, &self.env.context).await?;
         Ok(())
     }
+
+    async fn with_defaults(&mut self) -> Result<(), Error> {
+        // Apply default compiler flags to the build environment
+        self.env.apply_default_compiler_flags();
+        Ok(())
+    }
 }

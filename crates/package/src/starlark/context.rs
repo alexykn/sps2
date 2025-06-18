@@ -38,6 +38,7 @@ pub trait BuildExecutor: Send + Sync + std::fmt::Debug {
     async fn nodejs(&mut self, args: &[String]) -> Result<(), Error>;
     async fn apply_patch(&mut self, patch_path: &Path) -> Result<(), Error>;
     async fn copy(&mut self, src_path: Option<&str>) -> Result<(), Error>;
+    async fn with_defaults(&mut self) -> Result<(), Error>;
 }
 
 /// Build context exposed to Starlark recipes
@@ -450,6 +451,25 @@ pub fn build_context_functions(builder: &mut GlobalsBuilder) {
         build_ctx.add_step(BuildStep::Copy {
             src_path: src_path.map(str::to_string),
         });
+        Ok(NoneType)
+    }
+
+    /// Apply sps2 recommended compiler flags and environment variables for macOS ARM64
+    ///
+    /// This function sets optimized compiler flags based on the target architecture and
+    /// build system. It's optional but recommended for performance and security.
+    ///
+    /// Example:
+    ///   with_defaults(ctx)  # Apply recommended flags
+    ///   fetch(ctx, "https://example.com/source.tar.gz")
+    ///   cmake(ctx, [])
+    fn with_defaults<'v>(ctx: Value<'v>) -> anyhow::Result<NoneType> {
+        // Unpack BuildContext from the Value
+        let build_ctx = ctx
+            .downcast_ref::<BuildContext>()
+            .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
+
+        build_ctx.add_step(BuildStep::WithDefaults);
         Ok(NoneType)
     }
 }

@@ -159,6 +159,9 @@ async fn execute_build_step(
         BuildStep::SetEnv { key, value } => {
             environment.set_env_var(key.clone(), value.clone())?;
         }
+        BuildStep::WithDefaults => {
+            environment.apply_default_compiler_flags();
+        }
         BuildStep::AllowNetwork { enabled } => {
             let _result = api.allow_network(*enabled);
         }

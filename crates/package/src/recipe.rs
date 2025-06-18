@@ -123,6 +123,7 @@ pub enum BuildStep {
         key: String,
         value: String,
     },
+    WithDefaults,
     Install,
     // New build system detection
     DetectBuildSystem,

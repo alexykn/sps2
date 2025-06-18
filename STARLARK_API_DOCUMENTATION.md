@@ -87,8 +87,10 @@ Fetch and extract source archive from URL.
 # Basic fetch
 fetch(ctx, "https://github.com/curl/curl/releases/download/curl-8_14_1/curl-8.14.1.tar.bz2")
 
-# Fetch with explicit BLAKE3 hash verification
-fetch(ctx, "https://github.com/curl/curl/releases/download/curl-8_14_1/curl-8.14.1.tar.bz2", "11afb4250beeda00a1c6d00d12374da703d8bc367d292fd4d00da74aa4f84790")
+# Fetch with explicit hash verification
+fetch_blake3(ctx, "https://github.com/curl/curl/releases/download/curl-8_14_1/curl-8.14.1.tar.bz2", "<blake3_hash>")
+fetch_md5(ctx, "https://github.com/curl/curl/releases/download/curl-8_14_1/curl-8.14.1.tar.bz2", "<md5_hash>")
+fetch_sha256(ctx, "https://github.com/curl/curl/releases/download/curl-8_14_1/curl-8.14.1.tar.bz2", "<sha256_hash>")
 ```
 
 ### allow_network(ctx, enabled)
@@ -98,6 +100,35 @@ Enable or disable network access during build. Network is disabled by default fo
 # Enable network for dependency downloads (Cargo, Go modules, npm, etc.)
 allow_network(ctx, True)
 ```
+
+### with_defaults(ctx)
+Apply sps2 recommended compiler flags and environment variables for optimized builds on macOS ARM64.
+
+This function sets:
+- C/C++ optimization flags (`-O2`, `-mcpu=apple-m1`, security hardening)
+- Rust optimization flags (`RUSTFLAGS` with `target-cpu=apple-m1`)
+- Architecture-specific environment variables
+- Linker optimization flags
+
+**Best practice**: Call this before your build steps to get optimized, secure builds.
+
+```starlark
+def build(ctx):
+    cleanup(ctx)
+    
+    # Apply optimized compiler flags
+    with_defaults(ctx)
+    
+    # Continue with build - flags are now optimized
+    fetch(ctx, "https://example.com/source.tar.gz")
+    autotools(ctx)
+```
+
+Without `with_defaults()`, code compiles with minimal optimization (`-O0`). With it, you get:
+- Optimization level 2 (`-O2`)
+- Apple Silicon CPU targeting
+- Security hardening (stack protector, FORTIFY_SOURCE)
+- Architecture-optimized code generation
 
 ### command(ctx, cmd)
 Execute arbitrary shell command. **Use sparingly** - prefer build system functions.

@@ -25,7 +25,7 @@ sps2-store = { path = "../../crates/store" }
 sps2-index = { path = "../../crates/index" }
 sps2-builder = { path = "../../crates/builder" }
 
-clap = { version = "4.5.39", features = ["derive", "color"] }
+clap = { version = "4.5.40", features = ["derive", "color"] }
 tokio = { workspace = true, features = ["full"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "json"] }
