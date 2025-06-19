@@ -142,7 +142,7 @@ impl BuildEnvironment {
     fn setup_clean_build_environment(&mut self) {
         // Set clean PATH with only necessary directories
         let clean_path = [
-            self.deps_prefix.join("bin").display().to_string(),
+            "/opt/pm/live/bin".to_string(),
             "/usr/bin".to_string(),
             "/bin".to_string(),
             "/usr/sbin".to_string(),
@@ -163,18 +163,16 @@ impl BuildEnvironment {
             .insert("JOBS".to_string(), Self::cpu_count().to_string());
 
         // Clean compiler/linker flags
-        self.env_vars.insert(
-            "CFLAGS".to_string(),
-            format!("-I{}/include", self.deps_prefix.display()),
-        );
-        self.env_vars.insert(
-            "CXXFLAGS".to_string(),
-            format!("-I{}/include", self.deps_prefix.display()),
-        );
-        self.env_vars.insert(
-            "LDFLAGS".to_string(),
-            format!("-L{}/lib", self.deps_prefix.display()),
-        );
+        self.env_vars
+            .insert("CFLAGS".to_string(), "-I/opt/pm/live/include".to_string());
+        self.env_vars
+            .insert("CXXFLAGS".to_string(), "-I/opt/pm/live/include".to_string());
+        // LDFLAGS with headerpad for macOS
+        let mut ldflags = "-L/opt/pm/live/lib".to_string();
+        if cfg!(target_os = "macos") {
+            ldflags.push_str(" -headerpad_max_install_names");
+        }
+        self.env_vars.insert("LDFLAGS".to_string(), ldflags);
 
         // Remove potentially harmful variables
         self.env_vars.remove("LD_LIBRARY_PATH");

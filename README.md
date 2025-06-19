@@ -331,6 +331,10 @@ def metadata():
             "openssl",
             "zlib",
             "nghttp2",
+            "brotli",
+            "libssh2",
+            "libidn2",
+            "libpsl",
         ],
         "build_depends": []
     }
@@ -339,7 +343,10 @@ def build(ctx):
     """Build the package using the provided context."""
     cleanup(ctx)
 
-    # 2. Fetch the source code from the official release
+    # Apply optimized default compiler flags for macOS ARM64
+    with_defaults(ctx)
+
+    # 2. Fetch the source code from the official Git repository
     fetch(ctx, "https://github.com/curl/curl/releases/download/curl-8_14_1/curl-8.14.1.tar.bz2")
 
     # 3. Configure the build using CMake.
@@ -361,11 +368,18 @@ def build(ctx):
         "-DCURL_ZLIB=ON",
         "-DUSE_NGHTTP2=ON",      # For HTTP/2 support
         "-DENABLE_IPV6=ON",      # Enable IPv6 support
+        "-DCURL_USE_LIBSSH2=ON", # SSH support
+        "-DUSE_LIBIDN2=ON",      # International domain names
+        "-DCURL_BROTLI=ON",      # Brotli compression
+        "-DCURL_USE_LIBPSL=ON",  # Public suffix list
 
         # Disable features not typically needed for a runtime package
         "-DBUILD_TESTING=OFF",
         "-DENABLE_CURL_MANUAL=OFF",
     ])
+
+    # Patch @rpath reference in binaries with hardcoded paths
+    patch_rpaths(ctx) # should be avoided if not required, curl won't work without it
 
     # 4. (Optional) Install the package to the system prefix after a
     # successful build.

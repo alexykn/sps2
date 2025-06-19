@@ -28,7 +28,7 @@ def metadata():
 def build(ctx):
     """Build the package using the provided context."""
     cleanup(ctx)
-    
+
     # Apply optimized default compiler flags for macOS ARM64
     with_defaults(ctx)
 
@@ -63,6 +63,8 @@ def build(ctx):
         "-DBUILD_TESTING=OFF",
         "-DENABLE_CURL_MANUAL=OFF",
     ])
+
+    patch_rpaths(ctx)
 
     # 4. (Optional) Install the package to the system prefix after a
     # successful build.

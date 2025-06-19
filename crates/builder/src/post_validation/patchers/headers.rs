@@ -10,11 +10,21 @@ pub struct HeaderPatcher;
 impl crate::post_validation::traits::Action for HeaderPatcher {
     const NAME: &'static str = "Header include‑fixer";
 
-    async fn run(_ctx: &BuildContext, env: &BuildEnvironment) -> Result<Report, Error> {
+    async fn run(
+        _ctx: &BuildContext,
+        env: &BuildEnvironment,
+        _findings: Option<&crate::post_validation::diagnostics::DiagnosticCollector>,
+    ) -> Result<Report, Error> {
         let build_prefix = env.build_prefix().to_string_lossy().into_owned();
+        let build_src = format!("{}/src", build_prefix);
+        let build_base = "/opt/pm/build";
+
+        // Create regex for all build paths
         let re = Regex::new(&format!(
-            r#"#\s*include\s*"{}[^"]+""#,
-            regex::escape(&build_prefix)
+            r#"#\s*include\s*"({}|{}|{})[^"]+""#,
+            regex::escape(&build_src),
+            regex::escape(&build_prefix),
+            regex::escape(build_base)
         ))
         .unwrap();
 
@@ -35,7 +45,9 @@ impl crate::post_validation::traits::Action for HeaderPatcher {
                                 let inner = full.trim_start_matches("#include ").trim();
                                 let stripped = inner
                                     .trim_matches('"')
+                                    .trim_start_matches(&build_src)
                                     .trim_start_matches(&build_prefix)
+                                    .trim_start_matches(build_base)
                                     .trim_start_matches('/');
                                 format!("#include \"{}\"", stripped)
                             });

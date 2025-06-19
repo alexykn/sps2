@@ -443,10 +443,10 @@ impl BuildSystem for CargoBuildSystem {
             ctx.build_dir.join("target").display().to_string(),
         );
 
-        // Set CARGO_HOME to deps directory for isolation
+        // Set CARGO_HOME to build directory for isolation
         vars.insert(
             "CARGO_HOME".to_string(),
-            ctx.env.deps_prefix().join(".cargo").display().to_string(),
+            ctx.build_dir.join(".cargo").display().to_string(),
         );
 
         // Enable colored output

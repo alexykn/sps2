@@ -25,6 +25,8 @@ pub enum IssueType {
     BadRPath { rpath: String },
     /// Bad install name in Mach-O binary
     BadInstallName { install_name: String },
+    /// Self-referencing install name in Mach-O binary
+    SelfReferencingInstallName { install_name: String },
     /// Build path in static archive
     BuildPathInArchive {
         path: String,
@@ -49,6 +51,9 @@ impl IssueType {
             }
             Self::BadInstallName { install_name } => {
                 format!("Contains bad install name: {}", install_name)
+            }
+            Self::SelfReferencingInstallName { install_name } => {
+                format!("Contains self-referencing install name: {}", install_name)
             }
             Self::BuildPathInArchive { path, member } => {
                 if let Some(member) = member {
@@ -162,5 +167,64 @@ impl DiagnosticCollector {
         }
 
         messages
+    }
+
+    /// Get all files that have hardcoded build paths or placeholders
+    pub fn get_files_with_hardcoded_paths(&self) -> HashMap<&Path, Vec<&ValidationFinding>> {
+        let mut result: HashMap<&Path, Vec<&ValidationFinding>> = HashMap::new();
+
+        for finding in &self.findings {
+            match &finding.issue_type {
+                IssueType::HardcodedBuildPath { .. } | IssueType::HardcodedPlaceholder { .. } => {
+                    result
+                        .entry(finding.file_path.as_path())
+                        .or_default()
+                        .push(finding);
+                }
+                _ => {}
+            }
+        }
+
+        result
+    }
+
+    /// Get all files that have Mach-O issues (bad RPATHs, install names, etc.)
+    pub fn get_files_with_macho_issues(&self) -> HashMap<&Path, Vec<&ValidationFinding>> {
+        let mut result: HashMap<&Path, Vec<&ValidationFinding>> = HashMap::new();
+
+        for finding in &self.findings {
+            match &finding.issue_type {
+                IssueType::BadRPath { .. }
+                | IssueType::BadInstallName { .. }
+                | IssueType::SelfReferencingInstallName { .. } => {
+                    result
+                        .entry(finding.file_path.as_path())
+                        .or_default()
+                        .push(finding);
+                }
+                _ => {}
+            }
+        }
+
+        result
+    }
+
+    /// Get all findings for a specific file
+    pub fn get_findings_for_file(&self, path: &Path) -> Vec<&ValidationFinding> {
+        self.findings
+            .iter()
+            .filter(|f| f.file_path == path)
+            .collect()
+    }
+
+    /// Filter findings by issue type
+    pub fn filter_by_issue_type<F>(&self, predicate: F) -> Vec<&ValidationFinding>
+    where
+        F: Fn(&IssueType) -> bool,
+    {
+        self.findings
+            .iter()
+            .filter(|f| predicate(&f.issue_type))
+            .collect()
     }
 }

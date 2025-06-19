@@ -20,8 +20,6 @@ pub struct BuildEnvironment {
     pub(crate) context: BuildContext,
     /// Build prefix directory
     pub(crate) build_prefix: PathBuf,
-    /// Build dependencies prefix
-    pub(crate) deps_prefix: PathBuf,
     /// Staging directory for installation
     pub(crate) staging_dir: PathBuf,
     /// Environment variables
@@ -36,6 +34,8 @@ pub struct BuildEnvironment {
     pub(crate) installer: Option<Installer>,
     /// Network client for downloads
     pub(crate) net: Option<NetClient>,
+    /// Whether with_defaults() was called (for optimized builds)
+    pub(crate) with_defaults_called: bool,
 }
 
 impl BuildEnvironment {
@@ -46,7 +46,6 @@ impl BuildEnvironment {
     /// Returns an error if the build environment cannot be initialized.
     pub fn new(context: BuildContext, build_root: &Path) -> Result<Self, Error> {
         let build_prefix = Self::get_build_prefix_path(build_root, &context.name, &context.version);
-        let deps_prefix = build_prefix.join("deps");
         let staging_dir = build_prefix.join("stage");
 
         let mut env_vars = HashMap::new();
@@ -57,7 +56,6 @@ impl BuildEnvironment {
         Ok(Self {
             context,
             build_prefix,
-            deps_prefix,
             staging_dir,
             env_vars,
             build_metadata: HashMap::new(),
@@ -65,6 +63,7 @@ impl BuildEnvironment {
             store: None,
             installer: None,
             net: None,
+            with_defaults_called: false,
         })
     }
 
@@ -124,12 +123,6 @@ impl BuildEnvironment {
     #[must_use]
     pub fn get_live_prefix(&self) -> &'static str {
         LIVE_PREFIX
-    }
-
-    /// Get dependencies prefix
-    #[must_use]
-    pub fn deps_prefix(&self) -> &Path {
-        &self.deps_prefix
     }
 
     /// Get environment variables

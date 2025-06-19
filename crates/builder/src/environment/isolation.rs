@@ -115,11 +115,8 @@ impl BuildEnvironment {
     fn verify_compiler_flags(&self) -> Result<(), Error> {
         // Check CFLAGS
         if let Some(cflags) = self.env_vars.get("CFLAGS") {
-            // Accept either the actual deps prefix or our placeholder prefix
-            let deps_include = format!("{}/include", self.deps_prefix.display());
-            let placeholder_include = format!("{}/deps/include", crate::BUILD_PLACEHOLDER_PREFIX);
-
-            if !cflags.contains(&deps_include) && !cflags.contains(&placeholder_include) {
+            // Check that CFLAGS contains /opt/pm/live/include
+            if !cflags.contains("/opt/pm/live/include") {
                 return Err(BuildError::SandboxViolation {
                     message: "CFLAGS not properly configured for isolation".to_string(),
                 }
@@ -137,11 +134,8 @@ impl BuildEnvironment {
 
         // Check LDFLAGS
         if let Some(ldflags) = self.env_vars.get("LDFLAGS") {
-            // Accept either the actual deps prefix or our placeholder prefix
-            let deps_lib = format!("{}/lib", self.deps_prefix.display());
-            let placeholder_lib = format!("{}/deps/lib", crate::BUILD_PLACEHOLDER_PREFIX);
-
-            if !ldflags.contains(&deps_lib) && !ldflags.contains(&placeholder_lib) {
+            // Check that LDFLAGS contains /opt/pm/live/lib
+            if !ldflags.contains("/opt/pm/live/lib") {
                 return Err(BuildError::SandboxViolation {
                     message: "LDFLAGS not properly configured for isolation".to_string(),
                 }
@@ -173,28 +167,25 @@ impl BuildEnvironment {
                 .into());
             }
 
-            // If deps exists, verify it comes after system paths but before /opt/pm/live/bin
-            let deps_bin = self.deps_prefix.join("bin");
-            if deps_bin.exists() {
-                let deps_bin_str = deps_bin.to_string_lossy();
-                let mut found_system = false;
+            // Verify /opt/pm/live/bin is in PATH but after system paths
+            let mut found_system = false;
 
-                for component in &path_components {
-                    if component.starts_with("/usr/")
-                        || component.starts_with("/bin")
-                        || component.starts_with("/sbin")
-                    {
-                        found_system = true;
-                    } else if *component == deps_bin_str {
-                        if !found_system {
-                            return Err(BuildError::SandboxViolation {
-                                message: "deps/bin appears before system paths in PATH".to_string(),
-                            }
-                            .into());
+            for component in &path_components {
+                if component.starts_with("/usr/")
+                    || component.starts_with("/bin")
+                    || component.starts_with("/sbin")
+                {
+                    found_system = true;
+                } else if *component == "/opt/pm/live/bin" {
+                    if !found_system {
+                        return Err(BuildError::SandboxViolation {
+                            message: "/opt/pm/live/bin appears before system paths in PATH"
+                                .to_string(),
                         }
-                        // deps/bin found in correct position (after system paths)
-                        break;
+                        .into());
                     }
+                    // /opt/pm/live/bin found in correct position
+                    break;
                 }
             }
 
@@ -232,25 +223,6 @@ impl BuildEnvironment {
                 message: format!(
                     "Staging directory {} is outside allowed paths",
                     self.staging_dir.display()
-                ),
-            }
-            .into());
-        }
-
-        // Verify deps prefix is isolated
-        let mut deps_allowed = false;
-        for prefix in &allowed_prefixes {
-            if self.deps_prefix.starts_with(prefix) {
-                deps_allowed = true;
-                break;
-            }
-        }
-
-        if !deps_allowed {
-            return Err(BuildError::SandboxViolation {
-                message: format!(
-                    "Dependencies directory {} is outside allowed paths",
-                    self.deps_prefix.display()
                 ),
             }
             .into());
@@ -332,10 +304,6 @@ impl BuildEnvironment {
         summary.insert(
             "staging_dir".to_string(),
             self.staging_dir.display().to_string(),
-        );
-        summary.insert(
-            "deps_prefix".to_string(),
-            self.deps_prefix.display().to_string(),
         );
 
         summary

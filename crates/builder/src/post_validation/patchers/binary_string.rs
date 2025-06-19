@@ -1,6 +1,6 @@
 //! Binary-safe string patcher for embedded paths in executables and libraries
 
-use crate::post_validation::{reports::Report, traits::Patcher};
+use crate::post_validation::{macho_utils, reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
 use sps2_events::Event;
@@ -74,56 +74,63 @@ pub struct BinaryStringPatcher;
 impl crate::post_validation::traits::Action for BinaryStringPatcher {
     const NAME: &'static str = "Binary string patcher";
 
-    async fn run(ctx: &BuildContext, env: &BuildEnvironment) -> Result<Report, Error> {
+    async fn run(
+        ctx: &BuildContext,
+        env: &BuildEnvironment,
+        findings: Option<&crate::post_validation::diagnostics::DiagnosticCollector>,
+    ) -> Result<Report, Error> {
         let staging_dir = env.staging_dir();
         let build_prefix = env.build_prefix().to_string_lossy().into_owned();
+        let build_src = format!("{}/src", build_prefix);
+        let build_base = "/opt/pm/build".to_string();
         let install_prefix = "/opt/pm/live".to_string(); // Actual runtime installation prefix
-        let placeholder = crate::BUILD_PLACEHOLDER_PREFIX;
 
-        // Prepare replacements map
+        // Prepare replacements map - order matters! Most specific first
         let mut replacements = HashMap::new();
-        replacements.insert(build_prefix.clone(), install_prefix.clone());
-        replacements.insert(placeholder.to_string(), install_prefix.clone());
+        replacements.insert(build_src, install_prefix.clone());
+        replacements.insert(build_prefix, install_prefix.clone());
+        replacements.insert(build_base, install_prefix.clone());
 
         let mut patched_files = Vec::new();
         let mut skipped_files = Vec::new();
 
-        // Walk staging directory for binary files
-        for entry in ignore::WalkBuilder::new(staging_dir)
-            .hidden(false)
-            .parents(false)
-            .build()
-        {
-            let path = match entry {
-                Ok(e) => e.into_path(),
-                Err(_) => continue,
-            };
-
-            if !path.is_file() {
-                continue;
-            }
-
-            // Check if it's a binary file we should process
-            let should_process = if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                ["so", "dylib", "a"].contains(&ext)
+        // Helper to check if file is a binary we should process
+        let is_binary_file = |path: &std::path::Path| -> bool {
+            let has_binary_extension = if let Some(name) = path.file_name().and_then(|n| n.to_str())
+            {
+                // Check for dynamic libraries (including versioned ones)
+                name.contains(".so") || name.contains(".dylib") || name.ends_with(".a")
             } else {
-                // Check for Mach-O magic bytes
-                if let Ok(data) = std::fs::read(&path) {
-                    if data.len() >= 4 {
-                        let magic = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-                        magic == 0xfeed_facf || magic == 0xfeed_face
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
+                false
+            };
+            has_binary_extension || macho_utils::is_macho_file(path)
+        };
+
+        // Get the list of files to process
+        let files_to_process: Box<dyn Iterator<Item = std::path::PathBuf>> =
+            if let Some(findings) = findings {
+                // Use validator findings - only process files with hardcoded paths that are binaries
+                let files_with_issues = findings.get_files_with_hardcoded_paths();
+                let paths: Vec<std::path::PathBuf> = files_with_issues
+                    .keys()
+                    .map(|&p| p.to_path_buf())
+                    .filter(|p| is_binary_file(p))
+                    .collect();
+                Box::new(paths.into_iter())
+            } else {
+                // Fall back to walking the entire directory (old behavior)
+                Box::new(
+                    ignore::WalkBuilder::new(staging_dir)
+                        .hidden(false)
+                        .parents(false)
+                        .build()
+                        .filter_map(Result::ok)
+                        .map(ignore::DirEntry::into_path)
+                        .filter(|p| p.is_file() && is_binary_file(p)),
+                )
             };
 
-            if !should_process {
-                continue;
-            }
-
+        for path in files_to_process {
             // Process the file
             if let Ok((was_patched, was_skipped)) = process_binary_file(&path, &replacements) {
                 if was_patched {

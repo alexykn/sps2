@@ -30,12 +30,12 @@ def build(ctx):
     """Build GCC optimized for macOS ARM64."""
     # 1. Clean up any leftover files from previous builds
     cleanup(ctx)
-    
-    # Apply optimized default compiler flags for macOS ARM64
+
     with_defaults(ctx)
 
     # 2. Fetch the source archive from the official GNU FTP server
-    #fetch(ctx, "https://ftp.gnu.org/gnu/gcc/gcc-15.1.0/gcc-15.1.0.tar.gz")
+    #fetch(ctx, "https://ftp.gnu.org/gnu/gcc/gcc-15.1.0/gcc-15.1.0.tar.gz",
+    #      "237f49dc296fce30af526426c06906bb1e774b0ec08b75aa4caef04442167f90")
 
     # using local source for now
     copy(ctx)
@@ -81,7 +81,7 @@ def build(ctx):
         "--with-gcc-major-version-only " + \
         "--with-system-zlib " + \
         "--disable-nls " + \
-        "--disable-bootstrap"
+        "--enable-bootstrap"
     
     command(ctx, ["sh", "-c", configure_cmd])
     

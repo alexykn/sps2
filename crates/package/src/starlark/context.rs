@@ -4,6 +4,7 @@
 use crate::recipe::BuildStep;
 use allocative::Allocative;
 use sps2_errors::Error;
+use sps2_types::RpathStyle;
 use starlark::environment::GlobalsBuilder;
 use starlark::starlark_module;
 use starlark::values::none::NoneType;
@@ -39,6 +40,8 @@ pub trait BuildExecutor: Send + Sync + std::fmt::Debug {
     async fn apply_patch(&mut self, patch_path: &Path) -> Result<(), Error>;
     async fn copy(&mut self, src_path: Option<&str>) -> Result<(), Error>;
     async fn with_defaults(&mut self) -> Result<(), Error>;
+    async fn patch_rpaths(&mut self, style: RpathStyle, paths: &[String]) -> Result<(), Error>;
+    async fn fix_permissions(&mut self, paths: &[String]) -> Result<(), Error>;
 }
 
 /// Build context exposed to Starlark recipes
@@ -470,6 +473,94 @@ pub fn build_context_functions(builder: &mut GlobalsBuilder) {
             .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
 
         build_ctx.add_step(BuildStep::WithDefaults);
+        Ok(NoneType)
+    }
+
+    /// Apply Homebrew-style absolute path hardcoding to all binaries and libraries
+    ///
+    /// By default, sps2 uses the modern @rpath approach for relocatable binaries.
+    /// This function applies Homebrew-style patching that rewrites all @rpath references
+    /// to absolute paths. This is useful for compatibility with older tools that don't
+    /// handle @rpath correctly.
+    ///
+    /// Example:
+    ///   patch_rpaths(ctx)  # Patch all binaries and libraries
+    ///   patch_rpaths(ctx, ["bin/curl", "lib/libcurl.dylib"])  # Patch specific files
+    fn patch_rpaths<'v>(ctx: Value<'v>, paths: Option<Value<'v>>) -> anyhow::Result<NoneType> {
+        // Unpack BuildContext from the Value
+        let build_ctx = ctx
+            .downcast_ref::<BuildContext>()
+            .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
+
+        let mut path_vec = Vec::new();
+        if let Some(paths_value) = paths {
+            // Handle both string and list inputs
+            if let Some(s) = paths_value.unpack_str() {
+                // Single string path
+                path_vec.push(s.to_string());
+            } else if let Some(list) = starlark::values::list::ListRef::from_value(paths_value) {
+                // List of paths
+                for item in list.iter() {
+                    if let Some(path_str) = item.unpack_str() {
+                        path_vec.push(path_str.to_string());
+                    } else {
+                        return Err(anyhow::anyhow!("All paths must be strings"));
+                    }
+                }
+            } else {
+                return Err(anyhow::anyhow!("Paths must be a string or list of strings"));
+            }
+        }
+
+        // Always use Homebrew style when patch_rpaths is called
+        build_ctx.add_step(BuildStep::PatchRpaths {
+            style: RpathStyle::Homebrew,
+            paths: path_vec,
+        });
+        Ok(NoneType)
+    }
+
+    /// Fix executable permissions on binaries.
+    ///
+    /// Some build systems don't set proper executable permissions on installed binaries.
+    /// This function ensures all executables have the correct permissions.
+    ///
+    /// By default, it will:
+    /// - Make all files in bin/, sbin/ directories executable
+    /// - Make dynamic libraries (.dylib, .so) executable
+    /// - Make scripts with shebang lines (#!/bin/sh, etc.) executable
+    /// - Make Mach-O binaries executable
+    ///
+    /// Example:
+    ///   fix_permissions(ctx)  # Fix permissions on all files
+    ///   fix_permissions(ctx, ["bin/", "libexec/"])  # Fix specific directories
+    fn fix_permissions<'v>(ctx: Value<'v>, paths: Option<Value<'v>>) -> anyhow::Result<NoneType> {
+        // Unpack BuildContext from the Value
+        let build_ctx = ctx
+            .downcast_ref::<BuildContext>()
+            .ok_or_else(|| anyhow::anyhow!("First argument must be a BuildContext"))?;
+
+        let mut path_vec = Vec::new();
+        if let Some(paths_value) = paths {
+            // Handle both string and list inputs
+            if let Some(s) = paths_value.unpack_str() {
+                // Single string path
+                path_vec.push(s.to_string());
+            } else if let Some(list) = starlark::values::list::ListRef::from_value(paths_value) {
+                // List of paths
+                for item in list.iter() {
+                    if let Some(path_str) = item.unpack_str() {
+                        path_vec.push(path_str.to_string());
+                    } else {
+                        return Err(anyhow::anyhow!("All paths must be strings"));
+                    }
+                }
+            } else {
+                return Err(anyhow::anyhow!("Paths must be a string or list of strings"));
+            }
+        }
+
+        build_ctx.add_step(BuildStep::FixPermissions { paths: path_vec });
         Ok(NoneType)
     }
 }

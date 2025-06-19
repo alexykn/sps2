@@ -379,10 +379,10 @@ impl BuildSystem for GoBuildSystem {
     fn get_env_vars(&self, ctx: &BuildSystemContext) -> HashMap<String, String> {
         let mut vars = HashMap::new();
 
-        // Set GOPATH to deps directory
+        // Set GOPATH to build directory
         vars.insert(
             "GOPATH".to_string(),
-            ctx.env.deps_prefix().join("go").display().to_string(),
+            ctx.build_dir.join("go").display().to_string(),
         );
 
         // Disable CGO by default for static binaries

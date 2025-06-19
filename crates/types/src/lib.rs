@@ -37,6 +37,33 @@ pub enum Arch {
     Arm64,
 }
 
+/// `RPath` handling style for dynamic libraries and executables
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RpathStyle {
+    /// Modern approach: Keep @rpath references with proper `LC_RPATH` entries
+    /// This is the default and recommended approach for relocatable binaries
+    Modern,
+    /// Homebrew approach: Rewrite all @rpath references to absolute paths
+    /// Use this for compatibility with tools that don't handle @rpath correctly
+    Homebrew,
+}
+
+impl std::fmt::Display for RpathStyle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Modern => write!(f, "modern"),
+            Self::Homebrew => write!(f, "homebrew"),
+        }
+    }
+}
+
+impl Default for RpathStyle {
+    fn default() -> Self {
+        Self::Modern
+    }
+}
+
 impl std::fmt::Display for Arch {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

@@ -274,10 +274,12 @@ impl EnhancedCrossContext {
             "CXXFLAGS".to_string(),
             format!("--sysroot={}", self.base.sysroot.display()),
         );
-        self.cross_flags.insert(
-            "LDFLAGS".to_string(),
-            format!("--sysroot={}", self.base.sysroot.display()),
-        );
+        // LDFLAGS with sysroot and headerpad for macOS
+        let mut ldflags = format!("--sysroot={}", self.base.sysroot.display());
+        if self.base.host_platform.os == "darwin" {
+            ldflags.push_str(" -headerpad_max_install_names");
+        }
+        self.cross_flags.insert("LDFLAGS".to_string(), ldflags);
 
         // Architecture-specific flags
         match arch.as_str() {

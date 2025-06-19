@@ -1,5 +1,6 @@
 //! Generic abstractions for post‑build actions.
 
+use crate::post_validation::diagnostics::DiagnosticCollector;
 use crate::post_validation::reports::Report;
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
@@ -10,9 +11,12 @@ pub trait Action: Send + Sync + 'static {
     const NAME: &'static str;
 
     /// Execute the action and return a [`Report`].
+    /// Validators should ignore the findings parameter.
+    /// Patchers may use the findings to target specific files.
     fn run(
         ctx: &BuildContext,
         env: &BuildEnvironment,
+        findings: Option<&DiagnosticCollector>,
     ) -> impl Future<Output = Result<Report, Error>> + Send;
 }
 

@@ -9,8 +9,14 @@ pub struct PkgConfigPatcher;
 impl crate::post_validation::traits::Action for PkgConfigPatcher {
     const NAME: &'static str = "pkg‑config / CMake patcher";
 
-    async fn run(_ctx: &BuildContext, env: &BuildEnvironment) -> Result<Report, Error> {
+    async fn run(
+        _ctx: &BuildContext,
+        env: &BuildEnvironment,
+        _findings: Option<&crate::post_validation::diagnostics::DiagnosticCollector>,
+    ) -> Result<Report, Error> {
         let build_prefix = env.build_prefix().to_string_lossy().into_owned();
+        let build_src = format!("{}/src", build_prefix);
+        let build_base = "/opt/pm/build";
         let actual = "/opt/pm/live";
 
         let pat = WalkBuilder::new(env.staging_dir())
@@ -31,9 +37,25 @@ impl crate::post_validation::traits::Action for PkgConfigPatcher {
         let mut changed = Vec::new();
         for f in pat {
             if let Ok(s) = std::fs::read_to_string(&f) {
-                if s.contains(&build_prefix) {
-                    let t = s.replace(&build_prefix, actual);
-                    std::fs::write(&f, t)?;
+                let mut modified = false;
+                let mut result = s.clone();
+
+                // Replace build paths in order of specificity (most specific first)
+                if result.contains(&build_src) {
+                    result = result.replace(&build_src, actual);
+                    modified = true;
+                }
+                if result.contains(&build_prefix) {
+                    result = result.replace(&build_prefix, actual);
+                    modified = true;
+                }
+                if result.contains(build_base) {
+                    result = result.replace(build_base, actual);
+                    modified = true;
+                }
+
+                if modified {
+                    std::fs::write(&f, result)?;
                     changed.push(f);
                 }
             }

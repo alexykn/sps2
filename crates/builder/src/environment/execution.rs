@@ -11,34 +11,14 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
 impl BuildEnvironment {
-    /// Replace placeholder paths in command arguments
-    fn replace_placeholder_paths_in_args(&self, args: &[&str]) -> Vec<String> {
-        let placeholder_prefix = crate::BUILD_PLACEHOLDER_PREFIX;
-        let actual_prefix = self.build_prefix.display().to_string();
-
-        args.iter()
-            .map(|arg| {
-                if arg.contains(placeholder_prefix) {
-                    arg.replace(placeholder_prefix, &actual_prefix)
-                } else {
-                    (*arg).to_string()
-                }
-            })
-            .collect()
+    /// Convert command arguments to strings (no placeholder replacement needed)
+    fn convert_args_to_strings(&self, args: &[&str]) -> Vec<String> {
+        args.iter().map(|arg| (*arg).to_string()).collect()
     }
 
-    /// Replace placeholder paths in environment variables
-    fn replace_placeholder_paths_in_env(&self) -> HashMap<String, String> {
-        let placeholder_prefix = crate::BUILD_PLACEHOLDER_PREFIX;
-        let actual_prefix = self.build_prefix.display().to_string();
-
-        let mut build_env_vars = self.env_vars.clone();
-        for value in build_env_vars.values_mut() {
-            if value.contains(placeholder_prefix) {
-                *value = value.replace(placeholder_prefix, &actual_prefix);
-            }
-        }
-        build_env_vars
+    /// Get environment variables for execution (no placeholder replacement needed)
+    fn get_execution_env(&self) -> HashMap<String, String> {
+        self.env_vars.clone()
     }
 
     /// Execute a command in the build environment
@@ -59,12 +39,12 @@ impl BuildEnvironment {
         let mut cmd = Command::new(program);
 
         // Replace placeholders in command arguments
-        let replaced_args = self.replace_placeholder_paths_in_args(args);
-        let arg_refs: Vec<&str> = replaced_args.iter().map(String::as_str).collect();
+        let converted_args = self.convert_args_to_strings(args);
+        let arg_refs: Vec<&str> = converted_args.iter().map(String::as_str).collect();
         cmd.args(&arg_refs);
 
-        // Replace placeholder paths in environment variables
-        let build_env_vars = self.replace_placeholder_paths_in_env();
+        // Get environment variables for execution
+        let build_env_vars = self.get_execution_env();
         cmd.envs(&build_env_vars);
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
@@ -164,6 +144,9 @@ impl BuildEnvironment {
             .into());
         }
 
+        // Handle any libtool --finish requirements
+        self.handle_libtool_finish(&result).await?;
+
         Ok(result)
     }
 
@@ -182,5 +165,87 @@ impl BuildEnvironment {
                 }
             });
         }
+    }
+
+    /// Check if libtool --finish needs to be run based on command output
+    fn check_libtool_finish_needed(result: &BuildCommandResult) -> Vec<String> {
+        use std::collections::HashSet;
+        let mut dirs = HashSet::new();
+
+        // Check both stdout and stderr for the libtool warning
+        let combined_output = format!("{}\n{}", result.stdout, result.stderr);
+
+        // Look for the pattern: "remember to run `libtool --finish /path/to/lib'"
+        for line in combined_output.lines() {
+            if line.contains("remember to run") && line.contains("libtool --finish") {
+                // Extract the directory path from the message
+                // Pattern: "warning: remember to run `libtool --finish /opt/pm/live/lib'"
+                if let Some(start) = line.find("libtool --finish") {
+                    let remainder = &line[start + "libtool --finish".len()..];
+                    // Find the directory path (everything up to the closing quote or end of line)
+                    let dir_end = remainder
+                        .find('\'')
+                        .or_else(|| remainder.find('"'))
+                        .unwrap_or(remainder.len());
+                    let dir_path = remainder[..dir_end].trim();
+                    if !dir_path.is_empty() {
+                        dirs.insert(dir_path.to_string());
+                    }
+                }
+            }
+        }
+
+        dirs.into_iter().collect()
+    }
+
+    /// Execute libtool --finish for the given directory
+    async fn execute_libtool_finish(&self, dir: &str) -> Result<BuildCommandResult, Error> {
+        // Use GNU libtool from /opt/pm/live/bin if it exists, otherwise try system libtool
+        let libtool_path = if std::path::Path::new("/opt/pm/live/bin/libtool").exists() {
+            "/opt/pm/live/bin/libtool"
+        } else {
+            "libtool"
+        };
+
+        let mut cmd = Command::new(libtool_path);
+        cmd.args(["--finish", dir]);
+        cmd.envs(&self.env_vars);
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
+        cmd.current_dir(&self.build_prefix);
+
+        let output = cmd.output().await.map_err(|e| BuildError::CompileFailed {
+            message: format!("Failed to run libtool --finish: {e}"),
+        })?;
+
+        Ok(BuildCommandResult {
+            success: output.status.success(),
+            exit_code: output.status.code(),
+            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        })
+    }
+
+    /// Handle libtool --finish requirements from command output
+    async fn handle_libtool_finish(&self, result: &BuildCommandResult) -> Result<(), Error> {
+        let libtool_dirs = Self::check_libtool_finish_needed(result);
+        if !libtool_dirs.is_empty() {
+            for dir in &libtool_dirs {
+                self.send_event(Event::DebugLog {
+                    message: format!("Running libtool --finish {}", dir),
+                    context: std::collections::HashMap::new(),
+                });
+
+                // Run libtool --finish for this directory
+                let finish_result = self.execute_libtool_finish(dir).await?;
+                if !finish_result.success {
+                    self.send_event(Event::Warning {
+                        message: format!("libtool --finish {} failed", dir),
+                        context: Some(finish_result.stderr),
+                    });
+                }
+            }
+        }
+        Ok(())
     }
 }

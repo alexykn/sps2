@@ -14,9 +14,26 @@ pub struct HardcodedScanner;
 impl crate::post_validation::traits::Action for HardcodedScanner {
     const NAME: &'static str = "Hardcoded‑path scanner";
 
-    async fn run(ctx: &BuildContext, env: &BuildEnvironment) -> Result<Report, Error> {
+    async fn run(
+        ctx: &BuildContext,
+        env: &BuildEnvironment,
+        _findings: Option<&DiagnosticCollector>,
+    ) -> Result<Report, Error> {
         let build_prefix = env.build_prefix().to_string_lossy().into_owned();
-        let placeholder = crate::BUILD_PLACEHOLDER_PREFIX;
+        let build_src = format!("{}/src", build_prefix);
+        let build_base = "/opt/pm/build";
+
+        // Debug: Print the build prefixes we're scanning for
+        crate::events::send_event(
+            ctx,
+            Event::DebugLog {
+                message: format!(
+                    "Hardcoded path scanner: checking for {} | {} | {}",
+                    build_base, build_prefix, build_src
+                ),
+                context: std::collections::HashMap::new(),
+            },
+        );
 
         let mut collector = DiagnosticCollector::new();
 
@@ -31,14 +48,13 @@ impl crate::post_validation::traits::Action for HardcodedScanner {
                 if let Ok(data) = std::fs::read(&path) {
                     let hay = data.as_slice();
 
-                    // Check for build prefix
-                    if hay.find(build_prefix.as_bytes()).is_some() {
+                    // Check for any build-related paths
+                    if hay.find(build_base.as_bytes()).is_some() {
+                        collector.add_hardcoded_path(&path, build_base, false);
+                    } else if hay.find(build_prefix.as_bytes()).is_some() {
                         collector.add_hardcoded_path(&path, &build_prefix, false);
-                    }
-
-                    // Check for placeholder
-                    if hay.find(placeholder.as_bytes()).is_some() {
-                        collector.add_hardcoded_path(&path, placeholder, true);
+                    } else if hay.find(build_src.as_bytes()).is_some() {
+                        collector.add_hardcoded_path(&path, &build_src, false);
                     }
                 }
             }
@@ -69,6 +85,8 @@ impl crate::post_validation::traits::Action for HardcodedScanner {
                 error_count
             ));
 
+            // Include the collector in the report so patchers can use it
+            report.findings = Some(collector);
             Ok(report)
         } else {
             Ok(Report::ok())

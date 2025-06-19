@@ -27,16 +27,6 @@ impl BuildEnvironment {
                 ),
             })?;
 
-        fs::create_dir_all(&self.deps_prefix)
-            .await
-            .map_err(|e| BuildError::Failed {
-                message: format!(
-                    "Failed to create deps prefix {}: {}",
-                    self.deps_prefix.display(),
-                    e
-                ),
-            })?;
-
         fs::create_dir_all(&self.staging_dir)
             .await
             .map_err(|e| BuildError::Failed {
@@ -59,11 +49,6 @@ impl BuildEnvironment {
     ///
     /// Returns an error if directories cannot be removed during cleanup.
     pub async fn cleanup(&self) -> Result<(), Error> {
-        // Remove build dependencies directory
-        if self.deps_prefix.exists() {
-            fs::remove_dir_all(&self.deps_prefix).await?;
-        }
-
         // Remove any temporary build files in the build prefix
         let temp_dirs = vec!["src", "build", "tmp"];
         for dir in temp_dirs {

@@ -21,9 +21,14 @@ pub struct MachOScanner;
 impl crate::post_validation::traits::Action for MachOScanner {
     const NAME: &'static str = "Mach‑O load‑command scanner";
 
-    async fn run(ctx: &BuildContext, env: &BuildEnvironment) -> Result<Report, Error> {
+    async fn run(
+        ctx: &BuildContext,
+        env: &BuildEnvironment,
+        _findings: Option<&DiagnosticCollector>,
+    ) -> Result<Report, Error> {
         let build_prefix = env.build_prefix().to_string_lossy().into_owned();
-        let placeholder = crate::BUILD_PLACEHOLDER_PREFIX;
+        let build_src = format!("{}/src", build_prefix);
+        let build_base = "/opt/pm/build";
 
         let mut collector = DiagnosticCollector::new();
 
@@ -40,14 +45,8 @@ impl crate::post_validation::traits::Action for MachOScanner {
 
             if let Ok(data) = std::fs::read(&path) {
                 if let Ok(kind) = FileKind::parse(&*data) {
-                    check_macho_file(
-                        &data,
-                        kind,
-                        &build_prefix,
-                        placeholder,
-                        &path,
-                        &mut collector,
-                    );
+                    let build_paths = vec![build_base, &build_prefix, &build_src];
+                    check_macho_file(&data, kind, &build_paths, &path, &mut collector);
                 }
             }
         }
@@ -77,6 +76,8 @@ impl crate::post_validation::traits::Action for MachOScanner {
                 error_count
             ));
 
+            // Include the collector in the report so patchers can use it
+            report.findings = Some(collector);
             Ok(report)
         } else {
             Ok(Report::ok())
@@ -87,21 +88,20 @@ impl crate::post_validation::traits::Action for MachOScanner {
 fn check_macho_file(
     data: &[u8],
     kind: FileKind,
-    build_prefix: &str,
-    placeholder: &str,
+    build_paths: &[&str],
     file_path: &std::path::Path,
     collector: &mut DiagnosticCollector,
 ) {
     match kind {
         FileKind::MachO32 => {
             if let Ok(file) = MachOFile::<MachHeader32<Endianness>, _>::parse(data) {
-                check_load_commands(&file, build_prefix, placeholder, file_path, collector);
+                check_load_commands(&file, build_paths, file_path, collector);
                 return;
             }
         }
         FileKind::MachO64 => {
             if let Ok(file) = MachOFile::<MachHeader64<Endianness>, _>::parse(data) {
-                check_load_commands(&file, build_prefix, placeholder, file_path, collector);
+                check_load_commands(&file, build_paths, file_path, collector);
                 return;
             }
         }
@@ -111,14 +111,7 @@ fn check_macho_file(
                     let (off, sz) = arch.file_range();
                     if let Some(slice) = data.get(off as usize..(off + sz) as usize) {
                         if let Ok(kind) = FileKind::parse(slice) {
-                            check_macho_file(
-                                slice,
-                                kind,
-                                build_prefix,
-                                placeholder,
-                                file_path,
-                                collector,
-                            );
+                            check_macho_file(slice, kind, build_paths, file_path, collector);
                         }
                     }
                 }
@@ -130,14 +123,7 @@ fn check_macho_file(
                     let (off, sz) = arch.file_range();
                     if let Some(slice) = data.get(off as usize..(off + sz) as usize) {
                         if let Ok(kind) = FileKind::parse(slice) {
-                            check_macho_file(
-                                slice,
-                                kind,
-                                build_prefix,
-                                placeholder,
-                                file_path,
-                                collector,
-                            );
+                            check_macho_file(slice, kind, build_paths, file_path, collector);
                         }
                     }
                 }
@@ -149,8 +135,7 @@ fn check_macho_file(
 
 fn check_load_commands<'data, Mach, R>(
     file: &MachOFile<'data, Mach, R>,
-    build_prefix: &str,
-    placeholder: &str,
+    build_paths: &[&str],
     file_path: &std::path::Path,
     collector: &mut DiagnosticCollector,
 ) where
@@ -171,17 +156,31 @@ fn check_load_commands<'data, Mach, R>(
 
                 if let Some(bytes) = path_bytes {
                     if let Ok(path_str) = std::str::from_utf8(bytes) {
-                        if path_str.starts_with(build_prefix) || path_str.contains(placeholder) {
-                            let issue_type = match variant {
-                                LoadCommandVariant::Rpath(_) => IssueType::BadRPath {
-                                    rpath: path_str.to_string(),
-                                },
-                                _ => IssueType::BadInstallName {
-                                    install_name: path_str.to_string(),
-                                },
-                            };
-                            collector.add_macho_issue(file_path, issue_type);
+                        // Check for any build paths - those are always bad
+                        // /opt/pm/live paths are always OK
+                        for build_path in build_paths {
+                            if path_str.starts_with(build_path) {
+                                let issue_type = match variant {
+                                    LoadCommandVariant::Rpath(_) => IssueType::BadRPath {
+                                        rpath: path_str.to_string(),
+                                    },
+                                    _ => IssueType::BadInstallName {
+                                        install_name: path_str.to_string(),
+                                    },
+                                };
+                                collector.add_macho_issue(file_path, issue_type);
+                                break; // One match is enough
+                            }
                         }
+
+                        // Note: We intentionally do NOT check for self-referencing install names
+                        // when they use @rpath/. This is the correct, modern way to build
+                        // relocatable libraries on macOS. The @rpath/ prefix tells the dynamic
+                        // linker to search for the library using the runtime path search paths.
+                        //
+                        // Example: A library with install name "@rpath/libfoo.1.dylib" is
+                        // correctly configured for runtime path loading and should not be flagged
+                        // as an error.
                     }
                 }
             }

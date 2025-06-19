@@ -1,4 +1,4 @@
-//! Validator that looks into static archives (*.a) & libtool *.la files.
+//! Validator that looks into static archives (*.a) files.
 
 use crate::post_validation::{
     diagnostics::{DiagnosticCollector, IssueType},
@@ -15,8 +15,14 @@ pub struct ArchiveScanner;
 impl crate::post_validation::traits::Action for ArchiveScanner {
     const NAME: &'static str = "Static‑archive scanner";
 
-    async fn run(ctx: &BuildContext, env: &BuildEnvironment) -> Result<Report, Error> {
+    async fn run(
+        ctx: &BuildContext,
+        env: &BuildEnvironment,
+        _findings: Option<&DiagnosticCollector>,
+    ) -> Result<Report, Error> {
         let build_prefix = env.build_prefix().to_string_lossy().into_owned();
+        let build_src = format!("{}/src", build_prefix);
+        let build_base = "/opt/pm/build";
 
         let mut collector = DiagnosticCollector::new();
 
@@ -31,37 +37,45 @@ impl crate::post_validation::traits::Action for ArchiveScanner {
                 continue;
             }
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-            if ext != "a" && ext != "la" {
+            if ext != "a" {
                 continue;
             }
 
-            if ext == "la" {
-                // simple text scan for libtool archives
-                if let Ok(s) = std::fs::read_to_string(&path) {
-                    if s.contains(&build_prefix) {
-                        collector.add_finding(
-                            crate::post_validation::diagnostics::ValidationFinding {
-                                file_path: path,
-                                issue_type: IssueType::BuildPathInArchive {
-                                    path: build_prefix.clone(),
-                                    member: None,
-                                },
-                                context: std::collections::HashMap::new(),
-                            },
-                        );
-                    }
-                }
-            } else if let Ok(bytes) = std::fs::read(&path) {
+            if let Ok(bytes) = std::fs::read(&path) {
                 // Check static archives using the object crate
                 if let Ok(archive) = ArchiveFile::parse(&*bytes) {
                     for member in archive.members().flatten() {
                         if let Ok(name) = std::str::from_utf8(member.name()) {
-                            if name.contains(&build_prefix) {
+                            if name.contains(build_base) {
+                                collector.add_finding(
+                                    crate::post_validation::diagnostics::ValidationFinding {
+                                        file_path: path.clone(),
+                                        issue_type: IssueType::BuildPathInArchive {
+                                            path: build_base.to_string(),
+                                            member: Some(name.to_string()),
+                                        },
+                                        context: std::collections::HashMap::new(),
+                                    },
+                                );
+                                break;
+                            } else if name.contains(&build_prefix) {
                                 collector.add_finding(
                                     crate::post_validation::diagnostics::ValidationFinding {
                                         file_path: path.clone(),
                                         issue_type: IssueType::BuildPathInArchive {
                                             path: build_prefix.clone(),
+                                            member: Some(name.to_string()),
+                                        },
+                                        context: std::collections::HashMap::new(),
+                                    },
+                                );
+                                break;
+                            } else if name.contains(&build_src) {
+                                collector.add_finding(
+                                    crate::post_validation::diagnostics::ValidationFinding {
+                                        file_path: path.clone(),
+                                        issue_type: IssueType::BuildPathInArchive {
+                                            path: build_src.clone(),
                                             member: Some(name.to_string()),
                                         },
                                         context: std::collections::HashMap::new(),
@@ -100,6 +114,8 @@ impl crate::post_validation::traits::Action for ArchiveScanner {
                 error_count
             ));
 
+            // Include the collector in the report so patchers can use it
+            report.findings = Some(collector);
             Ok(report)
         } else {
             Ok(Report::ok())

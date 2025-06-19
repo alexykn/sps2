@@ -158,15 +158,14 @@ impl PythonBuildSystem {
         let wheel_dir = ctx.build_dir.join("dist");
         fs::create_dir_all(&wheel_dir).await?;
 
-        // Build wheel using uv
+        // Build wheel using uv build command
         let result = ctx
             .execute(
                 "uv",
                 &[
-                    "pip",
-                    "wheel",
-                    ".",
-                    "--wheel-dir",
+                    "build",
+                    "--wheel",
+                    "--out-dir",
                     &wheel_dir.display().to_string(),
                 ],
                 Some(&ctx.source_dir),

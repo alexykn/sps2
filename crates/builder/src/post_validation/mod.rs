@@ -1,12 +1,14 @@
 //! Public façade – `workflow.rs` calls only `run_quality_pipeline()`.
 
 pub mod diagnostics;
+pub mod macho_utils;
 pub mod patchers;
 pub mod reports;
 pub mod scanners;
 pub mod traits;
 
 use crate::{events::send_event, BuildContext, BuildEnvironment};
+use diagnostics::DiagnosticCollector;
 use reports::{MergedReport, Report};
 use sps2_errors::{BuildError, Error};
 use sps2_events::Event;
@@ -21,6 +23,7 @@ pub enum ValidatorAction {
 
 /// Enum for all patchers
 pub enum PatcherAction {
+    PermissionsFixer(patchers::permissions::PermissionsFixer),
     PlaceholderPatcher(patchers::placeholder::PlaceholderPatcher),
     RPathPatcher(patchers::rpath::RPathPatcher),
     HeaderPatcher(patchers::headers::HeaderPatcher),
@@ -28,6 +31,7 @@ pub enum PatcherAction {
     BinaryStringPatcher(patchers::binary_string::BinaryStringPatcher),
     LaFileCleaner(patchers::la_cleaner::LaFileCleaner),
     ObjectFileCleaner(patchers::object_cleaner::ObjectFileCleaner),
+    CodeSigner(patchers::codesigner::CodeSigner),
 }
 
 impl ValidatorAction {
@@ -39,11 +43,20 @@ impl ValidatorAction {
         }
     }
 
-    async fn run(&self, ctx: &BuildContext, env: &BuildEnvironment) -> Result<Report, Error> {
+    async fn run(
+        &self,
+        ctx: &BuildContext,
+        env: &BuildEnvironment,
+        findings: Option<&DiagnosticCollector>,
+    ) -> Result<Report, Error> {
         match self {
-            Self::HardcodedScanner(_) => scanners::hardcoded::HardcodedScanner::run(ctx, env).await,
-            Self::MachOScanner(_) => scanners::macho::MachOScanner::run(ctx, env).await,
-            Self::ArchiveScanner(_) => scanners::archive::ArchiveScanner::run(ctx, env).await,
+            Self::HardcodedScanner(_) => {
+                scanners::hardcoded::HardcodedScanner::run(ctx, env, findings).await
+            }
+            Self::MachOScanner(_) => scanners::macho::MachOScanner::run(ctx, env, findings).await,
+            Self::ArchiveScanner(_) => {
+                scanners::archive::ArchiveScanner::run(ctx, env, findings).await
+            }
         }
     }
 }
@@ -51,6 +64,7 @@ impl ValidatorAction {
 impl PatcherAction {
     fn name(&self) -> &'static str {
         match self {
+            Self::PermissionsFixer(_) => patchers::permissions::PermissionsFixer::NAME,
             Self::PlaceholderPatcher(_) => patchers::placeholder::PlaceholderPatcher::NAME,
             Self::RPathPatcher(_) => patchers::rpath::RPathPatcher::NAME,
             Self::HeaderPatcher(_) => patchers::headers::HeaderPatcher::NAME,
@@ -58,24 +72,40 @@ impl PatcherAction {
             Self::BinaryStringPatcher(_) => patchers::binary_string::BinaryStringPatcher::NAME,
             Self::LaFileCleaner(_) => patchers::la_cleaner::LaFileCleaner::NAME,
             Self::ObjectFileCleaner(_) => patchers::object_cleaner::ObjectFileCleaner::NAME,
+            Self::CodeSigner(_) => patchers::codesigner::CodeSigner::NAME,
         }
     }
 
-    async fn run(&self, ctx: &BuildContext, env: &BuildEnvironment) -> Result<Report, Error> {
+    async fn run(
+        &self,
+        ctx: &BuildContext,
+        env: &BuildEnvironment,
+        findings: Option<&DiagnosticCollector>,
+    ) -> Result<Report, Error> {
         match self {
+            Self::PermissionsFixer(_) => {
+                patchers::permissions::PermissionsFixer::run(ctx, env, findings).await
+            }
             Self::PlaceholderPatcher(_) => {
-                patchers::placeholder::PlaceholderPatcher::run(ctx, env).await
+                patchers::placeholder::PlaceholderPatcher::run(ctx, env, findings).await
             }
-            Self::RPathPatcher(_) => patchers::rpath::RPathPatcher::run(ctx, env).await,
-            Self::HeaderPatcher(_) => patchers::headers::HeaderPatcher::run(ctx, env).await,
-            Self::PkgConfigPatcher(_) => patchers::pkgconfig::PkgConfigPatcher::run(ctx, env).await,
+            Self::RPathPatcher(_) => patchers::rpath::RPathPatcher::run(ctx, env, findings).await,
+            Self::HeaderPatcher(_) => {
+                patchers::headers::HeaderPatcher::run(ctx, env, findings).await
+            }
+            Self::PkgConfigPatcher(_) => {
+                patchers::pkgconfig::PkgConfigPatcher::run(ctx, env, findings).await
+            }
             Self::BinaryStringPatcher(_) => {
-                patchers::binary_string::BinaryStringPatcher::run(ctx, env).await
+                patchers::binary_string::BinaryStringPatcher::run(ctx, env, findings).await
             }
-            Self::LaFileCleaner(_) => patchers::la_cleaner::LaFileCleaner::run(ctx, env).await,
+            Self::LaFileCleaner(_) => {
+                patchers::la_cleaner::LaFileCleaner::run(ctx, env, findings).await
+            }
             Self::ObjectFileCleaner(_) => {
-                patchers::object_cleaner::ObjectFileCleaner::run(ctx, env).await
+                patchers::object_cleaner::ObjectFileCleaner::run(ctx, env, findings).await
             }
+            Self::CodeSigner(_) => patchers::codesigner::CodeSigner::run(ctx, env, findings).await,
         }
     }
 }
@@ -87,7 +117,7 @@ impl PatcherAction {
 /// * V2 – must be clean, else the build fails
 pub async fn run_quality_pipeline(ctx: &BuildContext, env: &BuildEnvironment) -> Result<(), Error> {
     // ----------------    PHASE 1  -----------------
-    let pre = run_validators(
+    let mut pre = run_validators(
         ctx,
         env,
         vec![
@@ -95,21 +125,32 @@ pub async fn run_quality_pipeline(ctx: &BuildContext, env: &BuildEnvironment) ->
             ValidatorAction::MachOScanner(scanners::macho::MachOScanner),
             ValidatorAction::ArchiveScanner(scanners::archive::ArchiveScanner),
         ],
+        false, // Don't allow early break - run all validators
     )
     .await?;
+
+    // Extract findings from Phase 1 validators to pass to patchers
+    let validator_findings = pre.take_findings();
 
     // ----------------    PHASE 2  -----------------
     run_patchers(
         ctx,
         env,
+        validator_findings,
         vec![
+            // PermissionsFixer MUST run first to ensure binaries have execute permissions
+            PatcherAction::PermissionsFixer(patchers::permissions::PermissionsFixer::default()),
             PatcherAction::PlaceholderPatcher(patchers::placeholder::PlaceholderPatcher),
             PatcherAction::BinaryStringPatcher(patchers::binary_string::BinaryStringPatcher),
-            PatcherAction::RPathPatcher(patchers::rpath::RPathPatcher),
+            PatcherAction::RPathPatcher(patchers::rpath::RPathPatcher::new(
+                sps2_types::RpathStyle::Modern,
+            )),
             PatcherAction::HeaderPatcher(patchers::headers::HeaderPatcher),
             PatcherAction::PkgConfigPatcher(patchers::pkgconfig::PkgConfigPatcher),
             PatcherAction::LaFileCleaner(patchers::la_cleaner::LaFileCleaner),
             PatcherAction::ObjectFileCleaner(patchers::object_cleaner::ObjectFileCleaner),
+            // CodeSigner MUST run last to re-sign any binaries modified by other patchers
+            PatcherAction::CodeSigner(patchers::codesigner::CodeSigner),
         ],
     )
     .await?;
@@ -123,6 +164,7 @@ pub async fn run_quality_pipeline(ctx: &BuildContext, env: &BuildEnvironment) ->
             ValidatorAction::MachOScanner(scanners::macho::MachOScanner),
             ValidatorAction::ArchiveScanner(scanners::archive::ArchiveScanner),
         ],
+        true, // Allow early break in final validation
     )
     .await?;
 
@@ -149,6 +191,7 @@ async fn run_validators(
     ctx: &BuildContext,
     env: &BuildEnvironment,
     actions: Vec<ValidatorAction>,
+    allow_early_break: bool,
 ) -> Result<MergedReport, Error> {
     let mut merged = MergedReport::default();
 
@@ -160,7 +203,7 @@ async fn run_validators(
                 operation: action_name.into(),
             },
         );
-        let rep = action.run(ctx, env).await?;
+        let rep = action.run(ctx, env, None).await?;
         send_event(
             ctx,
             Event::OperationCompleted {
@@ -169,7 +212,7 @@ async fn run_validators(
             },
         );
         merged.absorb(rep);
-        if merged.is_fatal() {
+        if allow_early_break && merged.is_fatal() {
             break; // short‑circuit early (saves time)
         }
     }
@@ -180,6 +223,7 @@ async fn run_validators(
 async fn run_patchers(
     ctx: &BuildContext,
     env: &BuildEnvironment,
+    validator_findings: Option<DiagnosticCollector>,
     actions: Vec<PatcherAction>,
 ) -> Result<MergedReport, Error> {
     let mut merged = MergedReport::default();
@@ -192,7 +236,7 @@ async fn run_patchers(
                 operation: action_name.into(),
             },
         );
-        let rep = action.run(ctx, env).await?;
+        let rep = action.run(ctx, env, validator_findings.as_ref()).await?;
         send_event(
             ctx,
             Event::OperationCompleted {

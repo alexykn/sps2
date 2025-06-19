@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use sps2_errors::{BuildError, Error};
+use sps2_types::RpathStyle;
 
 /// A build recipe
 #[derive(Debug, Clone)]
@@ -176,5 +177,14 @@ pub enum BuildStep {
     // Copy source files
     Copy {
         src_path: Option<String>,
+    },
+    // Apply rpath patching to binaries and libraries
+    PatchRpaths {
+        style: RpathStyle,
+        paths: Vec<String>,
+    },
+    // Fix executable permissions on binaries
+    FixPermissions {
+        paths: Vec<String>,
     },
 }

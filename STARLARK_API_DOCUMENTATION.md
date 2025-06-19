@@ -115,10 +115,10 @@ This function sets:
 ```starlark
 def build(ctx):
     cleanup(ctx)
-    
+
     # Apply optimized compiler flags
     with_defaults(ctx)
-    
+
     # Continue with build - flags are now optimized
     fetch(ctx, "https://example.com/source.tar.gz")
     autotools(ctx)
@@ -160,6 +160,92 @@ def build(ctx):
     cargo(ctx, ["--release"])
     install(ctx)  # Auto-install after build (optional)
 ```
+
+### patch_rpaths(ctx, paths?)
+Convert `@rpath` references in dynamic libraries and executables to absolute paths.
+
+**What it does**:
+- Converts all `@rpath/libfoo.dylib` references to `/opt/pm/live/lib/libfoo.dylib`
+- Removes build-time RPATH entries that point to build directories
+- Ensures binaries work with tools that don't handle `@rpath` correctly
+
+**When to use**:
+- When a package fails at runtime with "dylib not found" errors
+- When binaries need to work with older tools that don't understand `@rpath`
+- For compatibility with certain development tools (e.g., some versions of CMake, pkg-config)
+
+**When NOT to use**:
+- Most modern packages work correctly with `@rpath` (the default behavior)
+- Packages that need relocatable binaries or frameworks
+- When you want the flexibility of RPATH-based library resolution
+
+**Best practices**:
+- Try building without `patch_rpaths()` first - most packages work with modern `@rpath`
+- Only add `patch_rpaths()` if you encounter runtime linking issues
+- Place it after all build steps but before `install()` if used
+
+```starlark
+def build(ctx):
+    cleanup(ctx)
+    fetch(ctx, "https://example.com/source.tar.gz")
+    cmake(ctx, ["-DCMAKE_BUILD_TYPE=Release"])
+
+    # Only if needed for compatibility
+    patch_rpaths(ctx)
+
+    # Optional auto-install
+    install(ctx)
+```
+
+**Technical details**:
+- By default, sps2 keeps `@rpath` references with proper `LC_RPATH` entries (modern approach)
+- `patch_rpaths()` rewrites these to absolute paths for compatibility
+- Without arguments, processes all Mach-O files in the staging directory
+- With paths argument, only processes specified files/directories
+
+### fix_permissions(ctx, paths?)
+Fix executable permissions on binaries that weren't properly set by the build system.
+
+**What it does**:
+- Makes all files in `bin/`, `sbin/` directories executable
+- Makes dynamic libraries (`.dylib`, `.so`) executable
+- Makes scripts with shebang lines (`#!/bin/sh`, etc.) executable
+- Makes Mach-O binaries in `libexec/` executable
+- Detects and fixes common script extensions (`.sh`, `.py`, `.pl`, etc.)
+
+**When to use**:
+- When binaries are installed without execute permissions (common with GCC)
+- When shell scripts or other executables lack proper permissions
+- After building packages that have inconsistent permission handling
+
+**When NOT to use**:
+- Most packages set permissions correctly during installation
+- When you need fine-grained permission control
+
+**Best practices**:
+- Try building without `fix_permissions()` first
+- Only add it if you get "permission denied" errors when running installed programs
+- Place it after all build steps but before `install()` if used
+
+```starlark
+def build(ctx):
+    cleanup(ctx)
+    fetch(ctx, "https://example.com/source.tar.gz")
+    autotools(ctx)
+    
+    # Fix permissions on all executables
+    fix_permissions(ctx)
+    
+    # Or fix specific directories only
+    fix_permissions(ctx, ["bin/", "libexec/"])
+```
+
+**Technical details**:
+- The default post-validation only fixes Mach-O binaries and dynamic libraries
+- `fix_permissions()` uses aggressive detection for all executable types
+- Preserves existing read permissions and converts them to execute permissions
+- Without arguments, processes all files in the staging directory
+- With paths argument, only processes specified files/directories
 
 ## Build System Functions
 
@@ -228,7 +314,9 @@ make(ctx, ["check"])  # Run tests
 ```
 
 ### autotools(ctx, args?)
-Complete autotools workflow (configure, make, make install). The builder handles prefix configuration.
+Complete autotools workflow (configure, make, make install). The builder handles prefix configuration and automatically runs the full build and install process.
+
+**Important**: `autotools()` includes the make and make install steps automatically. Do not call `make(ctx, ["install"])` separately.
 
 ```starlark
 autotools(ctx)  # Basic autotools build
@@ -301,6 +389,10 @@ def metadata():
             "openssl",
             "zlib",
             "nghttp2",
+            "brotli",
+            "libssh2",
+            "libidn2",
+            "libpsl",
         ],
         "build_depends": []
     }
@@ -309,8 +401,11 @@ def build(ctx):
     """Build the package using the provided context."""
     cleanup(ctx)
 
+    # Apply optimized default compiler flags for macOS ARM64
+    with_defaults(ctx)
+
     # 2. Fetch the source code from the official Git repository
-    fetch(ctx, "https://github.com/curl/curl/releases/download/curl-8_14_1/curl-8.14.1.tar.bz2", "11afb4250beeda00a1c6d00d12374da703d8bc367d292fd4d00da74aa4f84790")
+    fetch(ctx, "https://github.com/curl/curl/releases/download/curl-8_14_1/curl-8.14.1.tar.bz2")
 
     # 3. Configure the build using CMake.
     # The sps2 `cmake` function handles the complete configure, build,
@@ -331,11 +426,18 @@ def build(ctx):
         "-DCURL_ZLIB=ON",
         "-DUSE_NGHTTP2=ON",      # For HTTP/2 support
         "-DENABLE_IPV6=ON",      # Enable IPv6 support
+        "-DCURL_USE_LIBSSH2=ON", # SSH support
+        "-DUSE_LIBIDN2=ON",      # International domain names
+        "-DCURL_BROTLI=ON",      # Brotli compression
+        "-DCURL_USE_LIBPSL=ON",  # Public suffix list
 
         # Disable features not typically needed for a runtime package
         "-DBUILD_TESTING=OFF",
         "-DENABLE_CURL_MANUAL=OFF",
     ])
+
+    # Patch @rpath reference in binaries with hardcoded paths
+    patch_rpaths(ctx) # should be avoided if not required, curl won't work without it
 
     # 4. (Optional) Install the package to the system prefix after a
     # successful build.

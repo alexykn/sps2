@@ -277,6 +277,12 @@ async fn execute_advanced_step(
         } => {
             // TODO: Set resource hints for scheduler
         }
+        BuildStep::PatchRpaths { style, paths } => {
+            api.patch_rpaths(*style, paths, environment).await?;
+        }
+        BuildStep::FixPermissions { paths } => {
+            api.fix_permissions(paths, environment).await?;
+        }
         _ => {
             // This should not happen if the main match is correct
         }

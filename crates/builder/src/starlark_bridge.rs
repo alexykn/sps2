@@ -4,6 +4,7 @@ use crate::api::BuilderApi;
 use crate::BuildEnvironment;
 use sps2_errors::Error;
 use sps2_package::BuildExecutor;
+use sps2_types::RpathStyle;
 use std::path::{Path, PathBuf};
 
 /// Bridge that implements `BuildExecutor` using `BuilderApi` and `BuildEnvironment`
@@ -120,6 +121,16 @@ impl BuildExecutor for StarlarkBridge {
     async fn with_defaults(&mut self) -> Result<(), Error> {
         // Apply default compiler flags to the build environment
         self.env.apply_default_compiler_flags();
+        Ok(())
+    }
+
+    async fn patch_rpaths(&mut self, style: RpathStyle, paths: &[String]) -> Result<(), Error> {
+        self.api.patch_rpaths(style, paths, &self.env).await?;
+        Ok(())
+    }
+
+    async fn fix_permissions(&mut self, paths: &[String]) -> Result<(), Error> {
+        self.api.fix_permissions(paths, &self.env).await?;
         Ok(())
     }
 }

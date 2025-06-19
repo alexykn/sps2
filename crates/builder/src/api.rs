@@ -6,6 +6,7 @@ use sha2::{Digest as Sha2Digest, Sha256};
 use sps2_errors::{BuildError, Error};
 use sps2_hash::Hash;
 use sps2_net::{NetClient, NetConfig};
+use sps2_types::RpathStyle;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::fs;
@@ -1039,6 +1040,183 @@ impl BuilderApi {
 
         Ok(())
     }
+
+    /// Apply rpath patching to binaries and libraries
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the patching fails.
+    pub async fn patch_rpaths(
+        &self,
+        style: RpathStyle,
+        paths: &[String],
+        env: &BuildEnvironment,
+    ) -> Result<BuildCommandResult, Error> {
+        use crate::post_validation::patchers::rpath::RPathPatcher;
+
+        // Create a custom RPathPatcher with the specified style
+        let patcher = RPathPatcher::new(style);
+
+        // If specific paths are provided, patch only those
+        // Otherwise, patch all binaries and libraries in staging
+        let staging_dir = env.staging_dir();
+        let lib_path = "/opt/pm/live/lib";
+        let build_paths = vec!["/opt/pm/build".to_string(), "/private/".to_string()];
+
+        let mut patched_count = 0;
+        let mut errors = Vec::new();
+
+        if paths.is_empty() {
+            // Patch all eligible files
+            use ignore::WalkBuilder;
+            for entry in WalkBuilder::new(staging_dir)
+                .hidden(false)
+                .parents(false)
+                .build()
+                .filter_map(Result::ok)
+            {
+                let path = entry.into_path();
+                if RPathPatcher::should_process_file(&path) {
+                    let (_, was_fixed, _, error) =
+                        patcher.process_file(&path, lib_path, &build_paths).await;
+                    if was_fixed {
+                        patched_count += 1;
+                    }
+                    if let Some(err) = error {
+                        errors.push(err);
+                    }
+                }
+            }
+        } else {
+            // Patch only specified paths
+            for path_str in paths {
+                let path = staging_dir.join(path_str);
+                if path.exists() && RPathPatcher::should_process_file(&path) {
+                    let (_, was_fixed, _, error) =
+                        patcher.process_file(&path, lib_path, &build_paths).await;
+                    if was_fixed {
+                        patched_count += 1;
+                    }
+                    if let Some(err) = error {
+                        errors.push(err);
+                    }
+                }
+            }
+        }
+
+        let success = errors.is_empty();
+        let stdout = format!("Patched {} files with {} style", patched_count, style);
+        let stderr = if errors.is_empty() {
+            String::new()
+        } else {
+            errors.join("\n")
+        };
+
+        Ok(BuildCommandResult {
+            success,
+            exit_code: Some(i32::from(!success)),
+            stdout,
+            stderr,
+        })
+    }
+
+    /// Fix executable permissions on binaries
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if permission fixing fails.
+    pub async fn fix_permissions(
+        &self,
+        paths: &[String],
+        env: &BuildEnvironment,
+    ) -> Result<BuildCommandResult, Error> {
+        use crate::post_validation::patchers::permissions::PermissionsFixer;
+        use ignore::WalkBuilder;
+
+        let mut fixed_count = 0;
+        let mut errors = Vec::new();
+
+        // Use aggressive mode when called explicitly from Starlark
+        let staging_dir = env.staging_dir();
+
+        // If specific paths provided, only process those
+        if !paths.is_empty() {
+            for path_str in paths {
+                let full_path = staging_dir.join(path_str);
+                if full_path.is_file()
+                    && PermissionsFixer::needs_execute_permission_aggressive(&full_path)
+                {
+                    match fix_file_permissions(&full_path) {
+                        Ok(true) => fixed_count += 1,
+                        Ok(false) => {} // Already had permissions
+                        Err(e) => {
+                            errors.push(format!("Failed to fix {}: {}", full_path.display(), e))
+                        }
+                    }
+                }
+            }
+        } else {
+            // Process all files with aggressive mode
+            for entry in WalkBuilder::new(staging_dir)
+                .hidden(false)
+                .parents(false)
+                .build()
+                .filter_map(Result::ok)
+            {
+                let path = entry.into_path();
+                if path.is_file() && PermissionsFixer::needs_execute_permission_aggressive(&path) {
+                    match fix_file_permissions(&path) {
+                        Ok(true) => fixed_count += 1,
+                        Ok(false) => {} // Already had permissions
+                        Err(e) => errors.push(format!("Failed to fix {}: {}", path.display(), e)),
+                    }
+                }
+            }
+        }
+
+        let success = errors.is_empty();
+        let stdout = if fixed_count > 0 {
+            format!("Fixed permissions on {} files", fixed_count)
+        } else {
+            "No files needed permission fixes".to_string()
+        };
+
+        let stderr = if errors.is_empty() {
+            String::new()
+        } else {
+            errors.join("\n")
+        };
+
+        Ok(BuildCommandResult {
+            success,
+            exit_code: Some(i32::from(!success)),
+            stdout,
+            stderr,
+        })
+    }
+}
+
+/// Fix permissions on a file if needed
+fn fix_file_permissions(path: &std::path::Path) -> Result<bool, std::io::Error> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let metadata = std::fs::metadata(path)?;
+    let mut perms = metadata.permissions();
+    let current_mode = perms.mode();
+
+    // Check if any execute bit is already set
+    if current_mode & 0o111 != 0 {
+        return Ok(false); // Already has execute permissions
+    }
+
+    // Add execute permissions matching read permissions
+    // If readable by owner, make executable by owner, etc.
+    let new_mode = current_mode | ((current_mode & 0o444) >> 2); // Convert read bits to execute bits
+
+    perms.set_mode(new_mode);
+    std::fs::set_permissions(path, perms)?;
+
+    Ok(true)
 }
 
 /// Compression types

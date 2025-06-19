@@ -10,7 +10,11 @@ pub struct ObjectFileCleaner;
 impl crate::post_validation::traits::Action for ObjectFileCleaner {
     const NAME: &'static str = "Object file cleaner";
 
-    async fn run(ctx: &BuildContext, env: &BuildEnvironment) -> Result<Report, Error> {
+    async fn run(
+        ctx: &BuildContext,
+        env: &BuildEnvironment,
+        _findings: Option<&crate::post_validation::diagnostics::DiagnosticCollector>,
+    ) -> Result<Report, Error> {
         let staging_dir = env.staging_dir();
         let mut removed_files = Vec::new();
 

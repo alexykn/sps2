@@ -14,10 +14,6 @@ impl BuildEnvironment {
             self.build_prefix.display().to_string(),
         );
         summary.insert(
-            "deps_prefix".to_string(),
-            self.deps_prefix.display().to_string(),
-        );
-        summary.insert(
             "staging_dir".to_string(),
             self.staging_dir.display().to_string(),
         );
@@ -72,26 +68,24 @@ impl BuildEnvironment {
         self.env_vars
             .insert("MAKEFLAGS".to_string(), format!("-j{}", Self::cpu_count()));
 
-        // Compiler flags for dependency isolation
-        // Use placeholder prefix for build paths to enable relocatable packages
-        let placeholder_deps = format!("{}/deps", crate::BUILD_PLACEHOLDER_PREFIX);
-        self.env_vars.insert(
-            "CFLAGS".to_string(),
-            format!("-I{placeholder_deps}/include"),
-        );
-        self.env_vars.insert(
-            "CPPFLAGS".to_string(),
-            format!("-I{placeholder_deps}/include"),
-        );
+        // Compiler flags pointing to /opt/pm/live where dependencies are installed
+        let live_include = "/opt/pm/live/include";
+        let live_lib = "/opt/pm/live/lib";
         self.env_vars
-            .insert("LDFLAGS".to_string(), format!("-L{placeholder_deps}/lib"));
+            .insert("CFLAGS".to_string(), format!("-I{live_include}"));
+        self.env_vars
+            .insert("CPPFLAGS".to_string(), format!("-I{live_include}"));
+        // Base LDFLAGS with headerpad for macOS
+        let mut ldflags = format!("-L{live_lib}");
+        if cfg!(target_os = "macos") {
+            ldflags.push_str(" -headerpad_max_install_names");
+        }
+        self.env_vars.insert("LDFLAGS".to_string(), ldflags);
 
         // Prevent system library contamination
         // LIBRARY_PATH is used by compiler/linker at build time
-        self.env_vars.insert(
-            "LIBRARY_PATH".to_string(),
-            format!("{}/lib", placeholder_deps),
-        );
+        self.env_vars
+            .insert("LIBRARY_PATH".to_string(), live_lib.to_string());
         // Note: We don't set LD_LIBRARY_PATH or DYLD_LIBRARY_PATH as they're
         // considered dangerous for isolation and are runtime variables, not build-time
 
@@ -135,101 +129,38 @@ impl BuildEnvironment {
         self.env_vars.remove("ACLOCAL_PATH");
     }
 
-    /// Setup environment for build dependencies with proper isolation
+    /// Setup environment for build dependencies
     pub(crate) fn setup_build_deps_environment(&mut self) {
-        let deps_prefix_display = self.deps_prefix.display();
-        let deps_bin = format!("{deps_prefix_display}/bin");
-        let deps_lib = format!("{deps_prefix_display}/lib");
-        let deps_pkgconfig = format!("{deps_prefix_display}/lib/pkgconfig");
-        let deps_share = format!("{deps_prefix_display}/share");
-
-        // Insert build deps right after system paths but before /opt/pm/live/bin
-        // This ensures system tools take precedence, then deps, then installed packages
-        let current_path = self.env_vars.get("PATH").cloned().unwrap_or_default();
-        let path_parts: Vec<&str> = current_path.split(':').collect();
-
-        // Find where system paths end (after /sbin)
-        let mut system_end_idx = 0;
-        for (i, part) in path_parts.iter().enumerate() {
-            if *part == "/sbin" {
-                system_end_idx = i + 1;
-                break;
-            }
-        }
-
-        // Build new PATH: system paths, deps, then everything else
-        let mut new_path_components = Vec::new();
-
-        // Add system paths
-        new_path_components.extend_from_slice(&path_parts[..system_end_idx]);
-
-        // Add deps bin
-        new_path_components.push(&deps_bin);
-
-        // Add remaining paths (/opt/pm/live/bin, etc.)
-        if system_end_idx < path_parts.len() {
-            new_path_components.extend_from_slice(&path_parts[system_end_idx..]);
-        }
-
-        let new_path = new_path_components.join(":");
-        self.env_vars.insert("PATH".to_string(), new_path);
+        // Since dependencies are installed in /opt/pm/live, we just need to ensure
+        // the paths are set correctly. PATH already includes /opt/pm/live/bin
 
         // PKG_CONFIG_PATH for dependency discovery
-        self.env_vars
-            .insert("PKG_CONFIG_PATH".to_string(), deps_pkgconfig.clone());
-
-        // CMAKE_PREFIX_PATH for CMake-based builds
         self.env_vars.insert(
-            "CMAKE_PREFIX_PATH".to_string(),
-            self.deps_prefix.display().to_string(),
+            "PKG_CONFIG_PATH".to_string(),
+            "/opt/pm/live/lib/pkgconfig".to_string(),
         );
 
-        // Update compiler flags to include build dep paths
-        // Use placeholder paths to keep packages relocatable
-        let placeholder_deps = format!("{}/deps", crate::BUILD_PLACEHOLDER_PREFIX);
-        let placeholder_include = format!("{}/include", placeholder_deps);
-        let placeholder_lib = format!("{}/lib", placeholder_deps);
-
-        let current_cflags = self.env_vars.get("CFLAGS").cloned().unwrap_or_default();
-        let new_cflags = if current_cflags.is_empty() {
-            format!("-I{placeholder_include}")
-        } else {
-            format!("{current_cflags} -I{placeholder_include}")
-        };
-        self.env_vars.insert("CFLAGS".to_string(), new_cflags);
-
-        let current_cppflags = self.env_vars.get("CPPFLAGS").cloned().unwrap_or_default();
-        let new_cppflags = if current_cppflags.is_empty() {
-            format!("-I{placeholder_include}")
-        } else {
-            format!("{current_cppflags} -I{placeholder_include}")
-        };
-        self.env_vars.insert("CPPFLAGS".to_string(), new_cppflags);
-
-        let current_ldflags = self.env_vars.get("LDFLAGS").cloned().unwrap_or_default();
-        let new_ldflags = if current_ldflags.is_empty() {
-            format!("-L{placeholder_lib}")
-        } else {
-            format!("{current_ldflags} -L{placeholder_lib}")
-        };
-        self.env_vars.insert("LDFLAGS".to_string(), new_ldflags);
+        // CMAKE_PREFIX_PATH for CMake-based builds
+        self.env_vars
+            .insert("CMAKE_PREFIX_PATH".to_string(), "/opt/pm/live".to_string());
 
         // Autotools-specific paths
-        self.env_vars
-            .insert("ACLOCAL_PATH".to_string(), format!("{deps_share}/aclocal"));
+        self.env_vars.insert(
+            "ACLOCAL_PATH".to_string(),
+            "/opt/pm/live/share/aclocal".to_string(),
+        );
 
-        // Ensure library search paths are set for build time
-        // LIBRARY_PATH is used by compiler/linker at build time
-        self.env_vars.insert("LIBRARY_PATH".to_string(), deps_lib);
-        // Note: We don't set LD_LIBRARY_PATH or DYLD_LIBRARY_PATH as they're
-        // considered dangerous for isolation and are runtime variables, not build-time
+        // CFLAGS, LDFLAGS, and LIBRARY_PATH are already set to /opt/pm/live in setup_environment()
     }
 
     /// Apply default compiler flags for optimization and security
     ///
     /// This method sets recommended compiler flags for macOS ARM64 builds.
     /// It preserves existing flags while adding optimizations.
+    /// Does NOT modify dependency paths - those are handled separately.
     pub fn apply_default_compiler_flags(&mut self) {
+        // Mark that with_defaults() was called
+        self.with_defaults_called = true;
         // Detect target architecture
         let arch = std::env::consts::ARCH;
         let is_arm64 = arch == "aarch64";
@@ -259,7 +190,8 @@ impl BuildEnvironment {
         // Linker flags for macOS
         if is_macos {
             let linker_flags = vec![
-                "-Wl,-dead_strip", // Remove unused code
+                "-Wl,-dead_strip",              // Remove unused code
+                "-headerpad_max_install_names", // Reserve space for install name changes
             ];
             self.merge_compiler_flags("LDFLAGS", &linker_flags);
         }
@@ -305,6 +237,9 @@ impl BuildEnvironment {
             self.env_vars
                 .insert("CMAKE_OSX_ARCHITECTURES".to_string(), "arm64".to_string());
         }
+
+        // Note: CMAKE_INSTALL_NAME_DIR is now handled by the CMake build system
+        // as a command-line argument when with_defaults() is used
     }
 
     /// Helper to merge compiler flags without duplicating
