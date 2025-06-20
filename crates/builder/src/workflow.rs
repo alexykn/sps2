@@ -100,6 +100,39 @@ impl Builder {
         // Run quality checks
         run_quality_pipeline(&context, &environment).await?;
 
+        // If fix_permissions was requested in the recipe, run it now as final step
+        if let Some(paths) = &environment.fix_permissions_request {
+            send_event(
+                &context,
+                Event::OperationStarted {
+                    operation: "Final permissions fix".into(),
+                },
+            );
+
+            // Create a BuilderApi instance to call do_fix_permissions
+            let api = crate::api::BuilderApi::new(environment.staging_dir().to_path_buf())?;
+            let result = api.do_fix_permissions(paths, &environment).await?;
+
+            send_event(
+                &context,
+                Event::OperationCompleted {
+                    operation: "Final permissions fix".into(),
+                    success: result.success,
+                },
+            );
+
+            // Log the result
+            if !result.stdout.is_empty() {
+                send_event(
+                    &context,
+                    Event::DebugLog {
+                        message: result.stdout,
+                        context: std::collections::HashMap::new(),
+                    },
+                );
+            }
+        }
+
         // Generate SBOM and create manifest
         let (sbom_files, manifest) = generate_sbom_and_manifest(
             &self.config,

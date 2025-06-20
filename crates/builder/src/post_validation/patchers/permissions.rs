@@ -19,14 +19,9 @@ use sps2_events::Event;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
+#[derive(Default)]
 pub struct PermissionsFixer {
     aggressive: bool,
-}
-
-impl Default for PermissionsFixer {
-    fn default() -> Self {
-        Self { aggressive: false }
-    }
 }
 
 impl PermissionsFixer {

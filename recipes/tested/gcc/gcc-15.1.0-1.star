@@ -92,3 +92,6 @@ def build(ctx):
     
     # 6. Install GCC from the build directory
     command(ctx, ["sh", "-c", "cd build && make install"])
+
+    fix_permissions(ctx)
+    

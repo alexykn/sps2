@@ -64,6 +64,43 @@ impl Default for RpathStyle {
     }
 }
 
+/// Build system profile for post-validation pipeline selection
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BuildSystemProfile {
+    /// C/C++ build systems (autotools, cmake, meson) - full validation pipeline
+    /// Includes all validators and patchers, binary patching, and code re-signing
+    NativeFull,
+    /// Rust build system - minimal validation to avoid breaking panic unwinding
+    /// Skips binary patching and code re-signing that interfere with Rust runtime
+    RustMinimal,
+    /// Go build system - medium validation for mostly static binaries
+    /// Limited patching, no rpath needed unless CGO is used
+    GoMedium,
+    /// Script-based systems (Python, Node.js) - light validation
+    /// Focus on permissions and text file patching only
+    ScriptLight,
+}
+
+impl BuildSystemProfile {
+    /// Determine profile from build system name
+    #[must_use]
+    pub fn from_build_system(build_system: &str) -> Self {
+        match build_system {
+            "cargo" => Self::RustMinimal,
+            "go" => Self::GoMedium,
+            "python" | "nodejs" => Self::ScriptLight,
+            _ => Self::NativeFull, // Default to full validation for unknown systems
+        }
+    }
+}
+
+impl Default for BuildSystemProfile {
+    fn default() -> Self {
+        Self::NativeFull
+    }
+}
+
 impl std::fmt::Display for Arch {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

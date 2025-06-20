@@ -7,7 +7,7 @@ use sps2_net::NetClient;
 use sps2_resolver::Resolver;
 use sps2_store::PackageStore;
 use sps2_types::Version;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// Live prefix where packages are installed at runtime
@@ -36,6 +36,10 @@ pub struct BuildEnvironment {
     pub(crate) net: Option<NetClient>,
     /// Whether with_defaults() was called (for optimized builds)
     pub(crate) with_defaults_called: bool,
+    /// Build systems used during the build process
+    pub(crate) used_build_systems: HashSet<String>,
+    /// Fix permissions requests (None if not requested, Some(paths) if requested)
+    pub(crate) fix_permissions_request: Option<Vec<String>>,
 }
 
 impl BuildEnvironment {
@@ -64,6 +68,8 @@ impl BuildEnvironment {
             installer: None,
             net: None,
             with_defaults_called: false,
+            used_build_systems: HashSet::new(),
+            fix_permissions_request: None,
         })
     }
 
@@ -180,10 +186,31 @@ impl BuildEnvironment {
         &self.build_metadata
     }
 
+    /// Record that a build system was used during the build
+    pub fn record_build_system(&mut self, build_system: &str) {
+        self.used_build_systems.insert(build_system.to_string());
+    }
+
+    /// Get all build systems used during the build
+    #[must_use]
+    pub fn used_build_systems(&self) -> &HashSet<String> {
+        &self.used_build_systems
+    }
+
     /// Get package name
     #[must_use]
     pub fn package_name(&self) -> &str {
         &self.context.name
+    }
+
+    /// Record that fix_permissions was requested
+    pub fn record_fix_permissions_request(&mut self, paths: Vec<String>) {
+        // If already requested, merge the paths
+        if let Some(existing_paths) = &mut self.fix_permissions_request {
+            existing_paths.extend(paths);
+        } else {
+            self.fix_permissions_request = Some(paths);
+        }
     }
 
     /// Get build prefix path for package

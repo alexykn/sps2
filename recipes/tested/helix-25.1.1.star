@@ -2,7 +2,7 @@ def metadata():
     """Package metadata"""
     return {
         "name": "helix",
-        "version": "25.01",
+        "version": "25.0.1",
         "description": "A post-modern modal text editor.",
         "license": "MIT"
     }

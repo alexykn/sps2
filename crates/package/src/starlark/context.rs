@@ -559,6 +559,7 @@ pub fn build_context_functions(builder: &mut GlobalsBuilder) {
                 return Err(anyhow::anyhow!("Paths must be a string or list of strings"));
             }
         }
+        // If no paths provided, path_vec remains empty, which signals "process all files"
 
         build_ctx.add_step(BuildStep::FixPermissions { paths: path_vec });
         Ok(NoneType)

@@ -59,7 +59,7 @@ impl BuildExecutor for StarlarkBridge {
     }
 
     async fn make(&mut self, args: &[String]) -> Result<(), Error> {
-        self.api.make(args, &self.env).await?;
+        self.api.make(args, &mut self.env).await?;
         Ok(())
     }
 
@@ -69,42 +69,42 @@ impl BuildExecutor for StarlarkBridge {
     }
 
     async fn configure(&mut self, args: &[String]) -> Result<(), Error> {
-        self.api.configure(args, &self.env).await?;
+        self.api.configure(args, &mut self.env).await?;
         Ok(())
     }
 
     async fn autotools(&mut self, args: &[String]) -> Result<(), Error> {
-        self.api.autotools(args, &self.env).await?;
+        self.api.autotools(args, &mut self.env).await?;
         Ok(())
     }
 
     async fn cmake(&mut self, args: &[String]) -> Result<(), Error> {
-        self.api.cmake(args, &self.env).await?;
+        self.api.cmake(args, &mut self.env).await?;
         Ok(())
     }
 
     async fn meson(&mut self, args: &[String]) -> Result<(), Error> {
-        self.api.meson(args, &self.env).await?;
+        self.api.meson(args, &mut self.env).await?;
         Ok(())
     }
 
     async fn cargo(&mut self, args: &[String]) -> Result<(), Error> {
-        self.api.cargo(args, &self.env).await?;
+        self.api.cargo(args, &mut self.env).await?;
         Ok(())
     }
 
     async fn go(&mut self, args: &[String]) -> Result<(), Error> {
-        self.api.go(args, &self.env).await?;
+        self.api.go(args, &mut self.env).await?;
         Ok(())
     }
 
     async fn python(&mut self, args: &[String]) -> Result<(), Error> {
-        self.api.python(args, &self.env).await?;
+        self.api.python(args, &mut self.env).await?;
         Ok(())
     }
 
     async fn nodejs(&mut self, args: &[String]) -> Result<(), Error> {
-        self.api.nodejs(args, &self.env).await?;
+        self.api.nodejs(args, &mut self.env).await?;
         Ok(())
     }
 
@@ -130,7 +130,7 @@ impl BuildExecutor for StarlarkBridge {
     }
 
     async fn fix_permissions(&mut self, paths: &[String]) -> Result<(), Error> {
-        self.api.fix_permissions(paths, &self.env).await?;
+        self.api.fix_permissions(paths, &mut self.env).await?;
         Ok(())
     }
 }

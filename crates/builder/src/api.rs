@@ -328,9 +328,12 @@ impl BuilderApi {
     pub async fn autotools(
         &self,
         args: &[String],
-        env: &BuildEnvironment,
+        env: &mut BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
         use crate::build_systems::{AutotoolsBuildSystem, BuildSystem, BuildSystemContext};
+
+        // Record that we're using autotools build system
+        env.record_build_system("autotools");
 
         // Extract source archive first if needed
         self.extract_downloads().await?;
@@ -365,9 +368,12 @@ impl BuilderApi {
     pub async fn cmake(
         &self,
         args: &[String],
-        env: &BuildEnvironment,
+        env: &mut BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
         use crate::build_systems::{BuildSystem, BuildSystemContext, CMakeBuildSystem};
+
+        // Record that we're using cmake build system
+        env.record_build_system("cmake");
 
         // Extract source archive first if needed
         self.extract_downloads().await?;
@@ -407,9 +413,12 @@ impl BuilderApi {
     pub async fn meson(
         &self,
         args: &[String],
-        env: &BuildEnvironment,
+        env: &mut BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
         use crate::build_systems::{BuildSystem, BuildSystemContext, MesonBuildSystem};
+
+        // Record that we're using meson build system
+        env.record_build_system("meson");
 
         // Extract source archive first if needed
         self.extract_downloads().await?;
@@ -452,9 +461,12 @@ impl BuilderApi {
     pub async fn cargo(
         &self,
         args: &[String],
-        env: &BuildEnvironment,
+        env: &mut BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
         use crate::build_systems::{BuildSystem, BuildSystemContext, CargoBuildSystem};
+
+        // Record that we're using cargo build system
+        env.record_build_system("cargo");
 
         // Extract source archive first if needed
         self.extract_downloads().await?;
@@ -489,9 +501,12 @@ impl BuilderApi {
     pub async fn go(
         &self,
         args: &[String],
-        env: &BuildEnvironment,
+        env: &mut BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
         use crate::build_systems::{BuildSystem, BuildSystemContext, GoBuildSystem};
+
+        // Record that we're using go build system
+        env.record_build_system("go");
 
         // Extract source archive first if needed
         self.extract_downloads().await?;
@@ -526,9 +541,12 @@ impl BuilderApi {
     pub async fn python(
         &mut self,
         args: &[String],
-        env: &BuildEnvironment,
+        env: &mut BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
         use crate::build_systems::{BuildSystem, BuildSystemContext, PythonBuildSystem};
+
+        // Record that we're using python build system
+        env.record_build_system("python");
 
         // Extract source archive first if needed
         self.extract_downloads().await?;
@@ -572,9 +590,12 @@ impl BuilderApi {
     pub async fn nodejs(
         &self,
         args: &[String],
-        env: &BuildEnvironment,
+        env: &mut BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
         use crate::build_systems::{BuildSystem, BuildSystemContext, NodeJsBuildSystem};
+
+        // Record that we're using nodejs build system
+        env.record_build_system("nodejs");
 
         // Extract source archive first if needed
         self.extract_downloads().await?;
@@ -609,8 +630,10 @@ impl BuilderApi {
     pub async fn configure(
         &self,
         args: &[String],
-        env: &BuildEnvironment,
+        env: &mut BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
+        // Record that we're using configure (part of autotools)
+        env.record_build_system("configure");
         // Extract source archive first if needed
         self.extract_downloads().await?;
 
@@ -639,8 +662,10 @@ impl BuilderApi {
     pub async fn make(
         &self,
         args: &[String],
-        env: &BuildEnvironment,
+        env: &mut BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
+        // Record that we're using make (generic build system)
+        env.record_build_system("make");
         // Process arguments, replacing relative DESTDIR with absolute path
         let processed_args: Vec<String> = args
             .iter()
@@ -1053,6 +1078,29 @@ impl BuilderApi {
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
         use crate::post_validation::patchers::rpath::RPathPatcher;
+        use sps2_types::BuildSystemProfile;
+
+        // Check if this is appropriate for the build system
+        let used_systems = env.used_build_systems();
+        let profile = BuildSystemProfile::from_build_system(
+            used_systems.iter().next().unwrap_or(&"unknown".to_string()),
+        );
+
+        if matches!(
+            profile,
+            BuildSystemProfile::RustMinimal | BuildSystemProfile::GoMedium
+        ) {
+            eprintln!(
+                "Warning: patch_rpaths() is not recommended for {} projects. \
+                Rust and Go binaries typically don't need rpath patching and it may cause issues.",
+                if used_systems.contains("cargo") {
+                    "Rust"
+                } else {
+                    "Go"
+                }
+            );
+            // Continue but warn - don't fail in case user knows what they're doing
+        }
 
         // Create a custom RPathPatcher with the specified style
         let patcher = RPathPatcher::new(style);
@@ -1128,52 +1176,173 @@ impl BuilderApi {
     pub async fn fix_permissions(
         &self,
         paths: &[String],
+        env: &mut BuildEnvironment,
+    ) -> Result<BuildCommandResult, Error> {
+        // Just record the request - actual fixing happens at the very end
+        env.record_fix_permissions_request(paths.to_vec());
+
+        Ok(BuildCommandResult {
+            success: true,
+            exit_code: Some(0),
+            stdout: "Permissions fix scheduled for final packaging step".to_string(),
+            stderr: String::new(),
+        })
+    }
+
+    /// Internal implementation that actually fixes permissions
+    pub async fn do_fix_permissions(
+        &self,
+        paths: &[String],
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
-        use crate::post_validation::patchers::permissions::PermissionsFixer;
-        use ignore::WalkBuilder;
-
+        let staging_dir = env.staging_dir();
         let mut fixed_count = 0;
         let mut errors = Vec::new();
 
-        // Use aggressive mode when called explicitly from Starlark
-        let staging_dir = env.staging_dir();
+        // Log initial state
+        self.log_fix_permissions_start(paths, staging_dir, env);
 
-        // If specific paths provided, only process those
+        // Process files based on whether specific paths were provided
         if !paths.is_empty() {
-            for path_str in paths {
-                let full_path = staging_dir.join(path_str);
-                if full_path.is_file()
-                    && PermissionsFixer::needs_execute_permission_aggressive(&full_path)
-                {
-                    match fix_file_permissions(&full_path) {
-                        Ok(true) => fixed_count += 1,
-                        Ok(false) => {} // Already had permissions
-                        Err(e) => {
-                            errors.push(format!("Failed to fix {}: {}", full_path.display(), e))
-                        }
+            self.fix_specific_paths(paths, staging_dir, &mut fixed_count, &mut errors);
+        } else {
+            self.fix_all_files(staging_dir, env, &mut fixed_count, &mut errors);
+        }
+
+        // Build and return result
+        self.build_fix_permissions_result(fixed_count, &errors, staging_dir, env)
+    }
+
+    /// Log the start of fix_permissions operation
+    fn log_fix_permissions_start(
+        &self,
+        paths: &[String],
+        staging_dir: &Path,
+        env: &BuildEnvironment,
+    ) {
+        let dir_exists = staging_dir.exists();
+        let is_dir = staging_dir.is_dir();
+
+        crate::events::send_event(
+            &env.context,
+            sps2_events::Event::debug(format!(
+                "fix_permissions called with {} paths, staging_dir: {} (exists: {}, is_dir: {})",
+                if paths.is_empty() {
+                    "no specific".to_string()
+                } else {
+                    paths.len().to_string()
+                },
+                staging_dir.display(),
+                dir_exists,
+                is_dir
+            )),
+        );
+    }
+
+    /// Fix permissions for specific paths
+    fn fix_specific_paths(
+        &self,
+        paths: &[String],
+        staging_dir: &Path,
+        fixed_count: &mut usize,
+        errors: &mut Vec<String>,
+    ) {
+        use crate::post_validation::patchers::permissions::PermissionsFixer;
+
+        for path_str in paths {
+            let full_path = staging_dir.join(path_str);
+            if full_path.is_file()
+                && PermissionsFixer::needs_execute_permission_aggressive(&full_path)
+            {
+                match fix_file_permissions(&full_path) {
+                    Ok(true) => *fixed_count += 1,
+                    Ok(false) => {} // Already had permissions
+                    Err(e) => {
+                        errors.push(format!("Failed to fix {}: {}", full_path.display(), e));
                     }
                 }
             }
-        } else {
-            // Process all files with aggressive mode
-            for entry in WalkBuilder::new(staging_dir)
-                .hidden(false)
-                .parents(false)
-                .build()
-                .filter_map(Result::ok)
-            {
-                let path = entry.into_path();
-                if path.is_file() && PermissionsFixer::needs_execute_permission_aggressive(&path) {
+        }
+    }
+
+    /// Fix permissions for all files in staging directory
+    fn fix_all_files(
+        &self,
+        staging_dir: &Path,
+        env: &BuildEnvironment,
+        fixed_count: &mut usize,
+        errors: &mut Vec<String>,
+    ) {
+        use crate::post_validation::patchers::permissions::PermissionsFixer;
+        use ignore::WalkBuilder;
+
+        let mut total_files = 0;
+        let mut checked_files = 0;
+
+        crate::events::send_event(
+            &env.context,
+            sps2_events::Event::debug(format!(
+                "Walking directory tree from: {}",
+                staging_dir.display()
+            )),
+        );
+
+        for entry in WalkBuilder::new(staging_dir)
+            .hidden(false)
+            .parents(false)
+            .build()
+            .filter_map(Result::ok)
+        {
+            let path = entry.into_path();
+            if path.is_file() {
+                total_files += 1;
+
+                // Debug logging for first few files
+                if total_files <= 3
+                    || (path.to_string_lossy().contains("/bin/") && total_files <= 10)
+                {
+                    let needs_fix = PermissionsFixer::needs_execute_permission_aggressive(&path);
+                    crate::events::send_event(
+                        &env.context,
+                        sps2_events::Event::debug(format!(
+                            "File #{}: {} - needs fix: {}",
+                            total_files,
+                            path.display(),
+                            needs_fix
+                        )),
+                    );
+                }
+
+                if PermissionsFixer::needs_execute_permission_aggressive(&path) {
+                    checked_files += 1;
                     match fix_file_permissions(&path) {
-                        Ok(true) => fixed_count += 1,
+                        Ok(true) => *fixed_count += 1,
                         Ok(false) => {} // Already had permissions
-                        Err(e) => errors.push(format!("Failed to fix {}: {}", path.display(), e)),
+                        Err(e) => {
+                            errors.push(format!("Failed to fix {}: {}", path.display(), e));
+                        }
                     }
                 }
             }
         }
 
+        crate::events::send_event(
+            &env.context,
+            sps2_events::Event::debug(format!(
+                "fix_permissions: Checked {}/{} files, fixed {}",
+                checked_files, total_files, *fixed_count
+            )),
+        );
+    }
+
+    /// Build the result for fix_permissions operation
+    fn build_fix_permissions_result(
+        &self,
+        fixed_count: usize,
+        errors: &[String],
+        staging_dir: &Path,
+        env: &BuildEnvironment,
+    ) -> Result<BuildCommandResult, Error> {
         let success = errors.is_empty();
         let stdout = if fixed_count > 0 {
             format!("Fixed permissions on {} files", fixed_count)
@@ -1186,6 +1355,22 @@ impl BuilderApi {
         } else {
             errors.join("\n")
         };
+
+        // Log the result
+        if fixed_count > 0 {
+            crate::events::send_event(
+                &env.context,
+                sps2_events::Event::debug(format!("fix_permissions: {}", stdout)),
+            );
+        } else {
+            crate::events::send_event(
+                &env.context,
+                sps2_events::Event::debug(format!(
+                    "fix_permissions: No files needed fixes in {}",
+                    staging_dir.display()
+                )),
+            );
+        }
 
         Ok(BuildCommandResult {
             success,

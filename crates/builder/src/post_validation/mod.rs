@@ -4,6 +4,7 @@ pub mod diagnostics;
 pub mod macho_utils;
 pub mod patchers;
 pub mod reports;
+pub mod router;
 pub mod scanners;
 pub mod traits;
 
@@ -116,15 +117,27 @@ impl PatcherAction {
 /// * P – patch tree in‑place
 /// * V2 – must be clean, else the build fails
 pub async fn run_quality_pipeline(ctx: &BuildContext, env: &BuildEnvironment) -> Result<(), Error> {
+    // Determine which pipeline to use based on build systems
+    let used_build_systems = env.used_build_systems();
+    let profile = router::determine_profile(used_build_systems);
+
+    // Log which pipeline we're using
+    send_event(
+        ctx,
+        Event::DebugLog {
+            message: format!(
+                "Using {} for build systems: {:?}",
+                router::get_pipeline_name(profile),
+                used_build_systems
+            ),
+            context: std::collections::HashMap::new(),
+        },
+    );
     // ----------------    PHASE 1  -----------------
     let mut pre = run_validators(
         ctx,
         env,
-        vec![
-            ValidatorAction::HardcodedScanner(scanners::hardcoded::HardcodedScanner),
-            ValidatorAction::MachOScanner(scanners::macho::MachOScanner),
-            ValidatorAction::ArchiveScanner(scanners::archive::ArchiveScanner),
-        ],
+        router::get_validators_for_profile(profile),
         false, // Don't allow early break - run all validators
     )
     .await?;
@@ -137,21 +150,7 @@ pub async fn run_quality_pipeline(ctx: &BuildContext, env: &BuildEnvironment) ->
         ctx,
         env,
         validator_findings,
-        vec![
-            // PermissionsFixer MUST run first to ensure binaries have execute permissions
-            PatcherAction::PermissionsFixer(patchers::permissions::PermissionsFixer::default()),
-            PatcherAction::PlaceholderPatcher(patchers::placeholder::PlaceholderPatcher),
-            PatcherAction::BinaryStringPatcher(patchers::binary_string::BinaryStringPatcher),
-            PatcherAction::RPathPatcher(patchers::rpath::RPathPatcher::new(
-                sps2_types::RpathStyle::Modern,
-            )),
-            PatcherAction::HeaderPatcher(patchers::headers::HeaderPatcher),
-            PatcherAction::PkgConfigPatcher(patchers::pkgconfig::PkgConfigPatcher),
-            PatcherAction::LaFileCleaner(patchers::la_cleaner::LaFileCleaner),
-            PatcherAction::ObjectFileCleaner(patchers::object_cleaner::ObjectFileCleaner),
-            // CodeSigner MUST run last to re-sign any binaries modified by other patchers
-            PatcherAction::CodeSigner(patchers::codesigner::CodeSigner),
-        ],
+        router::get_patchers_for_profile(profile),
     )
     .await?;
 
@@ -159,11 +158,7 @@ pub async fn run_quality_pipeline(ctx: &BuildContext, env: &BuildEnvironment) ->
     let post = run_validators(
         ctx,
         env,
-        vec![
-            ValidatorAction::HardcodedScanner(scanners::hardcoded::HardcodedScanner),
-            ValidatorAction::MachOScanner(scanners::macho::MachOScanner),
-            ValidatorAction::ArchiveScanner(scanners::archive::ArchiveScanner),
-        ],
+        router::get_validators_for_profile(profile),
         true, // Allow early break in final validation
     )
     .await?;
