@@ -145,6 +145,43 @@ Apply a patch file to the source.
 apply_patch(ctx, "fix-macos-build.patch")
 ```
 
+### copy(ctx, src_path?)
+Copy source files from the recipe directory (or specified path) to the build directory.
+
+**What it does**:
+- Without arguments: copies all files from the recipe directory to the build working directory
+- With src_path: copies files from the specified path to the build working directory
+- Useful for local source builds or when you have source files alongside your recipe
+
+**When to use**:
+- When building from local source files instead of fetching from a URL
+- When you have patches or additional files in your recipe directory
+- For development/testing with local modifications
+
+**When NOT to use**:
+- When using `fetch()` or `git()` - they handle source extraction automatically
+- For production builds - prefer versioned sources from URLs
+
+```starlark
+def build(ctx):
+    cleanup(ctx)
+    
+    # Copy all files from recipe directory
+    copy(ctx)
+    
+    # Or copy from a specific subdirectory
+    copy(ctx, "src/")
+    
+    # Then build as normal
+    make(ctx)
+```
+
+**Technical details**:
+- The recipe directory is the directory containing the `.star` file
+- All files are copied recursively, preserving directory structure
+- Hidden files (starting with `.`) are included
+- Symlinks are followed and their targets copied
+
 ### install(ctx)
 Request installation of the built package after .sp creation.
 
@@ -204,14 +241,16 @@ def build(ctx):
 - With paths argument, only processes specified files/directories
 
 ### fix_permissions(ctx, paths?)
-Fix executable permissions on binaries that weren't properly set by the build system.
+Schedule executable permission fixes to run after all post-build processing.
 
 **What it does**:
+- Schedules permission fixes to run as the very last step before packaging
 - Makes all files in `bin/`, `sbin/` directories executable
 - Makes dynamic libraries (`.dylib`, `.so`) executable
 - Makes scripts with shebang lines (`#!/bin/sh`, etc.) executable
 - Makes Mach-O binaries in `libexec/` executable
 - Detects and fixes common script extensions (`.sh`, `.py`, `.pl`, etc.)
+- Fixes files anywhere in the package if they're in a `bin` or `sbin` directory
 
 **When to use**:
 - When binaries are installed without execute permissions (common with GCC)
@@ -225,7 +264,7 @@ Fix executable permissions on binaries that weren't properly set by the build sy
 **Best practices**:
 - Try building without `fix_permissions()` first
 - Only add it if you get "permission denied" errors when running installed programs
-- Place it after all build steps but before `install()` if used
+- Can be placed anywhere in the recipe - it always runs at the very end
 
 ```starlark
 def build(ctx):
@@ -233,12 +272,14 @@ def build(ctx):
     fetch(ctx, "https://example.com/source.tar.gz")
     autotools(ctx)
     
-    # Fix permissions on all executables
+    # Schedule permission fixes (runs after all post-processing)
     fix_permissions(ctx)
     
     # Or fix specific directories only
     fix_permissions(ctx, ["bin/", "libexec/"])
 ```
+
+**Important**: `fix_permissions()` does NOT run immediately when called. Instead, it schedules the permission fixes to run after all post-validation steps (patching, code signing, etc.). This ensures that files modified by post-processing retain correct executable permissions in the final package.
 
 **Technical details**:
 - The default post-validation only fixes Mach-O binaries and dynamic libraries
@@ -246,6 +287,8 @@ def build(ctx):
 - Preserves existing read permissions and converts them to execute permissions
 - Without arguments, processes all files in the staging directory
 - With paths argument, only processes specified files/directories
+- Runs after: hardcoded path removal, rpath patching, binary string patching, code signing
+- This deferred execution prevents post-processing from breaking executable permissions
 
 ## Build System Functions
 
