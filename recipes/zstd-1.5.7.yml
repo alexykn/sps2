@@ -1,0 +1,21 @@
+metadata:
+  name: zstd
+  version: "1.5.7"
+  description: "Zstandard - Fast lossless compression algorithm targeting real-time compression scenarios at zlib-level and better compression ratios"
+  license: "BSD-3-Clause OR GPL-2.0"
+  homepage: "https://facebook.github.io/zstd/"
+
+environment:
+  defaults: true
+  variables:
+    CC: "clang -arch arm64 -O3"
+    CXX: "clang++ -arch arm64 -O3"
+
+source:
+  fetch:
+    url: "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz"
+
+build:
+  steps:
+    - make: []
+    - make: ["install"]

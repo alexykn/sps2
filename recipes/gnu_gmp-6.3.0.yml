@@ -1,0 +1,27 @@
+metadata:
+  name: gmp
+  version: "6.3.0"
+  description: "A free library for arbitrary precision arithmetic, operating on signed integers, rational numbers, and floating-point numbers."
+  license: "LGPL-3.0-or-later"
+  homepage: "https://gmplib.org"
+  dependencies:
+    build:
+      - m4  # Required by the configure script
+
+environment:
+  defaults: true
+
+source:
+  fetch:
+    url: "https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz"
+
+build:
+  system: autotools
+  args:
+    # Enable the C++ interface (gmpxx), which is required by other
+    # libraries like MPFR and MPC that depend on GMP.
+    - "--enable-cxx"
+    # Build shared libraries for dynamic linking.
+    - "--enable-shared"
+    # Disable the static library to save space and avoid linking issues.
+    - "--disable-static"

@@ -1,0 +1,24 @@
+metadata:
+  name: openssl
+  version: "3.5.0"
+  description: "Robust, commercial-grade, and full-featured toolkit for TLS and SSL protocols"
+  license: "Apache-2.0"
+
+environment:
+  defaults: true
+
+source:
+  fetch:
+    url: "https://github.com/openssl/openssl/releases/download/openssl-3.5.0/openssl-3.5.0.tar.gz"
+
+build:
+  steps:
+    - configure:
+        - "darwin64-arm64-cc"
+        - "--prefix=${PREFIX}"
+        - "--openssldir=${PREFIX}/etc/ssl"
+        - "--libdir=lib"
+        - "shared"
+        - "zlib-dynamic"
+    - make: []
+    - make: ["install"]

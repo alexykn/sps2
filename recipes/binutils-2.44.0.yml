@@ -1,0 +1,30 @@
+metadata:
+  name: binutils
+  version: "2.44.0"
+  description: "The GNU Binutils are a collection of binary tools, including the linker, assembler, and other tools for object file manipulation."
+  license: "GPL-3.0-or-later"
+  homepage: "https://www.gnu.org/software/binutils/"
+  dependencies:
+    build:
+      - zlib  # For handling compressed debug sections
+
+environment:
+  defaults: true
+
+source:
+  fetch:
+    url: "https://ftp.gnu.org/gnu/binutils/binutils-2.44.tar.gz"
+
+build:
+  system: autotools
+  args:
+    # Use the system's zlib library.
+    - "--with-system-zlib"
+    # Build shared libraries, which are needed by other tools.
+    - "--enable-shared"
+    # Disable building for multiple architectures to keep the package focused.
+    - "--disable-multilib"
+    # Disable Native Language Support to reduce package size.
+    - "--disable-nls"
+    # Disable CTF support (not available on macOS)
+    - "--disable-libctf"

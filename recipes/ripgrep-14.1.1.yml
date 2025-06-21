@@ -1,0 +1,22 @@
+metadata:
+  name: ripgrep
+  version: "14.1.1"
+  description: |
+    ripgrep is a line-oriented search tool that recursively searches the current
+    directory for a regex pattern while respecting gitignore rules. ripgrep has
+    first class support on Windows, macOS and Linux.
+  license: "Unlicense OR MIT"
+  homepage: "https://github.com/BurntSushi/ripgrep"
+
+environment:
+  defaults: true
+  network: true  # Allow network access for dependency downloads
+
+source:
+  fetch:
+    url: "https://github.com/BurntSushi/ripgrep/archive/refs/tags/14.1.1.tar.gz"
+
+build:
+  system: cargo
+  args:
+    - "--release"

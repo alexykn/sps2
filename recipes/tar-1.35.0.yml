@@ -1,0 +1,17 @@
+metadata:
+  name: tar
+  version: "1.35.0"
+  description: "GNU tar archiving utility"
+  license: "GPL-3.0-or-later"
+
+environment:
+  defaults: true
+
+source:
+  fetch:
+    url: "https://ftp.gnu.org/gnu/tar/tar-1.35.tar.gz"
+
+build:
+  system: autotools
+  args:
+    - "LIBS=-liconv"  # On macOS, we need to explicitly link with iconv

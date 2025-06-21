@@ -1,0 +1,26 @@
+metadata:
+  name: libssh2
+  version: "1.11.1"
+  description: "A client-side C library implementing the SSH2 protocol"
+  license: "BSD"
+  homepage: "https://libssh2.org"
+  dependencies:
+    runtime:
+      - openssl
+      - zlib
+
+environment:
+  defaults: true
+
+source:
+  fetch:
+    url: "https://github.com/libssh2/libssh2/releases/download/libssh2-1.11.1/libssh2-1.11.1.tar.gz"
+
+build:
+  system: cmake
+  args:
+    - "-DCMAKE_BUILD_TYPE=Release"
+    - "-DBUILD_SHARED_LIBS=ON"
+    - "-DENABLE_ZLIB_COMPRESSION=ON"
+    - "-DBUILD_EXAMPLES=OFF"
+    - "-DBUILD_TESTING=OFF"

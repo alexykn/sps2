@@ -1,0 +1,26 @@
+metadata:
+  name: mpfr
+  version: "4.2.2"
+  description: "A C library for multiple-precision floating-point computations with correct rounding."
+  license: "LGPL-3.0-or-later"
+  homepage: "https://www.mpfr.org/"
+  dependencies:
+    runtime:
+      - gmp
+
+environment:
+  defaults: true
+
+source:
+  fetch:
+    url: "https://www.mpfr.org/mpfr-current/mpfr-4.2.2.tar.gz"
+
+build:
+  system: autotools
+  args:
+    # Link against the GMP library provided in the build environment.
+    - "--with-gmp=${PREFIX}"
+    # Build shared libraries for dynamic linking.
+    - "--enable-shared"
+    # Disable the static library to save space.
+    - "--disable-static"

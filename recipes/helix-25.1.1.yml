@@ -1,0 +1,18 @@
+metadata:
+  name: helix
+  version: "25.0.1"
+  description: "A post-modern modal text editor."
+  license: "MIT"
+
+environment:
+  defaults: true
+  network: true  # Allow network access for dependency downloads
+
+source:
+  fetch:
+    url: "https://github.com/helix-editor/helix/archive/refs/tags/25.01.tar.gz"
+
+build:
+  system: cargo
+  args:
+    - "--release"

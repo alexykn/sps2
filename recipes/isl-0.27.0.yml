@@ -1,0 +1,26 @@
+metadata:
+  name: isl
+  version: "0.27.0"
+  description: "A library for manipulating sets and relations of integer points bounded by linear constraints."
+  license: "MIT"
+  homepage: "https://libisl.sourceforge.io/"
+  dependencies:
+    runtime:
+      - gmp
+    build:
+      - gmp
+
+environment:
+  defaults: true
+
+source:
+  fetch:
+    url: "https://libisl.sourceforge.io/isl-0.27.tar.bz2"
+
+build:
+  system: autotools
+  args:
+    # Build shared libraries for dynamic linking.
+    - "--enable-shared"
+    # Disable the static library to save space and reduce complexity.
+    - "--disable-static"

@@ -1,0 +1,20 @@
+metadata:
+  name: libidn2
+  version: "2.3.8"
+  description: "International domain name library (IDNA2008/TR46)"
+  license: "GPL-3.0-or-later"
+  homepage: "https://www.gnu.org/software/libidn/#libidn2"
+
+environment:
+  defaults: true
+
+source:
+  fetch:
+    url: "https://ftp.gnu.org/gnu/libidn/libidn2-2.3.8.tar.gz"
+
+build:
+  system: autotools
+  args:
+    - "--disable-dependency-tracking"
+    - "--disable-silent-rules"
+    - "--disable-static"

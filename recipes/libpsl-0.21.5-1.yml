@@ -1,0 +1,25 @@
+metadata:
+  name: libpsl
+  version: "0.21.5"
+  description: "C library for the Public Suffix List"
+  license: "MIT"
+  homepage: "https://github.com/rockdaboot/libpsl"
+  dependencies:
+    runtime:
+      - libidn2
+
+environment:
+  defaults: true
+
+source:
+  fetch:
+    url: "https://github.com/rockdaboot/libpsl/releases/download/0.21.5/libpsl-0.21.5.tar.gz"
+
+build:
+  system: autotools
+  args:
+    - "--disable-dependency-tracking"
+    - "--disable-silent-rules"
+    - "--disable-static"
+    - "--enable-runtime=libidn2"
+    - "--enable-builtin=libidn2"

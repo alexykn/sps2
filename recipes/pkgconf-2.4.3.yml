@@ -1,0 +1,17 @@
+metadata:
+  name: pkgconf
+  version: "2.4.3"
+  description: "A system for managing library compile/link flags"
+  license: "ISC"
+
+environment:
+  defaults: true
+
+source:
+  fetch:
+    url: "https://distfiles.ariadne.space/pkgconf/pkgconf-2.4.3.tar.xz"
+
+build:
+  system: meson
+  args:
+    - "--buildtype=release"

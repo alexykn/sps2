@@ -1,0 +1,17 @@
+metadata:
+  name: m4
+  version: "1.4.20"
+  description: "GNU M4 is an implementation of the traditional Unix macro processor."
+  license: "GPL-3.0-or-later"
+  homepage: "https://www.gnu.org/software/m4/"
+
+environment:
+  defaults: true
+  isolation: none
+
+source:
+  fetch:
+    url: "https://ftp.gnu.org/gnu/m4/m4-1.4.20.tar.gz"
+
+build:
+  system: autotools

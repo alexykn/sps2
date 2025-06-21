@@ -1,0 +1,25 @@
+metadata:
+  name: make
+  version: "4.4.1"
+  description: "GNU Make is a tool which controls the generation of executables and other non-source files of a program from the program's source files."
+  license: "GPL-3.0-or-later"
+  homepage: "https://www.gnu.org/software/make/"
+
+environment:
+  defaults: true
+  variables:
+    CC: "gcc"     # Force GCC to avoid clang issues
+    CXX: "g++"
+
+source:
+  fetch:
+    url: "https://ftp.gnu.org/gnu/make/make-4.4.1.tar.gz"
+
+build:
+  system: autotools
+  args:
+    # Standard optimization flags
+    - "--disable-dependency-tracking"
+    - "--disable-silent-rules"
+    # Skip optional Guile support
+    - "--without-guile"

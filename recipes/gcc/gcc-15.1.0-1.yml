@@ -1,0 +1,68 @@
+metadata:
+  name: gcc
+  version: "15.1.0"
+  description: "The GNU Compiler Collection (GCC) - comprehensive suite of compilers for C, C++, and other languages, optimized for macOS ARM64."
+  license: "GPL-3.0-or-later"
+  homepage: "https://gcc.gnu.org"
+  dependencies:
+    build:
+      # Core mathematical libraries required by GCC
+      - gmp # GNU Multiple Precision Arithmetic Library (version 4.3.2+)
+      - mpfr # GNU Multiple-Precision Floating-Point Library (version 3.1.0+)
+      - mpc # GNU Multiple-Precision Complex Library (version 1.0.1+)
+      - isl # Integer Set Library for Graphite loop optimizations (version 0.15+)
+      - zstd # For LTO bytecode compression
+
+facts:
+  build_triple: "aarch64-apple-darwin24"
+  sdk_path: "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+
+environment:
+  defaults: true
+  variables:
+    LDFLAGS: "-L${PREFIX}/lib -L/usr/lib -Wl,-rpath,${PREFIX}/lib -Wl,-rpath,/usr/lib"
+    CPPFLAGS: "-I${PREFIX}/include"
+    DYLD_LIBRARY_PATH: "${PREFIX}/lib:/usr/lib"
+    BOOT_LDFLAGS: "-Wl,-headerpad_max_install_names -Wl,-rpath,${PREFIX}/lib -Wl,-rpath,/usr/lib"
+    # For GCC's build process
+    BOOT_CFLAGS: "-O2"
+
+source:
+  local:
+    path: "."
+  patches:
+    - "gcc-15.1.0-darwin.patch"
+
+build:
+  steps:
+    # Create build directory and configure
+    - shell: |
+        mkdir -p build
+        cd build && ../configure \
+          --prefix=${PREFIX} \
+          --build=${build_triple} \
+          --with-sysroot=${sdk_path} \
+          --with-native-system-header-dir=/usr/include \
+          --with-gmp=${PREFIX} \
+          --with-mpfr=${PREFIX} \
+          --with-mpc=${PREFIX} \
+          --with-isl=${PREFIX} \
+          --with-zstd=${PREFIX} \
+          --enable-languages=c,c++,objc,obj-c++,fortran \
+          --disable-multilib \
+          --enable-checking=release \
+          --with-gcc-major-version-only \
+          --with-system-zlib \
+          --disable-nls \
+          --enable-bootstrap
+    
+    # Build with proper BOOT_LDFLAGS
+    - shell: |
+        cd build && make -j8 BOOT_LDFLAGS="${BOOT_LDFLAGS}"
+    
+    # Install
+    - shell: |
+        cd build && make install
+
+post:
+  fix_permissions: true
