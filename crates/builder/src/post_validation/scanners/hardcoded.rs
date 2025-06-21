@@ -45,6 +45,12 @@ impl crate::post_validation::traits::Action for HardcodedScanner {
         {
             let path = entry.into_path();
             if path.is_file() {
+                // Skip Python bytecode files - they contain paths but are regenerated at runtime
+                if let Some(ext) = path.extension() {
+                    if ext == "pyc" || ext == "pyo" {
+                        continue;
+                    }
+                }
                 if let Ok(data) = std::fs::read(&path) {
                     let hay = data.as_slice();
 

@@ -61,7 +61,7 @@ pub fn get_validators_for_profile(profile: BuildSystemProfile) -> Vec<ValidatorA
             // Minimal validation for Rust to avoid breaking panic unwinding
             vec![
                 // Skip HardcodedScanner - Rust binaries often have debug paths
-                ValidatorAction::MachOScanner(MachOScanner),
+                // Skip MachOScanner - Rust manages its own dylib paths
                 // Skip ArchiveScanner for Rust
             ]
         }

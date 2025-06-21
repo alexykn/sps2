@@ -1,7 +1,7 @@
 //! Build plan representation for staged execution
 
 use crate::environment::IsolationLevel;
-use crate::yaml::{BuildStep, RecipeMetadata, YamlBuildStep, YamlRecipe};
+use crate::yaml::{BuildStep, PostCommand, RecipeMetadata, YamlBuildStep, YamlRecipe};
 use sps2_types::RpathStyle;
 use std::collections::HashMap;
 
@@ -259,11 +259,25 @@ impl BuildPlan {
 
         // Custom post-processing commands
         for command in &recipe.post.commands {
-            // Post commands are always shell commands (for flexibility)
-            post_steps.push(BuildStep::Command {
-                program: "sh".to_string(),
-                args: vec!["-c".to_string(), command.clone()],
-            });
+            match command {
+                PostCommand::Simple(cmd) => {
+                    // Simple commands: split by whitespace
+                    let parts: Vec<&str> = cmd.split_whitespace().collect();
+                    if !parts.is_empty() {
+                        post_steps.push(BuildStep::Command {
+                            program: parts[0].to_string(),
+                            args: parts[1..].iter().map(ToString::to_string).collect(),
+                        });
+                    }
+                }
+                PostCommand::Shell { shell } => {
+                    // Shell commands: passed to sh -c
+                    post_steps.push(BuildStep::Command {
+                        program: "sh".to_string(),
+                        args: vec!["-c".to_string(), shell.clone()],
+                    });
+                }
+            }
         }
 
         post_steps

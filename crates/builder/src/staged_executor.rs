@@ -150,7 +150,7 @@ async fn apply_environment_config(
 
 /// Execute source acquisition stage
 async fn execute_source_stage(
-    config: &BuildConfig,
+    _config: &BuildConfig,
     context: &BuildContext,
     environment: &mut BuildEnvironment,
     build_plan: &BuildPlan,
@@ -172,7 +172,8 @@ async fn execute_source_stage(
 
     // Create builder API
     let mut api = BuilderApi::new(working_dir.clone())?;
-    let _result = api.allow_network(config.allow_network);
+    // Source stage always allows network for fetching
+    let _result = api.allow_network(true);
 
     // Clean staging area first
     send_event(
@@ -248,7 +249,8 @@ async fn execute_build_stage(
 
     // Create builder API
     let mut api = BuilderApi::new(working_dir)?;
-    let _result = api.allow_network(config.allow_network);
+    // Use network setting from YAML recipe's environment config
+    let _result = api.allow_network(build_plan.environment.network);
 
     // Execute build steps with timeout
     crate::timeout_utils::with_optional_timeout(

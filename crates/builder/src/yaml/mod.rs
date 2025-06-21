@@ -10,6 +10,6 @@ mod yaml_recipe;
 pub use recipe::{BuildStep, RecipeMetadata};
 pub use yaml_parser::parse_yaml_recipe;
 pub use yaml_recipe::{
-    Build, BuildStep as YamlBuildStep, BuildSystem, ChecksumAlgorithm, PostOption, SourceMethod,
-    YamlRecipe,
+    Build, BuildStep as YamlBuildStep, BuildSystem, ChecksumAlgorithm, PostCommand, PostOption,
+    SourceMethod, YamlRecipe,
 };

@@ -213,7 +213,17 @@ pub struct Post {
 
     /// Custom post-processing commands
     #[serde(default)]
-    pub commands: Vec<String>,
+    pub commands: Vec<PostCommand>,
+}
+
+/// Post-processing command
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PostCommand {
+    /// Simple command string
+    Simple(String),
+    /// Shell command (passed to sh -c, supports pipes/redirects/etc)
+    Shell { shell: String },
 }
 
 /// Post-processing option (bool or list of paths)

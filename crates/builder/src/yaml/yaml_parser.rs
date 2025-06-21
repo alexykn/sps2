@@ -1,6 +1,6 @@
 //! YAML recipe parser with validation and variable expansion
 
-use super::yaml_recipe::{Build, BuildStep, PostOption, YamlRecipe};
+use super::yaml_recipe::{Build, BuildStep, PostCommand, PostOption, YamlRecipe};
 use sps2_errors::{BuildError, Error};
 use std::collections::HashMap;
 use std::path::Path;
@@ -127,7 +127,10 @@ fn expand_variables(recipe: &mut YamlRecipe) -> Result<(), Error> {
 
     // Expand variables in post commands
     for cmd in &mut recipe.post.commands {
-        *cmd = expand_string(cmd, &context);
+        match cmd {
+            PostCommand::Simple(s) => *s = expand_string(s, &context),
+            PostCommand::Shell { shell } => *shell = expand_string(shell, &context),
+        }
     }
 
     // Expand variables in post option paths
