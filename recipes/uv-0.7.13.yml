@@ -1,0 +1,20 @@
+metadata:
+  name: uv
+  version: "0.7.13"
+  description: |
+    An extremely fast Python package and project manager, written in Rust.
+  license: "MIT"
+  homepage: "https://github.com/astral-sh/uv"
+
+environment:
+  defaults: true
+  network: true # Allow network access for dependency downloads
+
+source:
+  fetch:
+    url: "https://github.com/astral-sh/uv/releases/download/0.7.13/source.tar.gz"
+
+build:
+  system: cargo
+  args:
+    - "--release"
