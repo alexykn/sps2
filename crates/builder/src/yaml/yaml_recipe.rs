@@ -186,7 +186,10 @@ pub enum BuildSystem {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum BuildStep {
+    // Simple command (splits by whitespace, no shell features)
     Command { command: String },
+    // Shell command (passed to sh -c, supports pipes/redirects/etc)
+    Shell { shell: String },
     Make { make: Vec<String> },
     Configure { configure: Vec<String> },
     Cmake { cmake: Vec<String> },

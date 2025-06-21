@@ -172,6 +172,9 @@ fn expand_build_step(step: &mut BuildStep, context: &HashMap<String, String>) {
         BuildStep::Command { command } => {
             *command = expand_string(command, context);
         }
+        BuildStep::Shell { shell } => {
+            *shell = expand_string(shell, context);
+        }
         BuildStep::Make { make } => {
             for arg in make {
                 *arg = expand_string(arg, context);

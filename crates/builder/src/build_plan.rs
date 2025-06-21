@@ -183,6 +183,13 @@ impl BuildPlan {
                                 continue;
                             }
                         }
+                        YamlBuildStep::Shell { shell } => {
+                            // Shell commands are passed directly to sh -c
+                            BuildStep::Command {
+                                program: "sh".to_string(),
+                                args: vec!["-c".to_string(), shell.clone()],
+                            }
+                        }
                         YamlBuildStep::Configure { configure } => BuildStep::Configure {
                             args: configure.clone(),
                         },
@@ -248,6 +255,15 @@ impl BuildPlan {
                 });
             }
             PostOption::Enabled(false) => {}
+        }
+
+        // Custom post-processing commands
+        for command in &recipe.post.commands {
+            // Post commands are always shell commands (for flexibility)
+            post_steps.push(BuildStep::Command {
+                program: "sh".to_string(),
+                args: vec!["-c".to_string(), command.clone()],
+            });
         }
 
         post_steps
