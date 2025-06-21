@@ -1,0 +1,24 @@
+metadata:
+  name: bzip2
+  version: "1.0.8"
+  description: "High-quality data compression program"
+  homepage: "https://sourceware.org/bzip2/"
+  license: "bzip2-1.0.6"
+  runtime_deps: []
+  build_deps: []
+
+environment:
+  defaults: true
+
+source:
+  fetch:
+    url: "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz"
+
+build:
+  steps:
+    - shell: |
+        make
+        make install PREFIX=${DESTDIR}${PREFIX}
+
+post:
+  fix_permissions: true

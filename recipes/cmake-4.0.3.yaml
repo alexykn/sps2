@@ -1,0 +1,25 @@
+metadata:
+  name: cmake
+  version: "4.0.3"
+  description: "Cross-platform build system generator"
+  homepage: "https://cmake.org"
+  license: "BSD-3-Clause"
+  runtime_deps: []
+  build_deps: []
+
+environment:
+  defaults: true
+
+source:
+  fetch:
+    url: "https://github.com/Kitware/CMake/releases/download/v4.0.3/cmake-4.0.3.tar.gz"
+
+build:
+  steps:
+    - shell: |
+        ./bootstrap --prefix=${PREFIX}
+        make
+        make install
+
+post:
+  fix_permissions: true
