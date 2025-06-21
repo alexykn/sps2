@@ -260,9 +260,10 @@ post:
     - bin/
     - libexec/
   
-  # Custom post-processing commands
+  # Custom post-processing commands (always run as shell)
   commands:
     - strip bin/*    # Strip debug symbols
+    - find lib -name '*.la' -delete  # Remove libtool files
 ```
 
 ### When to Use Post-Processing
@@ -368,6 +369,66 @@ source:
 
 build:
   system: autotools
+```
+
+### Complex Build (GCC Compiler)
+```yaml
+metadata:
+  name: gcc
+  version: "15.1.0"
+  description: "GNU Compiler Collection"
+  license: "GPL-3.0-or-later"
+  dependencies:
+    build: [gmp, mpfr, mpc, isl, zstd]
+
+facts:
+  build_triple: "aarch64-apple-darwin24"
+  sdk_path: "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+
+environment:
+  defaults: true
+  variables:
+    BOOT_LDFLAGS: "-Wl,-headerpad_max_install_names -Wl,-rpath,${PREFIX}/lib"
+
+source:
+  local:
+    path: "."
+  patches:
+    - "gcc-15.1.0-darwin.patch"
+
+build:
+  steps:
+    # Complex out-of-source build requiring shell features
+    - shell: |
+        mkdir -p build
+        cd build && ../configure \
+          --prefix=${PREFIX} \
+          --build=${build_triple} \
+          --with-sysroot=${sdk_path} \
+          --with-native-system-header-dir=/usr/include \
+          --with-gmp=${PREFIX} \
+          --with-mpfr=${PREFIX} \
+          --with-mpc=${PREFIX} \
+          --with-isl=${PREFIX} \
+          --with-zstd=${PREFIX} \
+          --enable-languages=c,c++,objc,obj-c++,fortran \
+          --disable-multilib \
+          --enable-checking=release \
+          --with-gcc-major-version-only \
+          --with-system-zlib \
+          --disable-nls \
+          --enable-bootstrap
+    
+    # Build with special flags
+    - shell: |
+        cd build && make -j8 BOOT_LDFLAGS="${BOOT_LDFLAGS}"
+    
+    # Install
+    - shell: |
+        cd build && make install
+
+post:
+  fix_permissions: true
 ```
 
 ## Best Practices
