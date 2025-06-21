@@ -1,5 +1,6 @@
 //! Builder API for Starlark recipes
 
+use crate::environment::IsolationLevel;
 use crate::{BuildCommandResult, BuildEnvironment};
 use md5::{Digest, Md5};
 use sha2::{Digest as Sha2Digest, Sha256};
@@ -30,6 +31,8 @@ pub struct BuilderApi {
     install_requested: bool,
     /// Build metadata collected during build (e.g., Python wheel path)
     build_metadata: HashMap<String, String>,
+    /// Build isolation level (None if not explicitly set)
+    explicit_isolation_level: Option<IsolationLevel>,
 }
 
 impl BuilderApi {
@@ -53,6 +56,7 @@ impl BuilderApi {
             ],
             install_requested: false,
             build_metadata: HashMap::new(),
+            explicit_isolation_level: None,
         })
     }
 
@@ -737,6 +741,23 @@ impl BuilderApi {
     /// Take build metadata (consumes the metadata)
     pub fn take_build_metadata(&mut self) -> HashMap<String, String> {
         std::mem::take(&mut self.build_metadata)
+    }
+
+    /// Set isolation level
+    pub fn set_isolation(&mut self, level: IsolationLevel) {
+        self.explicit_isolation_level = Some(level);
+    }
+
+    /// Get isolation level if explicitly set
+    #[must_use]
+    pub fn explicit_isolation_level(&self) -> Option<IsolationLevel> {
+        self.explicit_isolation_level
+    }
+
+    /// Check if isolation was explicitly set
+    #[must_use]
+    pub fn is_isolation_explicitly_set(&self) -> bool {
+        self.explicit_isolation_level.is_some()
     }
 
     /// Extract downloaded archives

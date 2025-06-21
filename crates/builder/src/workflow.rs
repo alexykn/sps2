@@ -186,8 +186,19 @@ impl Builder {
         // Initialize isolated environment
         environment.initialize().await?;
 
-        // Verify isolation is properly set up
-        environment.verify_isolation()?;
+        // Apply isolation level from config
+        environment
+            .apply_isolation_level(
+                self.config.isolation_level,
+                self.config.allow_network,
+                context.event_sender.as_ref(),
+            )
+            .await?;
+
+        // Verify isolation is properly set up (skip for None isolation level)
+        if self.config.isolation_level != crate::environment::IsolationLevel::None {
+            environment.verify_isolation()?;
+        }
 
         send_event(
             context,
@@ -207,10 +218,18 @@ impl Builder {
         &self,
         context: &BuildContext,
         environment: &mut BuildEnvironment,
-    ) -> Result<(Vec<String>, sps2_package::RecipeMetadata, bool), Error> {
-        // First, extract metadata to get build dependencies without executing build steps
-        let recipe = sps2_package::load_recipe(&context.recipe_path).await?;
-        let recipe_metadata = sps2_package::extract_recipe_metadata(&recipe)?;
+    ) -> Result<(Vec<String>, crate::yaml::RecipeMetadata, bool), Error> {
+        // Parse YAML recipe for metadata
+        let yaml_recipe = crate::yaml::parse_yaml_recipe(&context.recipe_path).await?;
+        let recipe_metadata = crate::yaml::RecipeMetadata {
+            name: yaml_recipe.metadata.name.clone(),
+            version: yaml_recipe.metadata.version.clone(),
+            description: yaml_recipe.metadata.description.clone().into(),
+            homepage: yaml_recipe.metadata.homepage.clone(),
+            license: Some(yaml_recipe.metadata.license.clone()),
+            runtime_deps: yaml_recipe.metadata.dependencies.runtime.clone(),
+            build_deps: yaml_recipe.metadata.dependencies.build.clone(),
+        };
 
         // Extract build dependencies as PackageSpec
         let build_deps: Vec<sps2_types::package::PackageSpec> = recipe_metadata
@@ -244,6 +263,9 @@ impl Builder {
         // Now execute the recipe with build dependencies already set up
         let (runtime_deps, _build_deps, _metadata, install_requested) =
             execute_recipe(&self.config, context, environment).await?;
+
+        // Note: YAML recipes using staged execution have isolation already applied
+        // during the environment configuration stage in staged_executor.rs.
 
         Ok((runtime_deps, recipe_metadata, install_requested))
     }

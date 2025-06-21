@@ -21,10 +21,7 @@ mod python;
 pub use autotools::AutotoolsBuildSystem;
 pub use cargo::CargoBuildSystem;
 pub use cmake::CMakeBuildSystem;
-pub use core::{
-    BuildSystemConfig, BuildSystemContext, CrossCompilationContext, Platform, TestFailure,
-    TestResults, Toolchain,
-};
+pub use core::{BuildSystemConfig, BuildSystemContext, TestFailure, TestResults};
 pub use go::GoBuildSystem;
 pub use meson::MesonBuildSystem;
 pub use nodejs::NodeJsBuildSystem;

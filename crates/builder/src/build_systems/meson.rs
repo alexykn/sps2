@@ -5,7 +5,6 @@ use async_trait::async_trait;
 use sps2_errors::{BuildError, Error};
 use std::collections::HashMap;
 use std::path::Path;
-use tokio::fs;
 
 /// Meson build system
 pub struct MesonBuildSystem {
@@ -43,68 +42,6 @@ impl MesonBuildSystem {
         !ctx.network_allowed
     }
 
-    /// Create Meson cross file for cross-compilation
-    async fn create_cross_file(&self, ctx: &BuildSystemContext) -> Result<(), Error> {
-        if let Some(cross) = &ctx.cross_compilation {
-            let cross_file = &cross.toolchain.meson_cross_file;
-
-            // Create directory if it doesn't exist
-            if let Some(parent) = cross_file.parent() {
-                fs::create_dir_all(parent).await?;
-            }
-
-            // Generate cross file content
-            let content = format!(
-                r"[binaries]
-                c = '{}'
-                cpp = '{}'
-                ar = '{}'
-                strip = '{}'
-                ranlib = '{}'
-                pkgconfig = 'pkg-config'
-
-                [properties]
-                sys_root = '{}'
-                pkg_config_libdir = ['{}/usr/lib/pkgconfig', '{}/usr/share/pkgconfig']
-
-                [host_machine]
-                system = '{}'
-                cpu_family = '{}'
-                cpu = '{}'
-                endian = '{}'
-
-                [build_machine]
-                system = '{}'
-                cpu_family = '{}'
-                cpu = '{}'
-                endian = '{}'
-                ",
-                cross.toolchain.cc,
-                cross.toolchain.cxx,
-                cross.toolchain.ar,
-                cross.toolchain.strip,
-                cross.toolchain.ranlib,
-                cross.sysroot.display(),
-                cross.sysroot.display(),
-                cross.sysroot.display(),
-                // Host machine
-                &cross.host_platform.os,
-                &cpu_family_from_arch(&cross.host_platform.arch),
-                &cross.host_platform.arch,
-                endian_from_arch(&cross.host_platform.arch),
-                // Build machine
-                &cross.build_platform.os,
-                &cpu_family_from_arch(&cross.build_platform.arch),
-                &cross.build_platform.arch,
-                endian_from_arch(&cross.build_platform.arch),
-            );
-
-            fs::write(cross_file, content).await?;
-        }
-
-        Ok(())
-    }
-
     /// Get Meson setup arguments
     fn get_setup_args(&self, ctx: &BuildSystemContext, user_args: &[String]) -> Vec<String> {
         let mut args = vec!["setup".to_string()];
@@ -139,13 +76,7 @@ impl MesonBuildSystem {
             args.push("--wrap-mode=nodownload".to_string());
         }
 
-        // Add cross file if cross-compiling
-        if let Some(cross) = &ctx.cross_compilation {
-            args.push(format!(
-                "--cross-file={}",
-                cross.toolchain.meson_cross_file.display()
-            ));
-        }
+        // macOS ARM only - no cross-compilation support
 
         // Add PKG_CONFIG_PATH
         if let Some(pkg_config_path) = ctx.get_all_env_vars().get("PKG_CONFIG_PATH") {
@@ -207,9 +138,6 @@ impl BuildSystem for MesonBuildSystem {
     }
 
     async fn configure(&self, ctx: &BuildSystemContext, args: &[String]) -> Result<(), Error> {
-        // Create cross file if needed
-        self.create_cross_file(ctx).await?;
-
         // Get setup arguments
         let setup_args = self.get_setup_args(ctx, args);
         let arg_refs: Vec<&str> = setup_args.iter().map(String::as_str).collect();
@@ -354,27 +282,6 @@ impl BuildSystem for MesonBuildSystem {
 
     fn build_directory_name(&self) -> &'static str {
         "builddir"
-    }
-}
-
-/// Get CPU family from architecture
-fn cpu_family_from_arch(arch: &str) -> String {
-    match arch {
-        "x86_64" | "amd64" => "x86_64".to_string(),
-        "i386" | "i486" | "i586" | "i686" => "x86".to_string(),
-        "aarch64" | "arm64" => "aarch64".to_string(),
-        "armv7" | "armv7l" | "armv7h" => "arm".to_string(),
-        "riscv64" => "riscv64".to_string(),
-        "powerpc64" | "ppc64" => "ppc64".to_string(),
-        _ => arch.to_string(),
-    }
-}
-
-/// Get endianness from architecture
-fn endian_from_arch(arch: &str) -> &'static str {
-    match arch {
-        "powerpc64" | "ppc64" | "s390x" => "big",
-        _ => "little",
     }
 }
 

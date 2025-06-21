@@ -1,85 +1,34 @@
-//! Starlark recipe execution and build step management
+//! YAML recipe execution and build step management
 
+use crate::environment::IsolationLevel;
 use crate::events::send_event;
-use crate::timeout_utils::with_optional_timeout;
+use crate::yaml::{BuildStep, RecipeMetadata};
 use crate::{BuildConfig, BuildContext, BuildEnvironment, BuilderApi};
 use sps2_errors::{BuildError, Error};
 use sps2_events::Event;
-use sps2_package::{
-    execute_recipe as package_execute_recipe, load_recipe, BuildStep, RecipeMetadata,
-};
 use sps2_types::package::PackageSpec;
 use std::path::Path;
 use tokio::fs;
 
-/// Execute the Starlark recipe and return dependencies, metadata, and install request status
+/// Execute the YAML recipe and return dependencies, metadata, and install request status
 pub async fn execute_recipe(
     config: &BuildConfig,
     context: &BuildContext,
     environment: &mut BuildEnvironment,
 ) -> Result<(Vec<String>, Vec<PackageSpec>, RecipeMetadata, bool), Error> {
-    // Read recipe file
-    let _recipe_content = fs::read_to_string(&context.recipe_path)
-        .await
-        .map_err(|e| BuildError::RecipeError {
-            message: format!(
-                "failed to read recipe {}: {e}",
-                context.recipe_path.display()
-            ),
-        })?;
-
-    // Parse the recipe
-    let recipe = load_recipe(&context.recipe_path).await?;
-
-    // Create builder API
-    let working_dir = environment.build_prefix().join("src");
-    fs::create_dir_all(&working_dir).await?;
-
-    let mut api = BuilderApi::new(working_dir.clone())?;
-    let _result = api.allow_network(config.allow_network);
-
-    // Execute recipe with timeout
-    let result = with_optional_timeout(
-        execute_recipe_steps(context, &recipe, &mut api, environment),
-        config.max_build_time,
-        &context.name,
-    )
-    .await?;
-
-    // Check if install was requested
-    let install_requested = api.is_install_requested();
-
-    // Transfer build metadata from API to environment
-    for (key, value) in api.build_metadata() {
-        environment.set_build_metadata(key.clone(), value.clone());
-    }
-
-    Ok((result.0, result.1, result.2, install_requested))
+    // Execute YAML recipe using staged execution
+    crate::staged_executor::execute_staged_build(config, context, environment).await
 }
 
-/// Execute recipe steps
-async fn execute_recipe_steps(
+/// Execute a list of build steps
+pub(crate) async fn execute_build_steps_list(
     context: &BuildContext,
-    recipe: &sps2_package::Recipe,
+    build_steps: &[BuildStep],
     api: &mut BuilderApi,
     environment: &mut BuildEnvironment,
-) -> Result<(Vec<String>, Vec<PackageSpec>, RecipeMetadata), Error> {
-    // Execute the recipe to get metadata
-    let recipe_result = package_execute_recipe(recipe)?;
-
-    // Extract runtime dependencies as strings
-    let runtime_deps: Vec<String> = recipe_result.metadata.runtime_deps.clone();
-
-    // Extract build dependencies as PackageSpec
-    let build_deps: Vec<PackageSpec> = recipe_result
-        .metadata
-        .build_deps
-        .iter()
-        .map(|dep| PackageSpec::parse(dep))
-        .collect::<Result<Vec<_>, _>>()?;
-
+) -> Result<(), Error> {
     // Execute build steps
-    for step in &recipe_result.build_steps {
+    for step in build_steps {
         send_event(
             context,
             Event::BuildStepStarted {
@@ -99,11 +48,11 @@ async fn execute_recipe_steps(
         );
     }
 
-    Ok((runtime_deps, build_deps, recipe_result.metadata.clone()))
+    Ok(())
 }
 
 /// Execute a single build step
-async fn execute_build_step(
+pub(crate) async fn execute_build_step(
     step: &BuildStep,
     api: &mut BuilderApi,
     environment: &mut BuildEnvironment,
@@ -130,19 +79,15 @@ async fn execute_build_step(
         }
 
         // Build system operations
-        step if matches!(
-            step,
-            BuildStep::Configure { .. }
-                | BuildStep::Make { .. }
-                | BuildStep::Autotools { .. }
-                | BuildStep::Cmake { .. }
-                | BuildStep::Meson { .. }
-                | BuildStep::Cargo { .. }
-                | BuildStep::Go { .. }
-                | BuildStep::Python { .. }
-                | BuildStep::NodeJs { .. }
-        ) =>
-        {
+        BuildStep::Configure { .. }
+        | BuildStep::Make { .. }
+        | BuildStep::Autotools { .. }
+        | BuildStep::Cmake { .. }
+        | BuildStep::Meson { .. }
+        | BuildStep::Cargo { .. }
+        | BuildStep::Go { .. }
+        | BuildStep::Python { .. }
+        | BuildStep::NodeJs { .. } => {
             execute_build_system_step(step, api, environment).await?;
         }
 
@@ -171,10 +116,22 @@ async fn execute_build_step(
         BuildStep::Copy { src_path } => {
             api.copy(src_path.as_deref(), &environment.context).await?;
         }
-
-        // Advanced features
-        _ => {
-            execute_advanced_step(step, api, environment).await?;
+        BuildStep::PatchRpaths { style, paths } => {
+            api.patch_rpaths(*style, paths, environment).await?;
+        }
+        BuildStep::FixPermissions { paths } => {
+            api.fix_permissions(paths, environment).await?;
+        }
+        BuildStep::SetIsolation { level } => {
+            if let Some(isolation_level) = IsolationLevel::from_u8(*level) {
+                api.set_isolation(isolation_level);
+                environment.set_isolation_level_from_recipe(isolation_level);
+            } else {
+                return Err(BuildError::RecipeError {
+                    message: format!("Invalid isolation level: {}", level),
+                }
+                .into());
+            }
         }
     }
 
@@ -220,76 +177,6 @@ async fn execute_build_system_step(
     Ok(())
 }
 
-/// Execute advanced features and experimental steps
-async fn execute_advanced_step(
-    step: &BuildStep,
-    api: &mut BuilderApi,
-    environment: &mut BuildEnvironment,
-) -> Result<(), Error> {
-    match step {
-        // Build system detection
-        BuildStep::DetectBuildSystem => {
-            // TODO: Implement build system detection
-        }
-        BuildStep::SetBuildSystem { name: _ } => {
-            // TODO: Store build system preference
-        }
-        // Feature flags
-        BuildStep::EnableFeature { name: _ } => {
-            // TODO: Enable feature in build context
-        }
-        BuildStep::DisableFeature { name: _ } => {
-            // TODO: Disable feature in build context
-        }
-        BuildStep::WithFeatures { features: _, steps } => {
-            execute_conditional_steps(steps, api, environment).await?;
-        }
-        // Error recovery
-        BuildStep::TryRecover {
-            steps,
-            recovery_strategy: _,
-        } => {
-            execute_recovery_steps(steps, api, environment).await?;
-        }
-        BuildStep::OnError { handler: _ } => {
-            // TODO: Register error handler
-        }
-        BuildStep::Checkpoint { name: _ } => {
-            // TODO: Create checkpoint for recovery
-        }
-        // Cross-compilation
-        BuildStep::SetTarget { triple: _ } => {
-            // TODO: Configure cross-compilation target
-        }
-        BuildStep::SetToolchain { name: _, path: _ } => {
-            // TODO: Configure toolchain component
-        }
-        // Parallel execution
-        BuildStep::SetParallelism { jobs: _ } => {
-            // TODO: Update parallelism level
-        }
-        BuildStep::ParallelSteps { steps } => {
-            execute_parallel_steps(steps, api, environment).await?;
-        }
-        BuildStep::SetResourceHints {
-            cpu: _,
-            memory_mb: _,
-        } => {
-            // TODO: Set resource hints for scheduler
-        }
-        BuildStep::PatchRpaths { style, paths } => {
-            api.patch_rpaths(*style, paths, environment).await?;
-        }
-        BuildStep::FixPermissions { paths } => {
-            api.fix_permissions(paths, environment).await?;
-        }
-        _ => {
-            // This should not happen if the main match is correct
-        }
-    }
-    Ok(())
-}
-
 /// Execute a command step with proper DESTDIR handling
 async fn execute_command_step(
     program: &str,
@@ -317,48 +204,6 @@ async fn execute_command_step(
     environment
         .execute_command(program, &arg_refs, Some(&api.working_dir))
         .await?;
-    Ok(())
-}
-
-/// Execute conditional steps based on features
-async fn execute_conditional_steps(
-    steps: &[BuildStep],
-    api: &mut BuilderApi,
-    environment: &mut BuildEnvironment,
-) -> Result<(), Error> {
-    // TODO: Check features and conditionally execute steps
-    // For now, execute all steps unconditionally
-    for step in steps {
-        Box::pin(execute_build_step(step, api, environment)).await?;
-    }
-    Ok(())
-}
-
-/// Execute steps with recovery strategy
-async fn execute_recovery_steps(
-    steps: &[BuildStep],
-    api: &mut BuilderApi,
-    environment: &mut BuildEnvironment,
-) -> Result<(), Error> {
-    // TODO: Execute steps with recovery strategy
-    // For now, execute steps normally
-    for step in steps {
-        Box::pin(execute_build_step(step, api, environment)).await?;
-    }
-    Ok(())
-}
-
-/// Execute steps in parallel
-async fn execute_parallel_steps(
-    steps: &[BuildStep],
-    api: &mut BuilderApi,
-    environment: &mut BuildEnvironment,
-) -> Result<(), Error> {
-    // TODO: Execute steps in parallel
-    // For now, execute steps sequentially
-    for step in steps {
-        Box::pin(execute_build_step(step, api, environment)).await?;
-    }
     Ok(())
 }
 

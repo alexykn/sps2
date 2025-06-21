@@ -21,7 +21,7 @@ A modern, atomic package manager for macOS ARM64 with rollback capabilities and 
 - 🚀 **Fast & Parallel** - Concurrent downloads and installations
 - 🎯 **Single Prefix** - Clean design with everything in `/opt/pm/live/`
 - 🐍 **Python-Style Versions** - Familiar version constraints (`>=1.2.0,<2.0.0`)
-- 📝 **Starlark Recipes** - Simple, sandboxed build scripts
+- 📝 **YAML Recipes** - Declarative, staged build definitions
 
 ## Installation
 

@@ -35,17 +35,17 @@
 
 //! Package building with SBOM generation for sps2
 //!
-//! This crate handles building packages from Starlark recipes with
+//! This crate handles building packages from YAML recipes with
 //! isolated environments, dependency management, and SBOM generation.
 
 mod api;
 mod archive;
+mod build_plan;
 mod build_systems;
 mod builder;
 mod cache;
 mod compression;
 mod config;
-mod cross;
 mod environment;
 mod events;
 mod fileops;
@@ -56,16 +56,16 @@ pub mod post_validation;
 mod recipe;
 mod sbom;
 mod signing;
-mod starlark_bridge;
+mod staged_executor;
 mod timeout_utils;
 mod workflow;
+mod yaml;
 
 pub use api::BuilderApi;
 pub use build_systems::{
     detect_build_system, AutotoolsBuildSystem, BuildSystem, BuildSystemConfig, BuildSystemContext,
-    BuildSystemRegistry, CMakeBuildSystem, CargoBuildSystem, CrossCompilationContext,
-    GoBuildSystem, MesonBuildSystem, NodeJsBuildSystem, Platform, PythonBuildSystem, TestFailure,
-    TestResults, Toolchain,
+    BuildSystemRegistry, CMakeBuildSystem, CargoBuildSystem, GoBuildSystem, MesonBuildSystem,
+    NodeJsBuildSystem, PythonBuildSystem, TestFailure, TestResults,
 };
 pub use builder::Builder;
 pub use cache::{
@@ -78,13 +78,16 @@ pub use environment::{BuildCommandResult, BuildEnvironment, BuildResult};
 pub use format::{detect_compression_format, CompressionFormatInfo};
 pub use sbom::{SbomConfig, SbomFiles, SbomGenerator};
 pub use signing::{PackageSigner, SigningConfig};
-pub use starlark_bridge::StarlarkBridge;
 
 // Re-export the compression function for external use
 pub use compression::compress_with_zstd;
-pub use cross::EnhancedCrossContext;
 // Re-export archive functions for external use
 pub use archive::{create_deterministic_tar_archive, get_deterministic_timestamp};
+// Re-export YAML types
+pub use yaml::{
+    parse_yaml_recipe, Build, BuildStep, BuildSystem as YamlBuildSystem, ChecksumAlgorithm,
+    PostOption, RecipeMetadata, SourceMethod, YamlRecipe,
+};
 
 use sps2_events::EventSender;
 use sps2_types::Version;

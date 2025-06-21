@@ -1,11 +1,11 @@
 //! Package manifest and SBOM coordination
 
 use crate::events::send_event;
+use crate::yaml::RecipeMetadata;
 use crate::{BuildContext, BuildEnvironment, SbomFiles, SbomGenerator};
 use sps2_errors::Error;
 use sps2_events::Event;
 use sps2_manifest::Manifest;
-use sps2_package::RecipeMetadata;
 use tokio::fs;
 
 /// Generate SBOM and create package manifest

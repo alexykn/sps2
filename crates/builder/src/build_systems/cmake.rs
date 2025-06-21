@@ -121,39 +121,7 @@ impl CMakeBuildSystem {
             self.add_macos_rpath_args(&mut args, ctx, user_args);
         }
 
-        // Handle cross-compilation
-        if let Some(cross) = &ctx.cross_compilation {
-            // Use toolchain file if available
-            args.push(format!(
-                "-DCMAKE_TOOLCHAIN_FILE={}",
-                cross.toolchain.cmake_toolchain_file.display()
-            ));
-
-            // Set system name and processor
-            let system_name = match cross.host_platform.os.as_str() {
-                "darwin" => "Darwin",
-                "linux" => "Linux",
-                "windows" => "Windows",
-                _ => "Generic",
-            };
-            args.push(format!("-DCMAKE_SYSTEM_NAME={system_name}"));
-
-            let processor = match cross.host_platform.arch.as_str() {
-                "aarch64" => "aarch64",
-                "x86_64" => "x86_64",
-                "armv7" => "armv7",
-                _ => &cross.host_platform.arch,
-            };
-            args.push(format!("-DCMAKE_SYSTEM_PROCESSOR={processor}"));
-
-            // Set sysroot
-            args.push(format!("-DCMAKE_SYSROOT={}", cross.sysroot.display()));
-
-            // Find root path modes for cross-compilation
-            args.push("-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER".to_string());
-            args.push("-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY".to_string());
-            args.push("-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY".to_string());
-        }
+        // macOS ARM only - no cross-compilation support
 
         // Add CMAKE_PREFIX_PATH from build dependencies
         if let Some(pkg_config_path) = ctx.get_all_env_vars().get("PKG_CONFIG_PATH") {
@@ -185,66 +153,6 @@ impl CMakeBuildSystem {
 
         args
     }
-
-    /// Create toolchain file for cross-compilation
-    async fn create_toolchain_file(&self, ctx: &BuildSystemContext) -> Result<(), Error> {
-        if let Some(cross) = &ctx.cross_compilation {
-            let toolchain_file = &cross.toolchain.cmake_toolchain_file;
-
-            // Create directory if it doesn't exist
-            if let Some(parent) = toolchain_file.parent() {
-                fs::create_dir_all(parent).await?;
-            }
-
-            let content = format!(
-                r#"# CMake toolchain file for cross-compilation
-                    set(CMAKE_SYSTEM_NAME {})
-                    set(CMAKE_SYSTEM_PROCESSOR {})
-
-                    # Toolchain
-                    set(CMAKE_C_COMPILER {})
-                    set(CMAKE_CXX_COMPILER {})
-                    set(CMAKE_AR {})
-                    set(CMAKE_RANLIB {})
-                    set(CMAKE_STRIP {})
-
-                    # Sysroot
-                    set(CMAKE_SYSROOT {})
-                    set(CMAKE_FIND_ROOT_PATH {})
-
-                    # Search paths
-                    set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-                    set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-                    set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-                    set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
-
-                    # pkg-config
-                    set(ENV{{PKG_CONFIG_PATH}} "{}/usr/lib/pkgconfig:{}/usr/share/pkgconfig")
-                    set(ENV{{PKG_CONFIG_SYSROOT_DIR}} "{}")
-                    "#,
-                match cross.host_platform.os.as_str() {
-                    "darwin" => "Darwin",
-                    "linux" => "Linux",
-                    _ => "Generic",
-                },
-                &cross.host_platform.arch,
-                &cross.toolchain.cc,
-                &cross.toolchain.cxx,
-                &cross.toolchain.ar,
-                &cross.toolchain.ranlib,
-                &cross.toolchain.strip,
-                cross.sysroot.display(),
-                cross.sysroot.display(),
-                cross.sysroot.display(),
-                cross.sysroot.display(),
-                cross.sysroot.display(),
-            );
-
-            fs::write(toolchain_file, content).await?;
-        }
-
-        Ok(())
-    }
 }
 
 impl Default for CMakeBuildSystem {
@@ -268,9 +176,6 @@ impl BuildSystem for CMakeBuildSystem {
         if ctx.source_dir != ctx.build_dir {
             fs::create_dir_all(&ctx.build_dir).await?;
         }
-
-        // Create toolchain file if cross-compiling
-        self.create_toolchain_file(ctx).await?;
 
         // Build CMake command
         let cmake_args = self.get_cmake_args(ctx, args);

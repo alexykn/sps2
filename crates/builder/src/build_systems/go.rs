@@ -119,11 +119,7 @@ impl GoBuildSystem {
             }
         }
 
-        // Add cross-compilation target
-        if ctx.cross_compilation.is_some() {
-            // GOOS and GOARCH are set via environment variables
-            // No need to add them as arguments
-        }
+        // macOS ARM only - no cross-compilation support
 
         // Add remaining user arguments (skip the command if it was provided)
         let start_idx = usize::from(has_command);
@@ -403,43 +399,7 @@ impl BuildSystem for GoBuildSystem {
             vars.insert("GOPRIVATE".to_string(), "*".to_string());
         }
 
-        // Cross-compilation support
-        if let Some(cross) = &ctx.cross_compilation {
-            let goos = match cross.host_platform.os.as_str() {
-                "darwin" => "darwin",
-                "linux" => "linux",
-                "windows" => "windows",
-                "freebsd" => "freebsd",
-                _ => &cross.host_platform.os,
-            };
-            vars.insert("GOOS".to_string(), goos.to_string());
-
-            let goarch = match cross.host_platform.arch.as_str() {
-                "x86_64" | "amd64" => "amd64",
-                "aarch64" | "arm64" => "arm64",
-                "i386" | "i686" => "386",
-                "armv7" => "arm",
-                _ => &cross.host_platform.arch,
-            };
-            vars.insert("GOARCH".to_string(), goarch.to_string());
-
-            // Additional ARM-specific variables
-            if goarch == "arm" {
-                vars.insert("GOARM".to_string(), "7".to_string());
-            }
-
-            // Re-enable CGO for cross-compilation if needed
-            let cgo_enabled = if let Ok(extra_env) = ctx.extra_env.read() {
-                extra_env.get("CGO_ENABLED") == Some(&"1".to_string())
-            } else {
-                false
-            };
-            if cgo_enabled {
-                vars.insert("CC".to_string(), cross.toolchain.cc.clone());
-                vars.insert("CXX".to_string(), cross.toolchain.cxx.clone());
-                vars.insert("AR".to_string(), cross.toolchain.ar.clone());
-            }
-        }
+        // macOS ARM only - no cross-compilation support
 
         // Set GOCACHE for build caching
         if let Some(cache_config) = &ctx.cache_config {

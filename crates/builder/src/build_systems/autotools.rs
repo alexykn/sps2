@@ -102,14 +102,7 @@ impl AutotoolsBuildSystem {
             args.push(format!("--prefix={}", ctx.env.get_live_prefix()));
         }
 
-        // Handle cross-compilation
-        if let Some(cross) = &ctx.cross_compilation {
-            args.push(format!("--host={}", cross.host_platform.triple()));
-            args.push(format!("--build={}", cross.build_platform.triple()));
-            if let Some(target) = &cross.target_platform {
-                args.push(format!("--target={}", target.triple()));
-            }
-        }
+        // macOS ARM only - no cross-compilation support
 
         // Add user arguments
         args.extend(user_args.iter().cloned());

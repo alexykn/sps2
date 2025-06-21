@@ -12,6 +12,7 @@ use sps2_events::{Event, EventSender};
 use std::collections::{HashMap, HashSet};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use tokio::fs;
 
 /// Hermetic isolation configuration
 #[derive(Debug, Clone)]
@@ -141,12 +142,13 @@ impl BuildEnvironment {
     /// Setup clean build environment variables
     fn setup_clean_build_environment(&mut self) {
         // Set clean PATH with only necessary directories
+        // System paths must come first for security
         let clean_path = [
-            "/opt/pm/live/bin".to_string(),
             "/usr/bin".to_string(),
             "/bin".to_string(),
             "/usr/sbin".to_string(),
             "/sbin".to_string(),
+            "/opt/pm/live/bin".to_string(),
         ]
         .join(":");
 
@@ -402,4 +404,97 @@ impl BuildEnvironment {
 
         Ok(())
     }
+}
+
+/// Setup a private home directory for enhanced isolation
+pub async fn setup_private_home(build_prefix: &Path) -> Result<PathBuf, Error> {
+    let temp_home = build_prefix.join("home");
+
+    // Create the directory
+    fs::create_dir_all(&temp_home)
+        .await
+        .map_err(|e| BuildError::Failed {
+            message: format!("Failed to create temp home: {e}"),
+        })?;
+
+    // Set restrictive permissions
+    let metadata = fs::metadata(&temp_home)
+        .await
+        .map_err(|e| BuildError::Failed {
+            message: format!("Failed to get temp home metadata: {e}"),
+        })?;
+
+    let mut perms = metadata.permissions();
+    perms.set_mode(0o700); // Owner read/write/execute only
+
+    fs::set_permissions(&temp_home, perms)
+        .await
+        .map_err(|e| BuildError::Failed {
+            message: format!("Failed to set temp home permissions: {e}"),
+        })?;
+
+    // Create minimal dot files
+    create_minimal_dotfiles_public(&temp_home).await?;
+
+    Ok(temp_home)
+}
+
+/// Setup a private temporary directory for enhanced isolation
+pub async fn setup_private_tmpdir(build_prefix: &Path) -> Result<PathBuf, Error> {
+    let private_tmp = build_prefix.join("tmp");
+
+    // Create the directory
+    fs::create_dir_all(&private_tmp)
+        .await
+        .map_err(|e| BuildError::Failed {
+            message: format!("Failed to create private tmp: {e}"),
+        })?;
+
+    // Set sticky bit and appropriate permissions
+    let metadata = fs::metadata(&private_tmp)
+        .await
+        .map_err(|e| BuildError::Failed {
+            message: format!("Failed to get private tmp metadata: {e}"),
+        })?;
+
+    let mut perms = metadata.permissions();
+    perms.set_mode(0o1777); // Sticky bit + world writable
+
+    fs::set_permissions(&private_tmp, perms)
+        .await
+        .map_err(|e| BuildError::Failed {
+            message: format!("Failed to set private tmp permissions: {e}"),
+        })?;
+
+    Ok(private_tmp)
+}
+
+/// Create minimal dotfiles in a directory
+async fn create_minimal_dotfiles_public(temp_home: &Path) -> Result<(), Error> {
+    // Create empty .bashrc to prevent loading user's bashrc
+    let bashrc = temp_home.join(".bashrc");
+    fs::write(&bashrc, "# Hermetic build environment\n")
+        .await
+        .map_err(|e| BuildError::Failed {
+            message: format!("Failed to create .bashrc: {e}"),
+        })?;
+
+    // Create minimal .gitconfig to prevent git from accessing user config
+    let gitconfig = temp_home.join(".gitconfig");
+    let git_content = "[user]\n    name = sps2-builder\n    email = builder@sps2.local\n";
+    fs::write(&gitconfig, git_content)
+        .await
+        .map_err(|e| BuildError::Failed {
+            message: format!("Failed to create .gitconfig: {e}"),
+        })?;
+
+    // Create .config directory for tools that expect it
+    let config_dir = temp_home.join(".config");
+    fs::create_dir_all(&config_dir)
+        .await
+        .map_err(|e| BuildError::Failed {
+            message: format!("Failed to create .config: {e}"),
+        })?;
+
+    Ok(())
 }

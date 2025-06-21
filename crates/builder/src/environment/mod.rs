@@ -16,4 +16,4 @@ mod variables;
 
 // Re-export public API
 pub use core::BuildEnvironment;
-pub use types::{BuildCommandResult, BuildResult};
+pub use types::{BuildCommandResult, BuildResult, IsolationLevel};

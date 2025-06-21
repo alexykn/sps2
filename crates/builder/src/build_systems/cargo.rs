@@ -84,13 +84,7 @@ impl CargoBuildSystem {
             args.push("--offline".to_string());
         }
 
-        // Add target for cross-compilation
-        if let Some(cross) = &ctx.cross_compilation {
-            let target = cross.host_platform.triple();
-            if !user_args.iter().any(|arg| arg.starts_with("--target=")) {
-                args.push(format!("--target={target}"));
-            }
-        }
+        // macOS ARM only - no cross-compilation support
 
         // Handle features
         let features = self.extract_features(user_args);
@@ -128,13 +122,7 @@ impl CargoBuildSystem {
 
         // Determine target directory
         let target_base = ctx.source_dir.join("target");
-        let target_dir = if let Some(cross) = &ctx.cross_compilation {
-            target_base
-                .join(cross.host_platform.triple())
-                .join("release")
-        } else {
-            target_base.join("release")
-        };
+        let target_dir = target_base.join("release");
 
         // Read Cargo.toml to find binary targets
         let cargo_toml = ctx.source_dir.join("Cargo.toml");
@@ -464,23 +452,7 @@ impl BuildSystem for CargoBuildSystem {
             }
         }
 
-        // Cross-compilation support
-        if let Some(cross) = &ctx.cross_compilation {
-            let target_triple = cross.host_platform.triple();
-            let target_upper = target_triple.replace('-', "_").to_uppercase();
-
-            // Set linker for target
-            vars.insert(
-                format!("CARGO_TARGET_{target_upper}_LINKER"),
-                cross.toolchain.cc.clone(),
-            );
-
-            // Set other target-specific variables
-            vars.insert(
-                format!("CARGO_TARGET_{target_upper}_RUSTFLAGS"),
-                format!("-C link-arg=--sysroot={}", cross.sysroot.display()),
-            );
-        }
+        // macOS ARM only - no cross-compilation support
 
         vars
     }

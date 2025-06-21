@@ -1,5 +1,6 @@
 //! Build configuration for package building
 
+use crate::environment::IsolationLevel;
 use crate::{CompressionConfig, SbomConfig, SigningConfig};
 use std::path::PathBuf;
 
@@ -20,6 +21,8 @@ pub struct BuildConfig {
     pub build_root: Option<PathBuf>,
     /// Compression configuration for package archives
     pub compression_config: CompressionConfig,
+    /// Build isolation level
+    pub isolation_level: IsolationLevel,
 }
 
 impl Default for BuildConfig {
@@ -32,6 +35,7 @@ impl Default for BuildConfig {
             build_jobs: None,                                 // Use auto-detection
             build_root: Some(PathBuf::from("/opt/pm/build")), // Default to /opt/pm/build
             compression_config: CompressionConfig::default(),
+            isolation_level: IsolationLevel::default(), // Standard by default
         }
     }
 }
@@ -128,6 +132,13 @@ impl BuildConfig {
     #[must_use]
     pub fn with_build_root(mut self, path: PathBuf) -> Self {
         self.build_root = Some(path);
+        self
+    }
+
+    /// Set isolation level
+    #[must_use]
+    pub fn with_isolation_level(mut self, level: IsolationLevel) -> Self {
+        self.isolation_level = level;
         self
     }
 }

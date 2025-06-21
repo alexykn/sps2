@@ -4,10 +4,9 @@
 //! Delegates to `sps2_builder` crate for the actual build logic.
 
 use crate::{BuildReport, OpsCtx};
-use sps2_builder::BuildContext;
+use sps2_builder::{parse_yaml_recipe, BuildContext};
 use sps2_errors::{Error, OpsError};
 use sps2_events::Event;
-use sps2_package::{execute_recipe, load_recipe};
 use sps2_types::Version;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -36,10 +35,13 @@ pub async fn build(
         .into());
     }
 
-    if recipe_path.extension().is_none_or(|ext| ext != "star") {
+    let extension = recipe_path.extension().and_then(|ext| ext.to_str());
+    let is_valid = matches!(extension, Some("yaml" | "yml"));
+
+    if !is_valid {
         return Err(OpsError::InvalidRecipe {
             path: recipe_path.display().to_string(),
-            reason: "recipe must have .star extension".to_string(),
+            reason: "recipe must have .yaml or .yml extension".to_string(),
         }
         .into());
     }
@@ -52,11 +54,10 @@ pub async fn build(
         .ok();
 
     // Load and execute recipe to get package metadata
-    let recipe = load_recipe(recipe_path).await?;
-    let recipe_result = execute_recipe(&recipe)?;
-
-    let package_name = recipe_result.metadata.name.clone();
-    let package_version = Version::parse(&recipe_result.metadata.version)?;
+    // We already validated that extension is yaml or yml
+    let yaml_recipe = parse_yaml_recipe(recipe_path).await?;
+    let package_name = yaml_recipe.metadata.name.clone();
+    let package_version = Version::parse(&yaml_recipe.metadata.version)?;
 
     // Send updated build starting event with correct info
     ctx.tx

@@ -40,6 +40,8 @@ pub struct BuildEnvironment {
     pub(crate) used_build_systems: HashSet<String>,
     /// Fix permissions requests (None if not requested, Some(paths) if requested)
     pub(crate) fix_permissions_request: Option<Vec<String>>,
+    /// Current isolation level
+    pub(crate) isolation_level: crate::environment::IsolationLevel,
 }
 
 impl BuildEnvironment {
@@ -70,6 +72,7 @@ impl BuildEnvironment {
             with_defaults_called: false,
             used_build_systems: HashSet::new(),
             fix_permissions_request: None,
+            isolation_level: crate::environment::IsolationLevel::default(),
         })
     }
 
@@ -213,6 +216,17 @@ impl BuildEnvironment {
         }
     }
 
+    /// Set isolation level from recipe
+    pub fn set_isolation_level_from_recipe(&mut self, level: crate::environment::IsolationLevel) {
+        self.isolation_level = level;
+    }
+
+    /// Get current isolation level
+    #[must_use]
+    pub fn isolation_level(&self) -> crate::environment::IsolationLevel {
+        self.isolation_level
+    }
+
     /// Get build prefix path for package
     #[must_use]
     pub(crate) fn get_build_prefix_path(
@@ -230,5 +244,115 @@ impl BuildEnvironment {
         let cores = num_cpus::get();
         let target = cores.saturating_mul(3).saturating_add(3) / 4; // 75% using integer arithmetic
         std::cmp::max(1, target)
+    }
+
+    /// Apply isolation level to the environment
+    pub async fn apply_isolation_level(
+        &mut self,
+        level: crate::environment::IsolationLevel,
+        allow_network: bool,
+        event_sender: Option<&sps2_events::EventSender>,
+    ) -> Result<(), Error> {
+        use super::hermetic::{self, HermeticConfig};
+        use crate::environment::IsolationLevel;
+
+        // Update current isolation level
+        self.isolation_level = level;
+
+        match level {
+            IsolationLevel::None => {
+                // No isolation - warn the user
+                if let Some(sender) = event_sender {
+                    let _ = sender.send(sps2_events::Event::Warning {
+                        message: "⚠️  BUILD ISOLATION DISABLED! This build is using the host environment as-is. This may lead to non-reproducible builds and potential security risks.".to_string(),
+                        context: Some("isolation".to_string()),
+                    });
+                }
+                // Use host environment as-is
+                self.env_vars = std::env::vars().collect();
+                // But still set critical build variables
+                self.env_vars.insert(
+                    "DESTDIR".to_string(),
+                    self.staging_dir().display().to_string(),
+                );
+                self.env_vars
+                    .insert("PREFIX".to_string(), "/opt/pm/live".to_string());
+                self.env_vars
+                    .insert("JOBS".to_string(), Self::cpu_count().to_string());
+                self.env_vars
+                    .insert("MAKEFLAGS".to_string(), format!("-j{}", Self::cpu_count()));
+            }
+            IsolationLevel::Default => {
+                // This is already done in initialize()
+                // Just ensure network settings are applied
+                if !allow_network && self.env_vars.contains_key("http_proxy") {
+                    self.env_vars.remove("http_proxy");
+                    self.env_vars.remove("https_proxy");
+                    self.env_vars.remove("ftp_proxy");
+                    self.env_vars.remove("all_proxy");
+                    self.env_vars.remove("HTTP_PROXY");
+                    self.env_vars.remove("HTTPS_PROXY");
+                    self.env_vars.remove("FTP_PROXY");
+                    self.env_vars.remove("ALL_PROXY");
+                }
+            }
+            IsolationLevel::Enhanced => {
+                // Standard + private HOME/TMPDIR
+                // First ensure standard isolation is applied
+                // (already done in initialize())
+
+                // Setup private HOME
+                let private_home = hermetic::setup_private_home(&self.build_prefix).await?;
+                self.env_vars
+                    .insert("HOME".to_string(), private_home.display().to_string());
+
+                // Setup private TMPDIR
+                let private_tmp = hermetic::setup_private_tmpdir(&self.build_prefix).await?;
+                self.env_vars
+                    .insert("TMPDIR".to_string(), private_tmp.display().to_string());
+                self.env_vars
+                    .insert("TEMP".to_string(), private_tmp.display().to_string());
+                self.env_vars
+                    .insert("TMP".to_string(), private_tmp.display().to_string());
+
+                // Apply network restrictions if needed
+                if !allow_network {
+                    self.apply_network_isolation_vars();
+                }
+            }
+            IsolationLevel::Hermetic => {
+                // Full hermetic isolation
+                let config = HermeticConfig {
+                    allow_network,
+                    ..Default::default()
+                };
+                self.apply_hermetic_isolation(&config, event_sender).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Apply network isolation environment variables
+    fn apply_network_isolation_vars(&mut self) {
+        // Set proxy variables to invalid address to block network access
+        self.env_vars
+            .insert("http_proxy".to_string(), "http://127.0.0.1:1".to_string());
+        self.env_vars
+            .insert("https_proxy".to_string(), "http://127.0.0.1:1".to_string());
+        self.env_vars
+            .insert("ftp_proxy".to_string(), "http://127.0.0.1:1".to_string());
+        self.env_vars
+            .insert("all_proxy".to_string(), "http://127.0.0.1:1".to_string());
+        self.env_vars
+            .insert("HTTP_PROXY".to_string(), "http://127.0.0.1:1".to_string());
+        self.env_vars
+            .insert("HTTPS_PROXY".to_string(), "http://127.0.0.1:1".to_string());
+        self.env_vars
+            .insert("FTP_PROXY".to_string(), "http://127.0.0.1:1".to_string());
+        self.env_vars
+            .insert("ALL_PROXY".to_string(), "http://127.0.0.1:1".to_string());
+        self.env_vars.insert("no_proxy".to_string(), String::new());
+        self.env_vars.insert("NO_PROXY".to_string(), String::new());
     }
 }

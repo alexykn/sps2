@@ -18,8 +18,6 @@ pub struct BuildSystemContext {
     pub prefix: PathBuf,
     /// Number of parallel jobs
     pub jobs: usize,
-    /// Cross-compilation context (if any)
-    pub cross_compilation: Option<CrossCompilationContext>,
     /// Additional environment variables
     pub extra_env: Arc<RwLock<HashMap<String, String>>>,
     /// Whether network access is allowed
@@ -44,7 +42,6 @@ impl BuildSystemContext {
             source_dir,
             prefix,
             jobs,
-            cross_compilation: None,
             extra_env: Arc::new(RwLock::new(HashMap::new())),
             network_allowed: false,
             cache_config: None,
@@ -55,47 +52,6 @@ impl BuildSystemContext {
     pub fn with_build_dir(mut self, build_dir: PathBuf) -> Self {
         self.build_dir = build_dir;
         self
-    }
-
-    /// Set cross-compilation context
-    pub fn with_cross_compilation(mut self, cross: CrossCompilationContext) -> Self {
-        self.cross_compilation = Some(cross);
-        self
-    }
-
-    /// Set up enhanced cross-compilation context
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if cross-compilation setup fails
-    pub async fn setup_cross_compilation(
-        mut self,
-        build_triple: &str,
-        host_triple: &str,
-        target_triple: Option<&str>,
-        sysroot: PathBuf,
-        event_sender: Option<crate::EventSender>,
-    ) -> Result<Self, Error> {
-        // Create enhanced context
-        let enhanced = crate::cross::EnhancedCrossContext::new(
-            build_triple,
-            host_triple,
-            target_triple,
-            sysroot,
-            event_sender,
-        )
-        .await?;
-
-        // Add enhanced environment variables first
-        let cross_vars = enhanced.get_cross_env_vars();
-        if let Ok(mut extra) = self.extra_env.write() {
-            extra.extend(cross_vars);
-        }
-
-        // Then extract base context
-        self.cross_compilation = Some(enhanced.base);
-
-        Ok(self)
     }
 
     /// Add extra environment variables
@@ -121,11 +77,6 @@ impl BuildSystemContext {
         let mut vars = self.env.env_vars().clone();
         if let Ok(extra) = self.extra_env.read() {
             vars.extend(extra.clone());
-        }
-
-        // Add cross-compilation variables if applicable
-        if let Some(cross) = &self.cross_compilation {
-            vars.extend(cross.get_cross_env_vars());
         }
 
         vars
@@ -154,7 +105,6 @@ impl Clone for BuildSystemContext {
             build_dir: self.build_dir.clone(),
             prefix: self.prefix.clone(),
             jobs: self.jobs,
-            cross_compilation: self.cross_compilation.clone(),
             extra_env: Arc::clone(&self.extra_env),
             network_allowed: self.network_allowed,
             cache_config: self.cache_config.clone(),
@@ -170,117 +120,11 @@ impl std::fmt::Debug for BuildSystemContext {
             .field("build_dir", &self.build_dir)
             .field("prefix", &self.prefix)
             .field("jobs", &self.jobs)
-            .field("cross_compilation", &self.cross_compilation)
             .field("extra_env", &self.extra_env)
             .field("network_allowed", &self.network_allowed)
             .field("cache_config", &self.cache_config)
             .finish()
     }
-}
-
-/// Cross-compilation context
-#[derive(Clone, Debug)]
-pub struct CrossCompilationContext {
-    /// Build platform (where compilation happens)
-    pub build_platform: Platform,
-    /// Host platform (where the package will run)
-    pub host_platform: Platform,
-    /// Target platform (what the package targets, for compilers)
-    pub target_platform: Option<Platform>,
-    /// Sysroot for target platform
-    pub sysroot: PathBuf,
-    /// Cross-compilation toolchain
-    pub toolchain: Toolchain,
-}
-
-impl CrossCompilationContext {
-    /// Get environment variables for cross-compilation
-    pub fn get_cross_env_vars(&self) -> HashMap<String, String> {
-        let mut vars = HashMap::new();
-
-        // Toolchain variables
-        vars.insert("CC".to_string(), self.toolchain.cc.clone());
-        vars.insert("CXX".to_string(), self.toolchain.cxx.clone());
-        vars.insert("AR".to_string(), self.toolchain.ar.clone());
-        vars.insert("STRIP".to_string(), self.toolchain.strip.clone());
-        vars.insert("RANLIB".to_string(), self.toolchain.ranlib.clone());
-
-        // Sysroot and paths
-        vars.insert("SYSROOT".to_string(), self.sysroot.display().to_string());
-        vars.insert(
-            "PKG_CONFIG_SYSROOT_DIR".to_string(),
-            self.sysroot.display().to_string(),
-        );
-        vars.insert(
-            "PKG_CONFIG_LIBDIR".to_string(),
-            format!("{}/usr/lib/pkgconfig", self.sysroot.display()),
-        );
-
-        // Platform-specific variables
-        vars.insert(
-            "CMAKE_TOOLCHAIN_FILE".to_string(),
-            self.toolchain.cmake_toolchain_file.display().to_string(),
-        );
-        vars.insert(
-            "MESON_CROSS_FILE".to_string(),
-            self.toolchain.meson_cross_file.display().to_string(),
-        );
-
-        vars
-    }
-}
-
-/// Platform information
-#[derive(Clone, Debug)]
-pub struct Platform {
-    /// Architecture (e.g., "aarch64", "x86_64")
-    pub arch: String,
-    /// Operating system (e.g., "darwin", "linux")
-    pub os: String,
-    /// ABI (e.g., "gnu", "musl")
-    pub abi: Option<String>,
-    /// Vendor (e.g., "apple", "unknown")
-    pub vendor: Option<String>,
-}
-
-impl Platform {
-    /// Get target triple
-    pub fn triple(&self) -> String {
-        let mut parts = vec![self.arch.clone()];
-
-        if let Some(vendor) = &self.vendor {
-            parts.push(vendor.clone());
-        } else {
-            parts.push("unknown".to_string());
-        }
-
-        parts.push(self.os.clone());
-
-        if let Some(abi) = &self.abi {
-            parts.push(abi.clone());
-        }
-
-        parts.join("-")
-    }
-}
-
-/// Cross-compilation toolchain
-#[derive(Clone, Debug)]
-pub struct Toolchain {
-    /// C compiler
-    pub cc: String,
-    /// C++ compiler
-    pub cxx: String,
-    /// Archiver
-    pub ar: String,
-    /// Strip utility
-    pub strip: String,
-    /// Ranlib utility
-    pub ranlib: String,
-    /// CMake toolchain file
-    pub cmake_toolchain_file: PathBuf,
-    /// Meson cross file
-    pub meson_cross_file: PathBuf,
 }
 
 /// Build system configuration
