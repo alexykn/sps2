@@ -46,18 +46,13 @@ mod cache;
 mod compression;
 mod config;
 mod cross;
-pub mod dependencies;
 mod environment;
-pub mod error_handling;
 mod events;
 mod fileops;
 mod format;
 mod manifest;
-mod monitoring;
-mod orchestration;
 mod packaging;
 pub mod post_validation;
-pub mod quality_assurance;
 mod recipe;
 mod sbom;
 mod signing;
@@ -79,21 +74,8 @@ pub use cache::{
 };
 pub use compression::{CompressionConfig, CompressionLevel};
 pub use config::BuildConfig;
-pub use dependencies::{
-    Dependency, DependencyContext, DependencyGraph, DependencyNode, DependencyResolver,
-    ExtendedDepKind,
-};
 pub use environment::{BuildCommandResult, BuildEnvironment, BuildResult};
 pub use format::{detect_compression_format, CompressionFormatInfo};
-pub use monitoring::{
-    BuildMonitor, BuildSpan, Metric, MetricType, MetricsAggregator, MetricsCollector,
-    MetricsSnapshot, MonitoringConfig, MonitoringLevel, MonitoringPipeline, MonitoringSystem,
-    ResourceMetrics, SpanContext, StatisticalSummary, TelemetryCollector, TracingCollector,
-};
-pub use orchestration::{
-    BuildOrchestrator, BuildScheduler, BuildTask, OrchestratorStats, Priority, ResourceManager,
-    ResourceRequirements, SchedulerStats, SystemResources, TaskState,
-};
 pub use sbom::{SbomConfig, SbomFiles, SbomGenerator};
 pub use signing::{PackageSigner, SigningConfig};
 pub use starlark_bridge::StarlarkBridge;
@@ -103,12 +85,6 @@ pub use compression::compress_with_zstd;
 pub use cross::EnhancedCrossContext;
 // Re-export archive functions for external use
 pub use archive::{create_deterministic_tar_archive, get_deterministic_timestamp};
-// Re-export error handling components
-pub use error_handling::{
-    with_recovery, BuildCheckpoint, BuildErrorHandler, BuildState, CheckpointManager,
-    CompilationFailedRecovery, DependencyConflictRecovery, DiskSpaceRecovery, NetworkErrorRecovery,
-    RecoveryAction, RecoveryStrategy, TestsFailedRecovery,
-};
 
 use sps2_events::EventSender;
 use sps2_types::Version;

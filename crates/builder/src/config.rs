@@ -1,7 +1,5 @@
 //! Build configuration for package building
 
-use crate::monitoring::MonitoringConfig;
-use crate::quality_assurance::QaConfig;
 use crate::{CompressionConfig, SbomConfig, SigningConfig};
 use std::path::PathBuf;
 
@@ -22,10 +20,6 @@ pub struct BuildConfig {
     pub build_root: Option<PathBuf>,
     /// Compression configuration for package archives
     pub compression_config: CompressionConfig,
-    /// Monitoring configuration
-    pub monitoring_config: MonitoringConfig,
-    /// Quality assurance configuration
-    pub qa_config: QaConfig,
 }
 
 impl Default for BuildConfig {
@@ -38,8 +32,6 @@ impl Default for BuildConfig {
             build_jobs: None,                                 // Use auto-detection
             build_root: Some(PathBuf::from("/opt/pm/build")), // Default to /opt/pm/build
             compression_config: CompressionConfig::default(),
-            monitoring_config: MonitoringConfig::default(),
-            qa_config: QaConfig::default(),
         }
     }
 }
@@ -130,69 +122,6 @@ impl BuildConfig {
             compression_config: CompressionConfig::custom(level),
             ..Default::default()
         }
-    }
-
-    /// Set monitoring configuration
-    #[must_use]
-    pub fn with_monitoring_config(mut self, config: MonitoringConfig) -> Self {
-        self.monitoring_config = config;
-        self
-    }
-
-    /// Enable monitoring with default settings
-    #[must_use]
-    pub fn with_monitoring(mut self) -> Self {
-        self.monitoring_config = MonitoringConfig::enabled();
-        self
-    }
-
-    /// Enable development monitoring (detailed)
-    #[must_use]
-    pub fn with_development_monitoring(mut self) -> Self {
-        self.monitoring_config = MonitoringConfig::development();
-        self
-    }
-
-    /// Set quality assurance configuration
-    #[must_use]
-    pub fn with_qa_config(mut self, config: QaConfig) -> Self {
-        self.qa_config = config;
-        self
-    }
-
-    /// Enable minimal QA checks (for development)
-    #[must_use]
-    pub fn with_minimal_qa(mut self) -> Self {
-        self.qa_config = QaConfig::minimal();
-        self
-    }
-
-    /// Enable standard QA checks
-    #[must_use]
-    pub fn with_standard_qa(mut self) -> Self {
-        self.qa_config = QaConfig::standard();
-        self
-    }
-
-    /// Enable strict QA checks (for releases)
-    #[must_use]
-    pub fn with_strict_qa(mut self) -> Self {
-        self.qa_config = QaConfig::strict();
-        self
-    }
-
-    /// Disable QA checks
-    #[must_use]
-    pub fn without_qa(mut self) -> Self {
-        self.qa_config.flags = crate::quality_assurance::config::QaComponentFlags::empty();
-        self
-    }
-
-    /// Enable production monitoring (optimized)
-    #[must_use]
-    pub fn with_prod_monitoring(mut self) -> Self {
-        self.monitoring_config = MonitoringConfig::production();
-        self
     }
 
     /// Set build root directory
