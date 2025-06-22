@@ -115,7 +115,7 @@ impl RPathPatcher {
             .args(["-id", new_install_name, &path.to_string_lossy()])
             .output()
             .await
-            .map_err(|e| format!("Failed to run install_name_tool: {}", e))?;
+            .map_err(|e| format!("Failed to run install_name_tool: {e}"))?;
 
         if output.status.success() {
             Ok(true)
@@ -169,7 +169,7 @@ impl RPathPatcher {
                 .args(["-L", &path.to_string_lossy()])
                 .output()
                 .await
-                .map_err(|e| format!("Failed to run otool: {}", e))?;
+                .map_err(|e| format!("Failed to run otool: {e}"))?;
 
             if !output.status.success() {
                 continue;
@@ -187,7 +187,7 @@ impl RPathPatcher {
                     ])
                     .output()
                     .await
-                    .map_err(|e| format!("Failed to run install_name_tool: {}", e))?;
+                    .map_err(|e| format!("Failed to run install_name_tool: {e}"))?;
 
                 if change_output.status.success() {
                     updated_files.push(path);
@@ -216,7 +216,7 @@ impl RPathPatcher {
             .args(["-L", &path.to_string_lossy()])
             .output()
             .await
-            .map_err(|e| format!("Failed to run otool: {}", e))?;
+            .map_err(|e| format!("Failed to run otool: {e}"))?;
 
         if !output.status.success() {
             return Ok(fixed_deps);
@@ -231,7 +231,7 @@ impl RPathPatcher {
             if dep.starts_with("@rpath/") {
                 // Extract the library name after @rpath/
                 let lib_name = &dep[7..dep.find(" (").unwrap_or(dep.len())];
-                let new_path = format!("{}/{}", lib_path, lib_name);
+                let new_path = format!("{lib_path}/{lib_name}");
 
                 // Update the dependency reference
                 let change_output = Command::new("install_name_tool")
@@ -243,7 +243,7 @@ impl RPathPatcher {
                     ])
                     .output()
                     .await
-                    .map_err(|e| format!("Failed to run install_name_tool: {}", e))?;
+                    .map_err(|e| format!("Failed to run install_name_tool: {e}"))?;
 
                 if change_output.status.success() {
                     fixed_deps.push((dep.to_string(), new_path));
@@ -318,7 +318,7 @@ impl RPathPatcher {
                 if self.needs_install_name_fix(&install_name, path) {
                     // Fix the install name to absolute path
                     let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                    let new_install_name = format!("{}/{}", lib_path, file_name);
+                    let new_install_name = format!("{lib_path}/{file_name}");
 
                     match Self::fix_install_name(path, &new_install_name).await {
                         Ok(true) => install_name_was_fixed = true,
@@ -401,7 +401,7 @@ impl RPathPatcher {
                 if let Some(current_install_name) = Self::get_install_name(dylib_path).await {
                     if patcher.needs_install_name_fix(&current_install_name, dylib_path) {
                         // The desired new install name
-                        let new_install_name = format!("{}/{}", lib_path, file_name);
+                        let new_install_name = format!("{lib_path}/{file_name}");
 
                         // Update all binaries that reference this dylib
                         match Self::update_dylib_references(
@@ -429,8 +429,7 @@ impl RPathPatcher {
                             }
                             Err(e) => {
                                 warnings.push(format!(
-                                    "Failed to update references for {}: {}",
-                                    file_name, e
+                                    "Failed to update references for {file_name}: {e}"
                                 ));
                             }
                         }

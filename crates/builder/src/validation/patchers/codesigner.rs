@@ -86,7 +86,7 @@ impl crate::validation::traits::Action for CodeSigner {
             crate::utils::events::send_event(
                 ctx,
                 Event::OperationCompleted {
-                    operation: format!("Re-signed {} binaries", resigned_count),
+                    operation: format!("Re-signed {resigned_count} binaries"),
                     success: true,
                 },
             );

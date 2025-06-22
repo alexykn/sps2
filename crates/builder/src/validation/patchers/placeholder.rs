@@ -23,7 +23,7 @@ impl crate::validation::traits::Action for PlaceholderPatcher {
 
         let actual_prefix = "/opt/pm/live";
         let build_prefix = env.build_prefix().to_string_lossy().into_owned();
-        let build_src = format!("{}/src", build_prefix);
+        let build_src = format!("{build_prefix}/src");
         let build_base = "/opt/pm/build";
         // Replace any build paths with actual prefix
 

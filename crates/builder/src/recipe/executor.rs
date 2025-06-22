@@ -128,7 +128,7 @@ pub async fn execute_build_step(
                 environment.set_isolation_level_from_recipe(isolation_level);
             } else {
                 return Err(BuildError::RecipeError {
-                    message: format!("Invalid isolation level: {}", level),
+                    message: format!("Invalid isolation level: {level}"),
                 }
                 .into());
             }

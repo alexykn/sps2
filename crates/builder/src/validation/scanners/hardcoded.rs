@@ -18,7 +18,7 @@ impl crate::validation::traits::Action for HardcodedScanner {
         _findings: Option<&DiagnosticCollector>,
     ) -> Result<Report, Error> {
         let build_prefix = env.build_prefix().to_string_lossy().into_owned();
-        let build_src = format!("{}/src", build_prefix);
+        let build_src = format!("{build_prefix}/src");
         let build_base = "/opt/pm/build";
 
         // Debug: Print the build prefixes we're scanning for
@@ -26,8 +26,7 @@ impl crate::validation::traits::Action for HardcodedScanner {
             ctx,
             Event::DebugLog {
                 message: format!(
-                    "Hardcoded path scanner: checking for {} | {} | {}",
-                    build_base, build_prefix, build_src
+                    "Hardcoded path scanner: checking for {build_base} | {build_prefix} | {build_src}"
                 ),
                 context: std::collections::HashMap::new(),
             },
@@ -85,8 +84,7 @@ impl crate::validation::traits::Action for HardcodedScanner {
 
             // Add the summary as an error so is_fatal() returns true
             report.errors.push(format!(
-                "Hardcoded path(s) found in {} file(s). Check warnings above for details.",
-                error_count
+                "Hardcoded path(s) found in {error_count} file(s). Check warnings above for details."
             ));
 
             // Include the collector in the report so patchers can use it

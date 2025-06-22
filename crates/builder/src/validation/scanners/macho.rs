@@ -27,7 +27,7 @@ impl crate::validation::traits::Action for MachOScanner {
         _findings: Option<&DiagnosticCollector>,
     ) -> Result<Report, Error> {
         let build_prefix = env.build_prefix().to_string_lossy().into_owned();
-        let build_src = format!("{}/src", build_prefix);
+        let build_src = format!("{build_prefix}/src");
         let build_base = "/opt/pm/build";
 
         let mut collector = DiagnosticCollector::new();
@@ -72,8 +72,7 @@ impl crate::validation::traits::Action for MachOScanner {
 
             // Add the summary as an error so is_fatal() returns true
             report.errors.push(format!(
-                "Mach‑O contains bad install‑name or RPATH ({} file(s)). Check warnings above for details.",
-                error_count
+                "Mach‑O contains bad install‑name or RPATH ({error_count} file(s)). Check warnings above for details."
             ));
 
             // Include the collector in the report so patchers can use it

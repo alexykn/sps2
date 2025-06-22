@@ -1178,7 +1178,7 @@ impl BuilderApi {
         }
 
         let success = errors.is_empty();
-        let stdout = format!("Patched {} files with {} style", patched_count, style);
+        let stdout = format!("Patched {patched_count} files with {style} style");
         let stderr = if errors.is_empty() {
             String::new()
         } else {
@@ -1374,7 +1374,7 @@ impl BuilderApi {
     ) -> BuildCommandResult {
         let success = errors.is_empty();
         let stdout = if fixed_count > 0 {
-            format!("Fixed permissions on {} files", fixed_count)
+            format!("Fixed permissions on {fixed_count} files")
         } else {
             "No files needed permission fixes".to_string()
         };
@@ -1389,7 +1389,7 @@ impl BuilderApi {
         if fixed_count > 0 {
             crate::utils::events::send_event(
                 &env.context,
-                sps2_events::Event::debug(format!("fix_permissions: {}", stdout)),
+                sps2_events::Event::debug(format!("fix_permissions: {stdout}")),
             );
         } else {
             crate::utils::events::send_event(

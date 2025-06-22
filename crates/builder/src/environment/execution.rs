@@ -232,7 +232,7 @@ impl BuildEnvironment {
         if !libtool_dirs.is_empty() {
             for dir in &libtool_dirs {
                 self.send_event(Event::DebugLog {
-                    message: format!("Running libtool --finish {}", dir),
+                    message: format!("Running libtool --finish {dir}"),
                     context: std::collections::HashMap::new(),
                 });
 
@@ -240,7 +240,7 @@ impl BuildEnvironment {
                 let finish_result = self.execute_libtool_finish(dir).await?;
                 if !finish_result.success {
                     self.send_event(Event::Warning {
-                        message: format!("libtool --finish {} failed", dir),
+                        message: format!("libtool --finish {dir} failed"),
                         context: Some(finish_result.stderr),
                     });
                 }

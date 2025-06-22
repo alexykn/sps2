@@ -405,7 +405,7 @@ impl BuildSystem for NodeJsBuildSystem {
 
         // Store package manager for later use
         if let Ok(mut extra_env) = ctx.extra_env.write() {
-            extra_env.insert("NODE_PACKAGE_MANAGER".to_string(), format!("{:?}", pm));
+            extra_env.insert("NODE_PACKAGE_MANAGER".to_string(), format!("{pm:?}"));
         }
 
         Ok(())

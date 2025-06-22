@@ -209,7 +209,7 @@ impl crate::validation::traits::Action for PermissionsFixer {
             crate::utils::events::send_event(
                 ctx,
                 Event::OperationCompleted {
-                    operation: format!("Fixed permissions on {} files", fixed_count),
+                    operation: format!("Fixed permissions on {fixed_count} files"),
                     success: true,
                 },
             );

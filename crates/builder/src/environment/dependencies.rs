@@ -220,7 +220,7 @@ impl BuildEnvironment {
 
         if !is_installed {
             return Err(BuildError::MissingBuildDep {
-                name: format!("{} {} is not installed", name, version),
+                name: format!("{name} {version} is not installed"),
             }
             .into());
         }

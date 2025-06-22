@@ -141,7 +141,12 @@ impl GoBuildSystem {
         // Add build target (current directory by default) only for build command
         if is_build_command
             && !user_args.iter().any(|arg| {
-                arg.ends_with(".go") || arg.contains('/') || arg == "." || arg == "./..."
+                std::path::Path::new(arg)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("go"))
+                    || arg.contains('/')
+                    || arg == "."
+                    || arg == "./..."
             })
         {
             args.push(".".to_string()); // Build current package

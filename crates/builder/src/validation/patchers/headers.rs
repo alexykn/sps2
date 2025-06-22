@@ -16,7 +16,7 @@ impl crate::validation::traits::Action for HeaderPatcher {
         _findings: Option<&crate::validation::diagnostics::DiagnosticCollector>,
     ) -> Result<Report, Error> {
         let build_prefix = env.build_prefix().to_string_lossy().into_owned();
-        let build_src = format!("{}/src", build_prefix);
+        let build_src = format!("{build_prefix}/src");
         let build_base = "/opt/pm/build";
 
         // Create regex for all build paths
@@ -49,7 +49,7 @@ impl crate::validation::traits::Action for HeaderPatcher {
                                     .trim_start_matches(&build_prefix)
                                     .trim_start_matches(build_base)
                                     .trim_start_matches('/');
-                                format!("#include \"{}\"", stripped)
+                                format!("#include \"{stripped}\"")
                             });
                             std::fs::write(&p, repl.as_bytes())?;
                             changed.push(p);

@@ -42,25 +42,25 @@ impl IssueType {
     pub fn description(&self) -> String {
         match self {
             Self::HardcodedBuildPath { path, .. } => {
-                format!("Contains hardcoded build path: {}", path)
+                format!("Contains hardcoded build path: {path}")
             }
             Self::HardcodedPlaceholder { path, .. } => {
-                format!("Contains placeholder path: {}", path)
+                format!("Contains placeholder path: {path}")
             }
             Self::BadRPath { rpath } => {
-                format!("Contains bad RPATH: {}", rpath)
+                format!("Contains bad RPATH: {rpath}")
             }
             Self::BadInstallName { install_name } => {
-                format!("Contains bad install name: {}", install_name)
+                format!("Contains bad install name: {install_name}")
             }
             Self::SelfReferencingInstallName { install_name } => {
-                format!("Contains self-referencing install name: {}", install_name)
+                format!("Contains self-referencing install name: {install_name}")
             }
             Self::BuildPathInArchive { path, member } => {
                 if let Some(member) = member {
-                    format!("Archive member '{}' contains build path: {}", member, path)
+                    format!("Archive member '{member}' contains build path: {path}")
                 } else {
-                    format!("Archive contains build path: {}", path)
+                    format!("Archive contains build path: {path}")
                 }
             }
             Self::Custom { message } => message.clone(),

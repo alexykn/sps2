@@ -81,7 +81,7 @@ impl crate::validation::traits::Action for BinaryStringPatcher {
     ) -> Result<Report, Error> {
         let staging_dir = env.staging_dir();
         let build_prefix = env.build_prefix().to_string_lossy().into_owned();
-        let build_src = format!("{}/src", build_prefix);
+        let build_src = format!("{build_prefix}/src");
         let build_base = "/opt/pm/build".to_string();
         let install_prefix = "/opt/pm/live".to_string(); // Actual runtime installation prefix
 
@@ -99,7 +99,11 @@ impl crate::validation::traits::Action for BinaryStringPatcher {
             let has_binary_extension = if let Some(name) = path.file_name().and_then(|n| n.to_str())
             {
                 // Check for dynamic libraries (including versioned ones)
-                name.contains(".so") || name.contains(".dylib") || name.ends_with(".a")
+                name.contains(".so")
+                    || name.contains(".dylib")
+                    || std::path::Path::new(name)
+                        .extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("a"))
             } else {
                 false
             };

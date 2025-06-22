@@ -15,7 +15,7 @@ impl crate::validation::traits::Action for PkgConfigPatcher {
         _findings: Option<&crate::validation::diagnostics::DiagnosticCollector>,
     ) -> Result<Report, Error> {
         let build_prefix = env.build_prefix().to_string_lossy().into_owned();
-        let build_src = format!("{}/src", build_prefix);
+        let build_src = format!("{build_prefix}/src");
         let build_base = "/opt/pm/build";
         let actual = "/opt/pm/live";
 

@@ -209,7 +209,7 @@ impl BuildEnvironment {
                 } else {
                     self.env_vars.insert(
                         "RUSTFLAGS".to_string(),
-                        format!("{} {}", rust_flags_str, existing),
+                        format!("{rust_flags_str} {existing}"),
                     );
                 }
             } else {
@@ -254,7 +254,7 @@ impl BuildEnvironment {
             new_flags_str
         } else {
             // Prepend optimization flags so user flags can override
-            format!("{} {}", new_flags_str, existing)
+            format!("{new_flags_str} {existing}")
         };
 
         self.env_vars.insert(var_name.to_string(), merged);

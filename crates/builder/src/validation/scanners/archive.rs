@@ -21,7 +21,7 @@ impl crate::validation::traits::Action for ArchiveScanner {
         _findings: Option<&DiagnosticCollector>,
     ) -> Result<Report, Error> {
         let build_prefix = env.build_prefix().to_string_lossy().into_owned();
-        let build_src = format!("{}/src", build_prefix);
+        let build_src = format!("{build_prefix}/src");
         let build_base = "/opt/pm/build";
 
         let mut collector = DiagnosticCollector::new();
@@ -110,8 +110,7 @@ impl crate::validation::traits::Action for ArchiveScanner {
 
             // Add the summary as an error so is_fatal() returns true
             report.errors.push(format!(
-                "Static archives contain build paths ({} file(s)). Check warnings above for details.",
-                error_count
+                "Static archives contain build paths ({error_count} file(s)). Check warnings above for details."
             ));
 
             // Include the collector in the report so patchers can use it

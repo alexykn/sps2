@@ -440,11 +440,11 @@ impl PythonBuildSystem {
         let mut executables = HashMap::new();
 
         let file = std::fs::File::open(wheel_path).map_err(|e| BuildError::CompilationFailed {
-            message: format!("Failed to open wheel file: {}", e),
+            message: format!("Failed to open wheel file: {e}"),
         })?;
 
         let mut archive = ZipArchive::new(file).map_err(|e| BuildError::CompilationFailed {
-            message: format!("Failed to read wheel archive: {}", e),
+            message: format!("Failed to read wheel archive: {e}"),
         })?;
 
         // Find .dist-info/entry_points.txt
@@ -452,14 +452,14 @@ impl PythonBuildSystem {
             let mut file = archive
                 .by_index(i)
                 .map_err(|e| BuildError::CompilationFailed {
-                    message: format!("Failed to read wheel entry: {}", e),
+                    message: format!("Failed to read wheel entry: {e}"),
                 })?;
 
             if file.name().ends_with(".dist-info/entry_points.txt") {
                 let mut contents = String::new();
                 file.read_to_string(&mut contents)
                     .map_err(|e| BuildError::CompilationFailed {
-                        message: format!("Failed to read entry_points.txt: {}", e),
+                        message: format!("Failed to read entry_points.txt: {e}"),
                     })?;
 
                 // Parse entry points
@@ -594,7 +594,7 @@ impl BuildSystem for PythonBuildSystem {
 
         // Store detected backend and venv path in environment for later use
         if let Ok(mut extra_env) = ctx.extra_env.write() {
-            extra_env.insert("PYTHON_BUILD_BACKEND".to_string(), format!("{:?}", backend));
+            extra_env.insert("PYTHON_BUILD_BACKEND".to_string(), format!("{backend:?}"));
             extra_env.insert(
                 "PYTHON_VENV_PATH".to_string(),
                 venv_path.display().to_string(),

@@ -153,15 +153,15 @@ fn expand_string(input: &str, context: &HashMap<String, String>) -> String {
 
     // Expand ${VAR} style variables
     for (key, value) in context {
-        result = result.replace(&format!("${{{}}}", key), value);
+        result = result.replace(&format!("${{{key}}}"), value);
     }
 
     // Expand $VAR style variables (but only if followed by non-alphanumeric)
     for (key, value) in context {
         // This is a simple implementation - a more robust one would use regex
-        result = result.replace(&format!("${} ", key), &format!("{} ", value));
-        result = result.replace(&format!("${}/", key), &format!("{}/", value));
-        result = result.replace(&format!("${}", key), value);
+        result = result.replace(&format!("${key} "), &format!("{value} "));
+        result = result.replace(&format!("${key}/"), &format!("{value}/"));
+        result = result.replace(&format!("${key}"), value);
     }
 
     result
