@@ -1,6 +1,7 @@
 //! Diagnostic reporting for post-validation issues
 
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
 /// A detailed diagnostic finding from validation
@@ -161,7 +162,7 @@ impl DiagnosticCollector {
         for (file_path, findings) in by_file {
             let mut file_msg = format!("File: {}", file_path.display());
             for finding in findings {
-                file_msg.push_str(&format!("\n  - {}", finding.issue_type.description()));
+                write!(file_msg, "\n  - {}", finding.issue_type.description()).unwrap();
             }
             messages.push(file_msg);
         }
