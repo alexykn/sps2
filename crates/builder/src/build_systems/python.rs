@@ -126,7 +126,7 @@ impl PythonBuildSystem {
     }
 
     /// Get pip install arguments
-    fn get_pip_args(&self, ctx: &BuildSystemContext, user_args: &[String]) -> Vec<String> {
+    fn get_pip_args(ctx: &BuildSystemContext, user_args: &[String]) -> Vec<String> {
         let mut args = vec!["install".to_string()];
 
         // Add offline mode if network is disabled
@@ -272,7 +272,7 @@ impl PythonBuildSystem {
     }
 
     /// Parse pytest output
-    fn parse_pytest_output(&self, output: &str) -> (usize, usize, usize, Vec<TestFailure>) {
+    fn parse_pytest_output(output: &str) -> (usize, usize, usize, Vec<TestFailure>) {
         let mut passed = 0;
         let mut failed = 0;
         let mut skipped = 0;
@@ -693,7 +693,7 @@ impl BuildSystem for PythonBuildSystem {
 
         // Parse test results
         let (total, passed, failed, failures) = if test_cmd == "pytest" {
-            self.parse_pytest_output(&output)
+            Self::parse_pytest_output(&output)
         } else {
             // Simple parsing for unittest
             if result.success {
@@ -747,7 +747,7 @@ impl BuildSystem for PythonBuildSystem {
         let pip_path = venv_path.join("bin/pip");
 
         // Install wheel using pip
-        let pip_args = self.get_pip_args(ctx, &[wheel_path.clone()]);
+        let pip_args = Self::get_pip_args(ctx, &[wheel_path.clone()]);
         let arg_refs: Vec<&str> = pip_args.iter().map(String::as_str).collect();
 
         let result = ctx

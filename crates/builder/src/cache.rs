@@ -36,6 +36,13 @@ pub struct BuildCache {
 
 impl BuildCache {
     /// Create a new build cache
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to create the cache directory
+    /// - Failed to initialize the content-addressed store
+    /// - Failed to initialize the artifact or compiler caches
     pub async fn new(
         cache_root: PathBuf,
         event_sender: Option<EventSender>,
@@ -58,6 +65,12 @@ impl BuildCache {
     }
 
     /// Cache build artifacts with proper invalidation
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to store artifacts in the artifact cache
+    /// - I/O operations fail while writing to cache
     pub async fn cache_artifacts(
         &self,
         artifacts: Vec<Artifact>,
@@ -90,6 +103,13 @@ impl BuildCache {
     }
 
     /// Retrieve cached artifacts if valid
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to read from the artifact cache
+    /// - Cache metadata is corrupted
+    /// - I/O operations fail while accessing cache
     pub async fn get_cached_artifacts(
         &self,
         cache_key: &CacheKey,
@@ -139,6 +159,12 @@ impl BuildCache {
     }
 
     /// Generate cache key from inputs
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to compute hash for build inputs
+    /// - Failed to read source files for hashing
     pub async fn generate_cache_key(&self, inputs: &BuildInputs) -> Result<CacheKey, Error> {
         CacheKey::generate(inputs).await
     }
@@ -149,6 +175,13 @@ impl BuildCache {
     }
 
     /// Clean cache based on LRU policy
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to get cache size information
+    /// - Failed to remove cache entries
+    /// - I/O operations fail during cleanup
     pub async fn clean_cache(&self, max_size: u64) -> Result<(), Error> {
         let mut stats = self.stats.write().await;
 
@@ -191,6 +224,13 @@ pub struct CacheKey {
 
 impl CacheKey {
     /// Generate cache key from build inputs
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to read source files for hashing
+    /// - Failed to compute hash for inputs
+    /// - I/O errors occur while accessing files
     pub async fn generate(inputs: &BuildInputs) -> Result<Self, Error> {
         // Hash source files
         let mut source_data = Vec::new();
@@ -283,6 +323,12 @@ pub struct Artifact {
 
 impl Artifact {
     /// Compute hash of the artifact file
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The artifact file cannot be read
+    /// - I/O errors occur while reading the file
     pub async fn compute_hash(&self) -> Result<Hash, Error> {
         Hash::hash_file(&self.path).await
     }
@@ -539,6 +585,12 @@ impl IncrementalBuildTracker {
     }
 
     /// Track file modification
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to access file metadata
+    /// - I/O errors occur while reading file information
     pub async fn track_file(&self, path: &Path) -> Result<(), Error> {
         if let Ok(metadata) = fs::metadata(path).await {
             if let Ok(mtime) = metadata.modified() {
@@ -550,6 +602,12 @@ impl IncrementalBuildTracker {
     }
 
     /// Check if file has changed
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to access file metadata
+    /// - I/O errors occur while reading file information
     pub async fn has_file_changed(&self, path: &Path) -> Result<bool, Error> {
         let mtimes = self.file_mtimes.read().await;
 

@@ -37,7 +37,7 @@ impl MesonBuildSystem {
     }
 
     /// Check if wrap handling should be disabled
-    fn should_disable_wrap(&self, ctx: &BuildSystemContext) -> bool {
+    fn should_disable_wrap(ctx: &BuildSystemContext) -> bool {
         // Always disable wrap downloads to ensure reproducible builds
         !ctx.network_allowed
     }
@@ -70,7 +70,7 @@ impl MesonBuildSystem {
         }
 
         // Handle wrap mode
-        if self.should_disable_wrap(ctx)
+        if Self::should_disable_wrap(ctx)
             && !user_args.iter().any(|arg| arg.starts_with("--wrap-mode="))
         {
             args.push("--wrap-mode=nodownload".to_string());
@@ -90,7 +90,7 @@ impl MesonBuildSystem {
     }
 
     /// Parse Meson test output
-    fn parse_test_output(&self, output: &str) -> (usize, usize, usize, Vec<TestFailure>) {
+    fn parse_test_output(output: &str) -> (usize, usize, usize, Vec<TestFailure>) {
         let mut total = 0;
         let mut passed = 0;
         let mut failed = 0;
@@ -217,7 +217,7 @@ impl BuildSystem for MesonBuildSystem {
         let output = format!("{}\n{}", result.stdout, result.stderr);
 
         // Parse test results
-        let (total, passed, failed, failures) = self.parse_test_output(&output);
+        let (total, passed, failed, failures) = Self::parse_test_output(&output);
         let skipped = total.saturating_sub(passed + failed);
 
         Ok(TestResults {

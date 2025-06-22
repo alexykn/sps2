@@ -107,12 +107,7 @@ impl NodeJsBuildSystem {
     }
 
     /// Get install command for package manager
-    fn get_install_command(
-        &self,
-        pm: &PackageManager,
-        offline: bool,
-        has_lock_file: bool,
-    ) -> Vec<String> {
+    fn get_install_command(pm: &PackageManager, offline: bool, has_lock_file: bool) -> Vec<String> {
         match pm {
             PackageManager::Npm => {
                 // Use ci only if lock file exists, otherwise use install
@@ -172,7 +167,7 @@ impl NodeJsBuildSystem {
     }
 
     /// Parse test output from various test runners
-    fn parse_test_output(&self, output: &str) -> (usize, usize, usize, Vec<TestFailure>) {
+    fn parse_test_output(output: &str) -> (usize, usize, usize, Vec<TestFailure>) {
         let mut total = 0;
         let mut passed = 0;
         let mut failed = 0;
@@ -457,7 +452,7 @@ impl BuildSystem for NodeJsBuildSystem {
 
         // Only run install if there are dependencies or a lock file
         if has_dependencies || has_lock_file {
-            let install_args = self.get_install_command(&pm, !ctx.network_allowed, has_lock_file);
+            let install_args = Self::get_install_command(&pm, !ctx.network_allowed, has_lock_file);
             let arg_refs: Vec<&str> = install_args.iter().map(String::as_str).collect();
 
             let result = ctx
@@ -548,7 +543,7 @@ impl BuildSystem for NodeJsBuildSystem {
         let output = format!("{}\n{}", result.stdout, result.stderr);
 
         // Parse test results
-        let (total, passed, failed, failures) = self.parse_test_output(&output);
+        let (total, passed, failed, failures) = Self::parse_test_output(&output);
 
         Ok(TestResults {
             total,

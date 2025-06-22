@@ -286,6 +286,10 @@ impl BuildEnvironment {
     }
 
     /// Apply network isolation
+    ///
+    /// # Errors
+    ///
+    /// Currently this function never returns an error, but returns `Result` for future extensibility
     pub fn apply_network_isolation(&mut self) -> Result<(), Error> {
         // Set environment variables to disable network access
         self.env_vars
@@ -326,6 +330,13 @@ impl BuildEnvironment {
     }
 
     /// Verify hermetic isolation is properly applied
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Forbidden environment variables are present
+    /// - Required isolation settings are not applied
+    /// - Home directory points outside the build environment
     pub fn verify_hermetic_isolation(&self, config: &HermeticConfig) -> Result<(), Error> {
         // Check that only allowed environment variables are set
         for key in self.env_vars.keys() {

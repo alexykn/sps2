@@ -2,9 +2,6 @@
 #![allow(clippy::module_name_repetitions)]
 // Development-time allowances for incomplete features
 // The builder crate is under heavy development with many placeholder implementations
-#![allow(dead_code)] // Many functions are planned for future use
-#![allow(clippy::unused_self)] // Methods designed for polymorphic use
-#![allow(clippy::missing_errors_doc)] // TODO: Add comprehensive error docs
 #![allow(clippy::missing_docs_in_private_items)] // TODO: Add private docs
 #![allow(clippy::must_use_candidate)] // TODO: Add must_use attributes systematically
 #![allow(clippy::unused_async)] // Some async fns are prepared for future async work

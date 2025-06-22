@@ -116,6 +116,14 @@ impl PatcherAction {
 /// * V1 – pre‑validation
 /// * P – patch tree in‑place
 /// * V2 – must be clean, else the build fails
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Any scanner detects critical issues
+/// - Failed to apply patches during the patching phase
+/// - I/O errors occur during file analysis
+/// - The final validation phase fails (V2 phase)
 pub async fn run_quality_pipeline(ctx: &BuildContext, env: &BuildEnvironment) -> Result<(), Error> {
     // Determine which pipeline to use based on build systems
     let used_build_systems = env.used_build_systems();

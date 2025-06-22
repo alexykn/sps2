@@ -232,6 +232,10 @@ impl BuildEnvironment {
     }
 
     /// Check if network isolation is properly configured
+    ///
+    /// # Errors
+    ///
+    /// Currently this function never returns an error, but returns `Result` for future extensibility
     pub fn verify_network_isolation(&self) -> Result<bool, Error> {
         // Check if proxy environment variables are set for isolation
         let proxy_vars = ["http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"];

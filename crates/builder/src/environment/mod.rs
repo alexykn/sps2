@@ -10,7 +10,6 @@ mod directories;
 mod execution;
 mod hermetic;
 mod isolation;
-mod sandbox;
 mod types;
 mod variables;
 

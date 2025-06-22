@@ -12,7 +12,7 @@ use tokio::process::Command;
 
 impl BuildEnvironment {
     /// Convert command arguments to strings (no placeholder replacement needed)
-    fn convert_args_to_strings(&self, args: &[&str]) -> Vec<String> {
+    fn convert_args_to_strings(args: &[&str]) -> Vec<String> {
         args.iter().map(|arg| (*arg).to_string()).collect()
     }
 
@@ -39,7 +39,7 @@ impl BuildEnvironment {
         let mut cmd = Command::new(program);
 
         // Replace placeholders in command arguments
-        let converted_args = self.convert_args_to_strings(args);
+        let converted_args = Self::convert_args_to_strings(args);
         let arg_refs: Vec<&str> = converted_args.iter().map(String::as_str).collect();
         cmd.args(&arg_refs);
 

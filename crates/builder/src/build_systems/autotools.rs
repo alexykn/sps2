@@ -93,8 +93,7 @@ impl AutotoolsBuildSystem {
     }
 
     /// Get configure arguments including cross-compilation
-    #[allow(clippy::unused_self)]
-    fn get_configure_args(&self, ctx: &BuildSystemContext, user_args: &[String]) -> Vec<String> {
+    fn get_configure_args(ctx: &BuildSystemContext, user_args: &[String]) -> Vec<String> {
         let mut args = vec![];
 
         // Add prefix - use LIVE_PREFIX for runtime installation location
@@ -192,7 +191,7 @@ impl BuildSystem for AutotoolsBuildSystem {
         };
 
         // Build configure command
-        let configure_args = self.get_configure_args(ctx, args);
+        let configure_args = Self::get_configure_args(ctx, args);
         let mut cmd_args = vec![configure_path];
         cmd_args.extend(configure_args);
 
@@ -369,163 +368,5 @@ impl BuildSystem for AutotoolsBuildSystem {
     fn prefers_out_of_source_build(&self) -> bool {
         // Autotools supports both, but in-source is traditional
         false
-    }
-}
-
-impl AutotoolsBuildSystem {
-    /// Adjust staged files by moving them from stage/PREFIX/* to stage/*
-    async fn adjust_staged_files(&self, ctx: &BuildSystemContext) -> Result<(), Error> {
-        use tokio::fs;
-
-        let staging_dir = ctx.env.staging_dir();
-        let prefix_in_staging =
-            staging_dir.join(ctx.prefix.strip_prefix("/").unwrap_or(&ctx.prefix));
-
-        // Debug: log what we're checking
-        if std::env::var("DEBUG").is_ok() {
-            eprintln!(
-                "Autotools: Checking for files in {} to move to {}",
-                prefix_in_staging.display(),
-                staging_dir.display()
-            );
-        }
-
-        // If the full prefix path exists in staging, we need to move its contents up
-        if prefix_in_staging.exists() && prefix_in_staging != staging_dir {
-            // Debug: found prefix directory
-            if std::env::var("DEBUG").is_ok() {
-                eprintln!("Autotools: Found prefix directory, adjusting staged files");
-            }
-
-            // Use a non-recursive approach to move files
-            self.move_directory_contents(&prefix_in_staging, staging_dir)
-                .await?;
-
-            // Clean up the now-empty prefix directories
-            self.cleanup_empty_dirs(&prefix_in_staging).await?;
-
-            // Also clean up any parent directories that may now be empty
-            // For example, if we moved from stage/opt/pm/live/*, we need to clean up
-            // stage/opt/pm/live, stage/opt/pm, and stage/opt if they're empty
-            let mut parent = prefix_in_staging.parent();
-            while let Some(p) = parent {
-                if p == staging_dir {
-                    break; // Don't try to remove the staging dir itself
-                }
-                if self.is_directory_empty(p).await? {
-                    if std::env::var("DEBUG").is_ok() {
-                        eprintln!("Autotools: Removing empty directory: {}", p.display());
-                    }
-                    fs::remove_dir(p).await?;
-                } else {
-                    break; // Stop if we hit a non-empty directory
-                }
-                parent = p.parent();
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Move all contents from source directory to destination
-    #[allow(clippy::only_used_in_recursion)]
-    fn move_directory_contents<'a>(
-        &'a self,
-        source: &'a Path,
-        dest: &'a Path,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Error>> + Send + 'a>> {
-        Box::pin(async move {
-            use tokio::fs;
-
-            let mut entries = fs::read_dir(source).await?;
-
-            while let Some(entry) = entries.next_entry().await? {
-                let source_path = entry.path();
-                let file_name = source_path
-                    .file_name()
-                    .ok_or_else(|| Error::internal("Invalid file name"))?;
-                let dest_path = dest.join(file_name);
-
-                // Create parent directory if needed
-                if let Some(parent) = dest_path.parent() {
-                    fs::create_dir_all(parent).await?;
-                }
-
-                // If it's a directory, move its contents recursively
-                if source_path.is_dir() {
-                    fs::create_dir_all(&dest_path).await?;
-                    self.move_directory_contents(&source_path, &dest_path)
-                        .await?;
-                    // Remove the now-empty source directory
-                    fs::remove_dir(&source_path).await?;
-                } else {
-                    // Move the file
-                    fs::rename(&source_path, &dest_path)
-                        .await
-                        .map_err(|e| Error::internal(format!("Failed to move file: {}", e)))?;
-                }
-            }
-
-            Ok(())
-        })
-    }
-
-    /// Check if a directory is empty
-    fn is_directory_empty<'a>(
-        &'a self,
-        path: &'a Path,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<bool, Error>> + Send + 'a>> {
-        Box::pin(async move {
-            use tokio::fs;
-
-            if !path.is_dir() {
-                return Ok(false);
-            }
-
-            let mut entries = fs::read_dir(path).await?;
-            Ok(entries.next_entry().await?.is_none())
-        })
-    }
-
-    /// Recursively remove empty directories
-    #[allow(clippy::only_used_in_recursion)]
-    fn cleanup_empty_dirs<'a>(
-        &'a self,
-        path: &'a Path,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Error>> + Send + 'a>> {
-        Box::pin(async move {
-            use tokio::fs;
-
-            if path.is_dir() {
-                let mut entries_to_process = Vec::new();
-                let mut entries = fs::read_dir(path).await?;
-
-                // Collect all entries first
-                while let Some(entry) = entries.next_entry().await? {
-                    entries_to_process.push(entry.path());
-                }
-
-                // Process directories recursively
-                for entry_path in &entries_to_process {
-                    if entry_path.is_dir() {
-                        self.cleanup_empty_dirs(entry_path).await?;
-                    }
-                }
-
-                // Re-check if directory is now empty
-                let mut entries = fs::read_dir(path).await?;
-                if entries.next_entry().await?.is_none() {
-                    if std::env::var("DEBUG").is_ok() {
-                        eprintln!(
-                            "Autotools cleanup_empty_dirs: Removing empty directory: {}",
-                            path.display()
-                        );
-                    }
-                    fs::remove_dir(path).await?;
-                }
-            }
-
-            Ok(())
-        })
     }
 }

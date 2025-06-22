@@ -38,7 +38,6 @@ impl CMakeBuildSystem {
 
     /// Add macOS-specific RPATH and install name arguments
     fn add_macos_rpath_args(
-        &self,
         args: &mut Vec<String>,
         ctx: &BuildSystemContext,
         user_args: &[String],
@@ -118,7 +117,7 @@ impl CMakeBuildSystem {
 
         // Set RPATH for macOS to ensure binaries can find their libraries
         if cfg!(target_os = "macos") {
-            self.add_macos_rpath_args(&mut args, ctx, user_args);
+            Self::add_macos_rpath_args(&mut args, ctx, user_args);
         }
 
         // macOS ARM only - no cross-compilation support

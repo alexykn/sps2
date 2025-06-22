@@ -80,7 +80,7 @@ impl GoBuildSystem {
     }
 
     /// Get build arguments for go build
-    fn get_build_args(&self, ctx: &BuildSystemContext, user_args: &[String]) -> Vec<String> {
+    fn get_build_args(ctx: &BuildSystemContext, user_args: &[String]) -> Vec<String> {
         let mut args = Vec::new();
 
         // Check if user already provided a command (build, test, mod, etc.)
@@ -151,7 +151,7 @@ impl GoBuildSystem {
     }
 
     /// Parse go test output
-    fn parse_test_output(&self, output: &str) -> (usize, usize, usize, Vec<TestFailure>) {
+    fn parse_test_output(output: &str) -> (usize, usize, usize, Vec<TestFailure>) {
         let mut total = 0;
         let mut passed = 0;
         let mut failed = 0;
@@ -278,7 +278,7 @@ impl BuildSystem for GoBuildSystem {
         fs::create_dir_all(&output_dir).await?;
 
         // Get build arguments
-        let build_args = self.get_build_args(ctx, args);
+        let build_args = Self::get_build_args(ctx, args);
         let arg_refs: Vec<&str> = build_args.iter().map(String::as_str).collect();
 
         // Run go build
@@ -326,7 +326,7 @@ impl BuildSystem for GoBuildSystem {
         let output = format!("{}\n{}", result.stdout, result.stderr);
 
         // Parse test results
-        let (total, passed, failed, failures) = self.parse_test_output(&output);
+        let (total, passed, failed, failures) = Self::parse_test_output(&output);
 
         Ok(TestResults {
             total,

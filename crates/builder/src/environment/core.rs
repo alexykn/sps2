@@ -247,6 +247,13 @@ impl BuildEnvironment {
     }
 
     /// Apply isolation level to the environment
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to apply network isolation settings
+    /// - Failed to configure hermetic environment
+    /// - Environment configuration is invalid
     pub async fn apply_isolation_level(
         &mut self,
         level: crate::environment::IsolationLevel,

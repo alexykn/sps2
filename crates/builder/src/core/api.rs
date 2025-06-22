@@ -693,6 +693,10 @@ impl BuilderApi {
     /// This method does not actually perform installation during recipe execution.
     /// Instead, it marks that the package should be installed after it's built.
     /// The actual installation happens after the .sp package is created.
+    ///
+    /// # Errors
+    ///
+    /// This function currently never returns an error, but returns `Result` for API consistency
     pub async fn install(&mut self, _env: &BuildEnvironment) -> Result<BuildCommandResult, Error> {
         // Mark that installation was requested
         self.install_requested = true;
@@ -1211,6 +1215,13 @@ impl BuilderApi {
     }
 
     /// Internal implementation that actually fixes permissions
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to access files in the staging directory
+    /// - Failed to modify file permissions
+    /// - I/O errors occur during permission changes
     pub async fn do_fix_permissions(
         &self,
         paths: &[String],
@@ -1221,26 +1232,21 @@ impl BuilderApi {
         let mut errors = Vec::new();
 
         // Log initial state
-        self.log_fix_permissions_start(paths, staging_dir, env);
+        Self::log_fix_permissions_start(paths, staging_dir, env);
 
         // Process files based on whether specific paths were provided
         if !paths.is_empty() {
-            self.fix_specific_paths(paths, staging_dir, &mut fixed_count, &mut errors);
+            Self::fix_specific_paths(paths, staging_dir, &mut fixed_count, &mut errors);
         } else {
-            self.fix_all_files(staging_dir, env, &mut fixed_count, &mut errors);
+            Self::fix_all_files(staging_dir, env, &mut fixed_count, &mut errors);
         }
 
         // Build and return result
-        self.build_fix_permissions_result(fixed_count, &errors, staging_dir, env)
+        Self::build_fix_permissions_result(fixed_count, &errors, staging_dir, env)
     }
 
     /// Log the start of fix_permissions operation
-    fn log_fix_permissions_start(
-        &self,
-        paths: &[String],
-        staging_dir: &Path,
-        env: &BuildEnvironment,
-    ) {
+    fn log_fix_permissions_start(paths: &[String], staging_dir: &Path, env: &BuildEnvironment) {
         let dir_exists = staging_dir.exists();
         let is_dir = staging_dir.is_dir();
 
@@ -1262,7 +1268,6 @@ impl BuilderApi {
 
     /// Fix permissions for specific paths
     fn fix_specific_paths(
-        &self,
         paths: &[String],
         staging_dir: &Path,
         fixed_count: &mut usize,
@@ -1288,7 +1293,6 @@ impl BuilderApi {
 
     /// Fix permissions for all files in staging directory
     fn fix_all_files(
-        &self,
         staging_dir: &Path,
         env: &BuildEnvironment,
         fixed_count: &mut usize,
@@ -1358,7 +1362,6 @@ impl BuilderApi {
 
     /// Build the result for fix_permissions operation
     fn build_fix_permissions_result(
-        &self,
         fixed_count: usize,
         errors: &[String],
         staging_dir: &Path,
