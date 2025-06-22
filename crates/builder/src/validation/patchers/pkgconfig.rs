@@ -28,8 +28,7 @@ impl crate::validation::traits::Action for PkgConfigPatcher {
                     p.extension().and_then(|e| e.to_str()) == Some("pc")
                         || p.file_name()
                             .and_then(|n| n.to_str())
-                            .map(|n| n.ends_with("Config.cmake"))
-                            .unwrap_or(false)
+                            .is_some_and(|n| n.ends_with("Config.cmake"))
                 }
             })
             .collect::<Vec<_>>();

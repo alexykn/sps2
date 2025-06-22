@@ -203,14 +203,14 @@ impl BuildEnvironment {
             let rust_flags_str = rust_flags.join(" ");
 
             if let Some(existing) = self.env_vars.get("RUSTFLAGS") {
-                if !existing.is_empty() {
+                if existing.is_empty() {
+                    self.env_vars
+                        .insert("RUSTFLAGS".to_string(), rust_flags_str);
+                } else {
                     self.env_vars.insert(
                         "RUSTFLAGS".to_string(),
                         format!("{} {}", rust_flags_str, existing),
                     );
-                } else {
-                    self.env_vars
-                        .insert("RUSTFLAGS".to_string(), rust_flags_str);
                 }
             } else {
                 self.env_vars

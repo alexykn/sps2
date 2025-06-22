@@ -6,13 +6,9 @@
 #![allow(clippy::missing_panics_doc)] // TODO: Add comprehensive panic docs
 #![allow(clippy::doc_markdown)] // TODO: Fix documentation formatting systematically
 #![allow(clippy::cast_precision_loss)] // Acceptable for statistics and progress tracking
-#![allow(clippy::redundant_clone)] // Some clones improve code clarity during development
 #![allow(clippy::return_self_not_must_use)] // Builder patterns don't require must_use in dev
-#![allow(clippy::if_not_else)] // Some patterns are clearer with if-not structure
-#![allow(clippy::implicit_clone)] // Explicit clones preferred during development
 #![allow(clippy::wildcard_imports)] // Acceptable for internal modules during dev
 #![allow(clippy::case_sensitive_file_extension_comparisons)] // Simple string checks are fine
-#![allow(clippy::map_unwrap_or)] // Some patterns are clearer than unwrap_or_else during dev
 #![allow(clippy::cast_possible_truncation)] // Acceptable for metrics and statistics
 #![allow(clippy::cast_sign_loss)] // Acceptable for metrics conversion
 #![allow(clippy::format_push_string)] // String formatting patterns during development

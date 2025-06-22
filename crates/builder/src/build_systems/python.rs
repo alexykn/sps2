@@ -192,8 +192,7 @@ impl PythonBuildSystem {
         let venv_path = if let Ok(extra_env) = ctx.extra_env.read() {
             extra_env
                 .get("PYTHON_VENV_PATH")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| ctx.build_dir.join("venv"))
+                .map_or_else(|| ctx.build_dir.join("venv"), PathBuf::from)
         } else {
             ctx.build_dir.join("venv")
         };
@@ -392,8 +391,7 @@ impl PythonBuildSystem {
             let venv_path = if let Ok(extra_env) = ctx.extra_env.read() {
                 extra_env
                     .get("PYTHON_VENV_PATH")
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|| ctx.build_dir.join("venv"))
+                    .map_or_else(|| ctx.build_dir.join("venv"), PathBuf::from)
             } else {
                 ctx.build_dir.join("venv")
             };
@@ -532,8 +530,7 @@ impl PythonBuildSystem {
                     if path
                         .file_name()
                         .and_then(|n| n.to_str())
-                        .map(|n| n.ends_with(".dist-info"))
-                        .unwrap_or(false)
+                        .is_some_and(|n| n.ends_with(".dist-info"))
                     {
                         let direct_url = path.join("direct_url.json");
                         if direct_url.exists() {
@@ -658,15 +655,7 @@ impl BuildSystem for PythonBuildSystem {
         // Check if pytest is available
         let pytest_check = ctx.execute("pytest", &["--version"], None).await;
 
-        if !pytest_check.map(|r| r.success).unwrap_or(false) {
-            // Fall back to unittest
-            test_cmd = "python3";
-            test_args = vec![
-                "-m".to_string(),
-                "unittest".to_string(),
-                "discover".to_string(),
-            ];
-        } else {
+        if pytest_check.map(|r| r.success).unwrap_or(false) {
             // Use pytest with verbose output
             let mut args = vec!["-v".to_string(), "--tb=short".to_string()];
 
@@ -677,6 +666,14 @@ impl BuildSystem for PythonBuildSystem {
                 args.push(jobs_str.clone());
             }
             test_args = args;
+        } else {
+            // Fall back to unittest
+            test_cmd = "python3";
+            test_args = vec![
+                "-m".to_string(),
+                "unittest".to_string(),
+                "discover".to_string(),
+            ];
         }
 
         // Run tests
@@ -730,8 +727,7 @@ impl BuildSystem for PythonBuildSystem {
             })?;
             let venv = extra_env
                 .get("PYTHON_VENV_PATH")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| ctx.build_dir.join("venv"));
+                .map_or_else(|| ctx.build_dir.join("venv"), PathBuf::from);
             (wheel, venv)
         } else {
             return Err(BuildError::InstallFailed {

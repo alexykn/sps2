@@ -32,15 +32,15 @@ impl CodeSigner {
             .await?;
 
         // If signature is invalid or modified, re-sign it
-        if !check.status.success() {
+        if check.status.success() {
+            Ok(false) // No re-signing needed
+        } else {
             let output = Command::new("codesign")
                 .args(["-f", "-s", "-", &path.to_string_lossy()])
                 .output()
                 .await?;
 
             Ok(output.status.success())
-        } else {
-            Ok(false) // No re-signing needed
         }
     }
 }

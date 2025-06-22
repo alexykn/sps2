@@ -266,38 +266,36 @@ impl BuildEnvironment {
         summary.insert(
             "basic_isolation".to_string(),
             self.verify_basic_isolation()
-                .map(|()| "OK".to_string())
-                .unwrap_or_else(|e| format!("FAILED: {e}")),
+                .map_or_else(|e| format!("FAILED: {e}"), |()| "OK".to_string()),
         );
 
         // Check environment sanitization
         summary.insert(
             "env_sanitization".to_string(),
             self.verify_environment_sanitization()
-                .map(|()| "OK".to_string())
-                .unwrap_or_else(|e| format!("FAILED: {e}")),
+                .map_or_else(|e| format!("FAILED: {e}"), |()| "OK".to_string()),
         );
 
         // Check path isolation
         summary.insert(
             "path_isolation".to_string(),
             self.verify_path_isolation()
-                .map(|()| "OK".to_string())
-                .unwrap_or_else(|e| format!("FAILED: {e}")),
+                .map_or_else(|e| format!("FAILED: {e}"), |()| "OK".to_string()),
         );
 
         // Check network isolation
         summary.insert(
             "network_isolation".to_string(),
-            self.verify_network_isolation()
-                .map(|isolated| {
+            self.verify_network_isolation().map_or_else(
+                |e| format!("ERROR: {e}"),
+                |isolated| {
                     if isolated {
                         "ENABLED".to_string()
                     } else {
                         "DISABLED".to_string()
                     }
-                })
-                .unwrap_or_else(|e| format!("ERROR: {e}")),
+                },
+            ),
         );
 
         // Add key paths

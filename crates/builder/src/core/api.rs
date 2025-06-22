@@ -1235,10 +1235,10 @@ impl BuilderApi {
         Self::log_fix_permissions_start(paths, staging_dir, env);
 
         // Process files based on whether specific paths were provided
-        if !paths.is_empty() {
-            Self::fix_specific_paths(paths, staging_dir, &mut fixed_count, &mut errors);
-        } else {
+        if paths.is_empty() {
             Self::fix_all_files(staging_dir, env, &mut fixed_count, &mut errors);
+        } else {
+            Self::fix_specific_paths(paths, staging_dir, &mut fixed_count, &mut errors);
         }
 
         // Build and return result

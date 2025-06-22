@@ -187,13 +187,12 @@ impl BuildPlan {
                     let build_step = match step {
                         YamlBuildStep::Command { command } => {
                             let parts: Vec<&str> = command.split_whitespace().collect();
-                            if !parts.is_empty() {
-                                BuildStep::Command {
-                                    program: parts[0].to_string(),
-                                    args: parts[1..].iter().map(ToString::to_string).collect(),
-                                }
-                            } else {
+                            if parts.is_empty() {
                                 continue;
+                            }
+                            BuildStep::Command {
+                                program: parts[0].to_string(),
+                                args: parts[1..].iter().map(ToString::to_string).collect(),
                             }
                         }
                         YamlBuildStep::Shell { shell } => {
