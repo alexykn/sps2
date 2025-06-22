@@ -165,7 +165,7 @@ pub enum Build {
         args: Vec<String>,
     },
     /// Complex build with custom steps
-    Steps { steps: Vec<BuildStep> },
+    Steps { steps: Vec<ParsedStep> },
 }
 
 /// Supported build systems
@@ -182,10 +182,10 @@ pub enum BuildSystem {
     Nodejs,
 }
 
-/// Individual build step
+/// Parsed build step from YAML recipe
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum BuildStep {
+pub enum ParsedStep {
     // Simple command (splits by whitespace, no shell features)
     Command { command: String },
     // Shell command (passed to sh -c, supports pipes/redirects/etc)
@@ -203,9 +203,9 @@ pub enum BuildStep {
 /// Post-processing stage
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Post {
-    /// Fix rpaths (convert @rpath to absolute paths)
+    /// Rpath patching strategy
     #[serde(default)]
-    pub patch_rpaths: PostOption,
+    pub patch_rpaths: RpathPatchOption,
 
     /// Fix executable permissions
     #[serde(default)]
@@ -238,6 +238,19 @@ impl Default for PostOption {
     fn default() -> Self {
         PostOption::Enabled(false)
     }
+}
+
+/// Rpath patching strategy
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RpathPatchOption {
+    /// Modern style: Keep @rpath references (relocatable binaries)
+    #[default]
+    Default,
+    /// Absolute style: Convert @rpath to absolute paths
+    Absolute,
+    /// Skip rpath patching entirely
+    Skip,
 }
 
 /// Installation behavior

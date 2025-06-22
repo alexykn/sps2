@@ -44,16 +44,16 @@ pub enum RpathStyle {
     /// Modern approach: Keep @rpath references with proper `LC_RPATH` entries
     /// This is the default and recommended approach for relocatable binaries
     Modern,
-    /// Homebrew approach: Rewrite all @rpath references to absolute paths
+    /// Absolute approach: Rewrite all @rpath references to absolute paths
     /// Use this for compatibility with tools that don't handle @rpath correctly
-    Homebrew,
+    Absolute,
 }
 
 impl std::fmt::Display for RpathStyle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Modern => write!(f, "modern"),
-            Self::Homebrew => write!(f, "homebrew"),
+            Self::Modern => write!(f, "Modern"),
+            Self::Absolute => write!(f, "Absolute"),
         }
     }
 }

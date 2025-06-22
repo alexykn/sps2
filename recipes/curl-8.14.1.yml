@@ -45,4 +45,5 @@ build:
     - "-DENABLE_CURL_MANUAL=OFF"
 
 post:
-  patch_rpaths: true
+  patch_rpaths: absolute
+  

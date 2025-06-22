@@ -70,10 +70,8 @@ build:
 
 # Post-processing (optional)
 post:
-  patch_rpaths:           # Fix library paths
-    style: modern         # modern (default) or homebrew
-    paths: []             # Empty = all files
-  fix_permissions: []     # Fix executable permissions
+  patch_rpaths: default   # Fix library paths (default/absolute/skip)
+  fix_permissions: true   # Fix executable permissions
 
 # Installation (optional)
 install:
@@ -249,13 +247,14 @@ build:
 
 ```yaml
 post:
-  # Fix library paths (usually not needed)
-  patch_rpaths:
-    style: modern    # modern: keep @rpath (default)
-                     # homebrew: convert to absolute paths
-    paths: []        # Empty = patch all binaries
+  # Fix library paths (default behavior is modern @rpath)
+  patch_rpaths: default    # default: keep @rpath references (relocatable)
+                          # absolute: convert to absolute paths (homebrew-style)
+                          # skip: disable rpath patching entirely
   
   # Fix executable permissions (rarely needed)
+  fix_permissions: true    # true/false to fix all executables
+  # OR specify paths:
   fix_permissions:
     - bin/
     - libexec/
@@ -268,9 +267,12 @@ post:
 
 ### When to Use Post-Processing
 
-- **patch_rpaths**: Only needed when binaries fail with "dylib not found" errors or when tools don't understand @rpath
+- **patch_rpaths**: 
+  - `default` (or omit): Modern @rpath style - recommended for most packages
+  - `absolute`: Use when binaries fail with "dylib not found" errors or tools don't understand @rpath
+  - `skip`: Use for packages that manage their own rpaths or don't have dynamic libraries
 - **fix_permissions**: Only needed when installed binaries lack execute permissions (some packages like GCC)
-- Most modern packages work correctly without any post-processing
+- The default behavior (when `post:` is omitted) applies modern rpath patching automatically
 
 ## Installation Section
 
@@ -309,8 +311,7 @@ build:
     - "-DUSE_NGHTTP2=ON"
 
 post:
-  patch_rpaths:      # Needed for curl compatibility
-    style: homebrew  # Use absolute paths
+  patch_rpaths: absolute  # Use absolute paths for curl compatibility
 ```
 
 ### Rust Application
@@ -464,7 +465,7 @@ post:
 - Set `environment.network: true` for packages that download dependencies
 
 **Installed binaries won't run**
-- Try `post.patch_rpaths.style: homebrew` for compatibility
+- Try `post.patch_rpaths: absolute` for compatibility with tools that don't understand @rpath
 
 **Permission denied when running installed programs**
 - Add `post.fix_permissions: [bin/]`

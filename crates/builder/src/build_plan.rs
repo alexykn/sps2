@@ -1,7 +1,7 @@
 //! Build plan representation for staged execution
 
 use crate::environment::IsolationLevel;
-use crate::recipe::model::{BuildStep as YamlBuildStep, PostCommand, YamlRecipe};
+use crate::recipe::model::{ParsedStep, PostCommand, YamlRecipe};
 use crate::yaml::{BuildStep, RecipeMetadata};
 use sps2_types::RpathStyle;
 use std::collections::HashMap;
@@ -185,7 +185,7 @@ impl BuildPlan {
             Build::Steps { steps } => {
                 for step in steps {
                     let build_step = match step {
-                        YamlBuildStep::Command { command } => {
+                        ParsedStep::Command { command } => {
                             let parts: Vec<&str> = command.split_whitespace().collect();
                             if parts.is_empty() {
                                 continue;
@@ -195,31 +195,31 @@ impl BuildPlan {
                                 args: parts[1..].iter().map(ToString::to_string).collect(),
                             }
                         }
-                        YamlBuildStep::Shell { shell } => {
+                        ParsedStep::Shell { shell } => {
                             // Shell commands are passed directly to sh -c
                             BuildStep::Command {
                                 program: "sh".to_string(),
                                 args: vec!["-c".to_string(), shell.clone()],
                             }
                         }
-                        YamlBuildStep::Configure { configure } => BuildStep::Configure {
+                        ParsedStep::Configure { configure } => BuildStep::Configure {
                             args: configure.clone(),
                         },
-                        YamlBuildStep::Make { make } => BuildStep::Make { args: make.clone() },
-                        YamlBuildStep::Cmake { cmake } => BuildStep::Cmake {
+                        ParsedStep::Make { make } => BuildStep::Make { args: make.clone() },
+                        ParsedStep::Cmake { cmake } => BuildStep::Cmake {
                             args: cmake.clone(),
                         },
-                        YamlBuildStep::Meson { meson } => BuildStep::Meson {
+                        ParsedStep::Meson { meson } => BuildStep::Meson {
                             args: meson.clone(),
                         },
-                        YamlBuildStep::Cargo { cargo } => BuildStep::Cargo {
+                        ParsedStep::Cargo { cargo } => BuildStep::Cargo {
                             args: cargo.clone(),
                         },
-                        YamlBuildStep::Go { go } => BuildStep::Go { args: go.clone() },
-                        YamlBuildStep::Python { python } => BuildStep::Python {
+                        ParsedStep::Go { go } => BuildStep::Go { args: go.clone() },
+                        ParsedStep::Python { python } => BuildStep::Python {
                             args: python.clone(),
                         },
-                        YamlBuildStep::Nodejs { nodejs } => BuildStep::NodeJs {
+                        ParsedStep::Nodejs { nodejs } => BuildStep::NodeJs {
                             args: nodejs.clone(),
                         },
                     };
@@ -233,7 +233,7 @@ impl BuildPlan {
 
     /// Extract post-processing steps from recipe
     fn extract_post_steps(recipe: &YamlRecipe) -> Vec<BuildStep> {
-        use crate::recipe::model::PostOption;
+        use crate::recipe::model::{PostOption, RpathPatchOption};
 
         let mut post_steps = Vec::new();
 
@@ -254,19 +254,23 @@ impl BuildPlan {
 
         // Patch rpaths
         match &recipe.post.patch_rpaths {
-            PostOption::Enabled(true) => {
+            RpathPatchOption::Default => {
+                // Default: Modern style (relocatable @rpath)
                 post_steps.push(BuildStep::PatchRpaths {
-                    style: RpathStyle::Modern, // Default style
-                    paths: vec![],             // Will use default paths
+                    style: RpathStyle::Modern,
+                    paths: vec![], // Will use default paths
                 });
             }
-            PostOption::Paths(paths) => {
+            RpathPatchOption::Absolute => {
+                // Absolute: Convert @rpath to absolute paths
                 post_steps.push(BuildStep::PatchRpaths {
-                    style: RpathStyle::Modern, // Default style
-                    paths: paths.clone(),
+                    style: RpathStyle::Absolute,
+                    paths: vec![], // Will use default paths
                 });
             }
-            PostOption::Enabled(false) => {}
+            RpathPatchOption::Skip => {
+                // Skip: No rpath patching
+            }
         }
 
         // Custom post-processing commands

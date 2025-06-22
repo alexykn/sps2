@@ -40,8 +40,8 @@ pub use yaml::{BuildStep, RecipeMetadata};
 
 // Re-export recipe types (from recipe module)
 pub use recipe::model::{
-    Build, BuildStep as YamlBuildStep, BuildSystem as YamlBuildSystem, ChecksumAlgorithm,
-    PostCommand, PostOption, SourceMethod, YamlRecipe,
+    Build, BuildSystem as YamlBuildSystem, ChecksumAlgorithm, ParsedStep, PostCommand, PostOption,
+    RpathPatchOption, SourceMethod, YamlRecipe,
 };
 pub use recipe::parser::parse_yaml_recipe;
 

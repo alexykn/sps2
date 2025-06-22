@@ -98,8 +98,8 @@ impl RPathPatcher {
                 // Check if the install name contains a build path
                 install_name.contains("/opt/pm/build") || install_name.contains("/private/")
             }
-            RpathStyle::Homebrew => {
-                // Homebrew style: Fix @rpath references AND build paths
+            RpathStyle::Absolute => {
+                // Absolute style: Fix @rpath references AND build paths
                 // Keep @loader_path/ and @executable_path/ as they're relative to the binary
                 if install_name.starts_with("@loader_path/")
                     || install_name.starts_with("@executable_path/")
@@ -204,7 +204,7 @@ impl RPathPatcher {
         Ok(updated_files)
     }
 
-    /// Fix dependencies that use @rpath by converting them to absolute paths (Homebrew style)
+    /// Fix dependencies that use @rpath by converting them to absolute paths (Absolute style)
     async fn fix_rpath_dependencies(
         &self,
         path: &Path,
@@ -212,8 +212,8 @@ impl RPathPatcher {
     ) -> Result<Vec<(String, String)>, String> {
         let mut fixed_deps = Vec::new();
 
-        // Skip if not using Homebrew style
-        if self.style != RpathStyle::Homebrew {
+        // Skip if not using Absolute style
+        if self.style != RpathStyle::Absolute {
             return Ok(fixed_deps);
         }
 
@@ -304,7 +304,7 @@ impl RPathPatcher {
         }
 
         // Fix RPATHs
-        // Only add RPATH for Modern style (for Homebrew style, we convert @rpath to absolute paths)
+        // Only add RPATH for Modern style (for Absolute style, we convert @rpath to absolute paths)
         if need_good && self.style == RpathStyle::Modern {
             let _ = Command::new("install_name_tool")
                 .args(["-add_rpath", lib_path, &path_s])
@@ -343,13 +343,13 @@ impl RPathPatcher {
             }
         }
 
-        // Fix @rpath dependencies if using Homebrew style
-        if self.style == RpathStyle::Homebrew {
+        // Fix @rpath dependencies if using Absolute style
+        if self.style == RpathStyle::Absolute {
             match self.fix_rpath_dependencies(path, lib_path).await {
                 Ok(fixed_deps) => {
                     if !fixed_deps.is_empty() {
                         // Dependencies were fixed
-                        // Note: We don't set a flag for this as it's part of Homebrew-style processing
+                        // Note: We don't set a flag for this as it's part of Absolute-style processing
                     }
                 }
                 Err(msg) => {

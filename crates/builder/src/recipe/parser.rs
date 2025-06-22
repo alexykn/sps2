@@ -1,6 +1,6 @@
 //! YAML recipe parser with validation and variable expansion
 
-use super::model::{Build, BuildStep, PostCommand, PostOption, YamlRecipe};
+use super::model::{Build, ParsedStep, PostCommand, PostOption, YamlRecipe};
 use sps2_errors::{BuildError, Error};
 use std::collections::HashMap;
 use std::path::Path;
@@ -134,12 +134,6 @@ fn expand_variables(recipe: &mut YamlRecipe) {
     }
 
     // Expand variables in post option paths
-    if let PostOption::Paths(paths) = &mut recipe.post.patch_rpaths {
-        for path in paths {
-            *path = expand_string(path, &context);
-        }
-    }
-
     if let PostOption::Paths(paths) = &mut recipe.post.fix_permissions {
         for path in paths {
             *path = expand_string(path, &context);
@@ -168,50 +162,50 @@ fn expand_string(input: &str, context: &HashMap<String, String>) -> String {
 }
 
 /// Expand variables in a build step
-fn expand_build_step(step: &mut BuildStep, context: &HashMap<String, String>) {
+fn expand_build_step(step: &mut ParsedStep, context: &HashMap<String, String>) {
     match step {
-        BuildStep::Command { command } => {
+        ParsedStep::Command { command } => {
             *command = expand_string(command, context);
         }
-        BuildStep::Shell { shell } => {
+        ParsedStep::Shell { shell } => {
             *shell = expand_string(shell, context);
         }
-        BuildStep::Make { make } => {
+        ParsedStep::Make { make } => {
             for arg in make {
                 *arg = expand_string(arg, context);
             }
         }
-        BuildStep::Configure { configure } => {
+        ParsedStep::Configure { configure } => {
             for arg in configure {
                 *arg = expand_string(arg, context);
             }
         }
-        BuildStep::Cmake { cmake } => {
+        ParsedStep::Cmake { cmake } => {
             for arg in cmake {
                 *arg = expand_string(arg, context);
             }
         }
-        BuildStep::Meson { meson } => {
+        ParsedStep::Meson { meson } => {
             for arg in meson {
                 *arg = expand_string(arg, context);
             }
         }
-        BuildStep::Cargo { cargo } => {
+        ParsedStep::Cargo { cargo } => {
             for arg in cargo {
                 *arg = expand_string(arg, context);
             }
         }
-        BuildStep::Go { go } => {
+        ParsedStep::Go { go } => {
             for arg in go {
                 *arg = expand_string(arg, context);
             }
         }
-        BuildStep::Python { python } => {
+        ParsedStep::Python { python } => {
             for arg in python {
                 *arg = expand_string(arg, context);
             }
         }
-        BuildStep::Nodejs { nodejs } => {
+        ParsedStep::Nodejs { nodejs } => {
             for arg in nodejs {
                 *arg = expand_string(arg, context);
             }
