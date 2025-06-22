@@ -11,6 +11,7 @@ mod core;
 mod environment;
 mod packaging;
 mod recipe;
+mod stages;
 mod utils;
 pub mod validation;
 mod yaml;

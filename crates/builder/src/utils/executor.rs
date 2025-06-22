@@ -3,7 +3,9 @@
 use crate::build_plan::{BuildPlan, EnvironmentConfig};
 use crate::environment::BuildEnvironment;
 use crate::recipe::parser::parse_yaml_recipe;
-use crate::recipe::{execute_build_step, execute_build_steps_list};
+use crate::stages::executors::{
+    execute_build_commands_list, execute_post_step, execute_source_step,
+};
 use crate::utils::events::send_event;
 use crate::yaml::RecipeMetadata;
 use crate::{BuildConfig, BuildContext, BuilderApi};
@@ -185,7 +187,8 @@ async fn execute_source_stage(
         },
     );
 
-    execute_build_step(&crate::yaml::BuildStep::Cleanup, &mut api, environment).await?;
+    // Cleanup is handled as the first source step
+    execute_source_step(&crate::stages::SourceStep::Cleanup, &mut api, environment).await?;
 
     send_event(
         context,
@@ -205,7 +208,7 @@ async fn execute_source_stage(
             },
         );
 
-        execute_build_step(step, &mut api, environment).await?;
+        execute_source_step(step, &mut api, environment).await?;
 
         send_event(
             context,
@@ -255,7 +258,7 @@ async fn execute_build_stage(
 
     // Execute build steps with timeout
     crate::utils::timeout::with_optional_timeout(
-        execute_build_steps_list(context, &build_plan.build_steps, &mut api, environment),
+        execute_build_commands_list(context, &build_plan.build_steps, &mut api, environment),
         config.max_build_time,
         &context.name,
     )
@@ -311,7 +314,7 @@ async fn execute_post_stage(
             },
         );
 
-        execute_build_step(step, &mut api, environment).await?;
+        execute_post_step(step, &mut api, environment).await?;
 
         send_event(
             context,
