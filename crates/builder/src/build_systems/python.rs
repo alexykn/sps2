@@ -192,7 +192,7 @@ impl PythonBuildSystem {
         let venv_path = if let Ok(extra_env) = ctx.extra_env.read() {
             extra_env
                 .get("PYTHON_VENV_PATH")
-                .map(|p| PathBuf::from(p))
+                .map(PathBuf::from)
                 .unwrap_or_else(|| ctx.build_dir.join("venv"))
         } else {
             ctx.build_dir.join("venv")
@@ -392,7 +392,7 @@ impl PythonBuildSystem {
             let venv_path = if let Ok(extra_env) = ctx.extra_env.read() {
                 extra_env
                     .get("PYTHON_VENV_PATH")
-                    .map(|p| PathBuf::from(p))
+                    .map(PathBuf::from)
                     .unwrap_or_else(|| ctx.build_dir.join("venv"))
             } else {
                 ctx.build_dir.join("venv")
@@ -435,10 +435,7 @@ impl PythonBuildSystem {
     }
 
     /// Extract entry points from wheel
-    async fn extract_entry_points(
-        &self,
-        wheel_path: &Path,
-    ) -> Result<HashMap<String, String>, Error> {
+    fn extract_entry_points(wheel_path: &Path) -> Result<HashMap<String, String>, Error> {
         use std::io::Read;
         use zip::ZipArchive;
 
@@ -625,7 +622,7 @@ impl BuildSystem for PythonBuildSystem {
         let lockfile_path = self.generate_lockfile(ctx, use_uv).await?;
 
         // Extract entry points from wheel
-        let entry_points = self.extract_entry_points(&wheel_path).await?;
+        let entry_points = Self::extract_entry_points(&wheel_path)?;
 
         // Extract Python version requirement
         let requires_python = self.extract_requires_python(&ctx.source_dir).await?;
@@ -733,7 +730,7 @@ impl BuildSystem for PythonBuildSystem {
             })?;
             let venv = extra_env
                 .get("PYTHON_VENV_PATH")
-                .map(|p| PathBuf::from(p))
+                .map(PathBuf::from)
                 .unwrap_or_else(|| ctx.build_dir.join("venv"));
             (wheel, venv)
         } else {

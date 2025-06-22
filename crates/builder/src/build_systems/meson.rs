@@ -111,8 +111,7 @@ impl MesonBuildSystem {
                             details: None,
                         });
                     }
-                    "SKIP" => {} // Don't count as passed or failed
-                    _ => {}
+                    _ => {} // Don't count as passed or failed (includes SKIP)
                 }
             }
         }

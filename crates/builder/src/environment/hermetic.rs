@@ -104,7 +104,7 @@ impl BuildEnvironment {
 
         // Setup minimal device nodes if needed (mostly a no-op on macOS)
         if config.create_devices {
-            self.setup_minimal_devices().await?;
+            Self::setup_minimal_devices()?;
         }
 
         // Send completion event
@@ -323,7 +323,7 @@ impl BuildEnvironment {
     }
 
     /// Setup minimal device nodes (mostly no-op on macOS)
-    async fn setup_minimal_devices(&self) -> Result<(), Error> {
+    fn setup_minimal_devices() -> Result<(), Error> {
         // On macOS, we don't need to create device nodes as they're managed by the kernel
         // This is kept for API compatibility and future expansion
         Ok(())

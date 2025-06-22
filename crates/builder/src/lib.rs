@@ -1,12 +1,8 @@
 #![deny(clippy::pedantic, unsafe_code)]
-#![allow(clippy::module_name_repetitions)]
 // Development-time allowances for incomplete features
 // The builder crate is under heavy development with many placeholder implementations
 #![allow(clippy::missing_docs_in_private_items)] // TODO: Add private docs
 #![allow(clippy::must_use_candidate)] // TODO: Add must_use attributes systematically
-#![allow(clippy::unused_async)] // Some async fns are prepared for future async work
-#![allow(clippy::redundant_closure)] // Some closures improve readability
-#![allow(clippy::match_same_arms)] // Placeholder implementations during development
 #![allow(clippy::missing_panics_doc)] // TODO: Add comprehensive panic docs
 #![allow(clippy::doc_markdown)] // TODO: Fix documentation formatting systematically
 #![allow(clippy::cast_precision_loss)] // Acceptable for statistics and progress tracking

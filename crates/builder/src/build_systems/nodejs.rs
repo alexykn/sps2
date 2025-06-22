@@ -428,10 +428,9 @@ impl BuildSystem for NodeJsBuildSystem {
         };
 
         let pm = match pm_str.as_str() {
-            "Npm" => PackageManager::Npm,
             "Yarn" => PackageManager::Yarn,
             "Pnpm" => PackageManager::Pnpm,
-            _ => PackageManager::Npm,
+            _ => PackageManager::Npm, // Default to Npm (includes "Npm")
         };
 
         // Check if lock file exists
@@ -506,10 +505,9 @@ impl BuildSystem for NodeJsBuildSystem {
         };
 
         let pm = match pm_str.as_str() {
-            "Npm" => PackageManager::Npm,
             "Yarn" => PackageManager::Yarn,
             "Pnpm" => PackageManager::Pnpm,
-            _ => PackageManager::Npm,
+            _ => PackageManager::Npm, // Default to Npm (includes "Npm")
         };
 
         // Check if test script exists

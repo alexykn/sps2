@@ -57,7 +57,7 @@ impl GoBuildSystem {
     }
 
     /// Check if this is a Go module project
-    async fn is_go_module(&self, source_dir: &Path) -> bool {
+    fn is_go_module(source_dir: &Path) -> bool {
         source_dir.join("go.mod").exists()
     }
 
@@ -244,7 +244,7 @@ impl BuildSystem for GoBuildSystem {
         }
 
         // Setup vendoring if needed
-        if self.is_go_module(&ctx.source_dir).await {
+        if Self::is_go_module(&ctx.source_dir) {
             self.setup_vendoring(ctx).await?;
         }
 

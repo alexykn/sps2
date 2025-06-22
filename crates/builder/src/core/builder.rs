@@ -113,7 +113,7 @@ impl Builder {
 
             // Create a BuilderApi instance to call do_fix_permissions
             let api = crate::core::api::BuilderApi::new(environment.staging_dir().to_path_buf())?;
-            let result = api.do_fix_permissions(paths, &environment).await?;
+            let result = api.do_fix_permissions(paths, &environment)?;
 
             send_event(
                 &context,

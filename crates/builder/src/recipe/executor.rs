@@ -93,7 +93,7 @@ pub async fn execute_build_step(
 
         // Basic operations
         BuildStep::Install => {
-            api.install(environment).await?;
+            api.install(environment)?;
         }
         BuildStep::ApplyPatch { path } => {
             api.apply_patch(Path::new(path), environment).await?;
@@ -120,7 +120,7 @@ pub async fn execute_build_step(
             api.patch_rpaths(*style, paths, environment).await?;
         }
         BuildStep::FixPermissions { paths } => {
-            api.fix_permissions(paths, environment).await?;
+            api.fix_permissions(paths, environment)?;
         }
         BuildStep::SetIsolation { level } => {
             if let Some(isolation_level) = IsolationLevel::from_u8(*level) {

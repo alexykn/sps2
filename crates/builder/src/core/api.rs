@@ -697,7 +697,7 @@ impl BuilderApi {
     /// # Errors
     ///
     /// This function currently never returns an error, but returns `Result` for API consistency
-    pub async fn install(&mut self, _env: &BuildEnvironment) -> Result<BuildCommandResult, Error> {
+    pub fn install(&mut self, _env: &BuildEnvironment) -> Result<BuildCommandResult, Error> {
         // Mark that installation was requested
         self.install_requested = true;
 
@@ -1198,7 +1198,7 @@ impl BuilderApi {
     /// # Errors
     ///
     /// Returns an error if permission fixing fails.
-    pub async fn fix_permissions(
+    pub fn fix_permissions(
         &self,
         paths: &[String],
         env: &mut BuildEnvironment,
@@ -1222,7 +1222,7 @@ impl BuilderApi {
     /// - Failed to access files in the staging directory
     /// - Failed to modify file permissions
     /// - I/O errors occur during permission changes
-    pub async fn do_fix_permissions(
+    pub fn do_fix_permissions(
         &self,
         paths: &[String],
         env: &BuildEnvironment,
