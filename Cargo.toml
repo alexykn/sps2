@@ -31,7 +31,7 @@ repository = "https://github.com/org/sps2"
 # Async runtime
 tokio = { version = "1.45.1", features = ["full"] }
 
-# Database
+# Database0.8.6
 sqlx = { version = "0.8.6", features = [
     "runtime-tokio",
     "sqlite",
@@ -39,7 +39,7 @@ sqlx = { version = "0.8.6", features = [
     "migrate",
 ] }
 
-# HTTP
+# HTTP0.12.20
 reqwest = { version = "0.12.20", features = ["json", "stream"] }
 
 # Serialization
@@ -47,7 +47,7 @@ serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 toml = "0.8.23"
 
-# Error handling
+# Error handl2.0.12
 thiserror = "2.0.12"
 
 # Utilities
@@ -57,19 +57,14 @@ blake3 = "1.8.2"
 tracing = "0.1.41"
 chrono = { version = "0.4.41", features = ["serde"] }
 
-# Concurrent data structures
+# Concurren6.1.0a structures
 dashmap = "6.1.0"
 crossbeam = "0.8.4"
 
-# Script engine is Starlark (handled in individual crates)
-
-# CLI
 clap = { version = "4.5.40", features = ["derive", "env"] }
 
-# Archive handling
 tar = "0.4.44"
 
-# Testing
 tempfile = "3.20.0"
 proptest = "1.7.0"
 futures = "0.3.31"

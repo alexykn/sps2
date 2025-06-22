@@ -1,6 +1,7 @@
 //! Operations context for dependency injection
 
 use sps2_builder::Builder;
+use sps2_config::Config;
 use sps2_events::EventSender;
 use sps2_index::IndexManager;
 use sps2_net::NetClient;
@@ -24,30 +25,12 @@ pub struct OpsCtx {
     pub builder: Builder,
     /// Event sender for progress reporting
     pub tx: EventSender,
+    /// System configuration
+    pub config: Config,
 }
 
 impl OpsCtx {
-    /// Create new operations context
-    #[must_use]
-    pub fn new(
-        store: PackageStore,
-        state: StateManager,
-        index: IndexManager,
-        net: NetClient,
-        resolver: Resolver,
-        builder: Builder,
-        tx: EventSender,
-    ) -> Self {
-        Self {
-            store,
-            state,
-            index,
-            net,
-            resolver,
-            builder,
-            tx,
-        }
-    }
+    // No public constructor - use OpsContextBuilder instead
 }
 
 /// Builder for operations context
@@ -59,6 +42,7 @@ pub struct OpsContextBuilder {
     resolver: Option<Resolver>,
     builder: Option<Builder>,
     tx: Option<EventSender>,
+    config: Option<Config>,
 }
 
 impl OpsContextBuilder {
@@ -73,6 +57,7 @@ impl OpsContextBuilder {
             resolver: None,
             builder: None,
             tx: None,
+            config: None,
         }
     }
 
@@ -125,6 +110,13 @@ impl OpsContextBuilder {
         self
     }
 
+    /// Set configuration
+    #[must_use]
+    pub fn with_config(mut self, config: Config) -> Self {
+        self.config = Some(config);
+        self
+    }
+
     /// Build the context
     ///
     /// # Errors
@@ -173,7 +165,22 @@ impl OpsContextBuilder {
                 component: "event_sender".to_string(),
             })?;
 
-        Ok(OpsCtx::new(store, state, index, net, resolver, builder, tx))
+        let config = self
+            .config
+            .ok_or_else(|| sps2_errors::OpsError::MissingComponent {
+                component: "config".to_string(),
+            })?;
+
+        Ok(OpsCtx {
+            store,
+            state,
+            index,
+            net,
+            resolver,
+            builder,
+            tx,
+            config,
+        })
     }
 }
 

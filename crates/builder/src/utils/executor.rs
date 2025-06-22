@@ -3,8 +3,9 @@
 use crate::build_plan::{BuildPlan, EnvironmentConfig};
 use crate::environment::BuildEnvironment;
 use crate::recipe::parser::parse_yaml_recipe;
+use crate::security::SecurityContext;
 use crate::stages::executors::{
-    execute_build_commands_list, execute_post_step, execute_source_step,
+    execute_build_commands_list_with_security, execute_post_step_with_security, execute_source_step,
 };
 use crate::utils::events::send_event;
 use crate::yaml::RecipeMetadata;
@@ -37,7 +38,11 @@ pub async fn execute_staged_build(
     );
 
     let yaml_recipe = parse_yaml_recipe(&context.recipe_path).await?;
-    let build_plan = BuildPlan::from_yaml(&yaml_recipe);
+    let build_plan = BuildPlan::from_yaml(
+        &yaml_recipe,
+        &context.recipe_path,
+        config.sps2_config.as_ref(),
+    )?;
 
     send_event(
         context,
@@ -47,17 +52,41 @@ pub async fn execute_staged_build(
         },
     );
 
+    // Create security context for the build
+    let build_root = environment.build_prefix().to_path_buf();
+    let mut initial_vars = HashMap::new();
+
+    // Add build-specific variables
+    initial_vars.insert("NAME".to_string(), context.name.clone());
+    initial_vars.insert("VERSION".to_string(), context.version.to_string());
+
+    let mut security_context = SecurityContext::new(build_root, initial_vars);
+
     // Stage 1: Apply environment configuration
     apply_environment_config(context, environment, &build_plan.environment).await?;
 
     // Stage 2: Execute source operations
     execute_source_stage(config, context, environment, &build_plan).await?;
 
-    // Stage 3: Execute build operations
-    execute_build_stage(config, context, environment, &build_plan).await?;
+    // Stage 3: Execute build operations (with security context)
+    execute_build_stage_with_security(
+        config,
+        context,
+        environment,
+        &build_plan,
+        &mut security_context,
+    )
+    .await?;
 
-    // Stage 4: Execute post-processing operations
-    execute_post_stage(config, context, environment, &build_plan).await?;
+    // Stage 4: Execute post-processing operations (with security context)
+    execute_post_stage_with_security(
+        config,
+        context,
+        environment,
+        &build_plan,
+        &mut security_context,
+    )
+    .await?;
 
     // Extract dependencies
     let runtime_deps = build_plan.metadata.runtime_deps.clone();
@@ -230,12 +259,13 @@ async fn execute_source_stage(
     Ok(())
 }
 
-/// Execute build stage
-async fn execute_build_stage(
+/// Execute build stage with security context
+async fn execute_build_stage_with_security(
     config: &BuildConfig,
     context: &BuildContext,
     environment: &mut BuildEnvironment,
     build_plan: &BuildPlan,
+    security_context: &mut SecurityContext,
 ) -> Result<(), Error> {
     if build_plan.build_steps.is_empty() {
         return Ok(());
@@ -256,9 +286,16 @@ async fn execute_build_stage(
     // Use network setting from YAML recipe's environment config
     let _result = api.allow_network(build_plan.environment.network);
 
-    // Execute build steps with timeout
+    // Execute build steps with timeout and security context
     crate::utils::timeout::with_optional_timeout(
-        execute_build_commands_list(context, &build_plan.build_steps, &mut api, environment),
+        execute_build_commands_list_with_security(
+            context,
+            &build_plan.build_steps,
+            &mut api,
+            environment,
+            security_context,
+            config.sps2_config.as_ref(),
+        ),
         config.max_build_time,
         &context.name,
     )
@@ -280,12 +317,13 @@ async fn execute_build_stage(
     Ok(())
 }
 
-/// Execute post-processing stage
-async fn execute_post_stage(
-    _config: &BuildConfig,
+/// Execute post-processing stage with security context
+async fn execute_post_stage_with_security(
+    config: &BuildConfig,
     context: &BuildContext,
     environment: &mut BuildEnvironment,
     build_plan: &BuildPlan,
+    security_context: &mut SecurityContext,
 ) -> Result<(), Error> {
     if build_plan.post_steps.is_empty() {
         return Ok(());
@@ -314,7 +352,14 @@ async fn execute_post_stage(
             },
         );
 
-        execute_post_step(step, &mut api, environment).await?;
+        execute_post_step_with_security(
+            step,
+            &mut api,
+            environment,
+            security_context,
+            config.sps2_config.as_ref(),
+        )
+        .await?;
 
         send_event(
             context,

@@ -15,3 +15,10 @@ build:
   system: meson
   args:
     - "--buildtype=release"
+
+post:
+  commands:
+    - shell: |
+        cd ${DESTDIR}${PREFIX}/bin
+        ln -sf pkgconf pkg-config
+        

@@ -1,11 +1,21 @@
 //! Build plan representation for staged execution
 
 use crate::environment::IsolationLevel;
-use crate::recipe::model::{ParsedStep, PostCommand, YamlRecipe};
+use crate::recipe::model::YamlRecipe;
 use crate::stages::{BuildCommand, PostStep, SourceStep};
+use crate::validation;
 use crate::yaml::RecipeMetadata;
+use sps2_errors::Error;
 use sps2_types::RpathStyle;
 use std::collections::HashMap;
+use std::path::Path;
+
+/// Collection of steps by stage type
+struct StageSteps {
+    source: Vec<SourceStep>,
+    build: Vec<BuildCommand>,
+    post: Vec<PostStep>,
+}
 
 /// Complete build plan extracted from recipe
 #[derive(Debug, Clone)]
@@ -47,7 +57,15 @@ pub struct EnvironmentConfig {
 
 impl BuildPlan {
     /// Create a build plan from a YAML recipe
-    pub fn from_yaml(recipe: &YamlRecipe) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if validation fails for any build step
+    pub fn from_yaml(
+        recipe: &YamlRecipe,
+        recipe_path: &Path,
+        sps2_config: Option<&sps2_config::Config>,
+    ) -> Result<Self, Error> {
         // Extract environment config
         let environment = EnvironmentConfig {
             isolation: recipe.environment.isolation,
@@ -68,31 +86,40 @@ impl BuildPlan {
         };
 
         // Extract steps by stage
-        let (source_steps, build_steps, post_steps) = Self::extract_steps_by_stage(recipe);
+        let stage_steps = Self::extract_steps_by_stage(recipe, recipe_path, sps2_config)?;
 
-        Self {
+        Ok(Self {
             metadata,
             environment,
-            source_steps,
-            build_steps,
-            post_steps,
+            source_steps: stage_steps.source,
+            build_steps: stage_steps.build,
+            post_steps: stage_steps.post,
             auto_install: recipe.install.auto,
-        }
+        })
     }
 
     /// Extract build steps organized by stage
     fn extract_steps_by_stage(
         recipe: &YamlRecipe,
-    ) -> (Vec<SourceStep>, Vec<BuildCommand>, Vec<PostStep>) {
-        let source_steps = Self::extract_source_steps(recipe);
-        let build_steps = Self::extract_build_steps(recipe);
-        let post_steps = Self::extract_post_steps(recipe);
+        recipe_path: &Path,
+        sps2_config: Option<&sps2_config::Config>,
+    ) -> Result<StageSteps, Error> {
+        let source_steps = Self::extract_source_steps(recipe, recipe_path)?;
+        let build_steps = Self::extract_build_steps(recipe, sps2_config)?;
+        let post_steps = Self::extract_post_steps(recipe, sps2_config)?;
 
-        (source_steps, build_steps, post_steps)
+        Ok(StageSteps {
+            source: source_steps,
+            build: build_steps,
+            post: post_steps,
+        })
     }
 
     /// Extract source steps from recipe
-    fn extract_source_steps(recipe: &YamlRecipe) -> Vec<SourceStep> {
+    fn extract_source_steps(
+        recipe: &YamlRecipe,
+        recipe_path: &Path,
+    ) -> Result<Vec<SourceStep>, Error> {
         use crate::recipe::model::{ChecksumAlgorithm, SourceMethod};
 
         let mut source_steps = Vec::new();
@@ -146,11 +173,20 @@ impl BuildPlan {
             });
         }
 
-        source_steps
+        // Validate all source steps
+        let recipe_dir = recipe_path.parent().unwrap_or(Path::new("."));
+        for step in &source_steps {
+            validation::validate_source_step(step, recipe_dir)?;
+        }
+
+        Ok(source_steps)
     }
 
     /// Extract build steps from recipe
-    fn extract_build_steps(recipe: &YamlRecipe) -> Vec<BuildCommand> {
+    fn extract_build_steps(
+        recipe: &YamlRecipe,
+        sps2_config: Option<&sps2_config::Config>,
+    ) -> Result<Vec<BuildCommand>, Error> {
         use crate::recipe::model::Build;
 
         let mut build_steps = Vec::new();
@@ -187,55 +223,21 @@ impl BuildPlan {
             }
             Build::Steps { steps } => {
                 for step in steps {
-                    let build_step = match step {
-                        ParsedStep::Command { command } => {
-                            let parts: Vec<&str> = command.split_whitespace().collect();
-                            if parts.is_empty() {
-                                continue;
-                            }
-                            BuildCommand::Command {
-                                program: parts[0].to_string(),
-                                args: parts[1..].iter().map(ToString::to_string).collect(),
-                            }
-                        }
-                        ParsedStep::Shell { shell } => {
-                            // Shell commands are passed directly to sh -c
-                            BuildCommand::Command {
-                                program: "sh".to_string(),
-                                args: vec!["-c".to_string(), shell.clone()],
-                            }
-                        }
-                        ParsedStep::Configure { configure } => BuildCommand::Configure {
-                            args: configure.clone(),
-                        },
-                        ParsedStep::Make { make } => BuildCommand::Make { args: make.clone() },
-                        ParsedStep::Cmake { cmake } => BuildCommand::Cmake {
-                            args: cmake.clone(),
-                        },
-                        ParsedStep::Meson { meson } => BuildCommand::Meson {
-                            args: meson.clone(),
-                        },
-                        ParsedStep::Cargo { cargo } => BuildCommand::Cargo {
-                            args: cargo.clone(),
-                        },
-                        ParsedStep::Go { go } => BuildCommand::Go { args: go.clone() },
-                        ParsedStep::Python { python } => BuildCommand::Python {
-                            args: python.clone(),
-                        },
-                        ParsedStep::Nodejs { nodejs } => BuildCommand::NodeJs {
-                            args: nodejs.clone(),
-                        },
-                    };
+                    // Validate and convert each step
+                    let build_step = validation::validate_build_step(step, sps2_config)?;
                     build_steps.push(build_step);
                 }
             }
         }
 
-        build_steps
+        Ok(build_steps)
     }
 
     /// Extract post-processing steps from recipe
-    fn extract_post_steps(recipe: &YamlRecipe) -> Vec<PostStep> {
+    fn extract_post_steps(
+        recipe: &YamlRecipe,
+        sps2_config: Option<&sps2_config::Config>,
+    ) -> Result<Vec<PostStep>, Error> {
         use crate::recipe::model::{PostOption, RpathPatchOption};
 
         let mut post_steps = Vec::new();
@@ -278,27 +280,11 @@ impl BuildPlan {
 
         // Custom post-processing commands
         for command in &recipe.post.commands {
-            match command {
-                PostCommand::Simple(cmd) => {
-                    // Simple commands: split by whitespace
-                    let parts: Vec<&str> = cmd.split_whitespace().collect();
-                    if !parts.is_empty() {
-                        post_steps.push(PostStep::Command {
-                            program: parts[0].to_string(),
-                            args: parts[1..].iter().map(ToString::to_string).collect(),
-                        });
-                    }
-                }
-                PostCommand::Shell { shell } => {
-                    // Shell commands: passed to sh -c
-                    post_steps.push(PostStep::Command {
-                        program: "sh".to_string(),
-                        args: vec!["-c".to_string(), shell.clone()],
-                    });
-                }
-            }
+            // Validate and convert each command
+            let post_step = validation::validate_post_command(command, sps2_config)?;
+            post_steps.push(post_step);
         }
 
-        post_steps
+        Ok(post_steps)
     }
 }

@@ -79,7 +79,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
     let (event_sender, event_receiver) = tokio::sync::mpsc::unbounded_channel();
 
     // Build operations context
-    let ops_ctx = build_ops_context(&setup, event_sender.clone()).await?;
+    let ops_ctx = build_ops_context(&setup, event_sender.clone(), config.clone()).await?;
 
     // Create output renderer
     let renderer = OutputRenderer::new(
@@ -295,6 +295,7 @@ async fn execute_command(
 async fn build_ops_context(
     setup: &SystemSetup,
     event_sender: EventSender,
+    config: Config,
 ) -> Result<sps2_ops::OpsCtx, CliError> {
     let ctx = OpsContextBuilder::new()
         .with_store(setup.store().clone())
@@ -304,6 +305,7 @@ async fn build_ops_context(
         .with_resolver(setup.resolver().clone())
         .with_builder(setup.builder())
         .with_event_sender(event_sender)
+        .with_config(config)
         .build()?;
 
     Ok(ctx)

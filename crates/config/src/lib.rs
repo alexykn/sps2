@@ -57,6 +57,21 @@ pub struct BuildConfig {
     pub network_access: bool,
     #[serde(default = "default_compression_level")]
     pub compression_level: String,
+    #[serde(default)]
+    pub commands: BuildCommandsConfig,
+}
+
+/// Build commands configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildCommandsConfig {
+    #[serde(default = "default_allowed_commands")]
+    pub allowed: Vec<String>,
+    #[serde(default = "default_allowed_shell")]
+    pub allowed_shell: Vec<String>,
+    #[serde(default)]
+    pub additional_allowed: Vec<String>,
+    #[serde(default)]
+    pub disallowed: Vec<String>,
 }
 
 /// Security configuration
@@ -116,6 +131,18 @@ impl Default for BuildConfig {
             build_jobs: 0, // 0 = auto-detect
             network_access: false,
             compression_level: "balanced".to_string(),
+            commands: BuildCommandsConfig::default(),
+        }
+    }
+}
+
+impl Default for BuildCommandsConfig {
+    fn default() -> Self {
+        Self {
+            allowed: default_allowed_commands(),
+            allowed_shell: default_allowed_shell(),
+            additional_allowed: Vec::new(),
+            disallowed: Vec::new(),
         }
     }
 }
@@ -206,17 +233,176 @@ fn default_retry_delay() -> u64 {
     1 // 1 second
 }
 
+fn default_allowed_commands() -> Vec<String> {
+    vec![
+        // Build tools
+        "make",
+        "cmake",
+        "meson",
+        "ninja",
+        "cargo",
+        "go",
+        "python",
+        "python3",
+        "pip",
+        "pip3",
+        "npm",
+        "yarn",
+        "pnpm",
+        "node",
+        "gcc",
+        "g++",
+        "clang",
+        "clang++",
+        "cc",
+        "c++",
+        "ld",
+        "ar",
+        "ranlib",
+        "strip",
+        "objcopy",
+        // Configure scripts
+        "./configure",
+        "configure",
+        "autoreconf",
+        "autoconf",
+        "automake",
+        "libtool",
+        // File operations
+        "cp",
+        "mv",
+        "mkdir",
+        "rmdir",
+        "touch",
+        "ln",
+        "install",
+        "chmod",
+        "chown",
+        // Text processing
+        "sed",
+        "awk",
+        "grep",
+        "egrep",
+        "fgrep",
+        "cut",
+        "tr",
+        "sort",
+        "uniq",
+        "head",
+        "tail",
+        "cat",
+        "echo",
+        "printf",
+        "test",
+        "[",
+        // Archive tools
+        "tar",
+        "gzip",
+        "gunzip",
+        "bzip2",
+        "bunzip2",
+        "xz",
+        "unxz",
+        "zip",
+        "unzip",
+        // Version control (read-only operations)
+        "git",
+        "hg",
+        "svn",
+        // Shell built-ins and flow control
+        "cd",
+        "pwd",
+        "export",
+        "source",
+        ".",
+        "if",
+        "then",
+        "else",
+        "elif",
+        "fi",
+        "for",
+        "while",
+        "do",
+        "done",
+        "case",
+        "esac",
+        "return",
+        "exit",
+        // Development tools
+        "pkg-config",
+        "ldconfig",
+        "patch",
+        "diff",
+        // Local file sync (not remote)
+        "rsync",
+        // Safe rm operations (without -rf)
+        "rm",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect()
+}
+
+fn default_allowed_shell() -> Vec<String> {
+    vec![
+        // Common build patterns
+        "mkdir -p",
+        "test -f",
+        "test -d",
+        "test -e",
+        "test -x",
+        "test -z",
+        "test -n",
+        "[ -f",
+        "[ -d",
+        "[ -e",
+        "[ -x",
+        "[ -z",
+        "[ -n",
+        "if [",
+        "if test",
+        "for file in",
+        "for dir in",
+        "for i in",
+        "find . -name",
+        "find . -type",
+        "echo",
+        "printf",
+        "cd ${DESTDIR}",
+        "cd ${PREFIX}",
+        "cd ${BUILD_DIR}",
+        "ln -s",
+        "ln -sf",
+        "cp -r",
+        "cp -a",
+        "cp -p",
+        "install -D",
+        "install -m",
+        "sed -i",
+        "sed -e",
+        // Variable assignments
+        "export",
+        "unset",
+        // Conditionals
+        "||",
+        "&&",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect()
+}
+
 impl Config {
     /// Get the default config file path
     ///
     /// # Errors
     ///
-    /// Returns an error if the system config directory cannot be determined.
+    /// Returns an error if the home directory cannot be determined.
     pub fn default_path() -> Result<PathBuf, Error> {
-        let config_dir = dirs::config_dir().ok_or_else(|| ConfigError::NotFound {
-            path: "config directory".to_string(),
+        let home_dir = dirs::home_dir().ok_or_else(|| ConfigError::NotFound {
+            path: "home directory".to_string(),
         })?;
-        Ok(config_dir.join("sps2").join("config.toml"))
+        Ok(home_dir.join(".config").join("sps2").join("config.toml"))
     }
 
     /// Load configuration from file
@@ -241,6 +427,8 @@ impl Config {
 
     /// Load configuration with fallback to defaults
     ///
+    /// If the config file doesn't exist, creates it with defaults.
+    ///
     /// # Errors
     ///
     /// Returns an error if the configuration file exists but cannot be read
@@ -251,7 +439,12 @@ impl Config {
         if config_path.exists() {
             Self::load_from_file(&config_path).await
         } else {
-            Ok(Self::default())
+            // Create default config and save it
+            let config = Self::default();
+            if let Err(e) = config.save().await {
+                tracing::warn!("Failed to save default config: {}", e);
+            }
+            Ok(config)
         }
     }
 
@@ -381,6 +574,96 @@ impl Config {
     #[must_use]
     pub fn db_path(&self) -> PathBuf {
         PathBuf::from("/opt/pm/state.sqlite")
+    }
+
+    /// Save configuration to the default location
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the configuration cannot be serialized
+    /// or if the file cannot be written.
+    pub async fn save(&self) -> Result<(), Error> {
+        let config_path = Self::default_path()?;
+        self.save_to(&config_path).await
+    }
+
+    /// Save configuration to a specific path
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the configuration cannot be serialized
+    /// or if the file cannot be written.
+    pub async fn save_to(&self, path: &Path) -> Result<(), Error> {
+        // Ensure parent directory exists
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .await
+                .map_err(|e| ConfigError::WriteError {
+                    path: parent.display().to_string(),
+                    error: e.to_string(),
+                })?;
+        }
+
+        // Serialize to TOML with pretty formatting
+        let toml_string =
+            toml::to_string_pretty(self).map_err(|e| ConfigError::SerializeError {
+                error: e.to_string(),
+            })?;
+
+        // Add header comment
+        let content = format!(
+            "# sps2 Configuration File\n\
+             # This file was automatically generated.\n\
+             # You can modify it to customize sps2 behavior.\n\
+             #\n\
+             # For more information, see: https://github.com/your-org/sps2\n\n\
+             {toml_string}"
+        );
+
+        // Write to file
+        fs::write(path, content)
+            .await
+            .map_err(|e| ConfigError::WriteError {
+                path: path.display().to_string(),
+                error: e.to_string(),
+            })?;
+
+        Ok(())
+    }
+
+    /// Get all allowed commands (combining allowed and `additional_allowed`)
+    #[must_use]
+    pub fn get_allowed_commands(&self) -> Vec<String> {
+        let mut commands = self.build.commands.allowed.clone();
+        commands.extend(self.build.commands.additional_allowed.clone());
+        commands
+    }
+
+    /// Check if a command is allowed
+    #[must_use]
+    pub fn is_command_allowed(&self, command: &str) -> bool {
+        // First check if it's explicitly disallowed
+        if self
+            .build
+            .commands
+            .disallowed
+            .contains(&command.to_string())
+        {
+            return false;
+        }
+
+        // Then check if it's in the allowed list
+        self.get_allowed_commands().contains(&command.to_string())
+    }
+
+    /// Check if a shell pattern is allowed
+    #[must_use]
+    pub fn is_shell_pattern_allowed(&self, pattern: &str) -> bool {
+        self.build
+            .commands
+            .allowed_shell
+            .iter()
+            .any(|allowed| pattern.starts_with(allowed))
     }
 }
 

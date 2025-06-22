@@ -107,4 +107,44 @@ pub enum BuildError {
 
     #[error("git clone failed: {message}")]
     GitCloneFailed { message: String },
+
+    #[error("validation failed: {message}")]
+    ValidationFailed { message: String },
+
+    #[error("dangerous command blocked: {command} - {reason}")]
+    DangerousCommand { command: String, reason: String },
+
+    #[error("invalid path: {path} - {reason}")]
+    InvalidPath { path: String, reason: String },
+
+    #[error("invalid URL: {url} - {reason}")]
+    InvalidUrlValidation { url: String, reason: String },
+
+    #[error("command parsing failed: {command} - {reason}")]
+    CommandParseError { command: String, reason: String },
+
+    #[error("path escape attempt: {path} resolves to {resolved} outside build root {build_root}")]
+    PathEscapeAttempt {
+        path: String,
+        resolved: String,
+        build_root: String,
+    },
+
+    #[error("dangerous write operation to {path}")]
+    DangerousWrite { path: String },
+
+    #[error("dangerous execution of {path}")]
+    DangerousExecution { path: String },
+
+    #[error("symlink loop detected at {path}")]
+    SymlinkLoop { path: String },
+
+    #[error("too many symlinks while resolving {path}")]
+    TooManySymlinks { path: String },
+
+    #[error("path traversal attempt: {path} - {reason}")]
+    PathTraversalAttempt { path: String, reason: String },
+
+    #[error("disallowed command: {command}")]
+    DisallowedCommand { command: String },
 }

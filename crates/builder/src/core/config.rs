@@ -23,6 +23,8 @@ pub struct BuildConfig {
     pub compression_config: CompressionConfig,
     /// Build isolation level
     pub isolation_level: IsolationLevel,
+    /// sps2 system configuration (for command validation)
+    pub sps2_config: Option<sps2_config::Config>,
 }
 
 impl Default for BuildConfig {
@@ -36,6 +38,7 @@ impl Default for BuildConfig {
             build_root: Some(PathBuf::from("/opt/pm/build")), // Default to /opt/pm/build
             compression_config: CompressionConfig::default(),
             isolation_level: IsolationLevel::default(), // Standard by default
+            sps2_config: None,
         }
     }
 }

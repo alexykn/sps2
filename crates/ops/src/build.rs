@@ -98,6 +98,8 @@ pub async fn build(
     if let Some(job_count) = jobs {
         builder_config.build_jobs = Some(job_count);
     }
+    // Pass the sps2 config for command validation
+    builder_config.sps2_config = Some(ctx.config.clone());
 
     // Create builder with custom configuration
     let builder = sps2_builder::Builder::with_config(builder_config)

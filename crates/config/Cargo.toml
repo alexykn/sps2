@@ -15,6 +15,7 @@ toml = { workspace = true }
 tokio = { workspace = true, features = ["fs"] }
 dirs = "6.0.0"
 num_cpus = "1.17.0"
+tracing = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -22,4 +22,10 @@ pub enum ConfigError {
 
     #[error("environment variable not found: {var}")]
     EnvVarNotFound { var: String },
+
+    #[error("failed to write config to {path}: {error}")]
+    WriteError { path: String, error: String },
+
+    #[error("failed to serialize config: {error}")]
+    SerializeError { error: String },
 }

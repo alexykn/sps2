@@ -243,6 +243,145 @@ build:
 | `nodejs` | Node.js packages | `npm/yarn/pnpm install && build` |
 | `make` | Plain Makefile | `make -j && make install` |
 
+## Security and Validation
+
+### Dual-Layer Security Architecture
+
+sps2 implements a **dual-layer validation system** to ensure build scripts are safe to execute:
+
+```
+YAML Recipe → ParsedStep → [Recipe Validation] → BuildStep → [Security Context] → Execution
+                               ↑                                    ↑
+                               |                                    |
+                          Static checks                      Runtime checks
+                          at parse time                      with full context
+```
+
+1. **Recipe-Time Validation** (Static)
+   - Validates commands when parsing the YAML recipe
+   - Checks against allowed commands list from `config.toml`
+   - Blocks dangerous patterns (sudo, rm -rf, etc.)
+   - Cannot expand variables yet (no runtime context)
+
+2. **Runtime Security Context** (Stateful)
+   - Validates during actual command execution
+   - Expands variables like `${DESTDIR}`, `${PREFIX}`, `${BUILD_DIR}`
+   - Tracks current directory across command chains
+   - Ensures all paths stay within `/opt/pm/build/`
+   - Detects symlink attacks and path traversal
+
+### Configuring Allowed Commands
+
+Build commands must be explicitly allowed in your configuration file:
+
+**Location**: `~/.config/sps2/config.toml`
+
+```toml
+[build_script_allowed_commands]
+allowed = [
+    # Build tools
+    "make", "cmake", "meson", "ninja", "cargo", "go",
+    
+    # Compilers
+    "gcc", "g++", "clang", "clang++", "cc", "c++",
+    
+    # Common utilities
+    "cp", "mv", "rm", "mkdir", "ln", "chmod", "install",
+    "sed", "awk", "grep", "find", "patch", "echo", "cat",
+    
+    # Package/archive tools
+    "tar", "gzip", "bzip2", "xz", "unzip", "zip",
+    
+    # Add your custom commands here:
+    # "python3",
+    # "npm",
+]
+
+# Explicitly disallowed (even if in allowed list)
+disallowed = [
+    "sudo", "doas", "su",           # No privilege escalation
+    "systemctl", "service",         # No system services
+    "apt", "yum", "dnf", "pacman",  # No system package managers
+]
+```
+
+To allow additional commands:
+1. Edit `~/.config/sps2/config.toml`
+2. Add to the `allowed` list
+3. Save and retry your build
+
+### Security Best Practices
+
+1. **Always use build variables** instead of hardcoded paths:
+   ```yaml
+   # Good: Uses proper variables
+   - make install DESTDIR=${DESTDIR} PREFIX=${PREFIX}
+   
+   # Bad: Hardcoded system paths
+   - make install PREFIX=/usr/local
+   ```
+
+2. **Commands are validated individually** in multi-line scripts:
+   ```yaml
+   - shell: |
+       cd ${BUILD_DIR}          # ✓ Validated
+       ./configure              # ✓ Must be in allowed list
+       make -j${JOBS}          # ✓ Each command checked
+       sudo make install       # ✗ Blocked: sudo not allowed
+   ```
+
+3. **Path containment** is enforced:
+   ```yaml
+   # These will be blocked:
+   - cd /etc                    # Outside build root
+   - rm -rf /                   # Dangerous pattern
+   - ln -s /etc/passwd passwd   # System file access
+   
+   # These are allowed:
+   - cd ${BUILD_DIR}/src        # Within build root
+   - rm -f build/*.o            # Specific file removal
+   - ln -s libfoo.so.1 libfoo.so # Library symlinks
+   ```
+
+### Common Security Errors
+
+**"Command 'X' is not in the allowed commands list"**
+- Add the command to `~/.config/sps2/config.toml` allowed list
+
+**"Path escape attempt: X resolves to Y outside build root"**
+- Ensure paths stay within `${BUILD_DIR}` or use `${DESTDIR}`
+
+**"rm -rf is not allowed in build scripts"**
+- Use targeted removal: `rm -f specific_file` or `rm -r specific_dir`
+
+**"cd without arguments not allowed"**
+- Always specify a path: `cd ${BUILD_DIR}`
+
+### Build Variables
+
+These variables are expanded at runtime:
+
+| Variable | Description | Example Value |
+|----------|-------------|---------------|
+| `${DESTDIR}` | Staging directory for installation | `/opt/pm/build/curl-8.14.1/destdir` |
+| `${PREFIX}` | Installation prefix | `/opt/pm/live` |
+| `${BUILD_DIR}` | Current build directory | `/opt/pm/build/curl-8.14.1` |
+| `${PACKAGE_NAME}` | Package name from metadata | `curl` |
+| `${PACKAGE_VERSION}` | Package version from metadata | `8.14.1` |
+| `${JOBS}` | Parallel job count | `8` |
+
+### Debugging Security Issues
+
+Run with debug logging to see validation details:
+```bash
+sps2 --debug build package-name
+```
+
+This will show:
+- Which commands are being validated
+- How paths are being resolved
+- What the security context is tracking
+
 ## Post-Processing Section
 
 ```yaml

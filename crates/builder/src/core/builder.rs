@@ -262,9 +262,12 @@ impl Builder {
             );
         }
 
+        // Use the build config as-is (it already has sps2_config from ops/build.rs)
+        let build_config = self.config.clone();
+
         // Now execute the recipe with build dependencies already set up
         let (runtime_deps, _build_deps, _metadata, install_requested) =
-            execute_recipe(&self.config, context, environment).await?;
+            execute_recipe(&build_config, context, environment).await?;
 
         // Note: YAML recipes using staged execution have isolation already applied
         // during the environment configuration stage in staged_executor.rs.

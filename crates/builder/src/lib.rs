@@ -12,8 +12,10 @@ mod core;
 mod environment;
 mod packaging;
 mod recipe;
+mod security;
 mod stages;
 mod utils;
+mod validation;
 mod yaml;
 
 pub use build_systems::{

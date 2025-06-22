@@ -1,5 +1,6 @@
 //! Stage-specific execution functions
 
+use crate::security::SecurityContext;
 use crate::stages::{BuildCommand, EnvironmentStep, PostStep, SourceStep};
 use crate::utils::events::send_event;
 use crate::{BuildCommandResult, BuildContext, BuildEnvironment, BuilderApi};
@@ -86,6 +87,53 @@ pub async fn execute_build_command(
     Ok(())
 }
 
+/// Execute a build command with security context
+pub async fn execute_build_command_with_security(
+    command: &BuildCommand,
+    api: &mut BuilderApi,
+    environment: &mut BuildEnvironment,
+    security_context: &mut SecurityContext,
+    sps2_config: Option<&sps2_config::Config>,
+) -> Result<(), Error> {
+    match command {
+        BuildCommand::Command { program, args } => {
+            // For shell commands, validate through security context
+            if program == "sh" && args.len() >= 2 && args[0] == "-c" {
+                // This is a shell command
+                let shell_cmd = &args[1];
+
+                // Validate through security context
+                let execution = security_context.execute_command(shell_cmd)?;
+
+                // Additional config-based validation
+                if let Some(config) = sps2_config {
+                    for token in &execution.parsed.tokens {
+                        if let crate::validation::parser::Token::Command(cmd) = token {
+                            if !config.is_command_allowed(cmd) {
+                                return Err(sps2_errors::BuildError::DisallowedCommand {
+                                    command: cmd.clone(),
+                                }
+                                .into());
+                            }
+                        }
+                    }
+                }
+
+                // Execute the validated command
+                execute_command(program, args, api, environment).await?;
+            } else {
+                // For direct commands, validate and execute
+                let full_cmd = format!("{} {}", program, args.join(" "));
+                security_context.execute_command(&full_cmd)?;
+                execute_command(program, args, api, environment).await?;
+            }
+        }
+        // For build system commands, pass through normally (they're already sandboxed)
+        _ => execute_build_command(command, api, environment).await?,
+    }
+    Ok(())
+}
+
 /// Execute a post-processing step
 pub async fn execute_post_step(
     step: &PostStep,
@@ -102,6 +150,50 @@ pub async fn execute_post_step(
         PostStep::Command { program, args } => {
             execute_command(program, args, api, environment).await?;
         }
+    }
+    Ok(())
+}
+
+/// Execute a post-processing step with security context
+pub async fn execute_post_step_with_security(
+    step: &PostStep,
+    api: &mut BuilderApi,
+    environment: &mut BuildEnvironment,
+    security_context: &mut SecurityContext,
+    sps2_config: Option<&sps2_config::Config>,
+) -> Result<(), Error> {
+    match step {
+        PostStep::Command { program, args } => {
+            // Validate command through security context
+            if program == "sh" && args.len() >= 2 && args[0] == "-c" {
+                let shell_cmd = &args[1];
+
+                // Validate through security context
+                let execution = security_context.execute_command(shell_cmd)?;
+
+                // Additional config-based validation
+                if let Some(config) = sps2_config {
+                    for token in &execution.parsed.tokens {
+                        if let crate::validation::parser::Token::Command(cmd) = token {
+                            if !config.is_command_allowed(cmd) {
+                                return Err(sps2_errors::BuildError::DisallowedCommand {
+                                    command: cmd.clone(),
+                                }
+                                .into());
+                            }
+                        }
+                    }
+                }
+
+                execute_command(program, args, api, environment).await?;
+            } else {
+                let full_cmd = format!("{} {}", program, args.join(" "));
+                security_context.execute_command(&full_cmd)?;
+                execute_command(program, args, api, environment).await?;
+            }
+        }
+        // Other post steps don't need security validation
+        _ => execute_post_step(step, api, environment).await?,
     }
     Ok(())
 }
@@ -187,12 +279,16 @@ async fn cleanup_directories(
     Ok(())
 }
 
-/// Execute a list of build commands
-pub async fn execute_build_commands_list(
+// Note: Use execute_build_commands_list_with_security instead for proper validation
+
+/// Execute a list of build commands with security context
+pub async fn execute_build_commands_list_with_security(
     context: &BuildContext,
     build_commands: &[BuildCommand],
     api: &mut BuilderApi,
     environment: &mut BuildEnvironment,
+    security_context: &mut SecurityContext,
+    sps2_config: Option<&sps2_config::Config>,
 ) -> Result<(), Error> {
     for command in build_commands {
         send_event(
@@ -203,7 +299,14 @@ pub async fn execute_build_commands_list(
             },
         );
 
-        execute_build_command(command, api, environment).await?;
+        execute_build_command_with_security(
+            command,
+            api,
+            environment,
+            security_context,
+            sps2_config,
+        )
+        .await?;
 
         send_event(
             context,
