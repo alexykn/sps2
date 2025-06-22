@@ -1,73 +1,7 @@
 //! Security rules and patterns for command validation
 
-/// Commands that should never be allowed during builds
-pub const DANGEROUS_COMMANDS: &[&str] = &[
-    // Privilege escalation
-    "sudo",
-    "doas",
-    "su",
-    "pkexec",
-    "gksudo",
-    "kdesudo",
-    // System modification
-    "systemctl",
-    "service",
-    "init",
-    "launchctl",
-    "update-rc.d",
-    "chkconfig",
-    // User management
-    "useradd",
-    "usermod",
-    "userdel",
-    "groupadd",
-    "groupmod",
-    "groupdel",
-    "passwd",
-    "chpasswd",
-    // Package management (builds shouldn't install system packages)
-    "apt",
-    "apt-get",
-    "yum",
-    "dnf",
-    "pacman",
-    "zypper",
-    "brew", // Even homebrew should not be used during builds
-    // Dangerous file operations
-    "shred",
-    "dd",   // Can overwrite devices
-    "mkfs", // Can format filesystems
-    // Network operations that could exfiltrate data
-    "nc", // netcat
-    "netcat",
-    "ncat",
-    "telnet",
-    "ssh", // No SSH during builds
-    "scp",
-    // System shutdown/reboot
-    "shutdown",
-    "reboot",
-    "halt",
-    "poweroff",
-    // Kernel/module management
-    "modprobe",
-    "insmod",
-    "rmmod",
-    "lsmod",
-    // Resource limits that could affect system
-    "ulimit", // Could be used to bypass limits
-    "nice",   // Could affect system performance
-    "renice",
-    "ionice",
-    // Container escapes
-    "nsenter",
-    "docker",
-    "podman",
-    "chroot", // Could be used to escape
-];
-
-// Note: ALLOWED_COMMANDS is now deprecated in favor of config.toml
-// This is kept only for backwards compatibility when config is not available
+// Note: Command validation is now done via config.toml allowlist.
+// Only commands explicitly listed in ~/.config/sps2/config.toml are allowed.
 
 /// Build-time variables that are safe to use in paths
 pub const BUILD_VARIABLES: &[&str] = &[

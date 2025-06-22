@@ -234,87 +234,111 @@ fn default_retry_delay() -> u64 {
 }
 
 fn default_allowed_commands() -> Vec<String> {
+    let mut commands = Vec::new();
+
+    // Collect all command categories
+    commands.extend(build_tools_commands());
+    commands.extend(configure_scripts_commands());
+    commands.extend(file_operations_commands());
+    commands.extend(text_processing_commands());
+    commands.extend(archive_tools_commands());
+    commands.extend(shell_builtins_commands());
+    commands.extend(development_tools_commands());
+    commands.extend(platform_specific_commands());
+
+    commands
+}
+
+/// Build tools and compilers
+fn build_tools_commands() -> Vec<String> {
     vec![
-        // Build tools
-        "make",
-        "cmake",
-        "meson",
-        "ninja",
-        "cargo",
-        "go",
-        "python",
-        "python3",
-        "pip",
-        "pip3",
-        "npm",
-        "yarn",
-        "pnpm",
-        "node",
-        "gcc",
-        "g++",
-        "clang",
-        "clang++",
-        "cc",
-        "c++",
-        "ld",
-        "ar",
-        "ranlib",
-        "strip",
-        "objcopy",
-        // Configure scripts
+        "make", "cmake", "meson", "ninja", "cargo", "go", "python", "python3", "pip", "pip3",
+        "npm", "yarn", "pnpm", "node", "gcc", "g++", "clang", "clang++", "cc", "c++", "ld", "ar",
+        "ranlib", "strip", "objcopy",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect()
+}
+
+/// Configure scripts and build bootstrappers
+fn configure_scripts_commands() -> Vec<String> {
+    vec![
         "./configure",
         "configure",
+        "./Configure",
+        "./config",
+        "./bootstrap",
+        "./autogen.sh",
+        "./buildconf",
+        "./waf",
+        "./setup.py",
+        "./gradlew",
+        "./mvnw",
+        "./build.sh",
+        "./build",
+        "./install.sh",
+        "./compile",
         "autoreconf",
         "autoconf",
         "automake",
         "libtool",
-        // File operations
-        "cp",
-        "mv",
-        "mkdir",
-        "rmdir",
-        "touch",
-        "ln",
-        "install",
-        "chmod",
-        "chown",
-        // Text processing
-        "sed",
-        "awk",
-        "grep",
-        "egrep",
-        "fgrep",
-        "cut",
-        "tr",
-        "sort",
-        "uniq",
-        "head",
-        "tail",
-        "cat",
-        "echo",
-        "printf",
-        "test",
-        "[",
-        // Archive tools
-        "tar",
-        "gzip",
-        "gunzip",
-        "bzip2",
-        "bunzip2",
-        "xz",
-        "unxz",
-        "zip",
-        "unzip",
-        // Version control (read-only operations)
-        "git",
-        "hg",
-        "svn",
-        // Shell built-ins and flow control
+        "glibtoolize",
+        "libtoolize",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect()
+}
+
+/// File operations
+fn file_operations_commands() -> Vec<String> {
+    vec![
+        "cp", "mv", "mkdir", "rmdir", "touch", "ln", "install", "chmod", "chown", "rm", "rsync",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect()
+}
+
+/// Text processing utilities
+fn text_processing_commands() -> Vec<String> {
+    vec![
+        "sed", "awk", "grep", "egrep", "fgrep", "cut", "tr", "sort", "uniq", "head", "tail", "cat",
+        "echo", "printf", "test", "[",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect()
+}
+
+/// Archive and compression tools
+fn archive_tools_commands() -> Vec<String> {
+    vec![
+        "tar", "gzip", "gunzip", "bzip2", "bunzip2", "xz", "unxz", "zip", "unzip",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect()
+}
+
+/// Shell built-ins and control flow
+fn shell_builtins_commands() -> Vec<String> {
+    vec![
+        "sh",
+        "bash",
+        "/bin/sh",
+        "/bin/bash",
         "cd",
         "pwd",
         "export",
         "source",
         ".",
+        "env",
+        "set",
+        "unset",
+        "true",
+        "false",
         "if",
         "then",
         "else",
@@ -328,15 +352,65 @@ fn default_allowed_commands() -> Vec<String> {
         "esac",
         "return",
         "exit",
-        // Development tools
+        "shift",
+        "break",
+        "continue",
+        // Version control
+        "git",
+        "hg",
+        "svn",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect()
+}
+
+/// Development and debugging tools
+fn development_tools_commands() -> Vec<String> {
+    vec![
         "pkg-config",
+        "pkgconf",
         "ldconfig",
         "patch",
         "diff",
-        // Local file sync (not remote)
-        "rsync",
-        // Safe rm operations (without -rf)
-        "rm",
+        "which",
+        "whereis",
+        "dirname",
+        "basename",
+        "readlink",
+        "realpath",
+        "expr",
+        "xargs",
+        "tee",
+        "time",
+        "nproc",
+        "getconf",
+        "file",
+        // Test runners
+        "./test.sh",
+        "./run-tests.sh",
+        "./check.sh",
+        "ctest",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect()
+}
+
+/// Platform-specific tools
+fn platform_specific_commands() -> Vec<String> {
+    vec![
+        // Library inspection
+        "ldd",
+        "otool",
+        "nm",
+        "strings",
+        "size",
+        // macOS specific
+        "install_name_tool",
+        "codesign",
+        "xcrun",
+        "lipo",
     ]
     .into_iter()
     .map(String::from)
