@@ -42,7 +42,7 @@ pub fn parse_yaml_recipe_from_string(content: &str) -> Result<YamlRecipe, Error>
     validate_recipe(&recipe)?;
 
     // Expand variables in the recipe
-    expand_variables(&mut recipe)?;
+    expand_variables(&mut recipe);
 
     Ok(recipe)
 }
@@ -84,7 +84,7 @@ fn validate_recipe(recipe: &YamlRecipe) -> Result<(), Error> {
 }
 
 /// Expand variables in the recipe using facts and built-in variables
-fn expand_variables(recipe: &mut YamlRecipe) -> Result<(), Error> {
+fn expand_variables(recipe: &mut YamlRecipe) {
     // Build variable context
     let mut context = HashMap::new();
 
@@ -145,8 +145,6 @@ fn expand_variables(recipe: &mut YamlRecipe) -> Result<(), Error> {
             *path = expand_string(path, &context);
         }
     }
-
-    Ok(())
 }
 
 /// Expand variables in a single string

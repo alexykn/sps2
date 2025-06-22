@@ -37,14 +37,10 @@ impl crate::validation::traits::Action for LaFileCleaner {
             if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                 if ext == "la" {
                     // Remove the file
-                    match std::fs::remove_file(&path) {
-                        Ok(()) => {
-                            removed_files.push(path);
-                        }
-                        Err(_) => {
-                            // Ignore removal errors
-                        }
+                    if let Ok(()) = std::fs::remove_file(&path) {
+                        removed_files.push(path);
                     }
+                    // Ignore removal errors
                 }
             }
         }

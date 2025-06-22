@@ -81,7 +81,7 @@ impl BuildEnvironment {
         }
 
         // Clear environment variables
-        self.clear_environment_vars(config)?;
+        self.clear_environment_vars(config);
 
         // Setup temporary home directory
         let temp_home = self.setup_temp_home(config).await?;
@@ -104,7 +104,7 @@ impl BuildEnvironment {
 
         // Setup minimal device nodes if needed (mostly a no-op on macOS)
         if config.create_devices {
-            Self::setup_minimal_devices()?;
+            Self::setup_minimal_devices();
         }
 
         // Send completion event
@@ -119,7 +119,7 @@ impl BuildEnvironment {
     }
 
     /// Clear all environment variables except those whitelisted
-    fn clear_environment_vars(&mut self, config: &HermeticConfig) -> Result<(), Error> {
+    fn clear_environment_vars(&mut self, config: &HermeticConfig) {
         // Get current environment
         let current_env: HashMap<String, String> = std::env::vars().collect();
 
@@ -135,8 +135,6 @@ impl BuildEnvironment {
 
         // Ensure critical build variables are set
         self.setup_clean_build_environment();
-
-        Ok(())
     }
 
     /// Setup clean build environment variables
@@ -323,10 +321,9 @@ impl BuildEnvironment {
     }
 
     /// Setup minimal device nodes (mostly no-op on macOS)
-    fn setup_minimal_devices() -> Result<(), Error> {
+    fn setup_minimal_devices() {
         // On macOS, we don't need to create device nodes as they're managed by the kernel
         // This is kept for API compatibility and future expansion
-        Ok(())
     }
 
     /// Verify hermetic isolation is properly applied

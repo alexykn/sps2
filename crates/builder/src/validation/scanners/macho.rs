@@ -96,13 +96,11 @@ fn check_macho_file(
         FileKind::MachO32 => {
             if let Ok(file) = MachOFile::<MachHeader32<Endianness>, _>::parse(data) {
                 check_load_commands(&file, build_paths, file_path, collector);
-                return;
             }
         }
         FileKind::MachO64 => {
             if let Ok(file) = MachOFile::<MachHeader64<Endianness>, _>::parse(data) {
                 check_load_commands(&file, build_paths, file_path, collector);
-                return;
             }
         }
         FileKind::MachOFat32 => {

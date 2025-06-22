@@ -8,8 +8,6 @@
 #![allow(clippy::cast_precision_loss)] // Acceptable for statistics and progress tracking
 #![allow(clippy::redundant_clone)] // Some clones improve code clarity during development
 #![allow(clippy::return_self_not_must_use)] // Builder patterns don't require must_use in dev
-#![allow(clippy::single_match_else)] // Some matches are clearer than if-else during dev
-#![allow(clippy::default_trait_access)] // Default::default() is clear in context
 #![allow(clippy::if_not_else)] // Some patterns are clearer with if-not structure
 #![allow(clippy::implicit_clone)] // Explicit clones preferred during development
 #![allow(clippy::wildcard_imports)] // Acceptable for internal modules during dev
@@ -18,8 +16,6 @@
 #![allow(clippy::cast_possible_truncation)] // Acceptable for metrics and statistics
 #![allow(clippy::cast_sign_loss)] // Acceptable for metrics conversion
 #![allow(clippy::format_push_string)] // String formatting patterns during development
-#![allow(clippy::unnecessary_wraps)] // Some Result wraps are planned for future error cases
-#![allow(clippy::needless_return)] // Explicit returns improve clarity during development
 #![allow(clippy::manual_let_else)] // Traditional if-let patterns are clearer during dev
 #![allow(clippy::unnecessary_lazy_evaluations)] // Some patterns improve clarity
 #![allow(clippy::uninlined_format_args)] // Format args can be more readable when separate

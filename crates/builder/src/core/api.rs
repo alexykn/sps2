@@ -1242,7 +1242,12 @@ impl BuilderApi {
         }
 
         // Build and return result
-        Self::build_fix_permissions_result(fixed_count, &errors, staging_dir, env)
+        Ok(Self::build_fix_permissions_result(
+            fixed_count,
+            &errors,
+            staging_dir,
+            env,
+        ))
     }
 
     /// Log the start of fix_permissions operation
@@ -1366,7 +1371,7 @@ impl BuilderApi {
         errors: &[String],
         staging_dir: &Path,
         env: &BuildEnvironment,
-    ) -> Result<BuildCommandResult, Error> {
+    ) -> BuildCommandResult {
         let success = errors.is_empty();
         let stdout = if fixed_count > 0 {
             format!("Fixed permissions on {} files", fixed_count)
@@ -1396,12 +1401,12 @@ impl BuilderApi {
             );
         }
 
-        Ok(BuildCommandResult {
+        BuildCommandResult {
             success,
             exit_code: Some(i32::from(!success)),
             stdout,
             stderr,
-        })
+        }
     }
 }
 
