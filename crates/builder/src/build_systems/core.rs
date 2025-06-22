@@ -28,6 +28,9 @@ pub struct BuildSystemContext {
 
 impl BuildSystemContext {
     /// Create a new build context
+    ///
+    /// The returned context should be used to configure and execute build operations.
+    #[must_use]
     pub fn new(env: BuildEnvironment, source_dir: PathBuf) -> Self {
         let prefix = PathBuf::from("/opt/pm/live");
         let jobs = env
@@ -77,6 +80,10 @@ impl BuildSystemContext {
     }
 
     /// Get all environment variables for the build
+    ///
+    /// Returns a combined map of base environment variables and any extra variables added.
+    /// This map should be used when executing build commands.
+    #[must_use]
     pub fn get_all_env_vars(&self) -> HashMap<String, String> {
         let mut vars = self.env.env_vars().clone();
         if let Ok(extra) = self.extra_env.read() {

@@ -1,4 +1,4 @@
-//! CMake build system implementation
+//! `CMake` build system implementation
 
 use super::{BuildSystem, BuildSystemConfig, BuildSystemContext, TestFailure, TestResults};
 use async_trait::async_trait;
@@ -7,13 +7,13 @@ use std::collections::HashMap;
 use std::path::Path;
 use tokio::fs;
 
-/// CMake build system
+/// `CMake` build system
 pub struct CMakeBuildSystem {
     config: BuildSystemConfig,
 }
 
 impl CMakeBuildSystem {
-    /// Create a new CMake build system instance
+    /// Create a new `CMake` build system instance
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -87,7 +87,7 @@ impl CMakeBuildSystem {
         }
     }
 
-    /// Get CMake configuration arguments
+    /// Get `CMake` configuration arguments
     fn get_cmake_args(&self, ctx: &BuildSystemContext, user_args: &[String]) -> Vec<String> {
         let mut args = vec![];
 
@@ -385,7 +385,7 @@ impl BuildSystem for CMakeBuildSystem {
     }
 }
 
-/// Parse CTest summary line
+/// Parse `CTest` summary line
 fn parse_ctest_summary(line: &str) -> Option<(usize, usize, usize)> {
     // Parse "X% tests passed, Y tests failed out of Z"
     let parts: Vec<&str> = line.split_whitespace().collect();

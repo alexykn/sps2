@@ -522,6 +522,10 @@ impl CompilerCache {
     }
 
     /// Get environment variables for compiler cache
+    ///
+    /// Returns environment variables that should be set for the compiler cache to work.
+    /// These variables configure cache directories and size limits.
+    #[must_use]
     pub fn get_env_vars(&self) -> HashMap<String, String> {
         let mut vars = HashMap::new();
 
@@ -554,6 +558,10 @@ impl CompilerCache {
     }
 
     /// Get wrapper command for compiler
+    ///
+    /// Returns the wrapper command (ccache or sccache) if a compiler cache is enabled.
+    /// This should be prepended to compiler invocations.
+    #[must_use]
     pub fn get_wrapper(&self) -> Option<&'static str> {
         match self.cache_type {
             CompilerCacheType::CCache => Some("ccache"),
@@ -576,6 +584,9 @@ pub struct IncrementalBuildTracker {
 
 impl IncrementalBuildTracker {
     /// Create new incremental build tracker
+    ///
+    /// The tracker must be used to monitor file changes and determine if rebuilds are needed.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             file_mtimes: RwLock::new(HashMap::new()),

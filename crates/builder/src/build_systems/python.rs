@@ -512,7 +512,7 @@ impl PythonBuildSystem {
         Ok(">=3.8".to_string())
     }
 
-    /// Remove direct_url.json files that contain hardcoded paths
+    /// Remove `direct_url.json` files that contain hardcoded paths
     async fn remove_direct_url_files(&self, prefix_path: &Path) -> Result<(), Error> {
         let lib_dir = prefix_path.join("lib");
         if !lib_dir.exists() {

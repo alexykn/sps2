@@ -47,6 +47,10 @@ pub fn determine_profile<S: BuildHasher>(
 }
 
 /// Get validators for a specific build system profile
+///
+/// Returns the appropriate set of validators based on the build system profile.
+/// Different profiles have different validation requirements.
+#[must_use]
 pub fn get_validators_for_profile(profile: BuildSystemProfile) -> Vec<ValidatorAction> {
     match profile {
         BuildSystemProfile::NativeFull => {
@@ -84,6 +88,10 @@ pub fn get_validators_for_profile(profile: BuildSystemProfile) -> Vec<ValidatorA
 }
 
 /// Get patchers for a specific build system profile
+///
+/// Returns the appropriate set of patchers based on the build system profile.
+/// The order of patchers is important - `CodeSigner` must always run last.
+#[must_use]
 pub fn get_patchers_for_profile(profile: BuildSystemProfile) -> Vec<PatcherAction> {
     match profile {
         BuildSystemProfile::NativeFull => {
@@ -131,6 +139,9 @@ pub fn get_patchers_for_profile(profile: BuildSystemProfile) -> Vec<PatcherActio
 }
 
 /// Get a descriptive name for the pipeline
+///
+/// Returns a human-readable name for the validation pipeline.
+#[must_use]
 pub fn get_pipeline_name(profile: BuildSystemProfile) -> &'static str {
     match profile {
         BuildSystemProfile::NativeFull => "Full C/C++ validation pipeline",

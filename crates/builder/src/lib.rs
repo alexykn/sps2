@@ -1,11 +1,4 @@
 #![deny(clippy::pedantic, unsafe_code)]
-// Development-time allowances for incomplete features
-// The builder crate is under heavy development with many placeholder implementations
-#![allow(clippy::missing_docs_in_private_items)] // TODO: Add private docs
-#![allow(clippy::must_use_candidate)] // TODO: Add must_use attributes systematically
-#![allow(clippy::missing_panics_doc)] // TODO: Add comprehensive panic docs
-#![allow(clippy::doc_markdown)] // TODO: Fix documentation formatting systematically
-
 //! Package building with SBOM generation for sps2
 //!
 //! This crate handles building packages from YAML recipes with

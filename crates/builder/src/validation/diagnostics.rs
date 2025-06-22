@@ -39,6 +39,9 @@ pub enum IssueType {
 
 impl IssueType {
     /// Get a human-readable description of the issue
+    ///
+    /// The returned description should be used for displaying to users or logging.
+    #[must_use]
     pub fn description(&self) -> String {
         match self {
             Self::HardcodedBuildPath { path, .. } => {
@@ -76,6 +79,9 @@ pub struct DiagnosticCollector {
 
 impl DiagnosticCollector {
     /// Create a new diagnostic collector
+    ///
+    /// The collector must be used to accumulate validation findings during validation passes.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -121,26 +127,44 @@ impl DiagnosticCollector {
     }
 
     /// Check if there are any findings
+    ///
+    /// Returns true if any validation issues were found. This should be used to determine
+    /// if further action (patching or reporting) is needed.
+    #[must_use]
     pub fn has_findings(&self) -> bool {
         !self.findings.is_empty()
     }
 
     /// Get the number of findings
+    ///
+    /// Returns the total count of validation issues found.
+    #[must_use]
     pub fn count(&self) -> usize {
         self.findings.len()
     }
 
     /// Get all findings
+    ///
+    /// Returns a slice of all validation findings collected. Use this to iterate over
+    /// findings for reporting or processing.
+    #[must_use]
     pub fn findings(&self) -> &[ValidationFinding] {
         &self.findings
     }
 
     /// Take all findings, consuming the collector
+    ///
+    /// Consumes the collector and returns the owned vector of findings. Use this when
+    /// you need to pass findings to another component.
+    #[must_use]
     pub fn into_findings(self) -> Vec<ValidationFinding> {
         self.findings
     }
 
     /// Generate a summary by file
+    ///
+    /// Groups findings by the file they were found in. Use this to generate per-file reports.
+    #[must_use]
     pub fn summarize_by_file(&self) -> HashMap<&Path, Vec<&ValidationFinding>> {
         let mut summary: HashMap<&Path, Vec<&ValidationFinding>> = HashMap::new();
         for finding in &self.findings {
@@ -153,6 +177,10 @@ impl DiagnosticCollector {
     }
 
     /// Generate detailed diagnostic messages suitable for event emission
+    ///
+    /// Returns formatted messages grouped by file. These messages should be used for
+    /// user-facing output through the event system.
+    #[must_use]
     pub fn generate_diagnostic_messages(&self) -> Vec<String> {
         let mut messages = Vec::new();
 
@@ -171,6 +199,10 @@ impl DiagnosticCollector {
     }
 
     /// Get all files that have hardcoded build paths or placeholders
+    ///
+    /// Returns files containing hardcoded paths grouped with their findings. Use this to
+    /// identify files that need path patching.
+    #[must_use]
     pub fn get_files_with_hardcoded_paths(&self) -> HashMap<&Path, Vec<&ValidationFinding>> {
         let mut result: HashMap<&Path, Vec<&ValidationFinding>> = HashMap::new();
 
@@ -190,6 +222,10 @@ impl DiagnosticCollector {
     }
 
     /// Get all files that have Mach-O issues (bad RPATHs, install names, etc.)
+    ///
+    /// Returns Mach-O binaries with issues grouped with their findings. Use this to
+    /// identify binaries that need RPATH or install name patching.
+    #[must_use]
     pub fn get_files_with_macho_issues(&self) -> HashMap<&Path, Vec<&ValidationFinding>> {
         let mut result: HashMap<&Path, Vec<&ValidationFinding>> = HashMap::new();
 
@@ -211,6 +247,9 @@ impl DiagnosticCollector {
     }
 
     /// Get all findings for a specific file
+    ///
+    /// Returns all validation findings for the specified file path.
+    #[must_use]
     pub fn get_findings_for_file(&self, path: &Path) -> Vec<&ValidationFinding> {
         self.findings
             .iter()

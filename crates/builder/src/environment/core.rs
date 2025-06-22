@@ -34,7 +34,7 @@ pub struct BuildEnvironment {
     pub(crate) installer: Option<Installer>,
     /// Network client for downloads
     pub(crate) net: Option<NetClient>,
-    /// Whether with_defaults() was called (for optimized builds)
+    /// Whether `with_defaults()` was called (for optimized builds)
     pub(crate) with_defaults_called: bool,
     /// Build systems used during the build process
     pub(crate) used_build_systems: HashSet<String>,
@@ -122,7 +122,7 @@ impl BuildEnvironment {
         &self.build_prefix
     }
 
-    /// Get BUILD_PREFIX environment variable value (package-specific prefix)
+    /// Get `BUILD_PREFIX` environment variable value (package-specific prefix)
     #[must_use]
     pub fn get_build_prefix(&self) -> String {
         format!("/{}-{}", self.context.name, self.context.version)
@@ -169,7 +169,7 @@ impl BuildEnvironment {
             || self.build_metadata.contains_key("PYTHON_BUILD_BACKEND")
     }
 
-    /// Get extra environment variable (checks build_metadata first, then env_vars)
+    /// Get extra environment variable (checks `build_metadata` first, then `env_vars`)
     #[must_use]
     pub fn get_extra_env(&self, key: &str) -> Option<String> {
         self.build_metadata
@@ -206,7 +206,7 @@ impl BuildEnvironment {
         &self.context.name
     }
 
-    /// Record that fix_permissions was requested
+    /// Record that `fix_permissions` was requested
     pub fn record_fix_permissions_request(&mut self, paths: Vec<String>) {
         // If already requested, merge the paths
         if let Some(existing_paths) = &mut self.fix_permissions_request {
@@ -271,7 +271,7 @@ impl BuildEnvironment {
                 // No isolation - warn the user
                 if let Some(sender) = event_sender {
                     let _ = sender.send(sps2_events::Event::Warning {
-                        message: "⚠️  BUILD ISOLATION DISABLED! This build is using the host environment as-is. This may lead to non-reproducible builds and potential security risks.".to_string(),
+                        message: "[WARNING] BUILD ISOLATION DISABLED! This may lead to non-reproducible builds and potential security risks.".to_string(),
                         context: Some("isolation".to_string()),
                     });
                 }

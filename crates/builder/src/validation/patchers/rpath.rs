@@ -1,4 +1,4 @@
-//! Fixes install‑name / LC_RPATH of Mach‑O dylibs & executables.
+//! Fixes install‑name / `LC_RPATH` of Mach‑O dylibs & executables.
 
 use crate::validation::{macho_utils, reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
@@ -16,7 +16,10 @@ pub struct RPathPatcher {
 }
 
 impl RPathPatcher {
-    /// Create a new RPathPatcher with the specified style
+    /// Create a new `RPathPatcher` with the specified style
+    ///
+    /// The patcher will fix install names and RPATHs according to the given style.
+    #[must_use]
     pub fn new(style: RpathStyle) -> Self {
         Self { style }
     }
@@ -33,8 +36,11 @@ impl RPathPatcher {
         }
     }
 
-    /// Check if a file should be processed by RPathPatcher
-    /// This includes dylibs, shared objects, and Mach-O executables
+    /// Check if a file should be processed by `RPathPatcher`
+    ///
+    /// This includes dylibs, shared objects, and Mach-O executables. Returns true
+    /// if the file needs RPATH or install name processing.
+    #[must_use]
     pub fn should_process_file(path: &Path) -> bool {
         if !path.is_file() {
             return false;

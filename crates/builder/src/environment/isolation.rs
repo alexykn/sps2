@@ -259,6 +259,10 @@ impl BuildEnvironment {
     }
 
     /// Get a summary of isolation status
+    ///
+    /// Returns a map of isolation checks and their results. This should be used for debugging
+    /// and verifying that the build environment is properly isolated.
+    #[must_use]
     pub fn isolation_summary(&self) -> std::collections::HashMap<String, String> {
         let mut summary = std::collections::HashMap::new();
 

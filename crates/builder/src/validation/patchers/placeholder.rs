@@ -1,4 +1,4 @@
-//! Replaces BUILD_PLACEHOLDER and build‑prefix strings in *text* files.
+//! Replaces `BUILD_PLACEHOLDER` and build‑prefix strings in *text* files.
 
 use crate::validation::{reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};

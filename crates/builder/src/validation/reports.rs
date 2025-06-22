@@ -13,9 +13,17 @@ pub struct Report {
     pub findings: Option<DiagnosticCollector>,
 }
 impl Report {
+    /// Create an empty report indicating success
+    ///
+    /// Use this when a validation or patching operation completes without issues.
+    #[must_use]
     pub fn ok() -> Self {
         Self::default()
     }
+    /// Check if the report contains fatal errors
+    ///
+    /// Returns true if there are any errors that should stop the build process.
+    #[must_use]
     pub fn is_fatal(&self) -> bool {
         !self.errors.is_empty()
     }
@@ -40,6 +48,10 @@ impl Report {
         }
     }
 
+    /// Render the report as a formatted string
+    ///
+    /// Returns a human-readable summary with the given title. Use this for event emission.
+    #[must_use]
     pub fn render(&self, title: &str) -> String {
         let mut s = String::new();
         let _ = writeln!(s, "{title}:");
@@ -60,13 +72,24 @@ impl MergedReport {
     pub fn absorb(&mut self, r: Report) {
         self.0.absorb(r);
     }
+    /// Check if the merged report contains fatal errors
+    ///
+    /// Returns true if any absorbed report contained errors.
+    #[must_use]
     pub fn is_fatal(&self) -> bool {
         self.0.is_fatal()
     }
+    /// Render the merged report as a formatted string
+    ///
+    /// Returns a human-readable summary of all absorbed reports.
+    #[must_use]
     pub fn render(&self, title: &str) -> String {
         self.0.render(title)
     }
     /// Get the collected findings
+    ///
+    /// Returns the diagnostic collector if any findings were collected from absorbed reports.
+    #[must_use]
     pub fn findings(&self) -> Option<&DiagnosticCollector> {
         self.0.findings.as_ref()
     }

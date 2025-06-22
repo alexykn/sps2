@@ -1250,7 +1250,7 @@ impl BuilderApi {
         ))
     }
 
-    /// Log the start of fix_permissions operation
+    /// Log the start of `fix_permissions` operation
     fn log_fix_permissions_start(paths: &[String], staging_dir: &Path, env: &BuildEnvironment) {
         let dir_exists = staging_dir.exists();
         let is_dir = staging_dir.is_dir();
@@ -1365,7 +1365,7 @@ impl BuilderApi {
         );
     }
 
-    /// Build the result for fix_permissions operation
+    /// Build the result for `fix_permissions` operation
     fn build_fix_permissions_result(
         fixed_count: usize,
         errors: &[String],

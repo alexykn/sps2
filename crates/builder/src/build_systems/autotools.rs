@@ -14,6 +14,8 @@ pub struct AutotoolsBuildSystem {
 
 impl AutotoolsBuildSystem {
     /// Create a new Autotools build system instance
+    ///
+    /// The instance must be used with a build context to configure and build projects.
     #[must_use]
     pub fn new() -> Self {
         Self {

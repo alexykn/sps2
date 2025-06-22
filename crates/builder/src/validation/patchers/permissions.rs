@@ -25,6 +25,10 @@ pub struct PermissionsFixer {
 }
 
 impl PermissionsFixer {
+    /// Create a new permissions fixer
+    ///
+    /// Set `aggressive` to true for more aggressive permission fixing (used with explicit calls).
+    #[must_use]
     pub fn new(aggressive: bool) -> Self {
         Self { aggressive }
     }
@@ -67,7 +71,11 @@ impl PermissionsFixer {
         macho_utils::is_macho_file(path)
     }
 
-    /// Check if file needs execute permissions (aggressive mode for explicit fix_permissions() calls)
+    /// Check if file needs execute permissions (aggressive mode for explicit `fix_permissions()` calls)
+    ///
+    /// This comprehensive check should be used to determine if a file needs execute permissions
+    /// in aggressive mode, checking file location, type, and content.
+    #[must_use]
     pub fn needs_execute_permission_aggressive(path: &Path) -> bool {
         // Dynamic libraries need +x
         if Self::is_dynamic_library(path) {
