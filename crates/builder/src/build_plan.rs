@@ -1,7 +1,8 @@
 //! Build plan representation for staged execution
 
 use crate::environment::IsolationLevel;
-use crate::yaml::{BuildStep, PostCommand, RecipeMetadata, YamlBuildStep, YamlRecipe};
+use crate::recipe::model::{BuildStep as YamlBuildStep, PostCommand, YamlRecipe};
+use crate::yaml::{BuildStep, RecipeMetadata};
 use sps2_types::RpathStyle;
 use std::collections::HashMap;
 
@@ -91,7 +92,7 @@ impl BuildPlan {
 
     /// Extract source steps from recipe
     fn extract_source_steps(recipe: &YamlRecipe) -> Vec<BuildStep> {
-        use crate::yaml::{ChecksumAlgorithm, SourceMethod};
+        use crate::recipe::model::{ChecksumAlgorithm, SourceMethod};
 
         let mut source_steps = Vec::new();
 
@@ -149,23 +150,35 @@ impl BuildPlan {
 
     /// Extract build steps from recipe
     fn extract_build_steps(recipe: &YamlRecipe) -> Vec<BuildStep> {
-        use crate::yaml::Build;
+        use crate::recipe::model::Build;
 
         let mut build_steps = Vec::new();
 
         match &recipe.build {
             Build::System { system, args } => {
                 let step = match system {
-                    crate::yaml::BuildSystem::Autotools => {
+                    crate::recipe::model::BuildSystem::Autotools => {
                         BuildStep::Autotools { args: args.clone() }
                     }
-                    crate::yaml::BuildSystem::Cmake => BuildStep::Cmake { args: args.clone() },
-                    crate::yaml::BuildSystem::Meson => BuildStep::Meson { args: args.clone() },
-                    crate::yaml::BuildSystem::Cargo => BuildStep::Cargo { args: args.clone() },
-                    crate::yaml::BuildSystem::Go => BuildStep::Go { args: args.clone() },
-                    crate::yaml::BuildSystem::Python => BuildStep::Python { args: args.clone() },
-                    crate::yaml::BuildSystem::Nodejs => BuildStep::NodeJs { args: args.clone() },
-                    crate::yaml::BuildSystem::Make => BuildStep::Make { args: args.clone() },
+                    crate::recipe::model::BuildSystem::Cmake => {
+                        BuildStep::Cmake { args: args.clone() }
+                    }
+                    crate::recipe::model::BuildSystem::Meson => {
+                        BuildStep::Meson { args: args.clone() }
+                    }
+                    crate::recipe::model::BuildSystem::Cargo => {
+                        BuildStep::Cargo { args: args.clone() }
+                    }
+                    crate::recipe::model::BuildSystem::Go => BuildStep::Go { args: args.clone() },
+                    crate::recipe::model::BuildSystem::Python => {
+                        BuildStep::Python { args: args.clone() }
+                    }
+                    crate::recipe::model::BuildSystem::Nodejs => {
+                        BuildStep::NodeJs { args: args.clone() }
+                    }
+                    crate::recipe::model::BuildSystem::Make => {
+                        BuildStep::Make { args: args.clone() }
+                    }
                 };
                 build_steps.push(step);
             }
@@ -221,7 +234,7 @@ impl BuildPlan {
 
     /// Extract post-processing steps from recipe
     fn extract_post_steps(recipe: &YamlRecipe) -> Vec<BuildStep> {
-        use crate::yaml::PostOption;
+        use crate::recipe::model::PostOption;
 
         let mut post_steps = Vec::new();
 
