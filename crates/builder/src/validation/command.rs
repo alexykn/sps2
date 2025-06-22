@@ -3,7 +3,7 @@
 //! This module provides secure command parsing and validation to prevent
 //! execution of dangerous commands during the build process.
 
-use super::rules::{DANGEROUS_COMMANDS, DANGEROUS_PATTERNS, SYSTEM_PATHS};
+use super::rules::{DANGEROUS_PATTERNS, SYSTEM_PATHS};
 use sps2_errors::{BuildError, Error};
 
 /// Parsed and validated command
@@ -88,7 +88,7 @@ fn validate_program(
     full_command: &str,
     sps2_config: Option<&sps2_config::Config>,
 ) -> Result<(), Error> {
-    // First check config if available
+    // Check config if available
     if let Some(config) = sps2_config {
         if !config.is_command_allowed(program) {
             return Err(BuildError::DangerousCommand {
@@ -98,14 +98,12 @@ fn validate_program(
             .into());
         }
     } else {
-        // Fall back to hardcoded dangerous commands check
-        if DANGEROUS_COMMANDS.contains(&program) {
-            return Err(BuildError::DangerousCommand {
-                command: full_command.to_string(),
-                reason: format!("Command '{program}' is not allowed"),
-            }
-            .into());
+        // No config means no allowed commands - strict allowlist approach
+        return Err(BuildError::DangerousCommand {
+            command: full_command.to_string(),
+            reason: "No configuration provided - cannot validate allowed commands".to_string(),
         }
+        .into());
     }
 
     // Special validation for rm command
@@ -113,7 +111,8 @@ fn validate_program(
         validate_rm_command(full_command)?;
     }
 
-    // Check for privilege escalation
+    // Note: Privilege escalation commands (sudo, doas, su) should be in the
+    // disallowed list in config.toml, but we double-check here for safety
     if program == "sudo" || program == "doas" || program == "su" {
         return Err(BuildError::DangerousCommand {
             command: full_command.to_string(),

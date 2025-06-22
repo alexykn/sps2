@@ -77,3 +77,4 @@ Desktop.ini
 # Prevent committing secret env files, local config, etc.
 .env
 .env.*
+IMPROVEMENTS.md
