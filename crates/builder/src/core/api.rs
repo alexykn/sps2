@@ -1102,7 +1102,7 @@ impl BuilderApi {
         paths: &[String],
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
-        use crate::validation::patchers::rpath::RPathPatcher;
+        use crate::artifact_qa::patchers::rpath::RPathPatcher;
         use sps2_types::BuildSystemProfile;
 
         // Check if this is appropriate for the build system
@@ -1278,7 +1278,7 @@ impl BuilderApi {
         fixed_count: &mut usize,
         errors: &mut Vec<String>,
     ) {
-        use crate::validation::patchers::permissions::PermissionsFixer;
+        use crate::artifact_qa::patchers::permissions::PermissionsFixer;
 
         for path_str in paths {
             let full_path = staging_dir.join(path_str);
@@ -1303,7 +1303,7 @@ impl BuilderApi {
         fixed_count: &mut usize,
         errors: &mut Vec<String>,
     ) {
-        use crate::validation::patchers::permissions::PermissionsFixer;
+        use crate::artifact_qa::patchers::permissions::PermissionsFixer;
         use ignore::WalkBuilder;
 
         let mut total_files = 0;

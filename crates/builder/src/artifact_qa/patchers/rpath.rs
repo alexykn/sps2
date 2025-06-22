@@ -1,6 +1,6 @@
 //! Fixes install‑name / `LC_RPATH` of Mach‑O dylibs & executables.
 
-use crate::validation::{macho_utils, reports::Report, traits::Patcher};
+use crate::artifact_qa::{macho_utils, reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
 use sps2_events::Event;
@@ -504,13 +504,13 @@ impl RPathPatcher {
     }
 }
 
-impl crate::validation::traits::Action for RPathPatcher {
+impl crate::artifact_qa::traits::Action for RPathPatcher {
     const NAME: &'static str = "install_name_tool patcher";
 
     async fn run(
         ctx: &BuildContext,
         env: &BuildEnvironment,
-        findings: Option<&crate::validation::diagnostics::DiagnosticCollector>,
+        findings: Option<&crate::artifact_qa::diagnostics::DiagnosticCollector>,
     ) -> Result<Report, Error> {
         let patcher = Self::new(RpathStyle::Modern);
         let mut files_to_process = HashSet::new();

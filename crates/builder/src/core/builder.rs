@@ -2,11 +2,11 @@
 
 use super::config::BuildConfig;
 use super::context::BuildContext;
+use crate::artifact_qa::run_quality_pipeline;
 use crate::packaging::create_and_sign_package;
 use crate::packaging::manifest::generate_sbom_and_manifest;
 use crate::recipe::execute_recipe;
 use crate::utils::events::send_event;
-use crate::validation::run_quality_pipeline;
 use crate::{BuildEnvironment, BuildResult};
 use sps2_errors::Error;
 use sps2_events::Event;

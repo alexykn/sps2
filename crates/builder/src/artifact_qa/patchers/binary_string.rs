@@ -1,6 +1,6 @@
 //! Binary-safe string patcher for embedded paths in executables and libraries
 
-use crate::validation::{macho_utils, reports::Report, traits::Patcher};
+use crate::artifact_qa::{macho_utils, reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
 use sps2_events::Event;
@@ -71,13 +71,13 @@ fn replace_binary_string(
 
 pub struct BinaryStringPatcher;
 
-impl crate::validation::traits::Action for BinaryStringPatcher {
+impl crate::artifact_qa::traits::Action for BinaryStringPatcher {
     const NAME: &'static str = "Binary string patcher";
 
     async fn run(
         ctx: &BuildContext,
         env: &BuildEnvironment,
-        findings: Option<&crate::validation::diagnostics::DiagnosticCollector>,
+        findings: Option<&crate::artifact_qa::diagnostics::DiagnosticCollector>,
     ) -> Result<Report, Error> {
         let staging_dir = env.staging_dir();
         let build_prefix = env.build_prefix().to_string_lossy().into_owned();

@@ -2,7 +2,7 @@
 
 use std::fmt::Write;
 
-use crate::validation::diagnostics::DiagnosticCollector;
+use crate::artifact_qa::diagnostics::DiagnosticCollector;
 
 #[derive(Default, Debug)]
 pub struct Report {

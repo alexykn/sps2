@@ -4,6 +4,7 @@
 //! This crate handles building packages from YAML recipes with
 //! isolated environments, dependency management, and SBOM generation.
 
+pub mod artifact_qa;
 mod build_plan;
 mod build_systems;
 mod cache;
@@ -13,7 +14,6 @@ mod packaging;
 mod recipe;
 mod stages;
 mod utils;
-pub mod validation;
 mod yaml;
 
 pub use build_systems::{

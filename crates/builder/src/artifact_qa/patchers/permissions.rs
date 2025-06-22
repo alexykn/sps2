@@ -12,7 +12,7 @@
 //! Some build systems don't set proper permissions, so this ensures
 //! all executables are actually executable after installation.
 
-use crate::validation::{macho_utils, reports::Report, traits::Patcher};
+use crate::artifact_qa::{macho_utils, reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
 use sps2_events::Event;
@@ -164,13 +164,13 @@ impl PermissionsFixer {
     }
 }
 
-impl crate::validation::traits::Action for PermissionsFixer {
+impl crate::artifact_qa::traits::Action for PermissionsFixer {
     const NAME: &'static str = "Permissions fixer";
 
     async fn run(
         ctx: &BuildContext,
         env: &BuildEnvironment,
-        _findings: Option<&crate::validation::diagnostics::DiagnosticCollector>,
+        _findings: Option<&crate::artifact_qa::diagnostics::DiagnosticCollector>,
     ) -> Result<Report, Error> {
         // Default instance uses conservative mode
         let fixer = Self::default();

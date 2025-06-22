@@ -1,6 +1,6 @@
 //! Validator that looks into static archives (*.a) files.
 
-use crate::validation::{
+use crate::artifact_qa::{
     diagnostics::{DiagnosticCollector, IssueType},
     reports::Report,
     traits::Validator,
@@ -12,7 +12,7 @@ use sps2_events::Event;
 
 pub struct ArchiveScanner;
 
-impl crate::validation::traits::Action for ArchiveScanner {
+impl crate::artifact_qa::traits::Action for ArchiveScanner {
     const NAME: &'static str = "Static‑archive scanner";
 
     async fn run(
@@ -48,7 +48,7 @@ impl crate::validation::traits::Action for ArchiveScanner {
                         if let Ok(name) = std::str::from_utf8(member.name()) {
                             if name.contains(build_base) {
                                 collector.add_finding(
-                                    crate::validation::diagnostics::ValidationFinding {
+                                    crate::artifact_qa::diagnostics::ValidationFinding {
                                         file_path: path.clone(),
                                         issue_type: IssueType::BuildPathInArchive {
                                             path: build_base.to_string(),
@@ -60,7 +60,7 @@ impl crate::validation::traits::Action for ArchiveScanner {
                                 break;
                             } else if name.contains(&build_prefix) {
                                 collector.add_finding(
-                                    crate::validation::diagnostics::ValidationFinding {
+                                    crate::artifact_qa::diagnostics::ValidationFinding {
                                         file_path: path.clone(),
                                         issue_type: IssueType::BuildPathInArchive {
                                             path: build_prefix.clone(),
@@ -72,7 +72,7 @@ impl crate::validation::traits::Action for ArchiveScanner {
                                 break;
                             } else if name.contains(&build_src) {
                                 collector.add_finding(
-                                    crate::validation::diagnostics::ValidationFinding {
+                                    crate::artifact_qa::diagnostics::ValidationFinding {
                                         file_path: path.clone(),
                                         issue_type: IssueType::BuildPathInArchive {
                                             path: build_src.clone(),

@@ -1,6 +1,6 @@
 //! Re-signs binaries after patching to fix code signature issues on macOS
 
-use crate::validation::{macho_utils, reports::Report, traits::Patcher};
+use crate::artifact_qa::{macho_utils, reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
 use sps2_events::Event;
@@ -45,13 +45,13 @@ impl CodeSigner {
     }
 }
 
-impl crate::validation::traits::Action for CodeSigner {
+impl crate::artifact_qa::traits::Action for CodeSigner {
     const NAME: &'static str = "Code re-signer";
 
     async fn run(
         ctx: &BuildContext,
         env: &BuildEnvironment,
-        _findings: Option<&crate::validation::diagnostics::DiagnosticCollector>,
+        _findings: Option<&crate::artifact_qa::diagnostics::DiagnosticCollector>,
     ) -> Result<Report, Error> {
         // Only run on macOS
         if !cfg!(target_os = "macos") {

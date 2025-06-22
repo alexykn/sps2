@@ -1,6 +1,6 @@
 //! Validator that inspects Mach‑O headers without spawning `otool`.
 
-use crate::validation::{
+use crate::artifact_qa::{
     diagnostics::{DiagnosticCollector, IssueType},
     reports::Report,
     traits::Validator,
@@ -18,7 +18,7 @@ use sps2_events::Event;
 
 pub struct MachOScanner;
 
-impl crate::validation::traits::Action for MachOScanner {
+impl crate::artifact_qa::traits::Action for MachOScanner {
     const NAME: &'static str = "Mach‑O load‑command scanner";
 
     async fn run(

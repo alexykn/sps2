@@ -1,7 +1,7 @@
 //! Generic abstractions for post‑build actions.
 
-use crate::validation::diagnostics::DiagnosticCollector;
-use crate::validation::reports::Report;
+use crate::artifact_qa::diagnostics::DiagnosticCollector;
+use crate::artifact_qa::reports::Report;
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
 use std::future::Future;

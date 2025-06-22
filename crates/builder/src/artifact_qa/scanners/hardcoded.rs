@@ -1,7 +1,7 @@
 //! Validator that searches every byte for `/opt/pm/build/...` or the
 //! placeholder prefix. It is binary‑safe and SIMD‑accelerated.
 
-use crate::validation::{diagnostics::DiagnosticCollector, reports::Report, traits::Validator};
+use crate::artifact_qa::{diagnostics::DiagnosticCollector, reports::Report, traits::Validator};
 use crate::{BuildContext, BuildEnvironment};
 use bstr::ByteSlice;
 use ignore::WalkBuilder;
@@ -9,7 +9,7 @@ use sps2_errors::Error;
 use sps2_events::Event;
 
 pub struct HardcodedScanner;
-impl crate::validation::traits::Action for HardcodedScanner {
+impl crate::artifact_qa::traits::Action for HardcodedScanner {
     const NAME: &'static str = "Hardcoded‑path scanner";
 
     async fn run(

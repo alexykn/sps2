@@ -5,12 +5,12 @@
 //! have different requirements for post-validation to avoid breaking binaries.
 
 use super::{PatcherAction, ValidatorAction};
-use crate::validation::patchers::{
+use crate::artifact_qa::patchers::{
     binary_string::BinaryStringPatcher, codesigner::CodeSigner, headers::HeaderPatcher,
     la_cleaner::LaFileCleaner, object_cleaner::ObjectFileCleaner, pkgconfig::PkgConfigPatcher,
     placeholder::PlaceholderPatcher, rpath::RPathPatcher,
 };
-use crate::validation::scanners::{
+use crate::artifact_qa::scanners::{
     archive::ArchiveScanner, hardcoded::HardcodedScanner, macho::MachOScanner,
 };
 use sps2_types::{BuildSystemProfile, RpathStyle};

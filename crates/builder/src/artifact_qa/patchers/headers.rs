@@ -1,19 +1,19 @@
 //! Converts absolute include paths in headers to <relative> form.
 
-use crate::validation::{reports::Report, traits::Patcher};
+use crate::artifact_qa::{reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use ignore::WalkBuilder;
 use regex::Regex;
 use sps2_errors::Error;
 
 pub struct HeaderPatcher;
-impl crate::validation::traits::Action for HeaderPatcher {
+impl crate::artifact_qa::traits::Action for HeaderPatcher {
     const NAME: &'static str = "Header include‑fixer";
 
     async fn run(
         _ctx: &BuildContext,
         env: &BuildEnvironment,
-        _findings: Option<&crate::validation::diagnostics::DiagnosticCollector>,
+        _findings: Option<&crate::artifact_qa::diagnostics::DiagnosticCollector>,
     ) -> Result<Report, Error> {
         let build_prefix = env.build_prefix().to_string_lossy().into_owned();
         let build_src = format!("{build_prefix}/src");

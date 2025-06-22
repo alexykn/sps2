@@ -1,18 +1,18 @@
 //! Fixes *.pc and *Config.cmake so downstream builds never see /opt/pm/build/…
 
-use crate::validation::{reports::Report, traits::Patcher};
+use crate::artifact_qa::{reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use ignore::WalkBuilder;
 use sps2_errors::Error;
 
 pub struct PkgConfigPatcher;
-impl crate::validation::traits::Action for PkgConfigPatcher {
+impl crate::artifact_qa::traits::Action for PkgConfigPatcher {
     const NAME: &'static str = "pkg‑config / CMake patcher";
 
     async fn run(
         _ctx: &BuildContext,
         env: &BuildEnvironment,
-        _findings: Option<&crate::validation::diagnostics::DiagnosticCollector>,
+        _findings: Option<&crate::artifact_qa::diagnostics::DiagnosticCollector>,
     ) -> Result<Report, Error> {
         let build_prefix = env.build_prefix().to_string_lossy().into_owned();
         let build_src = format!("{build_prefix}/src");
