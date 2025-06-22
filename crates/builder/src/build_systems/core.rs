@@ -49,24 +49,28 @@ impl BuildSystemContext {
     }
 
     /// Set build directory for out-of-source builds
+    #[must_use]
     pub fn with_build_dir(mut self, build_dir: PathBuf) -> Self {
         self.build_dir = build_dir;
         self
     }
 
     /// Add extra environment variables
+    #[must_use]
     pub fn with_extra_env(mut self, env: HashMap<String, String>) -> Self {
         self.extra_env = Arc::new(RwLock::new(env));
         self
     }
 
     /// Set network access permission
+    #[must_use]
     pub fn with_network_allowed(mut self, allowed: bool) -> Self {
         self.network_allowed = allowed;
         self
     }
 
     /// Set cache configuration
+    #[must_use]
     pub fn with_cache_config(mut self, config: CacheConfig) -> Self {
         self.cache_config = Some(config);
         self
@@ -174,6 +178,7 @@ impl TestResults {
 
     /// Get pass rate as percentage
     #[must_use]
+    #[allow(clippy::cast_precision_loss)] // Acceptable for percentage calculation
     pub fn pass_rate(&self) -> f64 {
         if self.total == 0 {
             100.0

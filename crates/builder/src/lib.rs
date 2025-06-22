@@ -5,10 +5,6 @@
 #![allow(clippy::must_use_candidate)] // TODO: Add must_use attributes systematically
 #![allow(clippy::missing_panics_doc)] // TODO: Add comprehensive panic docs
 #![allow(clippy::doc_markdown)] // TODO: Fix documentation formatting systematically
-#![allow(clippy::cast_precision_loss)] // Acceptable for statistics and progress tracking
-#![allow(clippy::return_self_not_must_use)] // Builder patterns don't require must_use in dev
-#![allow(clippy::cast_possible_truncation)] // Acceptable for metrics and statistics
-#![allow(clippy::cast_sign_loss)] // Acceptable for metrics conversion
 
 //! Package building with SBOM generation for sps2
 //!

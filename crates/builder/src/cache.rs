@@ -95,7 +95,7 @@ impl BuildCache {
         if let Some(sender) = &self.event_sender {
             let _ = sender.send(Event::BuildCacheUpdated {
                 cache_key: cache_key.to_string(),
-                artifacts_count: stats.artifacts_cached as usize,
+                artifacts_count: stats.artifacts_cached.try_into().unwrap_or(usize::MAX),
             });
         }
 
@@ -670,6 +670,7 @@ pub struct CacheStatistics {
 impl CacheStatistics {
     /// Get cache hit rate
     #[must_use]
+    #[allow(clippy::cast_precision_loss)] // Acceptable for percentage calculation
     pub fn hit_rate(&self) -> f64 {
         let total = self.cache_hits + self.cache_misses;
         if total == 0 {

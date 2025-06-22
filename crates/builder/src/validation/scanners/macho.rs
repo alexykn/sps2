@@ -106,7 +106,16 @@ fn check_macho_file(
             if let Ok(fat) = MachOFatFile32::parse(data) {
                 for arch in fat.arches() {
                     let (off, sz) = arch.file_range();
-                    if let Some(slice) = data.get(off as usize..(off + sz) as usize) {
+                    let Ok(start): Result<usize, _> = off.try_into() else {
+                        continue;
+                    };
+                    let Ok(size): Result<usize, _> = sz.try_into() else {
+                        continue;
+                    };
+                    let Some(end) = start.checked_add(size) else {
+                        continue;
+                    };
+                    if let Some(slice) = data.get(start..end) {
                         if let Ok(kind) = FileKind::parse(slice) {
                             check_macho_file(slice, kind, build_paths, file_path, collector);
                         }
@@ -118,7 +127,16 @@ fn check_macho_file(
             if let Ok(fat) = MachOFatFile64::parse(data) {
                 for arch in fat.arches() {
                     let (off, sz) = arch.file_range();
-                    if let Some(slice) = data.get(off as usize..(off + sz) as usize) {
+                    let Ok(start): Result<usize, _> = off.try_into() else {
+                        continue;
+                    };
+                    let Ok(size): Result<usize, _> = sz.try_into() else {
+                        continue;
+                    };
+                    let Some(end) = start.checked_add(size) else {
+                        continue;
+                    };
+                    if let Some(slice) = data.get(start..end) {
                         if let Ok(kind) = FileKind::parse(slice) {
                             check_macho_file(slice, kind, build_paths, file_path, collector);
                         }
