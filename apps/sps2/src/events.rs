@@ -754,16 +754,16 @@ impl EventHandler {
             }
 
             // Warning events
-            Event::Warning { message, context } => {
-                if let Some(context) = context {
-                    self.show_message(
-                        &format!("{} ({})", message, context),
-                        EventSeverity::Warning,
-                    );
-                } else {
-                    self.show_message(&message, EventSeverity::Warning);
-                }
-            }
+            // Event::Warning { message, context } => {
+            //     if let Some(context) = context {
+            //         self.show_message(
+            //             &format!("{} ({})", message, context),
+            //             EventSeverity::Warning,
+            //         );
+            //     } else {
+            //         self.show_message(&message, EventSeverity::Warning);
+            //     }
+            // }
 
             // Quality Assurance events
             Event::QaCheckStarted {
