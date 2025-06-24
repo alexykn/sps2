@@ -8,6 +8,7 @@
 //! large operations delegate to specialized crates.
 
 mod context;
+mod guard;
 mod keys;
 mod small_ops;
 
@@ -29,6 +30,10 @@ mod update;
 mod upgrade;
 
 pub use context::{OpsContextBuilder, OpsCtx};
+pub use guard::{
+    Discrepancy, StateVerificationGuard, StateVerificationGuardBuilder, VerificationLevel,
+    VerificationResult,
+};
 // Re-export consolidated types from sps2_types
 pub use sps2_types::{
     BuildReport, ChangeType, InstallReport, OpChange, PackageChange, PackageInfo, PackageStatus,
