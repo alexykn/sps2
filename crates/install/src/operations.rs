@@ -66,6 +66,9 @@ impl InstallOperation {
         // Validate local .sp files before processing
         self.validate_local_packages(&context).await?;
 
+        // Check for already installed packages
+        self.check_already_installed(&context).await?;
+
         // Resolve dependencies
         let resolution = self.resolve_dependencies(&context).await?;
 
@@ -213,6 +216,96 @@ impl InstallOperation {
                     success: true,
                 },
             );
+        }
+
+        Ok(())
+    }
+
+    /// Check for already installed packages
+    async fn check_already_installed(&self, context: &InstallContext) -> Result<(), Error> {
+        // Get currently installed packages
+        let installed_packages = self.state_manager.get_installed_packages().await?;
+
+        // Check remote package specs
+        for spec in &context.packages {
+            // Check if this exact version is already installed
+            if let Some(installed_pkg) = installed_packages.iter().find(|pkg| pkg.name == spec.name)
+            {
+                if spec.version_spec.matches(&installed_pkg.version()) {
+                    // Send informative event
+                    Self::send_event(
+                        self,
+                        context,
+                        Event::Warning {
+                            message: format!(
+                                "Package {}-{} is already installed",
+                                installed_pkg.name, installed_pkg.version
+                            ),
+                            context: Some(
+                                "Skipping installation to avoid state corruption".to_string(),
+                            ),
+                        },
+                    );
+
+                    // For now, we'll return an error to prevent state corruption
+                    // In the future, we might want to handle this more gracefully
+                    return Err(InstallError::PackageAlreadyInstalled {
+                        package: format!("{}-{}", installed_pkg.name, installed_pkg.version),
+                    }
+                    .into());
+                }
+            }
+        }
+
+        // Check local .sp files by extracting their manifest to get name/version
+        for local_file in &context.local_files {
+            // We need to peek at the manifest to get package info
+            // This is a bit expensive but necessary to prevent corruption
+            let validation_result =
+                validate_sp_file(local_file, context.event_sender.as_ref()).await?;
+
+            if let Some(manifest_toml) = validation_result.manifest {
+                // Parse the manifest TOML to get the actual manifest object
+                let manifest: sps2_manifest::Manifest =
+                    toml::from_str(&manifest_toml).map_err(|e| {
+                        InstallError::InvalidPackageFile {
+                            path: local_file.display().to_string(),
+                            message: format!("Failed to parse manifest: {}", e),
+                        }
+                    })?;
+
+                // Check if this exact version is already installed
+                if let Some(installed_pkg) = installed_packages
+                    .iter()
+                    .find(|pkg| pkg.name == manifest.package.name)
+                {
+                    if installed_pkg.version == manifest.package.version {
+                        Self::send_event(
+                            self,
+                            context,
+                            Event::Warning {
+                                message: format!(
+                                    "Package {}-{} from {} is already installed",
+                                    manifest.package.name,
+                                    manifest.package.version,
+                                    local_file.display()
+                                ),
+                                context: Some(
+                                    "Skipping installation to avoid state corruption".to_string(),
+                                ),
+                            },
+                        );
+
+                        return Err(InstallError::PackageAlreadyInstalled {
+                            package: format!(
+                                "{}-{}",
+                                manifest.package.name, manifest.package.version
+                            ),
+                        }
+                        .into());
+                    }
+                }
+            }
         }
 
         Ok(())

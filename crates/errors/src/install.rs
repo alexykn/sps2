@@ -75,6 +75,9 @@ pub enum InstallError {
     #[error("package not installed: {package}")]
     PackageNotInstalled { package: String },
 
+    #[error("package already installed: {package}")]
+    PackageAlreadyInstalled { package: String },
+
     #[error("concurrency error: {message}")]
     ConcurrencyError { message: String },
 
