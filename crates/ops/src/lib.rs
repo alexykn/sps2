@@ -68,11 +68,7 @@ use sps2_errors::Error;
 /// # Errors
 ///
 /// Returns an error if verification fails.
-pub async fn verify(
-    ctx: &OpsCtx,
-    heal: bool,
-    level: &str,
-) -> Result<VerificationResult, Error> {
+pub async fn verify(ctx: &OpsCtx, heal: bool, level: &str) -> Result<VerificationResult, Error> {
     let verification_level = match level {
         "quick" => VerificationLevel::Quick,
         "full" => VerificationLevel::Full,

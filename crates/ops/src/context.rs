@@ -1,10 +1,10 @@
 //! Operations context for dependency injection
 
-use sps2_guard::{StateVerificationGuard, VerificationLevel};
 use sps2_builder::Builder;
 use sps2_config::Config;
 use sps2_errors::Error;
 use sps2_events::{Event, EventSender};
+use sps2_guard::{StateVerificationGuard, VerificationLevel};
 use sps2_index::IndexManager;
 use sps2_net::NetClient;
 use sps2_resolver::Resolver;

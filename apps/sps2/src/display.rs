@@ -67,14 +67,20 @@ impl OutputRenderer {
 
     fn render_verification_result(&self, result: &sps2_ops::VerificationResult) -> io::Result<()> {
         if self.json_output {
-            println!("{}", serde_json::to_string_pretty(result).map_err(io::Error::other)?);
+            println!(
+                "{}",
+                serde_json::to_string_pretty(result).map_err(io::Error::other)?
+            );
             return Ok(());
         }
 
         if result.is_valid {
             println!("[OK] State verification passed.");
         } else {
-            println!("[ERROR] State verification failed with {} discrepancies:", result.discrepancies.len());
+            println!(
+                "[ERROR] State verification failed with {} discrepancies:",
+                result.discrepancies.len()
+            );
             for discrepancy in &result.discrepancies {
                 println!("  - {:?}", discrepancy);
             }

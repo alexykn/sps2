@@ -3,7 +3,7 @@
 use sps2_errors::{Error, OpsError};
 use sps2_events::{Event, EventSender};
 use sps2_hash::Hash;
-use sps2_state::{StateManager, queries};
+use sps2_state::{queries, StateManager};
 use sps2_store::{PackageStore, StoredPackage};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -225,7 +225,16 @@ impl StateVerificationGuard {
                     file_path,
                     expected_hash,
                     actual_hash,
-                } => match self.heal_corrupted_file(package_name, package_version, file_path, expected_hash, actual_hash).await {
+                } => match self
+                    .heal_corrupted_file(
+                        package_name,
+                        package_version,
+                        file_path,
+                        expected_hash,
+                        actual_hash,
+                    )
+                    .await
+                {
                     Ok(()) => {
                         healed_count += 1;
                         let _ = self.tx.send(Event::DebugLog {
@@ -930,7 +939,7 @@ impl StateVerificationGuard {
 
         // Restore the file from store
         let metadata = tokio::fs::metadata(&source_file).await?;
-        
+
         if metadata.is_symlink() {
             // Recreate symlink
             let link_target = tokio::fs::read_link(&source_file).await?;
@@ -989,23 +998,42 @@ impl StateVerificationGuard {
     /// - File modification time vs package installation time
     /// - Common user-modifiable file patterns
     /// - File location and type
-    async fn is_user_modified_file(&self, full_path: &Path, relative_path: &str) -> Result<bool, Error> {
+    async fn is_user_modified_file(
+        &self,
+        full_path: &Path,
+        relative_path: &str,
+    ) -> Result<bool, Error> {
         // Common patterns for user-modifiable files
         const USER_MODIFIABLE_PATTERNS: &[&str] = &[
             // Configuration files
-            ".conf", ".config", ".ini", ".json", ".yaml", ".yml", ".toml",
+            ".conf",
+            ".config",
+            ".ini",
+            ".json",
+            ".yaml",
+            ".yml",
+            ".toml",
             // Shell configuration
-            ".bashrc", ".zshrc", ".profile", ".bash_profile",
+            ".bashrc",
+            ".zshrc",
+            ".profile",
+            ".bash_profile",
             // Environment files
-            ".env", ".envrc",
+            ".env",
+            ".envrc",
             // User data
-            ".db", ".sqlite", ".sqlite3",
+            ".db",
+            ".sqlite",
+            ".sqlite3",
         ];
 
         // Check if file matches user-modifiable patterns
         let path_str = relative_path.to_lowercase();
         for pattern in USER_MODIFIABLE_PATTERNS {
-            if path_str.ends_with(pattern) || path_str.contains("/etc/") || path_str.contains("/config/") {
+            if path_str.ends_with(pattern)
+                || path_str.contains("/etc/")
+                || path_str.contains("/config/")
+            {
                 // These files are commonly modified by users
                 let _ = self.tx.send(Event::DebugLog {
                     message: format!("File {relative_path} matches user-modifiable pattern"),
@@ -1022,7 +1050,10 @@ impl StateVerificationGuard {
                 if let Ok(elapsed) = modified.elapsed() {
                     if elapsed.as_secs() < 3600 {
                         let _ = self.tx.send(Event::DebugLog {
-                            message: format!("File {relative_path} was modified recently ({} seconds ago)", elapsed.as_secs()),
+                            message: format!(
+                                "File {relative_path} was modified recently ({} seconds ago)",
+                                elapsed.as_secs()
+                            ),
                             context: HashMap::default(),
                         });
                         return Ok(true);
@@ -1112,14 +1143,11 @@ impl StateVerificationGuardBuilder {
     }
 }
 
-
 impl Default for StateVerificationGuardBuilder {
     fn default() -> Self {
         Self::new()
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -1387,7 +1415,7 @@ mod tests {
                 "bin/executable",
                 Path::new("bin/executable")
             ),
-            OrphanedFileCategory::Unknown  // bin without leading slash is not in a standard bin directory
+            OrphanedFileCategory::Unknown // bin without leading slash is not in a standard bin directory
         );
         // Test files in standard directories
         assert_eq!(
@@ -1462,7 +1490,7 @@ mod tests {
         // Test patterns that should be recognized as user-modifiable
         let user_modifiable = vec![
             "app.conf",
-            "config.json", 
+            "config.json",
             "settings.yaml",
             ".bashrc",
             ".zshrc",
@@ -1476,7 +1504,7 @@ mod tests {
             "/etc/app/config",
             "/opt/app/config/settings",
         ];
-        
+
         // Test patterns that should NOT be recognized as user-modifiable
         let not_user_modifiable = vec![
             "binary",
@@ -1486,28 +1514,48 @@ mod tests {
             "script.sh",
             "main.rs",
         ];
-        
+
         const USER_MODIFIABLE_PATTERNS: &[&str] = &[
-            ".conf", ".config", ".ini", ".json", ".yaml", ".yml", ".toml",
-            ".bashrc", ".zshrc", ".profile", ".bash_profile",
-            ".env", ".envrc",
-            ".db", ".sqlite", ".sqlite3",
+            ".conf",
+            ".config",
+            ".ini",
+            ".json",
+            ".yaml",
+            ".yml",
+            ".toml",
+            ".bashrc",
+            ".zshrc",
+            ".profile",
+            ".bash_profile",
+            ".env",
+            ".envrc",
+            ".db",
+            ".sqlite",
+            ".sqlite3",
         ];
-        
+
         for path in user_modifiable {
             let path_lower = path.to_lowercase();
-            let is_modifiable = USER_MODIFIABLE_PATTERNS.iter().any(|pattern| path_lower.ends_with(pattern)) 
-                || path_lower.contains("/etc/") 
+            let is_modifiable = USER_MODIFIABLE_PATTERNS
+                .iter()
+                .any(|pattern| path_lower.ends_with(pattern))
+                || path_lower.contains("/etc/")
                 || path_lower.contains("/config/");
             assert!(is_modifiable, "Expected {} to be user-modifiable", path);
         }
-        
+
         for path in not_user_modifiable {
             let path_lower = path.to_lowercase();
-            let is_modifiable = USER_MODIFIABLE_PATTERNS.iter().any(|pattern| path_lower.ends_with(pattern)) 
-                || path_lower.contains("/etc/") 
+            let is_modifiable = USER_MODIFIABLE_PATTERNS
+                .iter()
+                .any(|pattern| path_lower.ends_with(pattern))
+                || path_lower.contains("/etc/")
                 || path_lower.contains("/config/");
-            assert!(!is_modifiable, "Expected {} to NOT be user-modifiable", path);
+            assert!(
+                !is_modifiable,
+                "Expected {} to NOT be user-modifiable",
+                path
+            );
         }
     }
 }
