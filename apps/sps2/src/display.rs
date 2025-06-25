@@ -61,7 +61,26 @@ impl OutputRenderer {
             OperationResult::Report(report) => self.render_op_report(report),
             OperationResult::VulnDbStats(stats) => self.render_vulndb_stats(stats),
             OperationResult::AuditReport(report) => self.render_audit_report(report),
+            OperationResult::VerificationResult(result) => self.render_verification_result(result),
         }
+    }
+
+    fn render_verification_result(&self, result: &sps2_ops::VerificationResult) -> io::Result<()> {
+        if self.json_output {
+            println!("{}", serde_json::to_string_pretty(result).map_err(io::Error::other)?);
+            return Ok(());
+        }
+
+        if result.is_valid {
+            println!("[OK] State verification passed.");
+        } else {
+            println!("[ERROR] State verification failed with {} discrepancies:", result.discrepancies.len());
+            for discrepancy in &result.discrepancies {
+                println!("  - {:?}", discrepancy);
+            }
+        }
+
+        Ok(())
     }
 
     /// Render package list

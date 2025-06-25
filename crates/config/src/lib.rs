@@ -35,6 +35,9 @@ pub struct Config {
 
     #[serde(default)]
     pub network: NetworkConfig,
+
+    #[serde(default)]
+    pub verification: VerificationConfig,
 }
 
 /// General configuration
@@ -113,6 +116,26 @@ pub struct NetworkConfig {
     pub retry_delay: u64, // seconds
 }
 
+/// Verification configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct VerificationConfig {
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_verification_level")]
+    pub level: String, // "quick", "standard", or "full"
+    #[serde(default = "default_fail_on_discrepancy")]
+    pub fail_on_discrepancy: bool,
+    #[serde(default = "default_auto_heal")]
+    pub auto_heal: bool,
+    #[serde(default = "default_orphaned_file_action")]
+    pub orphaned_file_action: String, // "remove", "preserve", or "backup"
+    #[serde(default = "default_orphaned_backup_dir")]
+    pub orphaned_backup_dir: PathBuf,
+    #[serde(default = "default_preserve_user_files")]
+    pub preserve_user_files: bool,
+}
+
 // Default implementations
 
 impl Default for GeneralConfig {
@@ -176,6 +199,20 @@ impl Default for NetworkConfig {
     }
 }
 
+impl Default for VerificationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false, // Disabled by default during development
+            level: "standard".to_string(),
+            fail_on_discrepancy: true,
+            auto_heal: false,
+            orphaned_file_action: "preserve".to_string(),
+            orphaned_backup_dir: PathBuf::from("/opt/pm/orphaned-backup"),
+            preserve_user_files: true,
+        }
+    }
+}
+
 // Default value functions for serde
 fn default_output_format() -> OutputFormat {
     OutputFormat::Tty
@@ -231,6 +268,34 @@ fn default_retries() -> u32 {
 
 fn default_retry_delay() -> u64 {
     1 // 1 second
+}
+
+fn default_enabled() -> bool {
+    false
+}
+
+fn default_verification_level() -> String {
+    "standard".to_string()
+}
+
+fn default_fail_on_discrepancy() -> bool {
+    true
+}
+
+fn default_auto_heal() -> bool {
+    false
+}
+
+fn default_orphaned_file_action() -> String {
+    "preserve".to_string()
+}
+
+fn default_orphaned_backup_dir() -> PathBuf {
+    PathBuf::from("/opt/pm/orphaned-backup")
+}
+
+fn default_preserve_user_files() -> bool {
+    true
 }
 
 fn default_allowed_commands() -> Vec<String> {

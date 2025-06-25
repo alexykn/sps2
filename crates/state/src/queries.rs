@@ -540,7 +540,7 @@ pub async fn add_package_map(
 }
 
 /// Get the hash for a package name and version
-pub async fn get_package_hash(
+pub async fn get_package(
     tx: &mut Transaction<'_, Sqlite>,
     name: &str,
     version: &str,

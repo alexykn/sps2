@@ -6,7 +6,7 @@ members = [
     "crates/config",
     "crates/drafter",
     "crates/errors",
-    "crates/events",
+    "crates/events", "crates/guard",
     "crates/hash",
     "crates/index",
     "crates/install",

@@ -3516,6 +3516,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "sps2-guard"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "sps2-config",
+ "sps2-errors",
+ "sps2-events",
+ "sps2-hash",
+ "sps2-install",
+ "sps2-root",
+ "sps2-state",
+ "sps2-store",
+ "sps2-types",
+ "tempfile",
+ "tokio",
+ "uuid",
+ "walkdir",
+]
+
+[[package]]
 name = "sps2-hash"
 version = "0.1.0"
 dependencies = [
@@ -3626,17 +3646,20 @@ dependencies = [
  "sps2-drafter",
  "sps2-errors",
  "sps2-events",
+ "sps2-guard",
  "sps2-hash",
  "sps2-index",
  "sps2-install",
  "sps2-net",
  "sps2-resolver",
+ "sps2-root",
  "sps2-state",
  "sps2-store",
  "sps2-types",
  "tempfile",
  "tokio",
  "uuid",
+ "walkdir",
 ]
 
 [[package]]

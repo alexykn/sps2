@@ -293,6 +293,11 @@ async fn execute_command(
                 "Recipe draft generated successfully".to_string(),
             ))
         }
+
+        Commands::Verify { heal, level } => {
+            let result = sps2_ops::verify(&ctx, heal, &level).await?;
+            Ok(OperationResult::VerificationResult(result))
+        }
     }
 }
 

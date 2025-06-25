@@ -1,5 +1,6 @@
+
 [package]
-name = "sps2-ops"
+name = "sps2-guard"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -11,28 +12,16 @@ repository.workspace = true
 sps2-errors = { path = "../errors" }
 sps2-types = { path = "../types" }
 sps2-events = { path = "../events" }
-sps2-net = { path = "../net" }
-sps2-resolver = { path = "../resolver" }
 sps2-state = { path = "../state" }
-sps2-store = { path = "../store" }
 sps2-install = { path = "../install" }
-sps2-builder = { path = "../builder" }
-sps2-index = { path = "../index" }
-sps2-audit = { path = "../audit" }
-sps2-config = { path = "../config" }
 sps2-hash = { path = "../hash" }
-sps2-drafter = { path = "../drafter" }
+sps2-store = { path = "../store" }
+sps2-config = { path = "../config" }
 sps2-root = { path = "../root" }
-sps2-guard = { path = "../guard" }
 serde = { workspace = true }
-serde_json = { workspace = true }
 tokio = { workspace = true, features = ["fs"] }
-uuid = { workspace = true }
-chrono = { workspace = true }
-tempfile = { workspace = true }
-minisign-verify = "0.2.4"
-hex = "0.4.3"
 walkdir = "2.5.0"
+uuid = { workspace = true, features = ["v4"]}
 
 [dev-dependencies]
 tempfile = { workspace = true }

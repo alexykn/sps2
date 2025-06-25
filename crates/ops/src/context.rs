@@ -1,13 +1,17 @@
 //! Operations context for dependency injection
 
+use sps2_guard::{StateVerificationGuard, VerificationLevel};
 use sps2_builder::Builder;
 use sps2_config::Config;
-use sps2_events::EventSender;
+use sps2_errors::Error;
+use sps2_events::{Event, EventSender};
 use sps2_index::IndexManager;
 use sps2_net::NetClient;
 use sps2_resolver::Resolver;
 use sps2_state::StateManager;
 use sps2_store::PackageStore;
+use std::collections::HashMap;
+use std::future::Future;
 
 /// Operations context providing access to all system components
 pub struct OpsCtx {
@@ -27,11 +31,138 @@ pub struct OpsCtx {
     pub tx: EventSender,
     /// System configuration
     pub config: Config,
+    /// State verification guard (optional)
+    pub guard: Option<StateVerificationGuard>,
 }
 
 impl OpsCtx {
     // No public constructor - use OpsContextBuilder instead
+
+    /// Run state verification if guard is enabled
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if verification fails and `fail_on_discrepancy` is true
+    pub async fn verify_state(&self) -> Result<(), Error> {
+        if let Some(guard) = &self.guard {
+            let result = if self.config.verification.auto_heal {
+                guard.verify_and_heal(&self.config).await?
+            } else {
+                guard.verify_only().await?
+            };
+
+            if !result.is_valid && self.config.verification.fail_on_discrepancy {
+                return Err(sps2_errors::OpsError::VerificationFailed {
+                    discrepancies: result.discrepancies.len(),
+                    state_id: result.state_id.to_string(),
+                }
+                .into());
+            }
+        }
+        Ok(())
+    }
+
+    /// Check if verification is enabled
+    #[must_use]
+    pub fn is_verification_enabled(&self) -> bool {
+        self.guard.is_some() && self.config.verification.enabled
+    }
+
+    /// Initialize the state verification guard if enabled in config
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if guard initialization fails.
+    pub fn initialize_guard(&mut self) -> Result<(), Error> {
+        // Check if verification is enabled in config
+        if !self.config.verification.enabled {
+            return Ok(());
+        }
+
+        // Parse verification level from config
+        let level = match self.config.verification.level.as_str() {
+            "quick" => VerificationLevel::Quick,
+            "full" => VerificationLevel::Full,
+            _ => VerificationLevel::Standard,
+        };
+
+        // Build the guard
+        let guard = StateVerificationGuard::builder()
+            .with_state_manager(self.state.clone())
+            .with_store(self.store.clone())
+            .with_event_sender(self.tx.clone())
+            .with_level(level)
+            .build()?;
+
+        self.guard = Some(guard);
+        Ok(())
+    }
+
+    /// Execute an operation with automatic state verification
+    ///
+    /// This wrapper runs state verification before and after the operation
+    /// if verification is enabled.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Pre-operation verification fails (when `fail_on_discrepancy` is true)
+    /// - The operation itself fails
+    /// - Post-operation verification fails (when `fail_on_discrepancy` is true)
+    pub async fn with_verification<F, Fut, T>(
+        &self,
+        operation_name: &str,
+        operation: F,
+    ) -> Result<T, Error>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<T, Error>>,
+    {
+        // Emit operation start event
+        let _ = self.tx.send(Event::DebugLog {
+            message: format!("Starting operation: {operation_name}"),
+            context: HashMap::default(),
+        });
+
+        // Run pre-operation verification if enabled
+        if self.is_verification_enabled() {
+            let _ = self.tx.send(Event::DebugLog {
+                message: format!("Running pre-operation verification for {operation_name}"),
+                context: HashMap::default(),
+            });
+            self.verify_state().await?;
+        }
+
+        // Execute the operation
+        let result = operation().await?;
+
+        // Run post-operation verification if enabled
+        if self.is_verification_enabled() {
+            let _ = self.tx.send(Event::DebugLog {
+                message: format!("Running post-operation verification for {operation_name}"),
+                context: HashMap::default(),
+            });
+            self.verify_state().await?;
+        }
+
+        // Emit operation complete event
+        let _ = self.tx.send(Event::DebugLog {
+            message: format!("Operation completed: {operation_name}"),
+            context: HashMap::default(),
+        });
+
+        Ok(result)
+    }
 }
+
+// Example usage in an operation:
+// ```rust
+// pub async fn install_with_guard(ctx: &OpsCtx, packages: &[String]) -> Result<InstallReport, Error> {
+//     ctx.with_verification("install", || async {
+//         install(ctx, packages).await
+//     }).await
+// }
+// ```
 
 /// Builder for operations context
 pub struct OpsContextBuilder {
@@ -180,6 +311,7 @@ impl OpsContextBuilder {
             builder,
             tx,
             config,
+            guard: None, // Guard will be initialized separately
         })
     }
 }
@@ -187,5 +319,125 @@ impl OpsContextBuilder {
 impl Default for OpsContextBuilder {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_verification_disabled_by_default() {
+        let temp_dir = TempDir::new().unwrap();
+        let state_dir = temp_dir.path().join("state");
+        let store_dir = temp_dir.path().join("store");
+
+        tokio::fs::create_dir_all(&state_dir).await.unwrap();
+        tokio::fs::create_dir_all(&store_dir).await.unwrap();
+
+        let state = StateManager::new(&state_dir).await.unwrap();
+        let store = PackageStore::new(store_dir.clone());
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let config = Config::default();
+
+        let index = IndexManager::new(&store_dir);
+        let net = NetClient::new(sps2_net::NetConfig::default()).unwrap();
+        let resolver = Resolver::new(index.clone());
+        let builder = Builder::new();
+
+        let ctx = OpsContextBuilder::new()
+            .with_state(state)
+            .with_store(store)
+            .with_event_sender(tx)
+            .with_config(config)
+            .with_index(index)
+            .with_net(net)
+            .with_resolver(resolver)
+            .with_builder(builder)
+            .build()
+            .unwrap();
+
+        assert!(!ctx.is_verification_enabled());
+        assert!(ctx.guard.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_verification_can_be_enabled() {
+        let temp_dir = TempDir::new().unwrap();
+        let state_dir = temp_dir.path().join("state");
+        let store_dir = temp_dir.path().join("store");
+
+        tokio::fs::create_dir_all(&state_dir).await.unwrap();
+        tokio::fs::create_dir_all(&store_dir).await.unwrap();
+
+        let state = StateManager::new(&state_dir).await.unwrap();
+        let store = PackageStore::new(store_dir.clone());
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+
+        let mut config = Config::default();
+        config.verification.enabled = true;
+
+        let index = IndexManager::new(&store_dir);
+        let net = NetClient::new(sps2_net::NetConfig::default()).unwrap();
+        let resolver = Resolver::new(index.clone());
+        let builder = Builder::new();
+
+        let mut ctx = OpsContextBuilder::new()
+            .with_state(state)
+            .with_store(store)
+            .with_event_sender(tx)
+            .with_config(config)
+            .with_index(index)
+            .with_net(net)
+            .with_resolver(resolver)
+            .with_builder(builder)
+            .build()
+            .unwrap();
+
+        ctx.initialize_guard().unwrap();
+
+        assert!(ctx.is_verification_enabled());
+        assert!(ctx.guard.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_with_verification_wrapper() {
+        let temp_dir = TempDir::new().unwrap();
+        let state_dir = temp_dir.path().join("state");
+        let store_dir = temp_dir.path().join("store");
+
+        tokio::fs::create_dir_all(&state_dir).await.unwrap();
+        tokio::fs::create_dir_all(&store_dir).await.unwrap();
+
+        let state = StateManager::new(&state_dir).await.unwrap();
+        let store = PackageStore::new(store_dir.clone());
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let config = Config::default();
+
+        let index = IndexManager::new(&store_dir);
+        let net = NetClient::new(sps2_net::NetConfig::default()).unwrap();
+        let resolver = Resolver::new(index.clone());
+        let builder = Builder::new();
+
+        let ctx = OpsContextBuilder::new()
+            .with_state(state)
+            .with_store(store)
+            .with_event_sender(tx)
+            .with_config(config)
+            .with_index(index)
+            .with_net(net)
+            .with_resolver(resolver)
+            .with_builder(builder)
+            .build()
+            .unwrap();
+
+        // Test that operations work even without verification enabled
+        let result = ctx
+            .with_verification("test_op", || async { Ok("success") })
+            .await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "success");
     }
 }

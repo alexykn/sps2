@@ -8,7 +8,7 @@
 //! large operations delegate to specialized crates.
 
 mod context;
-mod guard;
+
 mod keys;
 mod small_ops;
 
@@ -30,7 +30,7 @@ mod update;
 mod upgrade;
 
 pub use context::{OpsContextBuilder, OpsCtx};
-pub use guard::{
+pub use sps2_guard::{
     Discrepancy, StateVerificationGuard, StateVerificationGuardBuilder, VerificationLevel,
     VerificationResult,
 };
@@ -49,7 +49,7 @@ pub use types::{
 // Re-export operation functions
 pub use build::build;
 pub use draft::draft_recipe;
-pub use install::install;
+pub use install::{install, install_with_verification};
 pub use small_ops::{
     audit, check_health, cleanup, history, list_packages, package_info, reposync, rollback,
     search_packages, self_update, update_vulndb, vulndb_stats,
@@ -63,6 +63,35 @@ pub use sps2_audit::{AuditReport, Severity};
 
 use sps2_errors::Error;
 
+/// Verify the integrity of the current state
+///
+/// # Errors
+///
+/// Returns an error if verification fails.
+pub async fn verify(
+    ctx: &OpsCtx,
+    heal: bool,
+    level: &str,
+) -> Result<VerificationResult, Error> {
+    let verification_level = match level {
+        "quick" => VerificationLevel::Quick,
+        "full" => VerificationLevel::Full,
+        _ => VerificationLevel::Standard,
+    };
+
+    let guard = StateVerificationGuard::builder()
+        .with_state_manager(ctx.state.clone())
+        .with_store(ctx.store.clone())
+        .with_event_sender(ctx.tx.clone())
+        .with_level(verification_level)
+        .build()?;
+
+    if heal {
+        guard.verify_and_heal(&ctx.config).await
+    } else {
+        guard.verify_only().await
+    }
+}
 /// Operation result that can be serialized for CLI output
 #[derive(Clone, Debug, serde::Serialize)]
 #[serde(tag = "type", content = "data")]
@@ -91,6 +120,8 @@ pub enum OperationResult {
     VulnDbStats(VulnDbStats),
     /// Audit report
     AuditReport(sps2_audit::AuditReport),
+    /// Verification result
+    VerificationResult(VerificationResult),
 }
 
 impl OperationResult {
@@ -124,6 +155,7 @@ impl OperationResult {
             | OperationResult::VulnDbStats(_)
             | OperationResult::AuditReport(_) => true,
             OperationResult::HealthCheck(health) => health.is_healthy(),
+            OperationResult::VerificationResult(result) => result.is_valid,
         }
     }
 }

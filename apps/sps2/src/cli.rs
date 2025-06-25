@@ -213,6 +213,17 @@ pub enum Commands {
         #[arg(long)]
         force: bool,
     },
+
+    /// Verify and optionally heal the current state
+    Verify {
+        /// Automatically heal any discrepancies found
+        #[arg(long)]
+        heal: bool,
+
+        /// Verification level (quick, standard, full)
+        #[arg(long, default_value = "standard")]
+        level: String,
+    },
 }
 
 /// Vulnerability database subcommands
@@ -275,6 +286,7 @@ impl Commands {
             Commands::Audit { .. } => "audit",
             Commands::SelfUpdate { .. } => "self-update",
             Commands::Draft { .. } => "draft",
+            Commands::Verify { .. } => "verify",
         }
     }
 

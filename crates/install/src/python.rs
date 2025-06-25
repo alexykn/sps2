@@ -3,7 +3,7 @@
 use sps2_errors::{Error, InstallError};
 use sps2_events::{Event, EventSender};
 use sps2_manifest::Manifest;
-use sps2_resolver::PackageId;
+pub use sps2_resolver::PackageId;
 use sps2_types::{PythonPackageMetadata, Version};
 use std::path::{Path, PathBuf};
 use tokio::process::Command;

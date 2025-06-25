@@ -10,6 +10,7 @@ pub mod manager;
 pub mod models;
 
 #[cfg(feature = "runtime-queries")]
+pub use manager::{StateManager, TransactionData};
 pub mod queries {
     pub use crate::queries_runtime::*;
 }
@@ -17,7 +18,7 @@ pub mod queries {
 #[cfg(feature = "runtime-queries")]
 mod queries_runtime;
 
-pub use manager::{StateManager, TransactionData};
+
 pub use models::{Package, PackageRef, State, StoreRef};
 
 use sps2_errors::Error;

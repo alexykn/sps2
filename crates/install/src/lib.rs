@@ -49,7 +49,7 @@ mod installer;
 mod operations;
 mod parallel;
 mod pipeline;
-mod python;
+pub mod python;
 mod staging;
 pub mod validation;
 

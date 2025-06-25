@@ -64,4 +64,10 @@ pub enum OpsError {
 
     #[error("self-update failed: {message}")]
     SelfUpdateFailed { message: String },
+
+    #[error("state verification failed: {discrepancies} discrepancies found in state {state_id}")]
+    VerificationFailed {
+        discrepancies: usize,
+        state_id: String,
+    },
 }
