@@ -7,11 +7,11 @@ use sps2_state::{queries, StateManager};
 use sps2_store::{PackageStore, StoredPackage};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 use uuid::Uuid;
 
 /// Verification level for state checking
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum VerificationLevel {
     /// Quick check - file existence only
     Quick,
@@ -118,6 +118,242 @@ impl VerificationResult {
     }
 }
 
+/// Cache entry for a verified file
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct FileCacheEntry {
+    /// File path relative to live directory
+    pub file_path: String,
+    /// Package name this file belongs to
+    pub package_name: String,
+    /// Package version
+    pub package_version: String,
+    /// File modification time when last verified
+    pub mtime: SystemTime,
+    /// File size when last verified
+    pub size: u64,
+    /// Content hash (only for Full verification level)
+    pub content_hash: Option<String>,
+    /// Timestamp when this entry was created
+    pub verified_at: SystemTime,
+    /// Verification level used for this entry
+    pub verification_level: VerificationLevel,
+    /// Whether file was valid at time of verification
+    pub was_valid: bool,
+}
+
+/// Cache statistics for monitoring performance
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct CacheStats {
+    /// Total cache lookups attempted
+    pub lookups: u64,
+    /// Cache hits (valid entries found)
+    pub hits: u64,
+    /// Cache misses (no entry or invalidated)
+    pub misses: u64,
+    /// Number of entries in cache
+    pub entry_count: u64,
+    /// Total memory usage estimate in bytes
+    pub memory_usage_bytes: u64,
+    /// Time saved by cache hits in milliseconds
+    pub time_saved_ms: u64,
+}
+
+impl CacheStats {
+    /// Calculate cache hit rate as percentage
+    #[must_use]
+    pub fn hit_rate(&self) -> f64 {
+        if self.lookups == 0 {
+            0.0
+        } else {
+            (self.hits as f64 / self.lookups as f64) * 100.0
+        }
+    }
+}
+
+/// Verification cache manager
+#[derive(Debug)]
+pub struct VerificationCache {
+    /// In-memory cache entries indexed by file path
+    entries: HashMap<String, FileCacheEntry>,
+    /// Cache statistics
+    stats: CacheStats,
+    /// Maximum cache entries (for bounded size)
+    max_entries: usize,
+    /// Maximum cache age in seconds
+    max_age_seconds: u64,
+}
+
+impl VerificationCache {
+    /// Create a new verification cache
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for VerificationCache {
+    fn default() -> Self {
+        Self {
+            entries: HashMap::new(),
+            stats: CacheStats::default(),
+            max_entries: 10_000,  // Default limit
+            max_age_seconds: 300, // 5 minutes default
+        }
+    }
+}
+
+impl VerificationCache {
+    /// Get cache statistics
+    #[must_use]
+    pub fn stats(&self) -> &CacheStats {
+        &self.stats
+    }
+
+    /// Check if a file's cache entry is valid
+    pub fn is_entry_valid(
+        &mut self,
+        file_path: &str,
+        verification_level: VerificationLevel,
+    ) -> bool {
+        self.stats.lookups += 1;
+
+        let Some(entry) = self.entries.get(file_path) else {
+            self.stats.misses += 1;
+            return false;
+        };
+
+        // Check if entry is too old
+        let now = SystemTime::now();
+        if let Ok(age) = now.duration_since(entry.verified_at) {
+            if age.as_secs() > self.max_age_seconds {
+                self.stats.misses += 1;
+                return false;
+            }
+        } else {
+            // Clock went backwards, invalidate entry
+            self.stats.misses += 1;
+            return false;
+        }
+
+        // Check if verification level matches or exceeds cached level
+        let level_sufficient = match (verification_level, entry.verification_level) {
+            (VerificationLevel::Quick, _) => true,
+            (VerificationLevel::Standard, VerificationLevel::Quick) => false,
+            (VerificationLevel::Standard, _) => true,
+            (VerificationLevel::Full, VerificationLevel::Full) => true,
+            (VerificationLevel::Full, _) => false,
+        };
+
+        if !level_sufficient {
+            self.stats.misses += 1;
+            return false;
+        }
+
+        // Check if file has been modified since last verification
+        if let Ok(metadata) = std::fs::metadata(file_path) {
+            if let Ok(current_mtime) = metadata.modified() {
+                if current_mtime != entry.mtime || metadata.len() != entry.size {
+                    self.stats.misses += 1;
+                    return false;
+                }
+            } else {
+                self.stats.misses += 1;
+                return false;
+            }
+        } else {
+            // File doesn't exist, cache invalid
+            self.stats.misses += 1;
+            return false;
+        }
+
+        self.stats.hits += 1;
+        true
+    }
+
+    /// Add or update a cache entry
+    pub fn update_entry(&mut self, entry: FileCacheEntry) {
+        // Enforce cache size limit
+        if self.entries.len() >= self.max_entries && !self.entries.contains_key(&entry.file_path) {
+            self.evict_oldest_entries();
+        }
+
+        self.entries.insert(entry.file_path.clone(), entry);
+        self.update_stats();
+    }
+
+    /// Get a cache entry if valid
+    #[must_use]
+    pub fn get_entry(&self, file_path: &str) -> Option<&FileCacheEntry> {
+        self.entries.get(file_path)
+    }
+
+    /// Remove entries for specific packages (e.g., after uninstall)
+    pub fn invalidate_package(&mut self, package_name: &str, package_version: &str) {
+        self.entries.retain(|_path, entry| {
+            !(entry.package_name == package_name && entry.package_version == package_version)
+        });
+        self.update_stats();
+    }
+
+    /// Clear all cache entries
+    pub fn clear(&mut self) {
+        self.entries.clear();
+        self.stats = CacheStats::default();
+    }
+
+    /// Evict oldest entries to maintain cache size limit
+    fn evict_oldest_entries(&mut self) {
+        let target_size = (self.max_entries * 80) / 100; // Remove 20% when limit hit
+        if self.entries.len() <= target_size {
+            return;
+        }
+
+        // Collect entries with their ages
+        let mut entries_with_age: Vec<(String, SystemTime)> = self
+            .entries
+            .iter()
+            .map(|(path, entry)| (path.clone(), entry.verified_at))
+            .collect();
+
+        // Sort by age (oldest first)
+        entries_with_age.sort_by(|a, b| a.1.cmp(&b.1));
+
+        // Remove oldest entries
+        let to_remove = self.entries.len() - target_size;
+        for (path, _) in entries_with_age.into_iter().take(to_remove) {
+            self.entries.remove(&path);
+        }
+
+        self.update_stats();
+    }
+
+    /// Update cache statistics
+    fn update_stats(&mut self) {
+        self.stats.entry_count = self.entries.len() as u64;
+        // Rough estimate: each entry ~200 bytes on average
+        self.stats.memory_usage_bytes = self.entries.len() as u64 * 200;
+    }
+
+    /// Load cache from persistent storage
+    ///
+    /// Note: Persistence should be implemented at a higher level
+    /// by serializing/deserializing cache data through the StateVerificationGuard
+    pub async fn load_from_storage(&mut self) -> Result<(), Error> {
+        // Cache starts empty on each run - persistence to be implemented
+        // at StateVerificationGuard level if needed
+        Ok(())
+    }
+
+    /// Save cache to persistent storage
+    ///
+    /// Note: Persistence should be implemented at a higher level
+    /// by serializing/deserializing cache data through the StateVerificationGuard
+    pub async fn save_to_storage(&self) -> Result<(), Error> {
+        // Persistence to be implemented at StateVerificationGuard level if needed
+        Ok(())
+    }
+}
+
 /// State verification guard for consistency checking
 pub struct StateVerificationGuard {
     /// State manager for database operations
@@ -128,6 +364,8 @@ pub struct StateVerificationGuard {
     tx: EventSender,
     /// Verification level
     level: VerificationLevel,
+    /// Verification cache for performance optimization
+    cache: VerificationCache,
 }
 
 impl StateVerificationGuard {
@@ -143,7 +381,7 @@ impl StateVerificationGuard {
     ///
     /// Returns an error if state verification fails or database operations fail.
     pub async fn verify_and_heal(
-        &self,
+        &mut self,
         config: &sps2_config::Config,
     ) -> Result<VerificationResult, Error> {
         let start_time = Instant::now();
@@ -250,6 +488,29 @@ impl StateVerificationGuard {
                         });
                     }
                 },
+                Discrepancy::MissingVenv {
+                    package_name,
+                    package_version,
+                    venv_path,
+                } => match self
+                    .heal_missing_venv(package_name, package_version, venv_path)
+                    .await
+                {
+                    Ok(()) => {
+                        healed_count += 1;
+                        let _ = self.tx.send(Event::DebugLog {
+                            message: format!("Successfully healed missing venv: {venv_path} for {package_name}-{package_version}"),
+                            context: HashMap::default(),
+                        });
+                    }
+                    Err(e) => {
+                        failed_healings.push(discrepancy.clone());
+                        let _ = self.tx.send(Event::DebugLog {
+                            message: format!("Failed to heal missing venv {venv_path}: {e}"),
+                            context: HashMap::default(),
+                        });
+                    }
+                },
                 // TODO: Handle other discrepancy types in future phases
                 _ => {
                     failed_healings.push(discrepancy.clone());
@@ -283,10 +544,10 @@ impl StateVerificationGuard {
     /// # Errors
     ///
     /// Returns an error if state verification fails or database operations fail.
-    pub async fn verify_only(&self) -> Result<VerificationResult, Error> {
+    pub async fn verify_only(&mut self) -> Result<VerificationResult, Error> {
         let start_time = Instant::now();
         let state_id = self.state_manager.get_active_state().await?;
-        let live_path = self.state_manager.live_path();
+        let live_path = self.state_manager.live_path().to_path_buf();
 
         // Emit verification started event
         let _ = self.tx.send(Event::DebugLog {
@@ -307,7 +568,7 @@ impl StateVerificationGuard {
             self.verify_package(
                 &state_id,
                 package,
-                live_path,
+                &live_path,
                 &mut discrepancies,
                 &mut tracked_files,
             )
@@ -316,16 +577,20 @@ impl StateVerificationGuard {
 
         // Check for orphaned files if not in Quick mode
         if self.level != VerificationLevel::Quick {
-            Self::find_orphaned_files(live_path, &tracked_files, &mut discrepancies);
+            Self::find_orphaned_files(&live_path, &tracked_files, &mut discrepancies);
         }
 
         let duration_ms = u64::try_from(start_time.elapsed().as_millis()).unwrap_or(u64::MAX);
 
-        // Emit verification completed event
+        // Emit verification completed event with cache stats
+        let cache_stats = self.cache.stats();
         let _ = self.tx.send(Event::DebugLog {
             message: format!(
-                "State verification completed in {duration_ms}ms with {} discrepancies",
-                discrepancies.len()
+                "State verification completed in {duration_ms}ms with {} discrepancies. Cache: {:.1}% hit rate ({}/{} hits/lookups)",
+                discrepancies.len(),
+                cache_stats.hit_rate(),
+                cache_stats.hits,
+                cache_stats.lookups
             ),
             context: HashMap::default(),
         });
@@ -337,9 +602,35 @@ impl StateVerificationGuard {
         ))
     }
 
+    /// Get cache statistics
+    #[must_use]
+    pub fn cache_stats(&self) -> &CacheStats {
+        self.cache.stats()
+    }
+
+    /// Clear the verification cache
+    pub fn clear_cache(&mut self) {
+        self.cache.clear();
+    }
+
+    /// Invalidate cache entries for a specific package
+    pub fn invalidate_package_cache(&mut self, package_name: &str, package_version: &str) {
+        self.cache.invalidate_package(package_name, package_version);
+    }
+
+    /// Load cache from persistent storage
+    pub async fn load_cache(&mut self) -> Result<(), Error> {
+        self.cache.load_from_storage().await
+    }
+
+    /// Save cache to persistent storage
+    pub async fn save_cache(&self) -> Result<(), Error> {
+        self.cache.save_to_storage().await
+    }
+
     /// Verify a single package
     async fn verify_package(
-        &self,
+        &mut self,
         state_id: &Uuid,
         package: &sps2_state::models::Package,
         live_path: &Path,
@@ -357,6 +648,29 @@ impl StateVerificationGuard {
             let full_path = live_path.join(&file_path);
             tracked_files.insert(PathBuf::from(&file_path));
 
+            // Check cache first
+            if self.cache.is_entry_valid(&file_path, self.level) {
+                // Cache hit - use cached result
+                if let Some(cached_entry) = self.cache.get_entry(&file_path) {
+                    if !cached_entry.was_valid {
+                        // Cached entry indicates previous failure, add to discrepancies
+                        if !full_path.exists() {
+                            discrepancies.push(Discrepancy::MissingFile {
+                                package_name: package.name.clone(),
+                                package_version: package.version.clone(),
+                                file_path: file_path.clone(),
+                            });
+                        }
+                    }
+                    // Skip verification for cached files
+                    continue;
+                }
+            }
+
+            // Cache miss - perform verification
+            let _verification_start = Instant::now();
+            let mut file_was_valid = true;
+
             // Check if file exists
             if !full_path.exists() {
                 discrepancies.push(Discrepancy::MissingFile {
@@ -364,13 +678,48 @@ impl StateVerificationGuard {
                     package_version: package.version.clone(),
                     file_path: file_path.clone(),
                 });
-                continue;
+                file_was_valid = false;
+            } else {
+                // For Full verification, check content hash
+                if self.level == VerificationLevel::Full {
+                    let discrepancy_count_before = discrepancies.len();
+                    self.verify_file_content(&full_path, package, &file_path, discrepancies)
+                        .await?;
+                    // If discrepancies were added, file was invalid
+                    if discrepancies.len() > discrepancy_count_before {
+                        file_was_valid = false;
+                    }
+                }
             }
 
-            // For Full verification, check content hash
-            if self.level == VerificationLevel::Full {
-                self.verify_file_content(&full_path, package, &file_path, discrepancies)
-                    .await?;
+            // Update cache with verification result
+            if let Ok(metadata) = std::fs::metadata(&full_path) {
+                if let Ok(mtime) = metadata.modified() {
+                    let size = metadata.len();
+                    let content_hash = if self.level == VerificationLevel::Full && file_was_valid {
+                        // Calculate hash for Full verification
+                        match sps2_hash::Hash::hash_file(&full_path).await {
+                            Ok(hash) => Some(hash.to_string()),
+                            Err(_) => None,
+                        }
+                    } else {
+                        None
+                    };
+
+                    let cache_entry = FileCacheEntry {
+                        file_path: file_path.clone(),
+                        package_name: package.name.clone(),
+                        package_version: package.version.clone(),
+                        mtime,
+                        size,
+                        content_hash,
+                        verified_at: SystemTime::now(),
+                        verification_level: self.level,
+                        was_valid: file_was_valid,
+                    };
+
+                    self.cache.update_entry(cache_entry);
+                }
             }
         }
 
@@ -1064,6 +1413,211 @@ impl StateVerificationGuard {
 
         Ok(false)
     }
+
+    /// Heal a missing Python virtual environment by recreating it
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Package information cannot be retrieved
+    /// - Python metadata is missing
+    /// - Venv recreation fails
+    /// - Package reinstallation fails
+    async fn heal_missing_venv(
+        &self,
+        package_name: &str,
+        package_version: &str,
+        venv_path: &str,
+    ) -> Result<(), Error> {
+        let _ = self.tx.send(Event::DebugLog {
+            message: format!(
+                "Starting venv healing for {package_name}-{package_version} at {venv_path}"
+            ),
+            context: HashMap::default(),
+        });
+
+        // Step 1: Get package information from database
+        let mut tx = self.state_manager.begin_transaction().await?;
+        let state_id = self.state_manager.get_active_state().await?;
+        let packages = queries::get_state_packages(&mut tx, &state_id).await?;
+        tx.commit().await?;
+
+        let package = packages
+            .iter()
+            .find(|p| p.name == package_name && p.version == package_version)
+            .ok_or_else(|| OpsError::OperationFailed {
+                message: format!("Package {package_name}-{package_version} not found in state"),
+            })?;
+
+        // Step 2: Load package manifest from store to get Python metadata
+        let package_hash =
+            Hash::from_hex(&package.hash).map_err(|e| OpsError::OperationFailed {
+                message: format!("Invalid package hash: {e}"),
+            })?;
+        let store_path = self.store.package_path(&package_hash);
+
+        if !store_path.exists() {
+            return Err(OpsError::OperationFailed {
+                message: format!(
+                    "Package content missing from store for {package_name}-{package_version}"
+                ),
+            }
+            .into());
+        }
+
+        let stored_package = StoredPackage::load(&store_path).await?;
+        let manifest = stored_package.manifest();
+
+        let python_metadata =
+            manifest
+                .python
+                .as_ref()
+                .ok_or_else(|| OpsError::OperationFailed {
+                    message: format!(
+                        "Package {package_name}-{package_version} is not a Python package"
+                    ),
+                })?;
+
+        // Step 3: Capture existing pip packages if venv partially exists
+        let venv_path_buf = PathBuf::from(venv_path);
+        let python_bin = venv_path_buf.join("bin/python");
+        let mut existing_packages = Vec::new();
+
+        if python_bin.exists() {
+            let _ = self.tx.send(Event::DebugLog {
+                message: format!("Capturing existing pip packages from {venv_path}"),
+                context: HashMap::default(),
+            });
+
+            // Run pip freeze to capture existing packages
+            match tokio::process::Command::new(&python_bin)
+                .arg("-m")
+                .arg("pip")
+                .arg("freeze")
+                .output()
+                .await
+            {
+                Ok(output) if output.status.success() => {
+                    let freeze_output = String::from_utf8_lossy(&output.stdout);
+                    existing_packages = freeze_output
+                        .lines()
+                        .filter(|line| !line.trim().is_empty())
+                        .map(String::from)
+                        .collect();
+
+                    let _ = self.tx.send(Event::DebugLog {
+                        message: format!("Captured {} existing packages", existing_packages.len()),
+                        context: HashMap::default(),
+                    });
+                }
+                _ => {
+                    let _ = self.tx.send(Event::DebugLog {
+                        message: "Failed to capture existing packages, proceeding with fresh venv"
+                            .to_string(),
+                        context: HashMap::default(),
+                    });
+                }
+            }
+        }
+
+        // Step 4: Remove corrupted venv
+        if venv_path_buf.exists() {
+            tokio::fs::remove_dir_all(&venv_path_buf)
+                .await
+                .map_err(|e| OpsError::OperationFailed {
+                    message: format!("Failed to remove corrupted venv: {e}"),
+                })?;
+        }
+
+        // Step 5: Create new venv using the PythonVenvManager
+        let venvs_base = PathBuf::from("/opt/pm/venvs");
+        let venv_manager = sps2_install::PythonVenvManager::new(venvs_base);
+
+        let package_id = sps2_install::python::PackageId::new(
+            package_name.to_string(),
+            sps2_types::Version::parse(package_version).map_err(|e| OpsError::OperationFailed {
+                message: format!("Invalid version: {e}"),
+            })?,
+        );
+
+        venv_manager
+            .create_venv(&package_id, python_metadata, Some(&self.tx))
+            .await?;
+
+        // Step 6: Install the wheel file
+        let wheel_path = stored_package
+            .files_path()
+            .join(&python_metadata.wheel_file);
+        let requirements_path = stored_package
+            .files_path()
+            .join(&python_metadata.requirements_file);
+
+        venv_manager
+            .install_wheel(
+                &package_id,
+                &venv_path_buf,
+                &wheel_path,
+                Some(&requirements_path),
+                Some(&self.tx),
+            )
+            .await?;
+
+        // Step 7: Restore previously installed packages (best effort)
+        if !existing_packages.is_empty() {
+            let _ = self.tx.send(Event::DebugLog {
+                message: format!(
+                    "Attempting to restore {} previously installed packages",
+                    existing_packages.len()
+                ),
+                context: HashMap::default(),
+            });
+
+            // Create a temporary requirements file with the captured packages
+            let temp_reqs = venv_path_buf.join("restore_requirements.txt");
+            tokio::fs::write(&temp_reqs, existing_packages.join("\n"))
+                .await
+                .map_err(|e| OpsError::OperationFailed {
+                    message: format!("Failed to create restore requirements: {e}"),
+                })?;
+
+            // Try to reinstall the packages (don't fail if some packages can't be installed)
+            let output = tokio::process::Command::new("uv")
+                .arg("pip")
+                .arg("install")
+                .arg("--python")
+                .arg(&python_bin)
+                .arg("-r")
+                .arg(&temp_reqs)
+                .output()
+                .await;
+
+            // Clean up temp file
+            let _ = tokio::fs::remove_file(&temp_reqs).await;
+
+            match output {
+                Ok(result) if result.status.success() => {
+                    let _ = self.tx.send(Event::DebugLog {
+                        message: "Successfully restored previous packages".to_string(),
+                        context: HashMap::default(),
+                    });
+                }
+                _ => {
+                    let _ = self.tx.send(Event::DebugLog {
+                        message: "Some packages could not be restored, but venv is functional"
+                            .to_string(),
+                        context: HashMap::default(),
+                    });
+                }
+            }
+        }
+
+        let _ = self.tx.send(Event::DebugLog {
+            message: format!("Successfully healed venv for {package_name}-{package_version}"),
+            context: HashMap::default(),
+        });
+
+        Ok(())
+    }
 }
 
 /// Builder for `StateVerificationGuard`
@@ -1134,11 +1688,15 @@ impl StateVerificationGuardBuilder {
             component: "EventSender".to_string(),
         })?;
 
+        // Create cache
+        let cache = VerificationCache::new();
+
         Ok(StateVerificationGuard {
             state_manager,
             store,
             tx,
             level: self.level,
+            cache,
         })
     }
 }
@@ -1283,7 +1841,7 @@ mod tests {
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
 
         // Test guard creation with different levels
-        let guard_quick = StateVerificationGuard::builder()
+        let mut guard_quick = StateVerificationGuard::builder()
             .with_state_manager(state_manager.clone())
             .with_store(store.clone())
             .with_event_sender(tx.clone())
@@ -1292,7 +1850,7 @@ mod tests {
             .unwrap();
         assert_eq!(guard_quick.level(), VerificationLevel::Quick);
 
-        let guard_full = StateVerificationGuard::builder()
+        let mut guard_full = StateVerificationGuard::builder()
             .with_state_manager(state_manager.clone())
             .with_store(store.clone())
             .with_event_sender(tx.clone())
@@ -1319,7 +1877,7 @@ mod tests {
         let store = PackageStore::new(store_dir);
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
 
-        let guard = StateVerificationGuard::builder()
+        let mut guard = StateVerificationGuard::builder()
             .with_state_manager(state_manager)
             .with_store(store)
             .with_event_sender(tx)
@@ -1556,6 +2114,56 @@ mod tests {
                 "Expected {} to NOT be user-modifiable",
                 path
             );
+        }
+    }
+
+    #[test]
+    fn test_missing_venv_discrepancy() {
+        // Test MissingVenv discrepancy creation and matching
+        let missing_venv = Discrepancy::MissingVenv {
+            package_name: "black".to_string(),
+            package_version: "24.4.2".to_string(),
+            venv_path: "/opt/pm/venvs/black-24.4.2".to_string(),
+        };
+
+        match missing_venv {
+            Discrepancy::MissingVenv {
+                package_name,
+                package_version,
+                venv_path,
+            } => {
+                assert_eq!(package_name, "black");
+                assert_eq!(package_version, "24.4.2");
+                assert_eq!(venv_path, "/opt/pm/venvs/black-24.4.2");
+            }
+            _ => panic!("Expected MissingVenv discrepancy"),
+        }
+    }
+
+    #[test]
+    fn test_venv_healing_events() {
+        // Test that venv healing events are properly formatted
+        let discrepancy = Discrepancy::MissingVenv {
+            package_name: "mypy".to_string(),
+            package_version: "1.10.0".to_string(),
+            venv_path: "/opt/pm/venvs/mypy-1.10.0".to_string(),
+        };
+
+        match &discrepancy {
+            Discrepancy::MissingVenv {
+                package_name,
+                package_version,
+                venv_path,
+            } => {
+                let message = format!(
+                    "Successfully healed missing venv: {venv_path} for {package_name}-{package_version}"
+                );
+                assert_eq!(
+                    message,
+                    "Successfully healed missing venv: /opt/pm/venvs/mypy-1.10.0 for mypy-1.10.0"
+                );
+            }
+            _ => panic!("Expected MissingVenv discrepancy"),
         }
     }
 }

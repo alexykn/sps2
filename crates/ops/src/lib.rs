@@ -75,7 +75,7 @@ pub async fn verify(ctx: &OpsCtx, heal: bool, level: &str) -> Result<Verificatio
         _ => VerificationLevel::Standard,
     };
 
-    let guard = StateVerificationGuard::builder()
+    let mut guard = StateVerificationGuard::builder()
         .with_state_manager(ctx.state.clone())
         .with_store(ctx.store.clone())
         .with_event_sender(ctx.tx.clone())

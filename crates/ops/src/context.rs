@@ -10,6 +10,7 @@ use sps2_net::NetClient;
 use sps2_resolver::Resolver;
 use sps2_state::StateManager;
 use sps2_store::PackageStore;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::future::Future;
 
@@ -32,7 +33,7 @@ pub struct OpsCtx {
     /// System configuration
     pub config: Config,
     /// State verification guard (optional)
-    pub guard: Option<StateVerificationGuard>,
+    pub guard: RefCell<Option<StateVerificationGuard>>,
 }
 
 impl OpsCtx {
@@ -44,12 +45,18 @@ impl OpsCtx {
     ///
     /// Returns an error if verification fails and `fail_on_discrepancy` is true
     pub async fn verify_state(&self) -> Result<(), Error> {
-        if let Some(guard) = &self.guard {
+        // Take the guard out of the RefCell to avoid holding borrow across await
+        let guard_option = self.guard.borrow_mut().take();
+
+        if let Some(mut guard) = guard_option {
             let result = if self.config.verification.auto_heal {
                 guard.verify_and_heal(&self.config).await?
             } else {
                 guard.verify_only().await?
             };
+
+            // Put the guard back before checking result
+            *self.guard.borrow_mut() = Some(guard);
 
             if !result.is_valid && self.config.verification.fail_on_discrepancy {
                 return Err(sps2_errors::OpsError::VerificationFailed {
@@ -65,7 +72,7 @@ impl OpsCtx {
     /// Check if verification is enabled
     #[must_use]
     pub fn is_verification_enabled(&self) -> bool {
-        self.guard.is_some() && self.config.verification.enabled
+        self.guard.borrow().is_some() && self.config.verification.enabled
     }
 
     /// Initialize the state verification guard if enabled in config
@@ -94,7 +101,7 @@ impl OpsCtx {
             .with_level(level)
             .build()?;
 
-        self.guard = Some(guard);
+        *self.guard.borrow_mut() = Some(guard);
         Ok(())
     }
 
@@ -311,7 +318,7 @@ impl OpsContextBuilder {
             builder,
             tx,
             config,
-            guard: None, // Guard will be initialized separately
+            guard: RefCell::new(None), // Guard will be initialized separately
         })
     }
 }
@@ -359,7 +366,7 @@ mod tests {
             .unwrap();
 
         assert!(!ctx.is_verification_enabled());
-        assert!(ctx.guard.is_none());
+        assert!(ctx.guard.borrow().is_none());
     }
 
     #[tokio::test]
@@ -398,7 +405,7 @@ mod tests {
         ctx.initialize_guard().unwrap();
 
         assert!(ctx.is_verification_enabled());
-        assert!(ctx.guard.is_some());
+        assert!(ctx.guard.borrow().is_some());
     }
 
     #[tokio::test]
