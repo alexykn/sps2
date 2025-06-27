@@ -38,6 +38,9 @@ pub struct Config {
 
     #[serde(default)]
     pub verification: VerificationConfig,
+
+    #[serde(default)]
+    pub guard: Option<GuardConfiguration>,
 }
 
 /// General configuration
@@ -116,6 +119,80 @@ pub struct NetworkConfig {
     pub retry_delay: u64, // seconds
 }
 
+/// Symlink handling policy for guard operations
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SymlinkPolicyConfig {
+    /// Verify symlinks strictly - fail on any symlink issues
+    Strict,
+    /// Be lenient with bootstrap directories like /opt/pm/live/bin
+    LenientBootstrap,
+    /// Be lenient with all symlinks - log issues but don't fail
+    LenientAll,
+    /// Ignore symlinks entirely - skip symlink verification
+    Ignore,
+}
+
+impl Default for SymlinkPolicyConfig {
+    fn default() -> Self {
+        Self::LenientBootstrap
+    }
+}
+
+/// Performance configuration for guard operations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PerformanceConfigToml {
+    #[serde(default = "default_use_cache")]
+    pub use_cache: bool,
+    #[serde(default = "default_parallel_verification")]
+    pub parallel_verification: bool,
+    #[serde(default = "default_cache_warming")]
+    pub cache_warming: bool,
+    #[serde(default = "default_progressive_verification")]
+    pub progressive_verification: bool,
+    #[serde(default = "default_max_concurrent_tasks")]
+    pub max_concurrent_tasks: usize,
+    #[serde(default = "default_verification_timeout_seconds")]
+    pub verification_timeout_seconds: u64,
+    #[serde(default = "default_cache_size_mb")]
+    pub cache_size_mb: usize,
+    #[serde(default = "default_cache_ttl_seconds")]
+    pub cache_ttl_seconds: u64,
+}
+
+impl Default for PerformanceConfigToml {
+    fn default() -> Self {
+        Self {
+            use_cache: default_use_cache(),
+            parallel_verification: default_parallel_verification(),
+            cache_warming: default_cache_warming(),
+            progressive_verification: default_progressive_verification(),
+            max_concurrent_tasks: default_max_concurrent_tasks(),
+            verification_timeout_seconds: default_verification_timeout_seconds(),
+            cache_size_mb: default_cache_size_mb(),
+            cache_ttl_seconds: default_cache_ttl_seconds(),
+        }
+    }
+}
+
+/// Guard-specific configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuardConfigToml {
+    #[serde(default)]
+    pub symlink_policy: SymlinkPolicyConfig,
+    #[serde(default = "default_lenient_symlink_directories")]
+    pub lenient_symlink_directories: Vec<PathBuf>,
+}
+
+impl Default for GuardConfigToml {
+    fn default() -> Self {
+        Self {
+            symlink_policy: SymlinkPolicyConfig::default(),
+            lenient_symlink_directories: default_lenient_symlink_directories(),
+        }
+    }
+}
+
 /// Verification configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(clippy::struct_excessive_bools)]
@@ -134,6 +211,116 @@ pub struct VerificationConfig {
     pub orphaned_backup_dir: PathBuf,
     #[serde(default = "default_preserve_user_files")]
     pub preserve_user_files: bool,
+    
+    // Enhanced guard configuration
+    #[serde(default)]
+    pub guard: GuardConfigToml,
+    #[serde(default)]
+    pub performance: PerformanceConfigToml,
+}
+
+/// Top-level guard configuration (alternative to verification.guard approach)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuardConfiguration {
+    #[serde(default = "default_guard_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_verification_level")]
+    pub verification_level: String, // "quick", "standard", or "full"
+    #[serde(default = "default_auto_heal")]
+    pub auto_heal: bool,
+    #[serde(default = "default_fail_on_discrepancy")]
+    pub fail_on_discrepancy: bool,
+    #[serde(default)]
+    pub symlink_policy: GuardSymlinkPolicy,
+    #[serde(default = "default_orphaned_file_action")]
+    pub orphaned_file_action: String, // "remove", "preserve", or "backup"
+    #[serde(default = "default_orphaned_backup_dir")]
+    pub orphaned_backup_dir: PathBuf,
+    #[serde(default = "default_preserve_user_files")]
+    pub preserve_user_files: bool,
+    
+    // Nested configuration sections
+    #[serde(default)]
+    pub performance: GuardPerformanceConfig,
+    #[serde(default = "default_guard_lenient_symlink_directories")]
+    pub lenient_symlink_directories: Vec<GuardDirectoryConfig>,
+}
+
+impl Default for GuardConfiguration {
+    fn default() -> Self {
+        Self {
+            enabled: default_guard_enabled(),
+            verification_level: default_verification_level(),
+            auto_heal: default_auto_heal(),
+            fail_on_discrepancy: default_fail_on_discrepancy(),
+            symlink_policy: GuardSymlinkPolicy::default(),
+            orphaned_file_action: default_orphaned_file_action(),
+            orphaned_backup_dir: default_orphaned_backup_dir(),
+            preserve_user_files: default_preserve_user_files(),
+            performance: GuardPerformanceConfig::default(),
+            lenient_symlink_directories: default_guard_lenient_symlink_directories(),
+        }
+    }
+}
+
+/// Simplified symlink policy for top-level guard configuration
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GuardSymlinkPolicy {
+    /// Verify symlinks strictly - fail on any symlink issues
+    Strict,
+    /// Be lenient with symlinks - log issues but don't fail
+    Lenient,
+    /// Ignore symlinks entirely - skip symlink verification
+    Ignore,
+}
+
+impl Default for GuardSymlinkPolicy {
+    fn default() -> Self {
+        Self::Lenient
+    }
+}
+
+/// Performance configuration for top-level guard
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuardPerformanceConfig {
+    #[serde(default = "default_use_cache")]
+    pub use_cache: bool,
+    #[serde(default = "default_parallel_verification")]
+    pub parallel_verification: bool,
+    #[serde(default = "default_cache_warming")]
+    pub cache_warming: bool,
+    #[serde(default = "default_progressive_verification")]
+    pub progressive_verification: bool,
+    #[serde(default = "default_max_concurrent_tasks")]
+    pub max_concurrent_tasks: usize,
+    #[serde(default = "default_verification_timeout_seconds")]
+    pub verification_timeout_seconds: u64,
+    #[serde(default = "default_cache_size_mb")]
+    pub cache_size_mb: usize,
+    #[serde(default = "default_cache_ttl_seconds")]
+    pub cache_ttl_seconds: u64,
+}
+
+impl Default for GuardPerformanceConfig {
+    fn default() -> Self {
+        Self {
+            use_cache: default_use_cache(),
+            parallel_verification: default_parallel_verification(),
+            cache_warming: default_cache_warming(),
+            progressive_verification: default_progressive_verification(),
+            max_concurrent_tasks: default_max_concurrent_tasks(),
+            verification_timeout_seconds: default_verification_timeout_seconds(),
+            cache_size_mb: default_cache_size_mb(),
+            cache_ttl_seconds: default_cache_ttl_seconds(),
+        }
+    }
+}
+
+/// Directory configuration for lenient symlink handling (array of tables approach)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuardDirectoryConfig {
+    pub path: PathBuf,
 }
 
 // Default implementations
@@ -209,6 +396,8 @@ impl Default for VerificationConfig {
             orphaned_file_action: "preserve".to_string(),
             orphaned_backup_dir: PathBuf::from("/opt/pm/orphaned-backup"),
             preserve_user_files: true,
+            guard: GuardConfigToml::default(),
+            performance: PerformanceConfigToml::default(),
         }
     }
 }
@@ -271,7 +460,7 @@ fn default_retry_delay() -> u64 {
 }
 
 fn default_enabled() -> bool {
-    false
+    true // Enable verification by default for state integrity
 }
 
 fn default_verification_level() -> String {
@@ -296,6 +485,60 @@ fn default_orphaned_backup_dir() -> PathBuf {
 
 fn default_preserve_user_files() -> bool {
     true
+}
+
+// Guard configuration defaults
+
+fn default_use_cache() -> bool {
+    true
+}
+
+fn default_parallel_verification() -> bool {
+    true
+}
+
+fn default_cache_warming() -> bool {
+    true
+}
+
+fn default_progressive_verification() -> bool {
+    true
+}
+
+fn default_max_concurrent_tasks() -> usize {
+    8
+}
+
+fn default_verification_timeout_seconds() -> u64 {
+    300 // 5 minutes
+}
+
+fn default_cache_size_mb() -> usize {
+    128
+}
+
+fn default_cache_ttl_seconds() -> u64 {
+    3600 // 1 hour
+}
+
+// Top-level guard configuration defaults
+
+fn default_guard_enabled() -> bool {
+    true // Enable guard by default for state verification
+}
+
+fn default_guard_lenient_symlink_directories() -> Vec<GuardDirectoryConfig> {
+    vec![
+        GuardDirectoryConfig { path: PathBuf::from("/opt/pm/live/bin") },
+        GuardDirectoryConfig { path: PathBuf::from("/opt/pm/live/sbin") },
+    ]
+}
+
+fn default_lenient_symlink_directories() -> Vec<PathBuf> {
+    vec![
+        PathBuf::from("/opt/pm/live/bin"),
+        PathBuf::from("/opt/pm/live/sbin"),
+    ]
 }
 
 fn default_allowed_commands() -> Vec<String> {
@@ -804,7 +1047,140 @@ impl Config {
             .iter()
             .any(|allowed| pattern.starts_with(allowed))
     }
+
+    /// Validate guard configuration settings
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any configuration values are invalid
+    pub fn validate_guard_config(&self) -> Result<(), Error> {
+        // Validate verification level
+        match self.verification.level.as_str() {
+            "quick" | "standard" | "full" => {}
+            _ => {
+                return Err(ConfigError::InvalidValue {
+                    field: "verification.level".to_string(),
+                    value: self.verification.level.clone(),
+                }
+                .into())
+            }
+        }
+
+        // Validate orphaned file action
+        match self.verification.orphaned_file_action.as_str() {
+            "remove" | "preserve" | "backup" => {}
+            _ => {
+                return Err(ConfigError::InvalidValue {
+                    field: "verification.orphaned_file_action".to_string(),
+                    value: self.verification.orphaned_file_action.clone(),
+                }
+                .into())
+            }
+        }
+
+        // Validate performance settings
+        if self.verification.performance.max_concurrent_tasks == 0 {
+            return Err(ConfigError::InvalidValue {
+                field: "verification.performance.max_concurrent_tasks".to_string(),
+                value: "0".to_string(),
+            }
+            .into());
+        }
+
+        if self.verification.performance.verification_timeout_seconds == 0 {
+            return Err(ConfigError::InvalidValue {
+                field: "verification.performance.verification_timeout_seconds".to_string(),
+                value: "0".to_string(),
+            }
+            .into());
+        }
+
+        if self.verification.performance.cache_size_mb == 0 {
+            return Err(ConfigError::InvalidValue {
+                field: "verification.performance.cache_size_mb".to_string(),
+                value: "0".to_string(),
+            }
+            .into());
+        }
+
+        // Validate lenient symlink directories exist as absolute paths
+        for dir in &self.verification.guard.lenient_symlink_directories {
+            if !dir.is_absolute() {
+                return Err(ConfigError::InvalidValue {
+                    field: "verification.guard.lenient_symlink_directories".to_string(),
+                    value: dir.display().to_string(),
+                }
+                .into());
+            }
+        }
+
+        // Validate top-level guard configuration if present
+        if let Some(guard_config) = &self.guard {
+            // Validate verification level
+            match guard_config.verification_level.as_str() {
+                "quick" | "standard" | "full" => {}
+                _ => {
+                    return Err(ConfigError::InvalidValue {
+                        field: "guard.verification_level".to_string(),
+                        value: guard_config.verification_level.clone(),
+                    }
+                    .into())
+                }
+            }
+
+            // Validate orphaned file action
+            match guard_config.orphaned_file_action.as_str() {
+                "remove" | "preserve" | "backup" => {}
+                _ => {
+                    return Err(ConfigError::InvalidValue {
+                        field: "guard.orphaned_file_action".to_string(),
+                        value: guard_config.orphaned_file_action.clone(),
+                    }
+                    .into())
+                }
+            }
+
+            // Validate performance settings
+            if guard_config.performance.max_concurrent_tasks == 0 {
+                return Err(ConfigError::InvalidValue {
+                    field: "guard.performance.max_concurrent_tasks".to_string(),
+                    value: "0".to_string(),
+                }
+                .into());
+            }
+
+            if guard_config.performance.verification_timeout_seconds == 0 {
+                return Err(ConfigError::InvalidValue {
+                    field: "guard.performance.verification_timeout_seconds".to_string(),
+                    value: "0".to_string(),
+                }
+                .into());
+            }
+
+            if guard_config.performance.cache_size_mb == 0 {
+                return Err(ConfigError::InvalidValue {
+                    field: "guard.performance.cache_size_mb".to_string(),
+                    value: "0".to_string(),
+                }
+                .into());
+            }
+
+            // Validate lenient symlink directories are absolute paths
+            for dir_config in &guard_config.lenient_symlink_directories {
+                if !dir_config.path.is_absolute() {
+                    return Err(ConfigError::InvalidValue {
+                        field: "guard.lenient_symlink_directories".to_string(),
+                        value: dir_config.path.display().to_string(),
+                    }
+                    .into());
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
+
 
 /// Calculate build jobs based on CPU count
 #[must_use]
@@ -818,5 +1194,307 @@ pub fn calculate_build_jobs(config_value: usize) -> usize {
         // Use 75% of CPUs for builds, minimum 1
         // This leaves headroom for system responsiveness
         (cpus * 3 / 4).max(1)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_guard_config_validation() {
+        let mut config = Config::default();
+        
+        // Test valid configuration
+        config.verification.enabled = true;
+        config.verification.level = "standard".to_string();
+        config.verification.orphaned_file_action = "preserve".to_string();
+        config.verification.performance.max_concurrent_tasks = 8;
+        config.verification.performance.verification_timeout_seconds = 300;
+        config.verification.performance.cache_size_mb = 128;
+        config.verification.guard.lenient_symlink_directories = vec![
+            PathBuf::from("/opt/pm/live/bin"),
+            PathBuf::from("/opt/pm/live/sbin"),
+        ];
+        
+        assert!(config.validate_guard_config().is_ok());
+        
+        // Test invalid verification level
+        config.verification.level = "invalid".to_string();
+        assert!(config.validate_guard_config().is_err());
+        
+        // Reset and test invalid orphaned file action
+        config.verification.level = "standard".to_string();
+        config.verification.orphaned_file_action = "invalid".to_string();
+        assert!(config.validate_guard_config().is_err());
+        
+        // Reset and test invalid max concurrent tasks
+        config.verification.orphaned_file_action = "preserve".to_string();
+        config.verification.performance.max_concurrent_tasks = 0;
+        assert!(config.validate_guard_config().is_err());
+        
+        // Reset and test invalid relative path
+        config.verification.performance.max_concurrent_tasks = 8;
+        config.verification.guard.lenient_symlink_directories = vec![PathBuf::from("relative/path")];
+        assert!(config.validate_guard_config().is_err());
+    }
+
+    #[test]
+    fn test_symlink_policy_serialization() {
+        // Test that symlink policies serialize/deserialize correctly in guard config
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct TestConfig {
+            symlink_policy: SymlinkPolicyConfig,
+        }
+        
+        let test_config = TestConfig {
+            symlink_policy: SymlinkPolicyConfig::LenientBootstrap,
+        };
+        let serialized = toml::to_string(&test_config).unwrap();
+        let deserialized: TestConfig = toml::from_str(&serialized).unwrap();
+        assert_eq!(test_config.symlink_policy, deserialized.symlink_policy);
+        assert!(serialized.contains("symlink_policy = \"lenient_bootstrap\""));
+    }
+
+    #[tokio::test]
+    async fn test_config_toml_generation() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("test_config.toml");
+        
+        let mut config = Config::default();
+        config.verification.enabled = true;
+        config.verification.guard.symlink_policy = SymlinkPolicyConfig::LenientBootstrap;
+        config.verification.performance.parallel_verification = true;
+        config.verification.performance.cache_warming = true;
+        config.verification.performance.max_concurrent_tasks = 6;
+        
+        // Save config
+        config.save_to(&config_path).await.unwrap();
+        
+        // Verify file was created and contains expected content
+        let contents = tokio::fs::read_to_string(&config_path).await.unwrap();
+        assert!(contents.contains("[verification.guard]"));
+        assert!(contents.contains("[verification.performance]"));
+        assert!(contents.contains("symlink_policy = \"lenient_bootstrap\""));
+        assert!(contents.contains("parallel_verification = true"));
+        assert!(contents.contains("max_concurrent_tasks = 6"));
+        
+        // Load config back and verify it matches
+        let loaded_config = Config::load_from_file(&config_path).await.unwrap();
+        assert_eq!(loaded_config.verification.enabled, true);
+        assert_eq!(loaded_config.verification.guard.symlink_policy, SymlinkPolicyConfig::LenientBootstrap);
+        assert_eq!(loaded_config.verification.performance.parallel_verification, true);
+        assert_eq!(loaded_config.verification.performance.max_concurrent_tasks, 6);
+    }
+
+    #[test]
+    fn test_config_defaults() {
+        let config = Config::default();
+        
+        // Test default verification config
+        assert_eq!(config.verification.enabled, false);
+        assert_eq!(config.verification.level, "standard");
+        assert_eq!(config.verification.auto_heal, false);
+        assert_eq!(config.verification.fail_on_discrepancy, true);
+        
+        // Test default guard config
+        assert_eq!(config.verification.guard.symlink_policy, SymlinkPolicyConfig::LenientBootstrap);
+        assert_eq!(
+            config.verification.guard.lenient_symlink_directories,
+            vec![
+                PathBuf::from("/opt/pm/live/bin"),
+                PathBuf::from("/opt/pm/live/sbin"),
+            ]
+        );
+        
+        // Test default performance config
+        assert_eq!(config.verification.performance.use_cache, true);
+        assert_eq!(config.verification.performance.parallel_verification, true);
+        assert_eq!(config.verification.performance.cache_warming, true);
+        assert_eq!(config.verification.performance.progressive_verification, true);
+        assert_eq!(config.verification.performance.max_concurrent_tasks, 8);
+        assert_eq!(config.verification.performance.verification_timeout_seconds, 300);
+        assert_eq!(config.verification.performance.cache_size_mb, 128);
+        assert_eq!(config.verification.performance.cache_ttl_seconds, 3600);
+    }
+
+    #[tokio::test]
+    async fn test_top_level_guard_configuration() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("test_guard_config.toml");
+        
+        // Create a config with top-level [guard] section
+        let mut config = Config::default();
+        config.guard = Some(GuardConfiguration {
+            enabled: true,
+            verification_level: "full".to_string(),
+            auto_heal: true,
+            fail_on_discrepancy: false,
+            symlink_policy: GuardSymlinkPolicy::Strict,
+            orphaned_file_action: "backup".to_string(),
+            orphaned_backup_dir: PathBuf::from("/tmp/backup"),
+            preserve_user_files: false,
+            performance: GuardPerformanceConfig {
+                use_cache: false,
+                parallel_verification: false,
+                cache_warming: false,
+                progressive_verification: false,
+                max_concurrent_tasks: 4,
+                verification_timeout_seconds: 600,
+                cache_size_mb: 64,
+                cache_ttl_seconds: 1800,
+            },
+            lenient_symlink_directories: vec![
+                GuardDirectoryConfig { path: PathBuf::from("/custom/path") },
+            ],
+        });
+        
+        // Save and reload config
+        config.save_to(&config_path).await.unwrap();
+        let loaded_config = Config::load_from_file(&config_path).await.unwrap();
+        
+        // Verify top-level guard configuration
+        let guard_config = loaded_config.guard.as_ref().unwrap();
+        assert_eq!(guard_config.enabled, true);
+        assert_eq!(guard_config.verification_level, "full");
+        assert_eq!(guard_config.auto_heal, true);
+        assert_eq!(guard_config.fail_on_discrepancy, false);
+        assert_eq!(guard_config.symlink_policy, GuardSymlinkPolicy::Strict);
+        assert_eq!(guard_config.orphaned_file_action, "backup");
+        assert_eq!(guard_config.orphaned_backup_dir, PathBuf::from("/tmp/backup"));
+        assert_eq!(guard_config.preserve_user_files, false);
+        
+        // Verify performance config
+        assert_eq!(guard_config.performance.use_cache, false);
+        assert_eq!(guard_config.performance.parallel_verification, false);
+        assert_eq!(guard_config.performance.max_concurrent_tasks, 4);
+        assert_eq!(guard_config.performance.verification_timeout_seconds, 600);
+        
+        // Verify directory config
+        assert_eq!(guard_config.lenient_symlink_directories.len(), 1);
+        assert_eq!(guard_config.lenient_symlink_directories[0].path, PathBuf::from("/custom/path"));
+    }
+
+    #[tokio::test]
+    async fn test_top_level_guard_toml_generation() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("test_guard_toml.toml");
+        
+        let mut config = Config::default();
+        config.guard = Some(GuardConfiguration {
+            enabled: true,
+            verification_level: "standard".to_string(),
+            auto_heal: false,
+            fail_on_discrepancy: true,
+            symlink_policy: GuardSymlinkPolicy::Lenient,
+            orphaned_file_action: "preserve".to_string(),
+            orphaned_backup_dir: PathBuf::from("/opt/pm/orphaned-backup"),
+            preserve_user_files: true,
+            performance: GuardPerformanceConfig::default(),
+            lenient_symlink_directories: vec![
+                GuardDirectoryConfig { path: PathBuf::from("/opt/pm/live/bin") },
+                GuardDirectoryConfig { path: PathBuf::from("/opt/pm/live/sbin") },
+            ],
+        });
+        
+        // Save config
+        config.save_to(&config_path).await.unwrap();
+        
+        // Verify file contains expected TOML structure
+        let contents = tokio::fs::read_to_string(&config_path).await.unwrap();
+        assert!(contents.contains("[guard]"));
+        assert!(contents.contains("enabled = true"));
+        assert!(contents.contains("verification_level = \"standard\""));
+        assert!(contents.contains("symlink_policy = \"lenient\""));
+        assert!(contents.contains("[guard.performance]"));
+        assert!(contents.contains("use_cache = true"));
+        assert!(contents.contains("[[guard.lenient_symlink_directories]]"));
+        assert!(contents.contains("path = \"/opt/pm/live/bin\""));
+        assert!(contents.contains("path = \"/opt/pm/live/sbin\""));
+    }
+
+    #[test]
+    fn test_top_level_guard_validation() {
+        let mut config = Config::default();
+        config.guard = Some(GuardConfiguration::default());
+        
+        // Test valid configuration
+        config.guard.as_mut().unwrap().enabled = true;
+        config.guard.as_mut().unwrap().verification_level = "standard".to_string();
+        config.guard.as_mut().unwrap().orphaned_file_action = "preserve".to_string();
+        config.guard.as_mut().unwrap().performance.max_concurrent_tasks = 8;
+        config.guard.as_mut().unwrap().lenient_symlink_directories = vec![
+            GuardDirectoryConfig { path: PathBuf::from("/opt/pm/live/bin") },
+        ];
+        
+        assert!(config.validate_guard_config().is_ok());
+        
+        // Test invalid verification level
+        config.guard.as_mut().unwrap().verification_level = "invalid".to_string();
+        assert!(config.validate_guard_config().is_err());
+        
+        // Reset and test invalid orphaned file action
+        config.guard.as_mut().unwrap().verification_level = "standard".to_string();
+        config.guard.as_mut().unwrap().orphaned_file_action = "invalid".to_string();
+        assert!(config.validate_guard_config().is_err());
+        
+        // Reset and test invalid max concurrent tasks
+        config.guard.as_mut().unwrap().orphaned_file_action = "preserve".to_string();
+        config.guard.as_mut().unwrap().performance.max_concurrent_tasks = 0;
+        assert!(config.validate_guard_config().is_err());
+        
+        // Reset and test invalid relative path
+        config.guard.as_mut().unwrap().performance.max_concurrent_tasks = 8;
+        config.guard.as_mut().unwrap().lenient_symlink_directories = vec![
+            GuardDirectoryConfig { path: PathBuf::from("relative/path") }
+        ];
+        assert!(config.validate_guard_config().is_err());
+    }
+
+    #[test]
+    fn test_guard_symlink_policy_serialization() {
+        // Test that GuardSymlinkPolicy serializes/deserializes correctly
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct TestConfig {
+            symlink_policy: GuardSymlinkPolicy,
+        }
+        
+        let test_config = TestConfig {
+            symlink_policy: GuardSymlinkPolicy::Lenient,
+        };
+        let serialized = toml::to_string(&test_config).unwrap();
+        let deserialized: TestConfig = toml::from_str(&serialized).unwrap();
+        assert_eq!(test_config.symlink_policy, deserialized.symlink_policy);
+        assert!(serialized.contains("symlink_policy = \"lenient\""));
+    }
+
+    #[test]
+    fn test_guard_defaults() {
+        let guard_config = GuardConfiguration::default();
+        
+        // Test default values
+        assert_eq!(guard_config.enabled, false);
+        assert_eq!(guard_config.verification_level, "standard");
+        assert_eq!(guard_config.auto_heal, false);
+        assert_eq!(guard_config.fail_on_discrepancy, true);
+        assert_eq!(guard_config.symlink_policy, GuardSymlinkPolicy::Lenient);
+        assert_eq!(guard_config.orphaned_file_action, "preserve");
+        assert_eq!(guard_config.preserve_user_files, true);
+        
+        // Test default performance config
+        assert_eq!(guard_config.performance.use_cache, true);
+        assert_eq!(guard_config.performance.parallel_verification, true);
+        assert_eq!(guard_config.performance.cache_warming, true);
+        assert_eq!(guard_config.performance.progressive_verification, true);
+        assert_eq!(guard_config.performance.max_concurrent_tasks, 8);
+        assert_eq!(guard_config.performance.verification_timeout_seconds, 300);
+        assert_eq!(guard_config.performance.cache_size_mb, 128);
+        assert_eq!(guard_config.performance.cache_ttl_seconds, 3600);
+        
+        // Test default directories
+        assert_eq!(guard_config.lenient_symlink_directories.len(), 2);
+        assert_eq!(guard_config.lenient_symlink_directories[0].path, PathBuf::from("/opt/pm/live/bin"));
+        assert_eq!(guard_config.lenient_symlink_directories[1].path, PathBuf::from("/opt/pm/live/sbin"));
     }
 }

@@ -532,6 +532,160 @@ pub enum Event {
         version: Version,
         venv_path: String,
     },
+
+    // Guard verification events
+    GuardVerificationStarted {
+        operation_id: String,
+        scope: String,
+        level: String,
+        packages_count: usize,
+        files_count: Option<usize>,
+    },
+    GuardVerificationProgress {
+        operation_id: String,
+        verified_packages: usize,
+        total_packages: usize,
+        verified_files: usize,
+        total_files: usize,
+        current_package: Option<String>,
+        cache_hit_rate: Option<f64>,
+    },
+    GuardDiscrepancyFound {
+        operation_id: String,
+        discrepancy_type: String,
+        severity: String,
+        file_path: String,
+        package: Option<String>,
+        package_version: Option<String>,
+        user_message: String,
+        technical_details: String,
+        auto_heal_available: bool,
+        requires_confirmation: bool,
+        estimated_fix_time_seconds: Option<u64>,
+    },
+    GuardVerificationCompleted {
+        operation_id: String,
+        total_discrepancies: usize,
+        by_severity: HashMap<String, usize>,
+        duration_ms: u64,
+        cache_hit_rate: f64,
+        coverage_percent: f64,
+        scope_description: String,
+    },
+    GuardVerificationFailed {
+        operation_id: String,
+        error: String,
+        packages_verified: usize,
+        files_verified: usize,
+        duration_ms: u64,
+    },
+
+    // Guard healing events
+    GuardHealingStarted {
+        operation_id: String,
+        discrepancies_count: usize,
+        auto_heal_count: usize,
+        confirmation_required_count: usize,
+        manual_intervention_count: usize,
+    },
+    GuardHealingProgress {
+        operation_id: String,
+        completed: usize,
+        total: usize,
+        current_operation: String,
+        current_file: Option<String>,
+    },
+    GuardHealingResult {
+        operation_id: String,
+        discrepancy_type: String,
+        file_path: String,
+        success: bool,
+        healing_action: String,
+        error: Option<String>,
+        duration_ms: u64,
+    },
+    GuardHealingCompleted {
+        operation_id: String,
+        healed_count: usize,
+        failed_count: usize,
+        skipped_count: usize,
+        duration_ms: u64,
+    },
+    GuardHealingFailed {
+        operation_id: String,
+        error: String,
+        completed_healing: usize,
+        failed_healing: usize,
+        duration_ms: u64,
+    },
+
+    // Guard cache events
+    GuardCacheWarming {
+        operation_id: String,
+        operation_type: String,
+        cache_entries_loading: usize,
+    },
+    GuardCacheWarmingCompleted {
+        operation_id: String,
+        cache_entries_loaded: usize,
+        cache_hit_rate_improvement: f64,
+        duration_ms: u64,
+    },
+    GuardCacheInvalidated {
+        operation_id: String,
+        operation_type: String,
+        invalidated_entries: usize,
+        reason: String,
+    },
+
+    // Guard error summary events
+    GuardErrorSummary {
+        operation_id: String,
+        total_errors: usize,
+        recoverable_errors: usize,
+        manual_intervention_required: usize,
+        overall_severity: String,
+        user_friendly_summary: String,
+        recommended_actions: Vec<String>,
+    },
+
+    // Guard configuration events
+    GuardConfigurationValidated {
+        approach: String, // "top-level" or "nested"
+        enabled: bool,
+        verification_level: String,
+        auto_heal: bool,
+        validation_warnings: Vec<String>,
+    },
+    GuardConfigurationError {
+        field: String,
+        error: String,
+        suggested_fix: Option<String>,
+        current_value: Option<String>,
+    },
+
+    // Guard recovery events
+    GuardRecoveryAttempt {
+        operation_id: String,
+        error_category: String,
+        recovery_strategy: String,
+        attempt_number: usize,
+        max_attempts: usize,
+    },
+    GuardRecoverySuccess {
+        operation_id: String,
+        error_category: String,
+        recovery_strategy: String,
+        attempt_number: usize,
+        recovery_duration_ms: u64,
+    },
+    GuardRecoveryFailed {
+        operation_id: String,
+        error_category: String,
+        recovery_strategy: String,
+        attempts_made: usize,
+        final_error: String,
+    },
 }
 
 /// Health status for components
@@ -565,6 +719,130 @@ impl Event {
         Self::DebugLog {
             message: message.into(),
             context: HashMap::new(),
+        }
+    }
+
+    /// Create a guard discrepancy found event
+    pub fn guard_discrepancy_found(
+        operation_id: impl Into<String>,
+        discrepancy_type: impl Into<String>,
+        severity: impl Into<String>,
+        file_path: impl Into<String>,
+        package: Option<String>,
+        package_version: Option<String>,
+        user_message: impl Into<String>,
+        technical_details: impl Into<String>,
+        auto_heal_available: bool,
+        requires_confirmation: bool,
+        estimated_fix_time_seconds: Option<u64>,
+    ) -> Self {
+        Self::GuardDiscrepancyFound {
+            operation_id: operation_id.into(),
+            discrepancy_type: discrepancy_type.into(),
+            severity: severity.into(),
+            file_path: file_path.into(),
+            package,
+            package_version,
+            user_message: user_message.into(),
+            technical_details: technical_details.into(),
+            auto_heal_available,
+            requires_confirmation,
+            estimated_fix_time_seconds,
+        }
+    }
+
+    /// Create a guard error summary event
+    pub fn guard_error_summary(
+        operation_id: impl Into<String>,
+        total_errors: usize,
+        recoverable_errors: usize,
+        manual_intervention_required: usize,
+        overall_severity: impl Into<String>,
+        user_friendly_summary: impl Into<String>,
+        recommended_actions: Vec<String>,
+    ) -> Self {
+        Self::GuardErrorSummary {
+            operation_id: operation_id.into(),
+            total_errors,
+            recoverable_errors,
+            manual_intervention_required,
+            overall_severity: overall_severity.into(),
+            user_friendly_summary: user_friendly_summary.into(),
+            recommended_actions,
+        }
+    }
+
+    /// Create a guard verification started event
+    pub fn guard_verification_started(
+        operation_id: impl Into<String>,
+        scope: impl Into<String>,
+        level: impl Into<String>,
+        packages_count: usize,
+        files_count: Option<usize>,
+    ) -> Self {
+        Self::GuardVerificationStarted {
+            operation_id: operation_id.into(),
+            scope: scope.into(),
+            level: level.into(),
+            packages_count,
+            files_count,
+        }
+    }
+
+    /// Create a guard verification completed event
+    pub fn guard_verification_completed(
+        operation_id: impl Into<String>,
+        total_discrepancies: usize,
+        by_severity: HashMap<String, usize>,
+        duration_ms: u64,
+        cache_hit_rate: f64,
+        coverage_percent: f64,
+        scope_description: impl Into<String>,
+    ) -> Self {
+        Self::GuardVerificationCompleted {
+            operation_id: operation_id.into(),
+            total_discrepancies,
+            by_severity,
+            duration_ms,
+            cache_hit_rate,
+            coverage_percent,
+            scope_description: scope_description.into(),
+        }
+    }
+
+    /// Create a guard healing result event
+    pub fn guard_healing_result(
+        operation_id: impl Into<String>,
+        discrepancy_type: impl Into<String>,
+        file_path: impl Into<String>,
+        success: bool,
+        healing_action: impl Into<String>,
+        error: Option<String>,
+        duration_ms: u64,
+    ) -> Self {
+        Self::GuardHealingResult {
+            operation_id: operation_id.into(),
+            discrepancy_type: discrepancy_type.into(),
+            file_path: file_path.into(),
+            success,
+            healing_action: healing_action.into(),
+            error,
+            duration_ms,
+        }
+    }
+
+    /// Create a guard configuration error event
+    pub fn guard_configuration_error(
+        field: impl Into<String>,
+        error: impl Into<String>,
+        suggested_fix: Option<String>,
+        current_value: Option<String>,
+    ) -> Self {
+        Self::GuardConfigurationError {
+            field: field.into(),
+            error: error.into(),
+            suggested_fix,
+            current_value,
         }
     }
 }

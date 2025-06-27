@@ -54,9 +54,9 @@ pub use small_ops::{
     audit, check_health, cleanup, history, list_packages, package_info, reposync, rollback,
     search_packages, self_update, update_vulndb, vulndb_stats,
 };
-pub use uninstall::uninstall;
+pub use uninstall::{uninstall, uninstall_with_verification};
 pub use update::update;
-pub use upgrade::upgrade;
+pub use upgrade::{upgrade, upgrade_with_verification};
 
 // Re-export audit types needed by the audit function
 pub use sps2_audit::{AuditReport, Severity};

@@ -199,7 +199,7 @@ async fn execute_command(
 
         // Large operations (delegate to specialized crates)
         Commands::Install { packages } => {
-            let report = sps2_ops::install(&ctx, &packages).await?;
+            let report = sps2_ops::install_with_verification(&ctx, &packages).await?;
             Ok(OperationResult::InstallReport(report))
         }
 
@@ -209,12 +209,12 @@ async fn execute_command(
         }
 
         Commands::Upgrade { packages } => {
-            let report = sps2_ops::upgrade(&ctx, &packages).await?;
+            let report = sps2_ops::upgrade_with_verification(&ctx, &packages).await?;
             Ok(OperationResult::InstallReport(report))
         }
 
         Commands::Uninstall { packages } => {
-            let report = sps2_ops::uninstall(&ctx, &packages).await?;
+            let report = sps2_ops::uninstall_with_verification(&ctx, &packages).await?;
             Ok(OperationResult::InstallReport(report))
         }
 
@@ -307,7 +307,7 @@ async fn build_ops_context(
     event_sender: EventSender,
     config: Config,
 ) -> Result<sps2_ops::OpsCtx, CliError> {
-    let ctx = OpsContextBuilder::new()
+    let mut ctx = OpsContextBuilder::new()
         .with_store(setup.store().clone())
         .with_state(setup.state().clone())
         .with_index(setup.index().clone())
@@ -317,6 +317,11 @@ async fn build_ops_context(
         .with_event_sender(event_sender)
         .with_config(config)
         .build()?;
+
+    // Initialize the state verification guard if enabled
+    info!("Initializing guard system");
+    ctx.initialize_guard()?;
+    info!("Guard initialization completed");
 
     Ok(ctx)
 }

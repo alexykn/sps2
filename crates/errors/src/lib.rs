@@ -9,6 +9,7 @@
 pub mod audit;
 pub mod build;
 pub mod config;
+pub mod guard;
 pub mod install;
 pub mod network;
 pub mod ops;
@@ -21,6 +22,7 @@ pub mod version;
 pub use audit::AuditError;
 pub use build::BuildError;
 pub use config::ConfigError;
+pub use guard::{GuardError, DiscrepancySeverity, RecommendedAction, DiscrepancyContext, GuardErrorSummary};
 pub use install::InstallError;
 pub use network::NetworkError;
 pub use ops::OpsError;
@@ -64,6 +66,9 @@ pub enum Error {
 
     #[error("ops error: {0}")]
     Ops(#[from] OpsError),
+
+    #[error("guard error: {0}")]
+    Guard(#[from] GuardError),
 
     #[error("internal error: {0}")]
     Internal(String),

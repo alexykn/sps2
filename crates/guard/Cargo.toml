@@ -20,6 +20,7 @@ sps2-config = { path = "../config" }
 sps2-root = { path = "../root" }
 serde = { workspace = true }
 tokio = { workspace = true, features = ["fs"] }
+futures = "0.3"
 walkdir = "2.5.0"
 uuid = { workspace = true, features = ["v4"]}
 

@@ -145,22 +145,27 @@ impl UiStyle {
                 op if op.contains("download") => "↓",
                 op if op.contains("search") => "?",
                 op if op.contains("sync") => "↺",
+                op if op.contains("verify") || op.contains("guard") => "✓",
+                op if op.contains("heal") => "+",
                 op if op.contains("qa") || op.contains("audit") => "?",
                 _ => "•",
             };
         }
 
         match operation.to_lowercase().as_str() {
-            op if op.contains("install") => "📦",
-            op if op.contains("uninstall") || op.contains("remove") => "🗑️",
-            op if op.contains("update") || op.contains("upgrade") => "⬆️",
-            op if op.contains("build") => "🔨",
-            op if op.contains("download") => "⬇️",
-            op if op.contains("search") => "🔍",
+            op if op.contains("install") => "•",
+            op if op.contains("uninstall") || op.contains("remove") => "•",
+            op if op.contains("update") || op.contains("upgrade") => "•",
+            op if op.contains("build") => "•",
+            op if op.contains("download") => "•",
+            op if op.contains("search") => "•",
             op if op.contains("sync") => "🔄",
             op if op.contains("clean") => "🧹",
             op if op.contains("rollback") => "⏪",
             op if op.contains("health") => "🩺",
+            op if op.contains("verify") || op.contains("guard") => "🔍",
+            op if op.contains("heal") => "🩹",
+            op if op.contains("cache") => "💾",
             op if op.contains("qa") || op.contains("audit") => "🔍",
             _ => "•",
         }
@@ -900,7 +905,12 @@ impl EventHandler {
 
             // Debug events (only show if debug mode enabled)
             Event::DebugLog { message, context } => {
-                if self.debug_enabled {
+                // Always show guard-related debug messages for troubleshooting
+                if self.debug_enabled
+                    || message.contains("guard")
+                    || message.contains("Guard")
+                    || message.contains("verification")
+                {
                     if context.is_empty() {
                         self.show_message(&message, EventSeverity::Debug);
                     } else {
@@ -915,6 +925,432 @@ impl EventHandler {
                         );
                     }
                 }
+            }
+
+            // Guard verification events
+            Event::GuardVerificationStarted {
+                operation_id: _,
+                scope,
+                level,
+                packages_count,
+                files_count,
+            } => {
+                let files_info = if let Some(files) = files_count {
+                    format!(" ({} files)", files)
+                } else {
+                    String::new()
+                };
+                self.show_operation_message(
+                    &format!(
+                        "Starting {} verification: {} ({} packages{})",
+                        level, scope, packages_count, files_info
+                    ),
+                    "verify",
+                    EventSeverity::Info,
+                );
+            }
+
+            Event::GuardVerificationProgress {
+                operation_id: _,
+                verified_packages,
+                total_packages,
+                current_package,
+                cache_hit_rate,
+                ..
+            } => {
+                let package_info = if let Some(pkg) = current_package {
+                    format!(" ({})", pkg)
+                } else {
+                    String::new()
+                };
+                let cache_info = if let Some(rate) = cache_hit_rate {
+                    format!(" [cache: {:.1}%]", rate * 100.0)
+                } else {
+                    String::new()
+                };
+                self.show_operation_message(
+                    &format!(
+                        "Verified {}/{} packages{}{}",
+                        verified_packages, total_packages, package_info, cache_info
+                    ),
+                    "verify",
+                    EventSeverity::Info,
+                );
+            }
+
+            Event::GuardDiscrepancyFound {
+                operation_id: _,
+                discrepancy_type,
+                severity,
+                file_path,
+                package,
+                user_message,
+                auto_heal_available,
+                requires_confirmation,
+                ..
+            } => {
+                let severity_level = match severity.to_lowercase().as_str() {
+                    "critical" => EventSeverity::Critical,
+                    "high" => EventSeverity::Error,
+                    "medium" => EventSeverity::Warning,
+                    "low" => EventSeverity::Info,
+                    _ => EventSeverity::Warning,
+                };
+
+                let package_info = if let Some(pkg) = package {
+                    format!(" [{}]", pkg)
+                } else {
+                    String::new()
+                };
+
+                let action_info = if auto_heal_available {
+                    if requires_confirmation {
+                        " (auto-heal available, confirmation required)"
+                    } else {
+                        " (auto-heal available)"
+                    }
+                } else {
+                    " (manual intervention required)"
+                };
+
+                self.show_message(
+                    &format!(
+                        "{}: {}{} - {}{}",
+                        discrepancy_type.to_uppercase(),
+                        severity.to_uppercase(),
+                        package_info,
+                        user_message,
+                        action_info
+                    ),
+                    severity_level,
+                );
+
+                // Show file path in debug mode
+                if self.debug_enabled && !file_path.is_empty() {
+                    self.show_message(&format!("  File: {}", file_path), EventSeverity::Debug);
+                }
+            }
+
+            Event::GuardVerificationCompleted {
+                operation_id: _,
+                total_discrepancies,
+                by_severity,
+                duration_ms,
+                cache_hit_rate,
+                coverage_percent,
+                scope_description,
+                ..
+            } => {
+                if total_discrepancies == 0 {
+                    self.show_operation_message(
+                        &format!("✓ Verification completed: {} ({:.1}% coverage, {:.1}% cache hits, {}ms)",
+                            scope_description, coverage_percent, cache_hit_rate * 100.0, duration_ms),
+                        "verify",
+                        EventSeverity::Success,
+                    );
+                } else {
+                    let severity_breakdown = by_severity
+                        .iter()
+                        .map(|(sev, count)| format!("{}: {}", sev, count))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    self.show_operation_message(
+                        &format!(
+                            "⚠ Verification completed: {} discrepancies found ({}) ({}ms)",
+                            total_discrepancies, severity_breakdown, duration_ms
+                        ),
+                        "verify",
+                        EventSeverity::Warning,
+                    );
+                }
+            }
+
+            Event::GuardVerificationFailed {
+                operation_id: _,
+                error,
+                packages_verified,
+                files_verified,
+                duration_ms,
+            } => {
+                self.show_operation_message(
+                    &format!(
+                        "✗ Verification failed after verifying {} packages, {} files ({}ms): {}",
+                        packages_verified, files_verified, duration_ms, error
+                    ),
+                    "verify",
+                    EventSeverity::Error,
+                );
+            }
+
+            Event::GuardErrorSummary {
+                operation_id: _,
+                total_errors,
+                recoverable_errors,
+                manual_intervention_required,
+                overall_severity,
+                user_friendly_summary,
+                recommended_actions,
+                ..
+            } => {
+                let severity_level = match overall_severity.to_lowercase().as_str() {
+                    "critical" => EventSeverity::Critical,
+                    "high" => EventSeverity::Error,
+                    "medium" => EventSeverity::Warning,
+                    "low" => EventSeverity::Info,
+                    _ => EventSeverity::Warning,
+                };
+
+                self.show_message(
+                    &format!("📋 Guard Summary: {}", user_friendly_summary),
+                    severity_level,
+                );
+
+                if !recommended_actions.is_empty() {
+                    for action in recommended_actions {
+                        self.show_message(&format!("  → {}", action), EventSeverity::Info);
+                    }
+                }
+            }
+
+            Event::GuardHealingStarted {
+                operation_id: _,
+                discrepancies_count,
+                auto_heal_count,
+                confirmation_required_count,
+                ..
+            } => {
+                self.show_operation_message(
+                    &format!(
+                        "Starting healing: {} discrepancies ({} auto, {} require confirmation)",
+                        discrepancies_count, auto_heal_count, confirmation_required_count
+                    ),
+                    "heal",
+                    EventSeverity::Info,
+                );
+            }
+
+            Event::GuardHealingProgress {
+                operation_id: _,
+                completed,
+                total,
+                current_operation,
+                current_file,
+            } => {
+                let file_info = if let Some(file) = current_file {
+                    format!(" ({})", file)
+                } else {
+                    String::new()
+                };
+                self.show_operation_message(
+                    &format!(
+                        "Healing {}/{}: {}{}",
+                        completed, total, current_operation, file_info
+                    ),
+                    "heal",
+                    EventSeverity::Info,
+                );
+            }
+
+            Event::GuardHealingResult {
+                operation_id: _,
+                file_path,
+                success,
+                healing_action,
+                error,
+                ..
+            } => {
+                if success {
+                    self.show_operation_message(
+                        &format!("✓ Healed {}: {}", file_path, healing_action),
+                        "heal",
+                        EventSeverity::Success,
+                    );
+                } else {
+                    let error_msg = error.as_deref().unwrap_or("unknown error");
+                    self.show_operation_message(
+                        &format!("✗ Failed to heal {}: {}", file_path, error_msg),
+                        "heal",
+                        EventSeverity::Error,
+                    );
+                }
+            }
+
+            Event::GuardHealingCompleted {
+                operation_id: _,
+                healed_count,
+                failed_count,
+                skipped_count,
+                duration_ms,
+            } => {
+                let total = healed_count + failed_count + skipped_count;
+                if failed_count == 0 {
+                    self.show_operation_message(
+                        &format!(
+                            "✓ Healing completed: {}/{} healed ({} skipped, {}ms)",
+                            healed_count, total, skipped_count, duration_ms
+                        ),
+                        "heal",
+                        EventSeverity::Success,
+                    );
+                } else {
+                    self.show_operation_message(
+                        &format!(
+                            "⚠ Healing completed: {} healed, {} failed, {} skipped ({}ms)",
+                            healed_count, failed_count, skipped_count, duration_ms
+                        ),
+                        "heal",
+                        EventSeverity::Warning,
+                    );
+                }
+            }
+
+            Event::GuardHealingFailed {
+                operation_id: _,
+                error,
+                completed_healing,
+                failed_healing,
+                duration_ms,
+            } => {
+                self.show_operation_message(
+                    &format!(
+                        "✗ Healing operation failed: {} ({} completed, {} failed, {}ms)",
+                        error, completed_healing, failed_healing, duration_ms
+                    ),
+                    "heal",
+                    EventSeverity::Error,
+                );
+            }
+
+            Event::GuardCacheWarming {
+                operation_id: _,
+                operation_type,
+                cache_entries_loading,
+            } => {
+                if self.debug_enabled {
+                    self.show_operation_message(
+                        &format!(
+                            "Warming cache for {}: loading {} entries",
+                            operation_type, cache_entries_loading
+                        ),
+                        "cache",
+                        EventSeverity::Debug,
+                    );
+                }
+            }
+
+            Event::GuardCacheWarmingCompleted {
+                operation_id: _,
+                cache_entries_loaded,
+                cache_hit_rate_improvement,
+                duration_ms,
+            } => {
+                if self.debug_enabled {
+                    self.show_operation_message(
+                        &format!(
+                            "Cache warmed: {} entries loaded, {:.1}% hit rate improvement ({}ms)",
+                            cache_entries_loaded,
+                            cache_hit_rate_improvement * 100.0,
+                            duration_ms
+                        ),
+                        "cache",
+                        EventSeverity::Debug,
+                    );
+                }
+            }
+
+            Event::GuardConfigurationValidated {
+                approach,
+                enabled,
+                verification_level,
+                auto_heal,
+                validation_warnings,
+            } => {
+                if self.debug_enabled {
+                    self.show_message(
+                        &format!("Guard configuration validated: {} approach, enabled={}, level={}, auto_heal={}",
+                            approach, enabled, verification_level, auto_heal),
+                        EventSeverity::Debug,
+                    );
+
+                    for warning in validation_warnings {
+                        self.show_message(
+                            &format!("  Warning: {}", warning),
+                            EventSeverity::Warning,
+                        );
+                    }
+                }
+            }
+
+            Event::GuardConfigurationError {
+                field,
+                error,
+                suggested_fix,
+                ..
+            } => {
+                if let Some(fix) = suggested_fix {
+                    self.show_message(
+                        &format!(
+                            "Configuration error in '{}': {} (suggested fix: {})",
+                            field, error, fix
+                        ),
+                        EventSeverity::Error,
+                    );
+                } else {
+                    self.show_message(
+                        &format!("Configuration error in '{}': {}", field, error),
+                        EventSeverity::Error,
+                    );
+                }
+            }
+
+            Event::GuardRecoveryAttempt {
+                operation_id: _,
+                error_category,
+                recovery_strategy,
+                attempt_number,
+                max_attempts,
+            } => {
+                if self.debug_enabled {
+                    self.show_message(
+                        &format!(
+                            "Recovery attempt {}/{} for {} error: {}",
+                            attempt_number, max_attempts, error_category, recovery_strategy
+                        ),
+                        EventSeverity::Debug,
+                    );
+                }
+            }
+
+            Event::GuardRecoverySuccess {
+                operation_id: _,
+                error_category,
+                recovery_strategy,
+                attempt_number,
+                recovery_duration_ms,
+            } => {
+                self.show_message(
+                    &format!(
+                        "✓ Recovery successful for {} error: {} (attempt {}, {}ms)",
+                        error_category, recovery_strategy, attempt_number, recovery_duration_ms
+                    ),
+                    EventSeverity::Success,
+                );
+            }
+
+            Event::GuardRecoveryFailed {
+                operation_id: _,
+                error_category,
+                recovery_strategy,
+                attempts_made,
+                final_error,
+            } => {
+                self.show_message(
+                    &format!(
+                        "✗ Recovery failed for {} error after {} attempts using {}: {}",
+                        error_category, attempts_made, recovery_strategy, final_error
+                    ),
+                    EventSeverity::Error,
+                );
             }
 
             // Catch-all for other events (silently ignore for now)

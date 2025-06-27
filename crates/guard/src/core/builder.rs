@@ -2,7 +2,7 @@
 
 use crate::cache::VerificationCache;
 use crate::core::guard::StateVerificationGuard;
-use crate::types::VerificationLevel;
+use crate::types::{GuardConfig, VerificationLevel};
 use sps2_errors::{Error, OpsError};
 use sps2_events::EventSender;
 use sps2_state::StateManager;
@@ -13,7 +13,7 @@ pub struct StateVerificationGuardBuilder {
     state_manager: Option<StateManager>,
     store: Option<PackageStore>,
     tx: Option<EventSender>,
-    level: VerificationLevel,
+    config: GuardConfig,
 }
 
 impl StateVerificationGuardBuilder {
@@ -24,7 +24,7 @@ impl StateVerificationGuardBuilder {
             state_manager: None,
             store: None,
             tx: None,
-            level: VerificationLevel::default(),
+            config: GuardConfig::default(),
         }
     }
 
@@ -52,7 +52,14 @@ impl StateVerificationGuardBuilder {
     /// Set the verification level
     #[must_use]
     pub fn with_level(mut self, level: VerificationLevel) -> Self {
-        self.level = level;
+        self.config.verification_level = level;
+        self
+    }
+
+    /// Set the guard configuration
+    #[must_use]
+    pub fn with_config(mut self, config: GuardConfig) -> Self {
+        self.config = config;
         self
     }
 
@@ -83,7 +90,7 @@ impl StateVerificationGuardBuilder {
             state_manager,
             store,
             tx,
-            self.level,
+            self.config,
             cache,
         ))
     }

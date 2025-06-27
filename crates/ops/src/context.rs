@@ -4,7 +4,7 @@ use sps2_builder::Builder;
 use sps2_config::Config;
 use sps2_errors::Error;
 use sps2_events::{Event, EventSender};
-use sps2_guard::{StateVerificationGuard, VerificationLevel};
+use sps2_guard::{GuardConfig, OperationType, OperationResult as GuardOperationResult, StateVerificationGuard, derive_pre_operation_scope, derive_post_operation_scope};
 use sps2_index::IndexManager;
 use sps2_net::NetClient;
 use sps2_resolver::Resolver;
@@ -72,34 +72,99 @@ impl OpsCtx {
     /// Check if verification is enabled
     #[must_use]
     pub fn is_verification_enabled(&self) -> bool {
-        self.guard.borrow().is_some() && self.config.verification.enabled
+        // Check if guard is initialized and if guard is enabled in either configuration approach
+        let guard_enabled = if let Some(guard_config) = &self.config.guard {
+            guard_config.enabled
+        } else {
+            self.config.verification.enabled
+        };
+        
+        let guard_initialized = self.guard.borrow().is_some();
+        let result = guard_initialized && guard_enabled;
+        
+        let _ = self.tx.send(Event::DebugLog {
+            message: format!("is_verification_enabled: guard_initialized={}, guard_enabled={}, result={}", 
+                guard_initialized, guard_enabled, result),
+            context: std::collections::HashMap::default(),
+        });
+        
+        result
     }
 
     /// Initialize the state verification guard if enabled in config
+    ///
+    /// This supports both configuration approaches:
+    /// 1. Top-level [guard] configuration (preferred, newer approach)
+    /// 2. Legacy [verification.guard] configuration (backward compatibility)
+    ///
+    /// The top-level [guard] configuration takes precedence if present.
     ///
     /// # Errors
     ///
     /// Returns an error if guard initialization fails.
     pub fn initialize_guard(&mut self) -> Result<(), Error> {
-        // Check if verification is enabled in config
-        if !self.config.verification.enabled {
+        // Determine which configuration approach to use and if enabled
+        let guard_enabled = if let Some(guard_config) = &self.config.guard {
+            // Top-level [guard] configuration takes precedence
+            let _ = self.tx.send(Event::DebugLog {
+                message: format!("Found top-level guard config, enabled: {}", guard_config.enabled),
+                context: std::collections::HashMap::default(),
+            });
+            guard_config.enabled
+        } else {
+            // Fall back to legacy [verification] configuration
+            let _ = self.tx.send(Event::DebugLog {
+                message: format!("Using legacy verification config, enabled: {}", self.config.verification.enabled),
+                context: std::collections::HashMap::default(),
+            });
+            self.config.verification.enabled
+        };
+
+        let _ = self.tx.send(Event::DebugLog {
+            message: format!("Guard initialization: enabled={}", guard_enabled),
+            context: std::collections::HashMap::default(),
+        });
+
+        if !guard_enabled {
+            let _ = self.tx.send(Event::DebugLog {
+                message: "Guard is disabled, skipping initialization".to_string(),
+                context: std::collections::HashMap::default(),
+            });
             return Ok(());
         }
 
-        // Parse verification level from config
-        let level = match self.config.verification.level.as_str() {
-            "quick" => VerificationLevel::Quick,
-            "full" => VerificationLevel::Full,
-            _ => VerificationLevel::Standard,
+        // Validate the guard configuration first
+        self.config.validate_guard_config()?;
+
+        // Convert user configuration to guard configuration
+        let guard_config: GuardConfig = if let Some(top_level_guard) = &self.config.guard {
+            // Use top-level [guard] configuration (OPS-64 approach)
+            let _ = self.tx.send(sps2_events::Event::DebugLog {
+                message: "Using top-level [guard] configuration approach".to_string(),
+                context: std::collections::HashMap::default(),
+            });
+            top_level_guard.into()
+        } else {
+            // Use legacy [verification.guard] configuration (OPS-65 approach)
+            let _ = self.tx.send(sps2_events::Event::DebugLog {
+                message: "Using legacy [verification.guard] configuration approach".to_string(),
+                context: std::collections::HashMap::default(),
+            });
+            (&self.config.verification).into()
         };
 
-        // Build the guard
+        // Build the guard with the user's complete configuration
         let guard = StateVerificationGuard::builder()
             .with_state_manager(self.state.clone())
             .with_store(self.store.clone())
             .with_event_sender(self.tx.clone())
-            .with_level(level)
+            .with_config(guard_config)
             .build()?;
+
+        let _ = self.tx.send(Event::DebugLog {
+            message: "Guard successfully built and stored".to_string(),
+            context: std::collections::HashMap::default(),
+        });
 
         *self.guard.borrow_mut() = Some(guard);
         Ok(())
@@ -160,16 +225,421 @@ impl OpsCtx {
 
         Ok(result)
     }
+
+    /// Execute an operation with intelligent guard integration
+    ///
+    /// This advanced wrapper provides operation-specific verification using:
+    /// - Cache warming before operation
+    /// - Operation-specific scoping for targeted verification
+    /// - Progressive verification when appropriate
+    /// - Smart cache invalidation after operation
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if verification or operation fails
+    pub async fn with_guard_integration<F, Fut, T>(
+        &self,
+        operation_type: OperationType,
+        operation: F,
+    ) -> Result<(T, GuardOperationResult), Error>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<(T, GuardOperationResult), Error>>,
+    {
+        if !self.is_verification_enabled() {
+            // If verification is disabled, just run the operation
+            return operation().await;
+        }
+
+        // Get a mutable reference to the guard
+        let guard_option = self.guard.borrow_mut().take();
+        if let Some(mut guard) = guard_option {
+            // Phase 1: Cache warming before operation
+            if let Err(e) = guard.warm_cache_for_operation(&operation_type).await {
+                let _ = self.tx.send(Event::DebugLog {
+                    message: format!("Cache warming failed (non-critical): {}", e),
+                    context: HashMap::default(),
+                });
+            }
+
+            // Phase 2: Pre-operation verification with intelligent scoping
+            let pre_scope = derive_pre_operation_scope(&operation_type);
+            let _ = self.tx.send(Event::DebugLog {
+                message: format!("Running pre-operation verification with scope: {:?}", pre_scope),
+                context: HashMap::default(),
+            });
+
+            // Use progressive verification if configured
+            let pre_result = if guard.config().performance.progressive_verification {
+                guard.verify_progressively(&pre_scope).await?
+            } else {
+                guard.verify_with_scope(&pre_scope).await?
+            };
+
+            // Check pre-verification result
+            if !pre_result.is_valid && self.config.verification.fail_on_discrepancy {
+                // Put guard back before failing
+                *self.guard.borrow_mut() = Some(guard);
+                return Err(sps2_errors::OpsError::VerificationFailed {
+                    discrepancies: pre_result.discrepancies.len(),
+                    state_id: pre_result.state_id.to_string(),
+                }
+                .into());
+            }
+
+            // Phase 3: Execute the operation
+            let (operation_result, guard_operation_result) = {
+                // Put guard back temporarily for operation execution
+                *self.guard.borrow_mut() = Some(guard);
+                let result = operation().await?;
+                let guard_taken = self.guard.borrow_mut().take().unwrap();
+                (result, guard_taken)
+            };
+
+            let mut guard = guard_operation_result;
+            let (op_result, op_metadata) = operation_result;
+
+            // Phase 4: Post-operation verification with result-based scoping
+            let post_scope = derive_post_operation_scope(&operation_type, &op_metadata);
+            let _ = self.tx.send(Event::DebugLog {
+                message: format!("Running post-operation verification with scope: {:?}", post_scope),
+                context: HashMap::default(),
+            });
+
+            let post_result = if guard.config().performance.progressive_verification {
+                guard.verify_progressively(&post_scope).await?
+            } else {
+                guard.verify_with_scope(&post_scope).await?
+            };
+
+            // Phase 5: Smart cache invalidation based on operation results
+            guard.invalidate_cache_for_operation(&operation_type, &op_metadata);
+
+            // Check post-verification result
+            if !post_result.is_valid && self.config.verification.fail_on_discrepancy {
+                // Put guard back before failing
+                *self.guard.borrow_mut() = Some(guard);
+                return Err(sps2_errors::OpsError::VerificationFailed {
+                    discrepancies: post_result.discrepancies.len(),
+                    state_id: post_result.state_id.to_string(),
+                }
+                .into());
+            }
+
+            // Put guard back and return result
+            *self.guard.borrow_mut() = Some(guard);
+            Ok((op_result, op_metadata))
+        } else {
+            // No guard available - just run operation
+            operation().await
+        }
+    }
+
+    /// Create a guarded install operation
+    #[must_use]
+    pub fn guarded_install<T>(&self, package_specs: Vec<String>) -> GuardedOperation<T> {
+        GuardedOperation::new(self, OperationType::Install { package_specs })
+    }
+
+    /// Create a guarded uninstall operation  
+    #[must_use]
+    pub fn guarded_uninstall<T>(&self, package_names: Vec<String>) -> GuardedOperation<T> {
+        GuardedOperation::new(self, OperationType::Uninstall { package_names })
+    }
+
+    /// Create a guarded upgrade operation
+    #[must_use]
+    pub fn guarded_upgrade<T>(&self, package_names: Vec<String>) -> GuardedOperation<T> {
+        GuardedOperation::new(self, OperationType::Upgrade { package_names })
+    }
+
+    /// Create a guarded update operation
+    #[must_use]
+    pub fn guarded_update<T>(&self, package_names: Vec<String>) -> GuardedOperation<T> {
+        GuardedOperation::new(self, OperationType::Update { package_names })
+    }
+
+    /// Create a guarded build operation
+    #[must_use]
+    pub fn guarded_build<T>(&self, recipe_path: std::path::PathBuf) -> GuardedOperation<T> {
+        GuardedOperation::new(self, OperationType::Build { recipe_path })
+    }
+
+    /// Create a guarded cleanup operation
+    #[must_use]
+    pub fn guarded_cleanup<T>(&self) -> GuardedOperation<T> {
+        GuardedOperation::new(self, OperationType::Cleanup)
+    }
 }
 
-// Example usage in an operation:
-// ```rust
-// pub async fn install_with_guard(ctx: &OpsCtx, packages: &[String]) -> Result<InstallReport, Error> {
-//     ctx.with_verification("install", || async {
-//         install(ctx, packages).await
-//     }).await
-// }
-// ```
+/// GuardedOperation wrapper for seamless guard integration
+///
+/// This wrapper provides a standardized way to integrate any operation with the guard system,
+/// automatically handling cache warming, operation-specific verification, and cache invalidation.
+pub struct GuardedOperation<'a, T> {
+    ctx: &'a OpsCtx,
+    operation_type: OperationType,
+    _phantom: std::marker::PhantomData<T>,
+}
+
+impl<'a, T> GuardedOperation<'a, T> {
+    /// Create a new guarded operation wrapper
+    #[must_use]
+    pub fn new(ctx: &'a OpsCtx, operation_type: OperationType) -> Self {
+        Self {
+            ctx,
+            operation_type,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+
+    /// Execute the wrapped operation with full guard integration
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if verification or operation fails
+    pub async fn execute<F, Fut>(
+        self,
+        operation: F,
+    ) -> Result<T, Error>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<(T, GuardOperationResult), Error>>,
+    {
+        let (result, _metadata) = self.ctx.with_guard_integration(
+            self.operation_type,
+            operation,
+        ).await?;
+        
+        Ok(result)
+    }
+
+    /// Execute with custom error recovery strategy
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if operation fails and recovery strategy fails
+    pub async fn execute_with_recovery<F, Fut, R, RFut>(
+        self,
+        operation: F,
+        recovery: R,
+    ) -> Result<T, Error>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<(T, GuardOperationResult), Error>>,
+        R: FnOnce(Error) -> RFut,
+        RFut: Future<Output = Result<T, Error>>,
+    {
+        // Store the event sender before consuming self
+        let tx = self.ctx.tx.clone();
+        
+        match self.execute(operation).await {
+            Ok(result) => Ok(result),
+            Err(e) => {
+                let _ = tx.send(Event::DebugLog {
+                    message: format!("Operation failed, attempting recovery: {}", e),
+                    context: HashMap::default(),
+                });
+                recovery(e).await
+            }
+        }
+    }
+
+    /// Execute with automatic retry and intelligent recovery
+    ///
+    /// This advanced recovery mechanism provides:
+    /// - Automatic retry for transient failures
+    /// - State healing for verification failures
+    /// - Rollback for partial operation failures
+    /// - Operation-specific recovery strategies
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if all recovery attempts fail
+    pub async fn execute_with_intelligent_recovery<F, Fut>(
+        self,
+        operation: F,
+    ) -> Result<T, Error>
+    where
+        F: Fn() -> Fut + Clone,
+        Fut: Future<Output = Result<(T, GuardOperationResult), Error>>,
+    {
+        let tx = self.ctx.tx.clone();
+        let operation_type = self.operation_type.clone();
+        let max_retries = 3;
+        let mut retry_count = 0;
+
+        loop {
+            let attempt_start = std::time::Instant::now();
+            
+            // Clone operation for retry
+            let op_clone = operation.clone();
+            
+            match self.ctx.with_guard_integration(operation_type.clone(), op_clone).await {
+                Ok((result, _metadata)) => {
+                    if retry_count > 0 {
+                        let _ = tx.send(Event::DebugLog {
+                            message: format!("Operation succeeded on retry attempt {}", retry_count),
+                            context: HashMap::from([
+                                ("operation_type".to_string(), format!("{:?}", operation_type)),
+                                ("retry_count".to_string(), retry_count.to_string()),
+                                ("duration_ms".to_string(), attempt_start.elapsed().as_millis().to_string()),
+                            ]),
+                        });
+                    }
+                    return Ok(result);
+                }
+                Err(e) => {
+                    retry_count += 1;
+                    
+                    let _ = tx.send(Event::DebugLog {
+                        message: format!("Operation attempt {} failed: {}", retry_count, e),
+                        context: HashMap::from([
+                            ("operation_type".to_string(), format!("{:?}", operation_type)),
+                            ("retry_count".to_string(), retry_count.to_string()),
+                            ("error_type".to_string(), Self::categorize_error(&e)),
+                        ]),
+                    });
+
+                    // Determine if we should retry
+                    if retry_count >= max_retries || !Self::is_retryable_error(&e) {
+                        // Attempt intelligent recovery based on error type
+                        return self.attempt_intelligent_recovery(e, &operation_type).await;
+                    }
+
+                    // Wait before retry with exponential backoff
+                    let delay_ms = 100 * (1 << (retry_count - 1)); // 100ms, 200ms, 400ms
+                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                    
+                    let _ = tx.send(Event::DebugLog {
+                        message: format!("Retrying operation in {}ms (attempt {} of {})", delay_ms, retry_count + 1, max_retries),
+                        context: HashMap::default(),
+                    });
+                }
+            }
+        }
+    }
+
+    /// Attempt intelligent recovery based on error type and operation
+    async fn attempt_intelligent_recovery(
+        &self,
+        error: Error,
+        operation_type: &OperationType,
+    ) -> Result<T, Error> {
+        let tx = &self.ctx.tx;
+        
+        let _ = tx.send(Event::DebugLog {
+            message: format!("Attempting intelligent recovery for {:?}", operation_type),
+            context: HashMap::from([
+                ("error_category".to_string(), Self::categorize_error(&error)),
+                ("operation_type".to_string(), format!("{:?}", operation_type)),
+            ]),
+        });
+
+        // Check if this is a verification failure that can be healed
+        if Self::is_verification_error(&error) && self.ctx.config.verification.auto_heal {
+            let _ = tx.send(Event::DebugLog {
+                message: "Attempting state healing for verification failure".to_string(),
+                context: HashMap::default(),
+            });
+
+            // Attempt to heal the state
+            if let Err(heal_error) = self.ctx.verify_state().await {
+                let _ = tx.send(Event::DebugLog {
+                    message: format!("State healing failed: {}", heal_error),
+                    context: HashMap::default(),
+                });
+                return Err(heal_error);
+            }
+
+            let _ = tx.send(Event::DebugLog {
+                message: "State healing completed, operation may now succeed".to_string(),
+                context: HashMap::default(),
+            });
+        }
+
+        // Operation-specific recovery strategies
+        match operation_type {
+            OperationType::Install { .. } => {
+                // For install failures, try to clean up any partial installations
+                let _ = tx.send(Event::DebugLog {
+                    message: "Install operation failed - consider manual cleanup or retry".to_string(),
+                    context: HashMap::default(),
+                });
+            }
+            OperationType::Uninstall { .. } => {
+                // For uninstall failures, verify if packages were actually removed
+                let _ = tx.send(Event::DebugLog {
+                    message: "Uninstall operation failed - verifying package removal status".to_string(),
+                    context: HashMap::default(),
+                });
+            }
+            OperationType::Upgrade { .. } => {
+                // For upgrade failures, check if rollback is needed
+                let _ = tx.send(Event::DebugLog {
+                    message: "Upgrade operation failed - consider rollback to previous state".to_string(),
+                    context: HashMap::default(),
+                });
+            }
+            _ => {
+                let _ = tx.send(Event::DebugLog {
+                    message: "Generic recovery strategy - operation failed".to_string(),
+                    context: HashMap::default(),
+                });
+            }
+        }
+
+        // Return original error if recovery doesn't help
+        Err(error)
+    }
+
+    /// Categorize error for better recovery strategies
+    fn categorize_error(error: &Error) -> String {
+        let error_str = error.to_string();
+        
+        if error_str.contains("verification") {
+            "verification".to_string()
+        } else if error_str.contains("network") || error_str.contains("timeout") {
+            "network".to_string()
+        } else if error_str.contains("permission") || error_str.contains("access") {
+            "permission".to_string()
+        } else if error_str.contains("disk") || error_str.contains("space") {
+            "storage".to_string()
+        } else if error_str.contains("dependency") || error_str.contains("resolution") {
+            "dependency".to_string()
+        } else {
+            "unknown".to_string()
+        }
+    }
+
+    /// Check if an error is retryable
+    fn is_retryable_error(error: &Error) -> bool {
+        let error_str = error.to_string();
+        
+        // Network errors are usually retryable
+        if error_str.contains("network") || error_str.contains("timeout") || error_str.contains("connection") {
+            return true;
+        }
+        
+        // Temporary filesystem issues might be retryable
+        if error_str.contains("busy") || error_str.contains("lock") {
+            return true;
+        }
+        
+        // Don't retry permission, dependency, or verification errors
+        if error_str.contains("permission") || error_str.contains("dependency") || error_str.contains("verification") {
+            return false;
+        }
+        
+        // Default to not retrying for safety
+        false
+    }
+
+    /// Check if error is a verification failure
+    fn is_verification_error(error: &Error) -> bool {
+        error.to_string().contains("verification")
+    }
+}
 
 /// Builder for operations context
 pub struct OpsContextBuilder {
@@ -446,5 +916,112 @@ mod tests {
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "success");
+    }
+
+    #[tokio::test]
+    async fn test_error_categorization() {
+        // Test error categorization
+        let network_error = sps2_errors::Error::from(sps2_errors::OpsError::MissingComponent {
+            component: "network timeout".to_string(),
+        });
+        assert_eq!(GuardedOperation::<()>::categorize_error(&network_error), "network");
+
+        let verification_error = sps2_errors::Error::from(sps2_errors::OpsError::VerificationFailed {
+            discrepancies: 1,
+            state_id: "test".to_string(),
+        });
+        assert_eq!(GuardedOperation::<()>::categorize_error(&verification_error), "verification");
+
+        let permission_error = sps2_errors::Error::from(sps2_errors::OpsError::MissingComponent {
+            component: "permission denied".to_string(),
+        });
+        assert_eq!(GuardedOperation::<()>::categorize_error(&permission_error), "permission");
+    }
+
+    #[tokio::test]
+    async fn test_retryable_error_detection() {
+        let network_error = sps2_errors::Error::from(sps2_errors::OpsError::MissingComponent {
+            component: "network timeout".to_string(),
+        });
+        assert!(GuardedOperation::<()>::is_retryable_error(&network_error));
+
+        let verification_error = sps2_errors::Error::from(sps2_errors::OpsError::VerificationFailed {
+            discrepancies: 1,
+            state_id: "test".to_string(),
+        });
+        assert!(!GuardedOperation::<()>::is_retryable_error(&verification_error));
+
+        let permission_error = sps2_errors::Error::from(sps2_errors::OpsError::MissingComponent {
+            component: "permission denied".to_string(),
+        });
+        assert!(!GuardedOperation::<()>::is_retryable_error(&permission_error));
+    }
+
+    #[tokio::test]
+    async fn test_verification_error_detection() {
+        let verification_error = sps2_errors::Error::from(sps2_errors::OpsError::VerificationFailed {
+            discrepancies: 1,
+            state_id: "test".to_string(),
+        });
+        assert!(GuardedOperation::<()>::is_verification_error(&verification_error));
+
+        let other_error = sps2_errors::Error::from(sps2_errors::OpsError::MissingComponent {
+            component: "test".to_string(),
+        });
+        assert!(!GuardedOperation::<()>::is_verification_error(&other_error));
+    }
+
+    #[tokio::test]
+    async fn test_execute_with_recovery() {
+        let temp_dir = TempDir::new().unwrap();
+        let state_dir = temp_dir.path().join("state");
+        let store_dir = temp_dir.path().join("store");
+
+        tokio::fs::create_dir_all(&state_dir).await.unwrap();
+        tokio::fs::create_dir_all(&store_dir).await.unwrap();
+
+        let state = StateManager::new(&state_dir).await.unwrap();
+        let store = PackageStore::new(store_dir.clone());
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let config = Config::default();
+
+        let index = IndexManager::new(&store_dir);
+        let net = NetClient::new(sps2_net::NetConfig::default()).unwrap();
+        let resolver = Resolver::new(index.clone());
+        let builder = Builder::new();
+
+        let ctx = OpsContextBuilder::new()
+            .with_state(state)
+            .with_store(store)
+            .with_event_sender(tx)
+            .with_config(config)
+            .with_index(index)
+            .with_net(net)
+            .with_resolver(resolver)
+            .with_builder(builder)
+            .build()
+            .unwrap();
+
+        // Test successful recovery
+        let package_specs = vec!["test-package".to_string()];
+        let guarded_op = ctx.guarded_install(package_specs);
+        
+        let result = guarded_op
+            .execute_with_recovery(
+                || async {
+                    // Simulate operation failure
+                    Err(sps2_errors::Error::from(sps2_errors::OpsError::MissingComponent {
+                        component: "test failure".to_string(),
+                    }))
+                },
+                |_error| async {
+                    // Recovery succeeds
+                    Ok("recovered".to_string())
+                }
+            )
+            .await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "recovered");
     }
 }

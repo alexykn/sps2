@@ -1,11 +1,12 @@
 //! Type definitions for state verification and healing
 
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use uuid::Uuid;
+use sps2_errors::{DiscrepancySeverity, RecommendedAction, DiscrepancyContext};
 
 /// Verification level for state checking
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub enum VerificationLevel {
     /// Quick check - file existence only
     Quick,
@@ -168,6 +169,258 @@ pub enum Discrepancy {
     },
 }
 
+impl Discrepancy {
+    /// Get user-friendly context for this discrepancy
+    #[must_use]
+    pub fn user_context(&self) -> DiscrepancyContext {
+        match self {
+            Self::MissingFile { package_name, package_version, file_path } => {
+                DiscrepancyContext::new(
+                    DiscrepancySeverity::High,
+                    RecommendedAction::AutoHeal,
+                    format!(
+                        "Missing file '{}' from package '{}' v{}. This may cause the application to malfunction.",
+                        file_path, package_name, package_version
+                    ),
+                    format!("Expected file {} from {}:{} not found in filesystem", file_path, package_name, package_version),
+                )
+                .with_manual_steps(vec![
+                    format!("Reinstall package: sps2 install {}:{}", package_name, package_version),
+                    format!("Check if file was manually deleted: {}", file_path),
+                    "Run full system verification: sps2 verify --heal".to_string(),
+                ])
+                .with_prevention_tips(vec![
+                    "Avoid manually deleting package files".to_string(),
+                    "Use sps2 uninstall to remove packages properly".to_string(),
+                    "Run regular verification checks".to_string(),
+                ])
+                .with_estimated_fix_time(Duration::from_secs(30))
+            }
+            Self::TypeMismatch { package_name, package_version, file_path, expected_directory, actual_directory } => {
+                let expected_type = if *expected_directory { "directory" } else { "file" };
+                let actual_type = if *actual_directory { "directory" } else { "file" };
+                
+                DiscrepancyContext::new(
+                    DiscrepancySeverity::High,
+                    RecommendedAction::UserConfirmation,
+                    format!(
+                        "Type mismatch for '{}' from package '{}' v{}: expected {} but found {}. This will prevent proper operation.",
+                        file_path, package_name, package_version, expected_type, actual_type
+                    ),
+                    format!("Path {} should be {} but is {}", file_path, expected_type, actual_type),
+                )
+                .with_manual_steps(vec![
+                    format!("Remove conflicting {}: rm -rf '{}'", actual_type, file_path),
+                    format!("Reinstall package: sps2 install {}:{}", package_name, package_version),
+                    "Verify system integrity: sps2 verify".to_string(),
+                ])
+                .with_prevention_tips(vec![
+                    "Avoid creating files/directories with package names".to_string(),
+                    "Let sps2 manage package directory structure".to_string(),
+                ])
+                .with_estimated_fix_time(Duration::from_secs(45))
+            }
+            Self::CorruptedFile { package_name, package_version, file_path, expected_hash, actual_hash } => {
+                DiscrepancyContext::new(
+                    DiscrepancySeverity::Critical,
+                    RecommendedAction::UserConfirmation,
+                    format!(
+                        "File '{}' from package '{}' v{} has been modified or corrupted. This could indicate tampering, disk errors, or manual modifications.",
+                        file_path, package_name, package_version
+                    ),
+                    format!(
+                        "Hash mismatch for {}: expected {} but got {}",
+                        file_path, expected_hash, actual_hash
+                    ),
+                )
+                .with_manual_steps(vec![
+                    "Back up the modified file if it contains important changes".to_string(),
+                    format!("Restore original file: sps2 install {}:{} --force", package_name, package_version),
+                    "Check disk integrity if corruption is suspected".to_string(),
+                    "Review recent manual modifications".to_string(),
+                ])
+                .with_prevention_tips(vec![
+                    "Avoid manually editing package files".to_string(),
+                    "Use configuration files for customization".to_string(),
+                    "Run regular disk health checks".to_string(),
+                    "Monitor system for unauthorized access".to_string(),
+                ])
+                .with_estimated_fix_time(Duration::from_secs(60))
+            }
+            Self::OrphanedFile { file_path, category } => {
+                let (severity, action, message) = match category {
+                    OrphanedFileCategory::Leftover => (
+                        DiscrepancySeverity::Medium,
+                        RecommendedAction::AutoHeal,
+                        format!("Leftover file '{}' from a previous package version. Safe to remove.", file_path)
+                    ),
+                    OrphanedFileCategory::UserCreated => (
+                        DiscrepancySeverity::Low,
+                        RecommendedAction::Ignore,
+                        format!("User-created file '{}' found in package directory. Consider moving to appropriate location.", file_path)
+                    ),
+                    OrphanedFileCategory::Temporary => (
+                        DiscrepancySeverity::Low,
+                        RecommendedAction::AutoHeal,
+                        format!("Temporary file '{}' should be cleaned up.", file_path)
+                    ),
+                    OrphanedFileCategory::System => (
+                        DiscrepancySeverity::Low,
+                        RecommendedAction::Ignore,
+                        format!("System file '{}' detected in package directory. Preserving.", file_path)
+                    ),
+                    OrphanedFileCategory::Unknown => (
+                        DiscrepancySeverity::Medium,
+                        RecommendedAction::UserConfirmation,
+                        format!("Unknown file '{}' found in package directory. Manual review recommended.", file_path)
+                    ),
+                };
+
+                let mut context = DiscrepancyContext::new(
+                    severity,
+                    action,
+                    message,
+                    format!("Orphaned file: {} (category: {:?})", file_path, category),
+                );
+
+                match category {
+                    OrphanedFileCategory::UserCreated => {
+                        context = context
+                            .with_manual_steps(vec![
+                                format!("Review file contents: cat '{}'", file_path),
+                                "Move to appropriate user directory if needed".to_string(),
+                                "Add to .gitignore if this is a project directory".to_string(),
+                            ])
+                            .with_prevention_tips(vec![
+                                "Store user files outside package directories".to_string(),
+                                "Use designated config/data directories".to_string(),
+                            ]);
+                    }
+                    OrphanedFileCategory::Unknown => {
+                        context = context
+                            .with_manual_steps(vec![
+                                format!("Examine file: file '{}'", file_path),
+                                format!("Check file contents: head '{}'", file_path),
+                                "Determine if file is needed".to_string(),
+                                "Remove if safe, or move to appropriate location".to_string(),
+                            ])
+                            .with_prevention_tips(vec![
+                                "Investigate source of unknown files".to_string(),
+                                "Review recent system changes".to_string(),
+                            ]);
+                    }
+                    _ => {}
+                }
+
+                context.with_estimated_fix_time(Duration::from_secs(15))
+            }
+            Self::MissingVenv { package_name, package_version, venv_path } => {
+                DiscrepancyContext::new(
+                    DiscrepancySeverity::High,
+                    RecommendedAction::AutoHeal,
+                    format!(
+                        "Python virtual environment missing for package '{}' v{} at '{}'. Python packages may not function correctly.",
+                        package_name, package_version, venv_path
+                    ),
+                    format!("Expected virtual environment {} for {}:{} not found", venv_path, package_name, package_version),
+                )
+                .with_manual_steps(vec![
+                    format!("Recreate virtual environment: python -m venv '{}'", venv_path),
+                    format!("Reinstall Python package: sps2 install {}:{}", package_name, package_version),
+                    "Verify Python packages: sps2 verify --scope python".to_string(),
+                ])
+                .with_prevention_tips(vec![
+                    "Avoid manually deleting virtual environments".to_string(),
+                    "Use sps2 for Python package management".to_string(),
+                    "Regular system verification catches venv issues early".to_string(),
+                ])
+                .with_estimated_fix_time(Duration::from_secs(120))
+            }
+        }
+    }
+
+    /// Get the severity level for this discrepancy
+    #[must_use]
+    pub fn severity(&self) -> DiscrepancySeverity {
+        self.user_context().severity
+    }
+
+    /// Get the recommended action for this discrepancy
+    #[must_use]
+    pub fn recommended_action(&self) -> RecommendedAction {
+        self.user_context().recommended_action
+    }
+
+    /// Check if this discrepancy can be automatically healed
+    #[must_use]
+    pub fn can_auto_heal(&self) -> bool {
+        matches!(
+            self.recommended_action(),
+            RecommendedAction::AutoHeal
+        )
+    }
+
+    /// Check if this discrepancy requires user confirmation before healing
+    #[must_use]
+    pub fn requires_confirmation(&self) -> bool {
+        matches!(
+            self.recommended_action(),
+            RecommendedAction::UserConfirmation
+        )
+    }
+
+    /// Get a short, user-friendly description of the discrepancy
+    #[must_use]
+    pub fn short_description(&self) -> String {
+        match self {
+            Self::MissingFile { file_path, .. } => format!("Missing file: {}", file_path),
+            Self::TypeMismatch { file_path, expected_directory, .. } => {
+                let expected = if *expected_directory { "directory" } else { "file" };
+                format!("Wrong type for {}: expected {}", file_path, expected)
+            }
+            Self::CorruptedFile { file_path, .. } => format!("Corrupted file: {}", file_path),
+            Self::OrphanedFile { file_path, category } => format!("Orphaned {:?}: {}", category, file_path),
+            Self::MissingVenv { venv_path, .. } => format!("Missing virtual environment: {}", venv_path),
+        }
+    }
+
+    /// Get the affected file path for this discrepancy
+    #[must_use]
+    pub fn file_path(&self) -> &str {
+        match self {
+            Self::MissingFile { file_path, .. }
+            | Self::TypeMismatch { file_path, .. }
+            | Self::CorruptedFile { file_path, .. }
+            | Self::OrphanedFile { file_path, .. } => file_path,
+            Self::MissingVenv { venv_path, .. } => venv_path,
+        }
+    }
+
+    /// Get the package name for this discrepancy (if applicable)
+    #[must_use]
+    pub fn package_name(&self) -> Option<&str> {
+        match self {
+            Self::MissingFile { package_name, .. }
+            | Self::TypeMismatch { package_name, .. }
+            | Self::CorruptedFile { package_name, .. }
+            | Self::MissingVenv { package_name, .. } => Some(package_name),
+            Self::OrphanedFile { .. } => None,
+        }
+    }
+
+    /// Get the package version for this discrepancy (if applicable)
+    #[must_use]
+    pub fn package_version(&self) -> Option<&str> {
+        match self {
+            Self::MissingFile { package_version, .. }
+            | Self::TypeMismatch { package_version, .. }
+            | Self::CorruptedFile { package_version, .. }
+            | Self::MissingVenv { package_version, .. } => Some(package_version),
+            Self::OrphanedFile { .. } => None,
+        }
+    }
+}
+
 /// Result of verification check
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct VerificationResult {
@@ -282,6 +535,10 @@ pub struct VerificationContext<'a> {
     pub state_id: &'a uuid::Uuid,
     /// Live directory path
     pub live_path: &'a Path,
+    /// Guard configuration for policies and settings
+    pub guard_config: &'a GuardConfig,
+    /// Event sender for logging (optional)
+    pub tx: Option<&'a sps2_events::EventSender>,
 }
 
 /// Context for healing operations to reduce argument count
@@ -292,4 +549,556 @@ pub struct HealingContext<'a> {
     pub store: &'a sps2_store::PackageStore,
     /// Event sender for progress reporting
     pub tx: &'a sps2_events::EventSender,
+}
+
+/// Policy for handling symlinks during verification
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum SymlinkPolicy {
+    /// Verify symlinks strictly - fail on any symlink issues
+    Strict,
+    /// Be lenient with symlinks - log issues but don't fail verification
+    /// Useful for bootstrap directories like /opt/pm/live/bin
+    Lenient,
+    /// Ignore symlinks entirely - skip symlink verification
+    Ignore,
+}
+
+impl Default for SymlinkPolicy {
+    fn default() -> Self {
+        Self::Strict
+    }
+}
+
+/// Performance configuration for guard operations
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PerformanceConfig {
+    /// Enable verification cache for faster repeated verifications
+    pub use_cache: bool,
+    /// Enable parallel verification of multiple packages
+    pub parallel_verification: bool,
+    /// Pre-warm cache before operations
+    pub cache_warming: bool,
+    /// Use progressive verification (Quick → Standard → Full as needed)
+    pub progressive_verification: bool,
+    /// Maximum number of concurrent verification tasks
+    pub max_concurrent_tasks: usize,
+    /// Timeout for individual verification operations
+    pub verification_timeout: Duration,
+}
+
+impl Default for PerformanceConfig {
+    fn default() -> Self {
+        Self {
+            use_cache: true,
+            parallel_verification: true,
+            cache_warming: true,
+            progressive_verification: true,
+            max_concurrent_tasks: 8,
+            verification_timeout: Duration::from_secs(300), // 5 minutes
+        }
+    }
+}
+
+/// Comprehensive guard configuration
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct GuardConfig {
+    /// Verification level to use
+    pub verification_level: VerificationLevel,
+    /// Whether to automatically heal discrepancies
+    pub auto_heal: bool,
+    /// Whether to fail operations on verification discrepancies
+    pub fail_on_discrepancy: bool,
+    /// Policy for handling symlinks
+    pub symlink_policy: SymlinkPolicy,
+    /// Performance configuration
+    pub performance: PerformanceConfig,
+    /// Directories where symlinks should be handled leniently
+    pub lenient_symlink_directories: Vec<PathBuf>,
+}
+
+impl Default for GuardConfig {
+    fn default() -> Self {
+        Self {
+            verification_level: VerificationLevel::Standard,
+            auto_heal: true,
+            fail_on_discrepancy: false,
+            symlink_policy: SymlinkPolicy::Lenient,
+            performance: PerformanceConfig::default(),
+            lenient_symlink_directories: vec![
+                PathBuf::from("/opt/pm/live/bin"),
+                PathBuf::from("/opt/pm/live/sbin"),
+            ],
+        }
+    }
+}
+
+/// Type of package operation being performed
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum OperationType {
+    /// Install new packages
+    Install {
+        /// Package specifications to install
+        package_specs: Vec<String>,
+    },
+    /// Remove existing packages
+    Uninstall {
+        /// Package names to remove
+        package_names: Vec<String>,
+    },
+    /// Upgrade packages to latest versions (ignore upper bounds)
+    Upgrade {
+        /// Package names to upgrade (empty = all packages)
+        package_names: Vec<String>,
+    },
+    /// Update packages respecting constraints
+    Update {
+        /// Package names to update (empty = all packages)
+        package_names: Vec<String>,
+    },
+    /// Build package from recipe (only in scope if install is triggered)
+    Build {
+        /// Recipe path
+        recipe_path: PathBuf,
+    },
+    /// Rollback to previous state
+    Rollback {
+        /// Target state ID (None = previous state)
+        target_state_id: Option<uuid::Uuid>,
+    },
+    /// Clean up orphaned data
+    Cleanup,
+    /// Verify system state
+    Verify {
+        /// Scope for verification
+        scope: VerificationScope,
+    },
+}
+
+impl OperationType {
+    /// Get the impact level of this operation for verification planning
+    #[must_use]
+    pub fn impact_level(&self) -> OperationImpact {
+        match self {
+            Self::Install { .. } | Self::Uninstall { .. } | Self::Rollback { .. } => {
+                OperationImpact::High
+            }
+            Self::Upgrade { package_names } | Self::Update { package_names } => {
+                if package_names.is_empty() {
+                    OperationImpact::High // All packages
+                } else {
+                    OperationImpact::Medium // Specific packages
+                }
+            }
+            Self::Build { .. } => {
+                // Build itself has low impact - only install afterward has impact
+                OperationImpact::Low
+            }
+            Self::Cleanup => OperationImpact::Medium,
+            Self::Verify { .. } => OperationImpact::Low,
+        }
+    }
+
+    /// Get the recommended verification level for this operation
+    #[must_use]
+    pub fn recommended_verification_level(&self) -> VerificationLevel {
+        match self.impact_level() {
+            OperationImpact::High => VerificationLevel::Standard,
+            OperationImpact::Medium => VerificationLevel::Standard,
+            OperationImpact::Low => VerificationLevel::Quick,
+        }
+    }
+
+    /// Check if this operation modifies the system state
+    #[must_use]
+    pub fn modifies_state(&self) -> bool {
+        match self {
+            Self::Install { .. }
+            | Self::Uninstall { .. }
+            | Self::Upgrade { .. }
+            | Self::Update { .. }
+            | Self::Rollback { .. }
+            | Self::Cleanup => true,
+            Self::Build { .. } | Self::Verify { .. } => false,
+        }
+    }
+}
+
+/// Impact level of an operation
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OperationImpact {
+    /// High impact - affects many packages or system-wide changes
+    High,
+    /// Medium impact - affects specific packages or moderate changes
+    Medium,
+    /// Low impact - minimal or no changes
+    Low,
+}
+
+/// Result of an operation for post-verification scoping
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct OperationResult {
+    /// Packages that were installed
+    pub installed: Vec<PackageChange>,
+    /// Packages that were updated
+    pub updated: Vec<PackageChange>,
+    /// Packages that were removed
+    pub removed: Vec<PackageChange>,
+    /// New state ID after operation
+    pub state_id: uuid::Uuid,
+    /// Operation duration in milliseconds
+    pub duration_ms: u64,
+    /// Directories that were modified
+    pub modified_directories: Vec<PathBuf>,
+    /// Whether install was triggered during build operation
+    pub install_triggered: bool,
+}
+
+/// Information about a package change
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PackageChange {
+    /// Package name
+    pub name: String,
+    /// Previous version (None for new installs)
+    pub from_version: Option<String>,
+    /// New version (None for removals)
+    pub to_version: Option<String>,
+    /// Package size in bytes
+    pub size: Option<u64>,
+}
+
+/// Derive verification scope for pre-operation verification
+///
+/// This determines what should be verified before an operation starts
+/// to ensure the system is in a consistent state.
+pub fn derive_pre_operation_scope(operation: &OperationType) -> VerificationScope {
+    match operation {
+        OperationType::Install { package_specs } => {
+            // For install, verify that we're not overwriting existing packages
+            // and that the system is clean for dependency resolution
+            if package_specs.len() == 1 {
+                // Single package install - can be scoped to related directories
+                VerificationScope::Directory {
+                    path: PathBuf::from("/opt/pm/live"),
+                }
+            } else {
+                // Multiple packages - full verification for safety
+                VerificationScope::Full
+            }
+        }
+        OperationType::Uninstall { package_names } => {
+            // Verify the packages we're about to remove actually exist and are consistent
+            let packages = package_names
+                .iter()
+                .map(|name| (name.clone(), "*".to_string())) // Version will be resolved
+                .collect();
+            VerificationScope::Packages { packages }
+        }
+        OperationType::Upgrade { package_names } | OperationType::Update { package_names } => {
+            if package_names.is_empty() {
+                // All packages - full verification
+                VerificationScope::Full
+            } else {
+                // Specific packages - verify only those
+                let packages = package_names
+                    .iter()
+                    .map(|name| (name.clone(), "*".to_string()))
+                    .collect();
+                VerificationScope::Packages { packages }
+            }
+        }
+        OperationType::Build { .. } => {
+            // Build operations don't modify live system - no pre-verification needed
+            VerificationScope::Directory {
+                path: PathBuf::from("/tmp"), // Minimal scope - just to satisfy the interface
+            }
+        }
+        OperationType::Rollback { .. } => {
+            // Rollback affects everything - full verification
+            VerificationScope::Full
+        }
+        OperationType::Cleanup => {
+            // Cleanup affects orphaned data - verify store and state consistency
+            VerificationScope::Full
+        }
+        OperationType::Verify { scope } => {
+            // For verify operations, use the specified scope
+            scope.clone()
+        }
+    }
+}
+
+/// Derive verification scope for post-operation verification
+///
+/// This determines what should be verified after an operation completes
+/// to ensure the operation succeeded and the system is consistent.
+pub fn derive_post_operation_scope(
+    operation: &OperationType,
+    result: &OperationResult,
+) -> VerificationScope {
+    // Collect all affected packages from the operation result
+    let mut affected_packages = Vec::new();
+    let mut modified_directories = result.modified_directories.clone();
+
+    // Add packages that were installed
+    for package in &result.installed {
+        if let Some(version) = &package.to_version {
+            affected_packages.push((package.name.clone(), version.clone()));
+        }
+    }
+
+    // Add packages that were updated
+    for package in &result.updated {
+        if let Some(version) = &package.to_version {
+            affected_packages.push((package.name.clone(), version.clone()));
+        }
+    }
+
+    // For removed packages, verify they're actually gone
+    let removed_packages: Vec<_> = result
+        .removed
+        .iter()
+        .map(|p| (p.name.clone(), p.from_version.clone().unwrap_or_else(|| "*".to_string())))
+        .collect();
+
+    match operation {
+        OperationType::Install { .. } => {
+            // Verify newly installed packages and their dependencies
+            if affected_packages.is_empty() {
+                VerificationScope::Directory {
+                    path: PathBuf::from("/opt/pm/live"),
+                }
+            } else {
+                VerificationScope::Packages {
+                    packages: affected_packages,
+                }
+            }
+        }
+        OperationType::Uninstall { .. } => {
+            // Verify packages are removed and check for orphaned files
+            if modified_directories.is_empty() {
+                modified_directories.push(PathBuf::from("/opt/pm/live"));
+            }
+            
+            if removed_packages.is_empty() && affected_packages.is_empty() {
+                VerificationScope::Full
+            } else {
+                VerificationScope::Mixed {
+                    packages: affected_packages,
+                    directories: modified_directories,
+                }
+            }
+        }
+        OperationType::Upgrade { package_names } | OperationType::Update { package_names } => {
+            if package_names.is_empty() || affected_packages.len() > 10 {
+                // Many packages updated - full verification
+                VerificationScope::Full
+            } else {
+                // Specific packages updated - verify only those
+                VerificationScope::Packages {
+                    packages: affected_packages,
+                }
+            }
+        }
+        OperationType::Build { .. } => {
+            if result.install_triggered {
+                // Install was triggered during build - verify the installed package
+                // This follows the same logic as Install operations
+                if affected_packages.is_empty() {
+                    VerificationScope::Directory {
+                        path: PathBuf::from("/opt/pm/live"),
+                    }
+                } else {
+                    VerificationScope::Packages {
+                        packages: affected_packages,
+                    }
+                }
+            } else {
+                // Just built without install - minimal verification (build doesn't modify live system)
+                VerificationScope::Directory {
+                    path: PathBuf::from("/tmp"), // Minimal scope
+                }
+            }
+        }
+        OperationType::Rollback { .. } => {
+            // Rollback changes everything - full verification required
+            VerificationScope::Full
+        }
+        OperationType::Cleanup => {
+            // Cleanup may affect many areas - full verification
+            VerificationScope::Full
+        }
+        OperationType::Verify { .. } => {
+            // Verify operations don't change state - no post-verification needed
+            VerificationScope::Directory {
+                path: PathBuf::from("/tmp"), // Minimal scope
+            }
+        }
+    }
+}
+
+/// Smart scope selection based on operation impact and system state
+///
+/// This function provides intelligent scope selection that balances
+/// verification thoroughness with performance.
+pub fn select_smart_scope(
+    operation: &OperationType,
+    pre_operation: bool,
+    system_package_count: usize,
+) -> VerificationScope {
+    let base_scope = if pre_operation {
+        derive_pre_operation_scope(operation)
+    } else {
+        // For post-operation, we need the result, so fall back to operation-based logic
+        match operation {
+            OperationType::Install { package_specs } => {
+                if package_specs.len() == 1 {
+                    VerificationScope::Directory {
+                        path: PathBuf::from("/opt/pm/live"),
+                    }
+                } else {
+                    VerificationScope::Full
+                }
+            }
+            OperationType::Uninstall { package_names } => {
+                let packages = package_names
+                    .iter()
+                    .map(|name| (name.clone(), "*".to_string()))
+                    .collect();
+                VerificationScope::Packages { packages }
+            }
+            OperationType::Build { .. } => {
+                // Build operations have minimal scope - no state modification
+                VerificationScope::Directory {
+                    path: PathBuf::from("/tmp"),
+                }
+            }
+            _ => derive_pre_operation_scope(operation),
+        }
+    };
+
+    // Apply performance optimizations based on system size
+    match base_scope {
+        VerificationScope::Full if system_package_count > 100 => {
+            // For large systems, consider using directory-based verification
+            // for medium-impact operations
+            if operation.impact_level() == OperationImpact::Medium {
+                VerificationScope::Directory {
+                    path: PathBuf::from("/opt/pm/live"),
+                }
+            } else {
+                base_scope
+            }
+        }
+        _ => base_scope,
+    }
+}
+
+// Configuration conversions from sps2-config types
+
+/// Convert config SymlinkPolicyConfig to guard SymlinkPolicy
+impl From<sps2_config::SymlinkPolicyConfig> for SymlinkPolicy {
+    fn from(config: sps2_config::SymlinkPolicyConfig) -> Self {
+        match config {
+            sps2_config::SymlinkPolicyConfig::Strict => Self::Strict,
+            sps2_config::SymlinkPolicyConfig::LenientBootstrap => Self::Lenient, // Maps to existing Lenient
+            sps2_config::SymlinkPolicyConfig::LenientAll => Self::Lenient,
+            sps2_config::SymlinkPolicyConfig::Ignore => Self::Ignore,
+        }
+    }
+}
+
+/// Convert config PerformanceConfigToml to guard PerformanceConfig
+impl From<&sps2_config::PerformanceConfigToml> for PerformanceConfig {
+    fn from(config: &sps2_config::PerformanceConfigToml) -> Self {
+        Self {
+            use_cache: config.use_cache,
+            parallel_verification: config.parallel_verification,
+            cache_warming: config.cache_warming,
+            progressive_verification: config.progressive_verification,
+            max_concurrent_tasks: config.max_concurrent_tasks,
+            verification_timeout: Duration::from_secs(config.verification_timeout_seconds),
+        }
+    }
+}
+
+/// Convert config VerificationConfig to guard GuardConfig
+impl From<&sps2_config::VerificationConfig> for GuardConfig {
+    fn from(config: &sps2_config::VerificationConfig) -> Self {
+        // Parse verification level
+        let verification_level = match config.level.as_str() {
+            "quick" => VerificationLevel::Quick,
+            "full" => VerificationLevel::Full,
+            _ => VerificationLevel::Standard,
+        };
+
+        // Determine symlink policy with intelligent defaults
+        let symlink_policy = match config.guard.symlink_policy {
+            sps2_config::SymlinkPolicyConfig::LenientBootstrap => {
+                // For backward compatibility, use lenient policy for bootstrap directories
+                SymlinkPolicy::Lenient
+            }
+            other => other.into(),
+        };
+
+        Self {
+            verification_level,
+            auto_heal: config.auto_heal,
+            fail_on_discrepancy: config.fail_on_discrepancy,
+            symlink_policy,
+            performance: (&config.performance).into(),
+            lenient_symlink_directories: config.guard.lenient_symlink_directories.clone(),
+        }
+    }
+}
+
+// Conversions for top-level guard configuration
+
+/// Convert config GuardSymlinkPolicy to guard SymlinkPolicy
+impl From<sps2_config::GuardSymlinkPolicy> for SymlinkPolicy {
+    fn from(config: sps2_config::GuardSymlinkPolicy) -> Self {
+        match config {
+            sps2_config::GuardSymlinkPolicy::Strict => Self::Strict,
+            sps2_config::GuardSymlinkPolicy::Lenient => Self::Lenient,
+            sps2_config::GuardSymlinkPolicy::Ignore => Self::Ignore,
+        }
+    }
+}
+
+/// Convert config GuardPerformanceConfig to guard PerformanceConfig
+impl From<&sps2_config::GuardPerformanceConfig> for PerformanceConfig {
+    fn from(config: &sps2_config::GuardPerformanceConfig) -> Self {
+        Self {
+            use_cache: config.use_cache,
+            parallel_verification: config.parallel_verification,
+            cache_warming: config.cache_warming,
+            progressive_verification: config.progressive_verification,
+            max_concurrent_tasks: config.max_concurrent_tasks,
+            verification_timeout: Duration::from_secs(config.verification_timeout_seconds),
+        }
+    }
+}
+
+/// Convert config GuardConfiguration to guard GuardConfig
+impl From<&sps2_config::GuardConfiguration> for GuardConfig {
+    fn from(config: &sps2_config::GuardConfiguration) -> Self {
+        // Parse verification level
+        let verification_level = match config.verification_level.as_str() {
+            "quick" => VerificationLevel::Quick,
+            "full" => VerificationLevel::Full,
+            _ => VerificationLevel::Standard,
+        };
+
+        Self {
+            verification_level,
+            auto_heal: config.auto_heal,
+            fail_on_discrepancy: config.fail_on_discrepancy,
+            symlink_policy: config.symlink_policy.into(),
+            performance: (&config.performance).into(),
+            lenient_symlink_directories: config
+                .lenient_symlink_directories
+                .iter()
+                .map(|dir_config| dir_config.path.clone())
+                .collect(),
+        }
+    }
 }

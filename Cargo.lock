@@ -3519,6 +3519,7 @@ dependencies = [
 name = "sps2-guard"
 version = "0.1.0"
 dependencies = [
+ "futures",
  "serde",
  "sps2-config",
  "sps2-errors",

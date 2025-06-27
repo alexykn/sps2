@@ -187,4 +187,32 @@ impl VerificationCache {
         // Persistence to be implemented at StateVerificationGuard level if needed
         Ok(())
     }
+
+    /// Invalidate all cache entries for all versions of a package
+    ///
+    /// This removes all cached verification results for any version of the specified package,
+    /// which is useful when a package is completely removed from the system.
+    pub fn invalidate_package_all_versions(&mut self, package_name: &str) {
+        self.entries.retain(|_path, entry| entry.package_name != package_name);
+        self.update_stats();
+    }
+
+    /// Invalidate cache entries for files in a specific directory tree
+    ///
+    /// This removes all cached verification results for files that are children
+    /// of the specified directory, which is useful when directory structures change.
+    pub fn invalidate_directory(&mut self, directory: &std::path::Path) {
+        let dir_str = directory.to_string_lossy();
+        self.entries.retain(|path, _entry| {
+            !std::path::Path::new(path).starts_with(directory) &&
+            !path.starts_with(&dir_str.to_string())
+        });
+        self.update_stats();
+    }
+
+    /// Get the number of cache entries currently stored
+    #[must_use]
+    pub fn entry_count(&self) -> usize {
+        self.entries.len()
+    }
 }

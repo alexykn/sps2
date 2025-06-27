@@ -23,6 +23,8 @@
 .gemini/
 CLAUDE.md
 GEMINI.md
+AGENTS.md
+opencode.json
 # Rust Analyzer incremental cache (kept outside target/)
 .ra_cache/
 

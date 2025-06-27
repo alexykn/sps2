@@ -4,6 +4,7 @@
 //! Delegates to `sps2_install` crate for the actual installation logic.
 
 use crate::{InstallReport, InstallRequest, OpsCtx};
+use sps2_guard::{OperationResult as GuardOperationResult, PackageChange as GuardPackageChange};
 use sps2_errors::{Error, InstallError, OpsError};
 use sps2_events::Event;
 use sps2_install::{InstallConfig, InstallContext, Installer, PipelineConfig, PipelineMaster};
@@ -516,10 +517,57 @@ fn parse_install_requests(specs: &[String]) -> Result<Vec<InstallRequest>, Error
     Ok(requests)
 }
 
+/// Convert InstallReport to GuardOperationResult for guard integration
+fn create_guard_operation_result(report: &InstallReport) -> GuardOperationResult {
+    GuardOperationResult {
+        installed: report
+            .installed
+            .iter()
+            .map(|pkg| GuardPackageChange {
+                name: pkg.name.clone(),
+                from_version: pkg.from_version.as_ref().map(|v| v.to_string()),
+                to_version: pkg.to_version.as_ref().map(|v| v.to_string()),
+                size: pkg.size,
+            })
+            .collect(),
+        updated: report
+            .updated
+            .iter()
+            .map(|pkg| GuardPackageChange {
+                name: pkg.name.clone(),
+                from_version: pkg.from_version.as_ref().map(|v| v.to_string()),
+                to_version: pkg.to_version.as_ref().map(|v| v.to_string()),
+                size: pkg.size,
+            })
+            .collect(),
+        removed: report
+            .removed
+            .iter()
+            .map(|pkg| GuardPackageChange {
+                name: pkg.name.clone(),
+                from_version: pkg.from_version.as_ref().map(|v| v.to_string()),
+                to_version: pkg.to_version.as_ref().map(|v| v.to_string()),
+                size: pkg.size,
+            })
+            .collect(),
+        state_id: report.state_id,
+        duration_ms: report.duration_ms,
+        modified_directories: vec![
+            std::path::PathBuf::from("/opt/pm/live"),
+            std::path::PathBuf::from("/opt/pm/live/bin"),
+            std::path::PathBuf::from("/opt/pm/live/lib"),
+        ],
+        install_triggered: false, // Standard install operation
+    }
+}
+
 /// Install packages with state verification enabled
 ///
-/// This wrapper runs state verification before and after the install operation
-/// if verification is enabled in the context configuration.
+/// This wrapper uses the advanced GuardedOperation pattern providing:
+/// - Cache warming before operation
+/// - Operation-specific verification scoping
+/// - Progressive verification when appropriate
+/// - Smart cache invalidation after operation
 ///
 /// # Errors
 ///
@@ -531,11 +579,15 @@ pub async fn install_with_verification(
     ctx: &OpsCtx,
     package_specs: &[String],
 ) -> Result<InstallReport, Error> {
-    ctx.with_verification(
-        "install",
-        || async move { install(ctx, package_specs).await },
-    )
-    .await
+    let package_specs_vec = package_specs.iter().map(ToString::to_string).collect();
+    
+    ctx.guarded_install(package_specs_vec)
+        .execute(|| async {
+            let report = install(ctx, package_specs).await?;
+            let guard_result = create_guard_operation_result(&report);
+            Ok((report, guard_result))
+        })
+        .await
 }
 
 #[cfg(test)]
