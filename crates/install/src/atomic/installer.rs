@@ -5,7 +5,7 @@ use crate::python::{is_python_package, PythonVenvManager};
 use crate::{InstallContext, InstallResult, StagingManager};
 use sps2_errors::{Error, InstallError};
 use sps2_events::Event;
-use sps2_hash::{Hash, FileHasher, FileHasherConfig};
+use sps2_hash::{FileHasher, FileHasherConfig, Hash};
 use sps2_manifest::Manifest;
 use sps2_resolver::{PackageId, ResolvedNode};
 use sps2_state::{PackageRef, StateManager};
@@ -193,7 +193,7 @@ impl AtomicInstaller {
             package_refs_with_venv: &transition.package_refs_with_venv,
             package_files: &transition.package_files,
             file_references: &transition.file_references,
-        };,
+        };
         let journal = self
             .state_manager
             .prepare_transaction(
@@ -450,10 +450,7 @@ impl AtomicInstaller {
             // New file-level package - link from file store
             if let Some(sender) = &transition.event_sender {
                 let _ = sender.send(Event::DebugLog {
-                    message: format!(
-                        "Linking file-level package {} to staging",
-                        package_id.name
-                    ),
+                    message: format!("Linking file-level package {} to staging", package_id.name),
                     context: std::collections::HashMap::new(),
                 });
             }
@@ -495,8 +492,13 @@ impl AtomicInstaller {
             }
 
             // Recursively link files directly to their FHS locations in staging
-            self.link_package_files_to_fhs(&files_path, staging_prefix, &files_path, &mut file_paths)
-                .await?;
+            self.link_package_files_to_fhs(
+                &files_path,
+                staging_prefix,
+                &files_path,
+                &mut file_paths,
+            )
+            .await?;
         }
 
         // Debug what was linked

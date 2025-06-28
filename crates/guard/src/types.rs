@@ -201,7 +201,6 @@ impl Discrepancy {
             Self::TypeMismatch { package_name, package_version, file_path, expected_directory, actual_directory } => {
                 let expected_type = if *expected_directory { "directory" } else { "file" };
                 let actual_type = if *actual_directory { "directory" } else { "file" };
-                
                 DiscrepancyContext::new(
                     DiscrepancySeverity::High,
                     RecommendedAction::UserConfirmation,

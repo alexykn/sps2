@@ -1,7 +1,7 @@
 //! State transition management for atomic installations
 
 use sps2_events::EventSender;
-use sps2_state::{PackageRef, StateManager, FileReference, FileMetadata};
+use sps2_state::{FileMetadata, FileReference, PackageRef, StateManager};
 use std::path::PathBuf;
 use uuid::Uuid;
 
