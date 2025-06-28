@@ -89,6 +89,7 @@ pub async fn verify_file_content(params: ContentVerificationParams<'_>) -> Resul
         operation_id,
         tx,
     } = params;
+
     // Skip hash verification for directories and symlinks
     let metadata = tokio::fs::symlink_metadata(file_path).await?;
     if metadata.is_dir() || metadata.is_symlink() {
@@ -109,26 +110,65 @@ pub async fn verify_file_content(params: ContentVerificationParams<'_>) -> Resul
 
     db_tx.commit().await?;
 
-    // Find the file entry for this relative path
-    // Need to handle the opt/pm/live prefix stripping
-    let stripped_path = if relative_path.starts_with("opt/pm/live/") {
-        relative_path.strip_prefix("opt/pm/live/").unwrap()
-    } else {
-        relative_path
-    };
+    // Debug: log if no entries found
+    if file_entries.is_empty() {
+        if let Some(sender) = tx {
+            let _ = sender.send(Event::DebugLog {
+                message: format!(
+                    "WARNING: No file entries found for package {} {} in state {}",
+                    package.name, package.version, state_id
+                ),
+                context: std::collections::HashMap::new(),
+            });
+        }
+        return Ok(());
+    }
 
-    let file_entry = file_entries.iter().find(|entry| {
-        let entry_path = if entry.relative_path.starts_with("opt/pm/live/") {
-            entry.relative_path.strip_prefix("opt/pm/live/").unwrap()
-        } else {
-            &entry.relative_path
-        };
-        entry_path == stripped_path
-    });
+    // Find the file entry for this relative path
+    // The relative_path passed in is already stripped from the database
+    // The entries in the database are also already stripped during installation
+
+    // Debug logging
+    if let Some(sender) = tx {
+        let _ = sender.send(Event::DebugLog {
+            message: format!(
+                "Looking for file: relative_path='{}', found {} entries for package",
+                relative_path,
+                file_entries.len()
+            ),
+            context: std::collections::HashMap::new(),
+        });
+
+        // Log first few entries to see what we have
+        for (i, entry) in file_entries.iter().take(3).enumerate() {
+            let _ = sender.send(Event::DebugLog {
+                message: format!(
+                    "  Entry {}: relative_path='{}', hash='{}'",
+                    i,
+                    entry.relative_path,
+                    &entry.file_hash[..16]
+                ),
+                context: std::collections::HashMap::new(),
+            });
+        }
+    }
+
+    let file_entry = file_entries
+        .iter()
+        .find(|entry| entry.relative_path == relative_path);
 
     let Some(entry) = file_entry else {
         // No hash in database for this file - this might be a legacy package
         // or the file-level data hasn't been populated yet
+        if let Some(sender) = tx {
+            let _ = sender.send(Event::DebugLog {
+                message: format!(
+                    "No matching entry found for relative_path='{}' in package {}",
+                    relative_path, package.name
+                ),
+                context: std::collections::HashMap::new(),
+            });
+        }
         return Ok(());
     };
 

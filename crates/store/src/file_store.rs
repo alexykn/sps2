@@ -184,6 +184,14 @@ impl FileStore {
         dest_base: &Path,
     ) -> Result<(), Error> {
         for result in hash_results {
+            // Skip manifest.toml and sbom files - they should only exist in store
+            if result.relative_path == "manifest.toml"
+                || result.relative_path == "sbom.spdx.json"
+                || result.relative_path == "sbom.cdx.json"
+            {
+                continue;
+            }
+
             // Strip the opt/pm/live/ prefix if present
             let relative_path = if result.relative_path.starts_with("opt/pm/live/") {
                 result.relative_path.strip_prefix("opt/pm/live/").unwrap()

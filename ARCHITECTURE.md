@@ -51,7 +51,7 @@ cargo sqlx prepare
 ### Rust Standards
 - **Edition**: Rust 2021
 - **Resolver**: Version 3 (set in workspace Cargo.toml)
-- **MSRV**: 1.86.0 (latest stable)
+- **MSRV**: 1.87.0 (latest stable)
 - **Target**: `aarch64-apple-darwin` only
 
 ### Code Quality Requirements

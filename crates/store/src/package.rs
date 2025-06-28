@@ -154,6 +154,16 @@ impl StoredPackage {
         while let Some(entry) = entries.next_entry().await? {
             let src_path = entry.path();
             let file_name = entry.file_name();
+
+            // Skip manifest.toml and sbom files - they should only exist in store
+            let file_name_str = file_name.to_string_lossy();
+            if file_name_str == "manifest.toml"
+                || file_name_str == "sbom.spdx.json"
+                || file_name_str == "sbom.cdx.json"
+            {
+                continue;
+            }
+
             let dest_path = dest.join(&file_name);
 
             let metadata = entry.metadata().await?;

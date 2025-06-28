@@ -28,7 +28,7 @@ A modern, atomic package manager for macOS ARM64 with rollback capabilities and 
 ### Prerequisites
 
 - macOS with Apple Silicon
-- Rust 1.86.0 or later
+- Rust 1.87.0 or later
 - SQLite 3.x
 - sudo access for `/opt/pm` directory
 
