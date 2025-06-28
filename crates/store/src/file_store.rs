@@ -5,7 +5,9 @@
 
 use sps2_errors::{Error, StorageError};
 use sps2_hash::{calculate_file_storage_path, FileHashResult, FileHasher, FileHasherConfig, Hash};
-use sps2_root::{create_dir_all, exists, hard_link, remove_file};
+#[cfg(not(target_os = "macos"))]
+use sps2_root::hard_link;
+use sps2_root::{create_dir_all, exists, remove_file};
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
@@ -41,7 +43,7 @@ impl FileStore {
 
         // Create prefix directories (00-ff)
         for i in 0..256 {
-            let prefix = format!("{:02x}", i);
+            let prefix = format!("{i:02x}");
             let prefix_path = self.objects_path.join(&prefix);
             create_dir_all(&prefix_path).await?;
         }
@@ -85,7 +87,7 @@ impl FileStore {
         fs::copy(source_path, &dest_path)
             .await
             .map_err(|e| StorageError::IoError {
-                message: format!("failed to copy file to store: {}", e),
+                message: format!("failed to copy file to store: {e}"),
             })?;
 
         // Make file read-only
@@ -140,8 +142,9 @@ impl FileStore {
             remove_file(dest_path).await?;
         }
 
-        // Create hard link
-        hard_link(&source_path, dest_path).await?;
+        // Use APFS clonefile on macOS for copy-on-write semantics
+        // This prevents corruption of the store when files are modified in place
+        sps2_root::clone_directory(&source_path, dest_path).await?;
 
         Ok(())
     }
@@ -171,6 +174,9 @@ impl FileStore {
     ///
     /// # Errors
     /// Returns an error if linking operations fail
+    ///
+    /// # Panics
+    /// Panics if path stripping fails unexpectedly
     pub async fn link_files(
         &self,
         hash_results: &[FileHashResult],
@@ -178,7 +184,13 @@ impl FileStore {
         dest_base: &Path,
     ) -> Result<(), Error> {
         for result in hash_results {
-            let dest_path = dest_base.join(&result.relative_path);
+            // Strip the opt/pm/live/ prefix if present
+            let relative_path = if result.relative_path.starts_with("opt/pm/live/") {
+                result.relative_path.strip_prefix("opt/pm/live/").unwrap()
+            } else {
+                &result.relative_path
+            };
+            let dest_path = dest_base.join(relative_path);
 
             if result.is_directory {
                 // Create directory

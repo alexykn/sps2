@@ -53,16 +53,67 @@ pub async fn restore_missing_file(
     }
 
     let stored_package = StoredPackage::load(&store_path).await?;
-    let source_file = stored_package.files_path().join(file_path);
 
-    if !source_file.exists() {
-        return Err(OpsError::OperationFailed {
-            message: format!(
-                "File {file_path} not found in stored package {package_name}-{package_version}"
-            ),
+    // For file-level packages, we need to get the file hash from the database
+    let source_file = if stored_package.has_file_hashes() {
+        // Get file hash from database
+        let mut state_tx = ctx.state_manager.begin_transaction().await?;
+        let state_id = ctx.state_manager.get_active_state().await?;
+
+        // Get the file entry to find its hash
+        let file_entries = sps2_state::queries::get_package_file_entries_by_name(
+            &mut state_tx,
+            &state_id,
+            package_name,
+            package_version,
+        )
+        .await?;
+        state_tx.commit().await?;
+
+        // Find the specific file entry
+        let file_entry = file_entries
+            .iter()
+            .find(|entry| entry.relative_path == file_path)
+            .ok_or_else(|| OpsError::OperationFailed {
+                message: format!(
+                    "File {file_path} not found in database for {package_name}-{package_version}"
+                ),
+            })?;
+
+        // Get the file from the file store
+        let file_hash_obj =
+            Hash::from_hex(&file_entry.file_hash).map_err(|e| OpsError::OperationFailed {
+                message: format!("Invalid file hash in database: {e}"),
+            })?;
+
+        let file_store_path = ctx.store.file_path(&file_hash_obj);
+
+        if !file_store_path.exists() {
+            return Err(OpsError::OperationFailed {
+                message: format!(
+                    "File content missing from file store for hash {}",
+                    file_entry.file_hash
+                ),
+            }
+            .into());
         }
-        .into());
-    }
+
+        file_store_path
+    } else {
+        // Legacy package - file is in the package's files directory
+        let source_file = stored_package.files_path().join(file_path);
+
+        if !source_file.exists() {
+            return Err(OpsError::OperationFailed {
+                message: format!(
+                    "File {file_path} not found in stored package {package_name}-{package_version}"
+                ),
+            }
+            .into());
+        }
+
+        source_file
+    };
 
     // Determine target path
     let live_path = ctx.state_manager.live_path();
@@ -150,6 +201,14 @@ pub async fn heal_corrupted_file(
     let live_path = ctx.state_manager.live_path();
     let full_path = live_path.join(file_path);
 
+    // Debug logging
+    let _ = ctx.tx.send(Event::DebugLog {
+        message: format!(
+            "Starting heal_corrupted_file for {file_path} (expected: {expected_hash}, actual: {actual_hash})"
+        ),
+        context: HashMap::default(),
+    });
+
     // First, check if this might be a legitimate user modification
     if is_user_modified_file(ctx.tx, &full_path, file_path).await? {
         // Preserve user modifications
@@ -161,6 +220,11 @@ pub async fn heal_corrupted_file(
         });
         return Ok(());
     }
+
+    let _ = ctx.tx.send(Event::DebugLog {
+        message: format!("File {file_path} is not user-modified, proceeding with healing"),
+        context: HashMap::default(),
+    });
 
     // Get package from database to find store location
     let mut state_tx = ctx.state_manager.begin_transaction().await?;
@@ -191,35 +255,59 @@ pub async fn heal_corrupted_file(
     }
 
     let stored_package = StoredPackage::load(&store_path).await?;
-    let source_file = stored_package.files_path().join(file_path);
 
-    if !source_file.exists() {
-        return Err(OpsError::OperationFailed {
-            message: format!(
-                "File {file_path} not found in stored package {package_name}-{package_version}"
-            ),
+    // For file-level packages, get the file from the file store
+    let source_file = if stored_package.has_file_hashes() {
+        // Get the expected hash and find the file in the file store
+        let expected_hash_obj =
+            Hash::from_hex(expected_hash).map_err(|e| OpsError::OperationFailed {
+                message: format!("Invalid expected hash: {e}"),
+            })?;
+
+        // Get the file path from the store
+        let file_store_path = ctx.store.file_path(&expected_hash_obj);
+
+        if !file_store_path.exists() {
+            return Err(OpsError::OperationFailed {
+                message: format!("File content missing from file store for hash {expected_hash}"),
+            }
+            .into());
         }
-        .into());
-    }
 
-    // Verify the source file has the expected hash
-    let source_hash = Hash::hash_file(&source_file).await?;
-    if source_hash.to_hex() != expected_hash {
-        return Err(OpsError::OperationFailed {
-            message: format!(
-                "Source file in store also corrupted for {file_path} (expected {expected_hash}, got {})",
-                source_hash.to_hex()
-            ),
+        file_store_path
+    } else {
+        // Legacy package - file is in the package's files directory
+        let source_file = stored_package.files_path().join(file_path);
+
+        if !source_file.exists() {
+            return Err(OpsError::OperationFailed {
+                message: format!(
+                    "File {file_path} not found in stored package {package_name}-{package_version}"
+                ),
+            }
+            .into());
         }
-        .into());
-    }
 
-    // Backup the corrupted file before replacing
-    let backup_path = full_path.with_extension("corrupted.backup");
-    tokio::fs::rename(&full_path, &backup_path)
+        // Verify the source file has the expected hash
+        let source_hash = Hash::hash_file(&source_file).await?;
+        if source_hash.to_hex() != expected_hash {
+            return Err(OpsError::OperationFailed {
+                message: format!(
+                    "Source file in store also corrupted for {file_path} (expected {expected_hash}, got {})",
+                    source_hash.to_hex()
+                ),
+            }
+            .into());
+        }
+
+        source_file
+    };
+
+    // Remove the corrupted file
+    tokio::fs::remove_file(&full_path)
         .await
         .map_err(|e| OpsError::OperationFailed {
-            message: format!("Failed to backup corrupted file: {e}"),
+            message: format!("Failed to remove corrupted file: {e}"),
         })?;
 
     // Restore the file from store
@@ -267,10 +355,7 @@ pub async fn heal_corrupted_file(
 
     // Emit success event
     let _ = ctx.tx.send(Event::DebugLog {
-        message: format!(
-            "Restored corrupted file: {file_path} (backup saved as {})",
-            backup_path.display()
-        ),
+        message: format!("Restored corrupted file: {file_path}"),
         context: HashMap::default(),
     });
 
@@ -279,73 +364,26 @@ pub async fn heal_corrupted_file(
 
 /// Check if a file appears to be user-modified
 ///
-/// This is a heuristic check based on:
-/// - File modification time vs package installation time
-/// - Common user-modifiable file patterns
-/// - File location and type
+/// In sps2, the /opt/pm/live directory should be immutable except for symlinks.
+/// Any modification to regular files is considered corruption.
 pub async fn is_user_modified_file(
     tx: &EventSender,
     full_path: &Path,
     relative_path: &str,
 ) -> Result<bool, Error> {
-    // Common patterns for user-modifiable files
-    const USER_MODIFIABLE_PATTERNS: &[&str] = &[
-        // Configuration files
-        ".conf",
-        ".config",
-        ".ini",
-        ".json",
-        ".yaml",
-        ".yml",
-        ".toml",
-        // Shell configuration
-        ".bashrc",
-        ".zshrc",
-        ".profile",
-        ".bash_profile",
-        // Environment files
-        ".env",
-        ".envrc",
-        // User data
-        ".db",
-        ".sqlite",
-        ".sqlite3",
-    ];
-
-    // Check if file matches user-modifiable patterns
-    let path_str = relative_path.to_lowercase();
-    for pattern in USER_MODIFIABLE_PATTERNS {
-        if path_str.ends_with(pattern)
-            || path_str.contains("/etc/")
-            || path_str.contains("/config/")
-        {
-            // These files are commonly modified by users
+    // Check if this is a symlink - symlinks are the only allowed user modifications
+    if let Ok(metadata) = tokio::fs::symlink_metadata(full_path).await {
+        if metadata.is_symlink() {
             let _ = tx.send(Event::DebugLog {
-                message: format!("File {relative_path} matches user-modifiable pattern"),
+                message: format!(
+                    "File {relative_path} is a symlink - preserving user modification"
+                ),
                 context: HashMap::default(),
             });
             return Ok(true);
         }
     }
 
-    // Check file metadata for recent modifications
-    if let Ok(metadata) = tokio::fs::metadata(full_path).await {
-        if let Ok(modified) = metadata.modified() {
-            // If file was modified very recently (within last hour), it might be user-modified
-            if let Ok(elapsed) = modified.elapsed() {
-                if elapsed.as_secs() < 3600 {
-                    let _ = tx.send(Event::DebugLog {
-                        message: format!(
-                            "File {relative_path} was modified recently ({} seconds ago)",
-                            elapsed.as_secs()
-                        ),
-                        context: HashMap::default(),
-                    });
-                    return Ok(true);
-                }
-            }
-        }
-    }
-
+    // All other modifications in /opt/pm/live are considered corruption, not user modifications
     Ok(false)
 }

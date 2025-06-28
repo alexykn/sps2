@@ -165,7 +165,7 @@ impl FileHasher {
                     .acquire_owned()
                     .await
                     .map_err(|e| StorageError::IoError {
-                        message: format!("semaphore acquire error: {}", e),
+                        message: format!("semaphore acquire error: {e}"),
                     })?;
             let base_path = base_path.clone();
             let hasher = self.clone();
@@ -178,7 +178,7 @@ impl FileHasher {
 
         // Wait for collector to finish
         collector_handle.await.map_err(|e| StorageError::IoError {
-            message: format!("task join error: {}", e),
+            message: format!("task join error: {e}"),
         })??;
 
         // Collect all results
@@ -188,7 +188,7 @@ impl FileHasher {
                 Ok(Err(e)) => return Err(e),
                 Err(e) => {
                     return Err(StorageError::IoError {
-                        message: format!("task join error: {}", e),
+                        message: format!("task join error: {e}"),
                     }
                     .into())
                 }
@@ -227,7 +227,7 @@ impl FileHasher {
                     .acquire_owned()
                     .await
                     .map_err(|e| StorageError::IoError {
-                        message: format!("semaphore acquire error: {}", e),
+                        message: format!("semaphore acquire error: {e}"),
                     })?;
             let base_path = base_path.clone();
             let hasher = self.clone();
@@ -245,7 +245,7 @@ impl FileHasher {
                 Ok(Err(e)) => return Err(e),
                 Err(e) => {
                     return Err(StorageError::IoError {
-                        message: format!("task join error: {}", e),
+                        message: format!("task join error: {e}"),
                     }
                     .into())
                 }
@@ -301,7 +301,7 @@ async fn collect_files_for_hashing(
 
 /// Calculate the storage path for a file based on its hash
 ///
-/// Returns the path components: (prefix, full_hash)
+/// Returns the path components: (prefix, `full_hash`)
 /// For example: hash "abc123..." -> ("ab", "abc123...")
 #[must_use]
 pub fn calculate_file_storage_path(hash: &Hash) -> (String, String) {

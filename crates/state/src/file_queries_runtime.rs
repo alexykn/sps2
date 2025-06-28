@@ -260,6 +260,42 @@ pub async fn update_verification_cache(
     Ok(())
 }
 
+/// Get package file entries by package name and version
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails
+pub async fn get_package_file_entries_by_name(
+    tx: &mut Transaction<'_, Sqlite>,
+    state_id: &uuid::Uuid,
+    package_name: &str,
+    package_version: &str,
+) -> Result<Vec<PackageFileEntry>, Error> {
+    let state_id_str = state_id.to_string();
+
+    // First get the package ID
+    let package_id: Option<i64> = query(
+        r#"
+        SELECT id FROM packages
+        WHERE state_id = ? AND name = ? AND version = ?
+        "#,
+    )
+    .bind(&state_id_str)
+    .bind(package_name)
+    .bind(package_version)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(|e| StateError::DatabaseError {
+        message: format!("failed to get package id: {e}"),
+    })?
+    .map(|r| r.get("id"));
+
+    match package_id {
+        Some(id) => get_package_file_entries(tx, id).await,
+        None => Ok(Vec::new()),
+    }
+}
+
 /// Get verification cache entry
 ///
 /// # Errors

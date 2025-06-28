@@ -1,6 +1,7 @@
 //! State transition management for atomic installations
 
 use sps2_events::EventSender;
+use sps2_hash::FileHashResult;
 use sps2_state::{FileReference, PackageRef, StateManager};
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -25,6 +26,8 @@ pub struct StateTransition {
     pub package_files: Vec<(String, String, String, bool)>, // (package_name, package_version, file_path, is_directory)
     /// File references for file-level storage
     pub file_references: Vec<(i64, FileReference)>, // (package_id, file_reference)
+    /// Pending file hashes to be converted to file references after we have package IDs
+    pub pending_file_hashes: Vec<(sps2_resolver::PackageId, Vec<FileHashResult>)>,
     /// Event sender for progress reporting
     pub event_sender: Option<EventSender>,
     /// Operation type (install, uninstall, etc.)
@@ -55,6 +58,7 @@ impl StateTransition {
             package_refs_with_venv: Vec::new(),
             package_files: Vec::new(),
             file_references: Vec::new(),
+            pending_file_hashes: Vec::new(),
             event_sender: None,
             operation,
         })

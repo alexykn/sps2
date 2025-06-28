@@ -53,9 +53,7 @@ fi
 # Create directory structure
 echo "Creating directory structure..."
 mkdir -p "$PM_ROOT"
-mkdir -p "$LIVE_DIR/bin"
-mkdir -p "$LIVE_DIR/lib"
-mkdir -p "$LIVE_DIR/share"
+mkdir -p "$LIVE_DIR"
 mkdir -p "$STORE_DIR"
 mkdir -p "$STATES_DIR"
 mkdir -p "$LOGS_DIR"

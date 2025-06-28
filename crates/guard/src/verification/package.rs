@@ -1,7 +1,7 @@
 //! Package verification logic
 
 use crate::types::{Discrepancy, FileCacheEntry, SymlinkPolicy, VerificationContext};
-use crate::verification::content::verify_file_content;
+use crate::verification::content::{verify_file_content, ContentVerificationParams};
 use sps2_errors::Error;
 use sps2_events::Event;
 use sps2_hash::Hash;
@@ -314,15 +314,16 @@ pub async fn verify_package(
             // For Full verification, check content hash
             if ctx.level == crate::types::VerificationLevel::Full {
                 let discrepancy_count_before = discrepancies.len();
-                verify_file_content(
-                    ctx.store,
-                    &full_path,
+                verify_file_content(ContentVerificationParams {
+                    state_manager: ctx.state_manager,
+                    state_id: ctx.state_id,
+                    file_path: &full_path,
                     package,
-                    &file_path,
+                    relative_path: &file_path,
                     discrepancies,
                     operation_id,
-                    ctx.tx,
-                )
+                    tx: ctx.tx,
+                })
                 .await?;
                 // If discrepancies were added, file was invalid
                 if discrepancies.len() > discrepancy_count_before {

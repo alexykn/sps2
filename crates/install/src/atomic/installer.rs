@@ -187,6 +187,7 @@ impl AtomicInstaller {
             package_refs_with_venv: &transition.package_refs_with_venv,
             package_files: &transition.package_files,
             file_references: &transition.file_references,
+            pending_file_hashes: &transition.pending_file_hashes,
         };
         let journal = self
             .state_manager
@@ -452,10 +453,25 @@ impl AtomicInstaller {
             // Link files from store to staging
             stored_package.link_to(staging_prefix).await?;
 
-            // Collect file paths for database tracking
+            // Collect file paths for database tracking AND store file hash info
             if let Some(file_hashes) = stored_package.file_hashes() {
+                // Store the file hash information for later use when we have package IDs
+                transition
+                    .pending_file_hashes
+                    .push((package_id.clone(), file_hashes.to_vec()));
+
                 for file_hash in file_hashes {
-                    file_paths.push((file_hash.relative_path.clone(), file_hash.is_directory));
+                    // Strip the opt/pm/live prefix for database storage
+                    let relative_path = if file_hash.relative_path.starts_with("opt/pm/live/") {
+                        file_hash
+                            .relative_path
+                            .strip_prefix("opt/pm/live/")
+                            .unwrap()
+                            .to_string()
+                    } else {
+                        file_hash.relative_path.clone()
+                    };
+                    file_paths.push((relative_path, file_hash.is_directory));
                 }
             }
         } else {
@@ -869,6 +885,7 @@ impl AtomicInstaller {
             package_refs_with_venv: &transition.package_refs_with_venv,
             package_files: &transition.package_files,
             file_references: &transition.file_references,
+            pending_file_hashes: &transition.pending_file_hashes,
         };
         let journal = self
             .state_manager
@@ -916,7 +933,13 @@ impl AtomicInstaller {
         let mut directories = Vec::new();
 
         for file_path in file_paths {
-            let staging_file = transition.staging_path.join(&file_path);
+            // Strip the opt/pm/live/ prefix if present (for file-level storage compatibility)
+            let stripped_path = if file_path.starts_with("opt/pm/live/") {
+                file_path.strip_prefix("opt/pm/live/").unwrap()
+            } else {
+                &file_path
+            };
+            let staging_file = transition.staging_path.join(stripped_path);
 
             if staging_file.exists() {
                 // Check if it's a symlink
@@ -936,7 +959,13 @@ impl AtomicInstaller {
 
         // 1. Remove symlinks
         for file_path in symlinks {
-            let staging_file = transition.staging_path.join(&file_path);
+            // Strip the opt/pm/live/ prefix if present
+            let stripped_path = if file_path.starts_with("opt/pm/live/") {
+                file_path.strip_prefix("opt/pm/live/").unwrap()
+            } else {
+                &file_path
+            };
+            let staging_file = transition.staging_path.join(stripped_path);
             if staging_file.exists() {
                 tokio::fs::remove_file(&staging_file).await.map_err(|e| {
                     InstallError::FilesystemError {
@@ -950,7 +979,13 @@ impl AtomicInstaller {
 
         // 2. Remove regular files
         for file_path in regular_files {
-            let staging_file = transition.staging_path.join(&file_path);
+            // Strip the opt/pm/live/ prefix if present
+            let stripped_path = if file_path.starts_with("opt/pm/live/") {
+                file_path.strip_prefix("opt/pm/live/").unwrap()
+            } else {
+                &file_path
+            };
+            let staging_file = transition.staging_path.join(stripped_path);
             if staging_file.exists() {
                 tokio::fs::remove_file(&staging_file).await.map_err(|e| {
                     InstallError::FilesystemError {
@@ -965,7 +1000,13 @@ impl AtomicInstaller {
         // 3. Remove directories in reverse order (deepest first)
         directories.sort_by(|a, b| b.cmp(a)); // Reverse lexicographic order
         for file_path in directories {
-            let staging_file = transition.staging_path.join(&file_path);
+            // Strip the opt/pm/live/ prefix if present
+            let stripped_path = if file_path.starts_with("opt/pm/live/") {
+                file_path.strip_prefix("opt/pm/live/").unwrap()
+            } else {
+                &file_path
+            };
+            let staging_file = transition.staging_path.join(stripped_path);
             if staging_file.exists() {
                 // Try to remove directory if it's empty
                 if let Ok(mut entries) = tokio::fs::read_dir(&staging_file).await {
@@ -1020,8 +1061,6 @@ impl AtomicInstaller {
 
         Ok(())
     }
-
-
 
     /// Rollback to a previous state
     ///

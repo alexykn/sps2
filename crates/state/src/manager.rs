@@ -574,9 +574,9 @@ impl StateManager {
         &self,
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         package_ref: &PackageRef,
-    ) -> Result<(), Error> {
-        // Add package to the state
-        queries::add_package(
+    ) -> Result<i64, Error> {
+        // Add package to the state and get its ID
+        let package_id = queries::add_package(
             tx,
             &package_ref.state_id,
             &package_ref.package_id.name,
@@ -590,7 +590,7 @@ impl StateManager {
         queries::get_or_create_store_ref(tx, &package_ref.hash, package_ref.size).await?;
         queries::increment_store_ref(tx, &package_ref.hash).await?;
 
-        Ok(())
+        Ok(package_id)
     }
 
     /// Add package reference with venv path using an existing transaction
@@ -603,9 +603,9 @@ impl StateManager {
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         package_ref: &PackageRef,
         venv_path: Option<&str>,
-    ) -> Result<(), Error> {
-        // Add package to the state with venv path
-        queries::add_package_with_venv(
+    ) -> Result<i64, Error> {
+        // Add package to the state with venv path and get its ID
+        let package_id = queries::add_package_with_venv(
             tx,
             &package_ref.state_id,
             &package_ref.package_id.name,
@@ -620,7 +620,7 @@ impl StateManager {
         queries::get_or_create_store_ref(tx, &package_ref.hash, package_ref.size).await?;
         queries::increment_store_ref(tx, &package_ref.hash).await?;
 
-        Ok(())
+        Ok(package_id)
     }
 
     /// Get state path for a state ID
@@ -959,6 +959,8 @@ pub struct TransactionData<'a> {
     pub package_files: &'a [(String, String, String, bool)], // (package_name, package_version, file_path, is_directory)
     /// File references for file-level storage
     pub file_references: &'a [(i64, crate::FileReference)], // (package_id, file_reference)
+    /// Pending file hashes to be converted to file references after packages are added
+    pub pending_file_hashes: &'a [(sps2_resolver::PackageId, Vec<sps2_hash::FileHashResult>)],
 }
 
 impl StateManager {
@@ -1043,15 +1045,21 @@ impl StateManager {
         self.create_state_with_tx(&mut tx, staging_id, Some(parent_id), operation)
             .await?;
 
+        // Track package IDs for file hash processing
+        let mut package_id_map = std::collections::HashMap::new();
+
         // Add all package references to the database
         for package_ref in transition_data.package_refs {
-            self.add_package_ref_with_tx(&mut tx, package_ref).await?;
+            let package_id = self.add_package_ref_with_tx(&mut tx, package_ref).await?;
+            package_id_map.insert(package_ref.package_id.clone(), package_id);
         }
 
         // Add all packages with venv paths to the database
         for (package_ref, venv_path) in transition_data.package_refs_with_venv {
-            self.add_package_ref_with_venv_tx(&mut tx, package_ref, Some(venv_path))
+            let package_id = self
+                .add_package_ref_with_venv_tx(&mut tx, package_ref, Some(venv_path))
                 .await?;
+            package_id_map.insert(package_ref.package_id.clone(), package_id);
         }
 
         // Add all stored package files to the database
@@ -1069,7 +1077,49 @@ impl StateManager {
             .await?;
         }
 
-        // Add file-level data if available
+        // Process pending file hashes now that we have package IDs
+        for (package_id, file_hashes) in transition_data.pending_file_hashes {
+            if let Some(&db_package_id) = package_id_map.get(package_id) {
+                for file_hash in file_hashes {
+                    // Strip the opt/pm/live prefix if present
+                    let relative_path = if file_hash.relative_path.starts_with("opt/pm/live/") {
+                        file_hash
+                            .relative_path
+                            .strip_prefix("opt/pm/live/")
+                            .unwrap()
+                            .to_string()
+                    } else {
+                        file_hash.relative_path.clone()
+                    };
+
+                    let file_ref = crate::FileReference {
+                        package_id: db_package_id,
+                        relative_path,
+                        hash: file_hash.hash.clone(),
+                        metadata: crate::FileMetadata {
+                            size: file_hash.size as i64,
+                            permissions: file_hash.mode.unwrap_or(0o644),
+                            uid: 0,
+                            gid: 0,
+                            mtime: None,
+                            is_executable: file_hash.mode.map(|m| m & 0o111 != 0).unwrap_or(false),
+                            is_symlink: file_hash.is_symlink,
+                            symlink_target: None,
+                        },
+                    };
+
+                    // First add the file object if it doesn't exist
+                    let _dedup_result =
+                        queries::add_file_object(&mut tx, &file_ref.hash, &file_ref.metadata)
+                            .await?;
+
+                    // Then add the package file entry
+                    queries::add_package_file_entry(&mut tx, db_package_id, &file_ref).await?;
+                }
+            }
+        }
+
+        // Add file-level data if available (for direct file references)
         for (package_id, file_ref) in transition_data.file_references {
             // First add the file object if it doesn't exist
             let _dedup_result =

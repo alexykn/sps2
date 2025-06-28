@@ -115,6 +115,9 @@ impl StoredPackage {
     /// - The files directory is missing or corrupted
     /// - File linking operations fail
     /// - Directory creation fails
+    ///
+    /// # Panics
+    /// Panics if the package path doesn't have expected parent directories
     pub async fn link_to(&self, dest_root: &Path) -> Result<(), Error> {
         // Check if this is a new file-level package
         if let Some(file_hashes) = &self.file_hashes {

@@ -4,9 +4,27 @@ use crate::types::Discrepancy;
 use sps2_errors::{Error, OpsError};
 use sps2_events::{Event, EventSender};
 use sps2_hash::Hash;
-use sps2_store::{PackageStore, StoredPackage};
-use std::collections::HashMap;
 use std::path::Path;
+
+/// Parameters for content verification to avoid too many function arguments
+pub struct ContentVerificationParams<'a> {
+    /// State manager for database operations
+    pub state_manager: &'a sps2_state::StateManager,
+    /// Current state ID being verified
+    pub state_id: &'a uuid::Uuid,
+    /// Full path to the file being verified
+    pub file_path: &'a Path,
+    /// Package information
+    pub package: &'a sps2_state::models::Package,
+    /// Relative path within the package
+    pub relative_path: &'a str,
+    /// Collection to add discrepancies to
+    pub discrepancies: &'a mut Vec<Discrepancy>,
+    /// Operation ID for event tracking
+    pub operation_id: &'a str,
+    /// Optional event sender for progress reporting
+    pub tx: Option<&'a EventSender>,
+}
 
 /// Helper function to add a discrepancy and emit the corresponding event
 fn add_discrepancy_with_event(
@@ -59,44 +77,67 @@ fn add_discrepancy_with_event(
     discrepancies.push(discrepancy);
 }
 
-/// Verify file content hash
-pub async fn verify_file_content(
-    store: &PackageStore,
-    file_path: &Path,
-    package: &sps2_state::models::Package,
-    relative_path: &str,
-    discrepancies: &mut Vec<Discrepancy>,
-    operation_id: &str,
-    tx: Option<&EventSender>,
-) -> Result<(), Error> {
+/// Verify file content hash using database
+pub async fn verify_file_content(params: ContentVerificationParams<'_>) -> Result<(), Error> {
+    let ContentVerificationParams {
+        state_manager,
+        state_id,
+        file_path,
+        package,
+        relative_path,
+        discrepancies,
+        operation_id,
+        tx,
+    } = params;
     // Skip hash verification for directories and symlinks
     let metadata = tokio::fs::symlink_metadata(file_path).await?;
     if metadata.is_dir() || metadata.is_symlink() {
         return Ok(());
     }
 
-    // Load package from store to get expected file hash
-    let package_hash = Hash::from_hex(&package.hash).map_err(|e| OpsError::OperationFailed {
-        message: format!("Invalid package hash: {e}"),
-    })?;
-    let store_path = store.package_path(&package_hash);
+    // Get expected hash from database
+    let mut db_tx = state_manager.begin_transaction().await?;
 
-    if !store_path.exists() {
-        // Can't verify without store package
+    // Get package file entries with hashes
+    let file_entries = sps2_state::queries::get_package_file_entries_by_name(
+        &mut db_tx,
+        state_id,
+        &package.name,
+        &package.version,
+    )
+    .await?;
+
+    db_tx.commit().await?;
+
+    // Find the file entry for this relative path
+    // Need to handle the opt/pm/live prefix stripping
+    let stripped_path = if relative_path.starts_with("opt/pm/live/") {
+        relative_path.strip_prefix("opt/pm/live/").unwrap()
+    } else {
+        relative_path
+    };
+
+    let file_entry = file_entries.iter().find(|entry| {
+        let entry_path = if entry.relative_path.starts_with("opt/pm/live/") {
+            entry.relative_path.strip_prefix("opt/pm/live/").unwrap()
+        } else {
+            &entry.relative_path
+        };
+        entry_path == stripped_path
+    });
+
+    let Some(entry) = file_entry else {
+        // No hash in database for this file - this might be a legacy package
+        // or the file-level data hasn't been populated yet
         return Ok(());
-    }
-
-    let stored_package = StoredPackage::load(&store_path).await?;
-    let expected_file_path = stored_package.files_path().join(relative_path);
-
-    if !expected_file_path.exists() {
-        // File not in store, can't verify
-        return Ok(());
-    }
+    };
 
     // Calculate actual file hash
     let actual_hash = Hash::hash_file(file_path).await?;
-    let expected_hash = Hash::hash_file(&expected_file_path).await?;
+    let expected_hash =
+        Hash::from_hex(&entry.file_hash).map_err(|e| OpsError::OperationFailed {
+            message: format!("Invalid file hash in database: {e}"),
+        })?;
 
     if actual_hash != expected_hash {
         add_discrepancy_with_event(

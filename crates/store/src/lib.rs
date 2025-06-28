@@ -69,6 +69,12 @@ impl PackageStore {
         &self.file_store
     }
 
+    /// Get the path to a file in the file store by its hash
+    #[must_use]
+    pub fn file_path(&self, hash: &Hash) -> PathBuf {
+        self.file_store.file_path(hash)
+    }
+
     /// Check if a package exists in the store
     pub async fn has_package(&self, hash: &Hash) -> bool {
         let path = self.package_path(hash);
@@ -519,6 +525,4 @@ impl PackageStore {
         // Hash the entire staging directory for true content-addressable storage
         sps2_hash::Hash::hash_directory(staging_path).await
     }
-
-
 }

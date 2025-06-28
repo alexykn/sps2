@@ -2,7 +2,7 @@
 
 use sps2_hash::Hash;
 use sps2_state::{create_pool, file_migration::*, file_models::*, queries::*, run_migrations};
-use sqlx::{query, Executor};
+use sqlx::query;
 use tempfile::TempDir;
 
 #[tokio::test]
@@ -74,7 +74,7 @@ async fn test_package_file_entries() {
     // Add file objects and entries
     let file1_hash = Hash::from_data(b"file1 content");
     let file1_metadata = FileMetadata::regular_file(100, 0o755);
-    add_file_object(&mut *tx, &file1_hash, &file1_metadata)
+    add_file_object(&mut tx, &file1_hash, &file1_metadata)
         .await
         .unwrap();
 
@@ -85,15 +85,13 @@ async fn test_package_file_entries() {
         metadata: file1_metadata,
     };
 
-    let entry_id = add_package_file_entry(&mut *tx, package_id, &file_ref)
+    let entry_id = add_package_file_entry(&mut tx, package_id, &file_ref)
         .await
         .unwrap();
     assert!(entry_id > 0);
 
     // Verify we can retrieve the files
-    let files = get_package_file_entries(&mut *tx, package_id)
-        .await
-        .unwrap();
+    let files = get_package_file_entries(&mut tx, package_id).await.unwrap();
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].relative_path, "bin/tool");
 
@@ -173,7 +171,7 @@ async fn test_storage_stats() {
     // Add some files with deduplication
     let shared_hash = Hash::from_data(b"shared content");
     let shared_metadata = FileMetadata::regular_file(1000, 0o644);
-    add_file_object(&mut *tx, &shared_hash, &shared_metadata)
+    add_file_object(&mut tx, &shared_hash, &shared_metadata)
         .await
         .unwrap();
 
@@ -182,10 +180,10 @@ async fn test_storage_stats() {
         let file_ref = FileReference {
             package_id,
             relative_path: format!("lib/shared{}.so", i),
-            hash: shared_hash,
+            hash: shared_hash.clone(),
             metadata: shared_metadata.clone(),
         };
-        add_package_file_entry(&mut *tx, package_id, &file_ref)
+        add_package_file_entry(&mut tx, package_id, &file_ref)
             .await
             .unwrap();
     }

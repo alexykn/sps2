@@ -395,7 +395,20 @@ impl StateVerificationGuard {
 
         // Process each discrepancy
         let discrepancies = verification_result.discrepancies.clone();
+        let _ = self.tx.send(Event::DebugLog {
+            message: format!(
+                "Processing {} discrepancies for healing",
+                discrepancies.len()
+            ),
+            context: HashMap::default(),
+        });
+
         for discrepancy in &discrepancies {
+            let _ = self.tx.send(Event::DebugLog {
+                message: format!("Processing discrepancy: {:?}", discrepancy),
+                context: HashMap::default(),
+            });
+
             match discrepancy {
                 Discrepancy::MissingFile {
                     package_name,

@@ -1,4 +1,14 @@
 #![deny(clippy::pedantic, unsafe_code)]
+#![allow(
+    clippy::needless_raw_string_hashes,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_lossless,
+    clippy::map_unwrap_or,
+    clippy::unused_async,
+    clippy::missing_panics_doc
+)]
 #![allow(clippy::module_name_repetitions)]
 
 //! State management for sps2
