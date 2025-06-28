@@ -160,7 +160,7 @@ impl StateVerificationGuard {
         let state_id = self.state_manager.get_active_state().await?;
         let live_path = self.state_manager.live_path().to_path_buf();
 
-        // Get all installed packages first
+        // Get all installed packages from current state
         let mut tx = self.state_manager.begin_transaction().await?;
         let packages = queries::get_state_packages(&mut tx, &state_id).await?;
         tx.commit().await?;

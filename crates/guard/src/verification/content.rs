@@ -100,13 +100,26 @@ pub async fn verify_file_content(params: ContentVerificationParams<'_>) -> Resul
     let mut db_tx = state_manager.begin_transaction().await?;
 
     // Get package file entries with hashes
-    let file_entries = sps2_state::queries::get_package_file_entries_by_name(
+    // First try the current state
+    let mut file_entries = sps2_state::queries::get_package_file_entries_by_name(
         &mut db_tx,
         state_id,
         &package.name,
         &package.version,
     )
     .await?;
+
+    // If not found in current state, search all states
+    // This handles cases where packages are carried forward to new states
+    // but their file entries aren't duplicated
+    if file_entries.is_empty() {
+        file_entries = sps2_state::queries::get_package_file_entries_all_states(
+            &mut db_tx,
+            &package.name,
+            &package.version,
+        )
+        .await?;
+    }
 
     db_tx.commit().await?;
 
@@ -115,8 +128,8 @@ pub async fn verify_file_content(params: ContentVerificationParams<'_>) -> Resul
         if let Some(sender) = tx {
             let _ = sender.send(Event::DebugLog {
                 message: format!(
-                    "WARNING: No file entries found for package {} {} in state {}",
-                    package.name, package.version, state_id
+                    "WARNING: No file entries found for package {} {} in any state",
+                    package.name, package.version
                 ),
                 context: std::collections::HashMap::new(),
             });

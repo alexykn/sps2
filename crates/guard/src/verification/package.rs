@@ -245,12 +245,49 @@ pub async fn verify_package(
         queries::get_package_files(&mut tx, ctx.state_id, &package.name, &package.version).await?;
     tx.commit().await?;
 
+    // Debug: log how many files we're checking
+    if let Some(sender) = ctx.tx {
+        let _ = sender.send(Event::DebugLog {
+            message: format!(
+                "Verifying {} files for package {}-{}",
+                file_paths.len(),
+                package.name,
+                package.version
+            ),
+            context: HashMap::default(),
+        });
+    }
+
     // Verify each file
     for file_path in file_paths {
-        let full_path = ctx.live_path.join(&file_path);
-        tracked_files.insert(PathBuf::from(&file_path));
+        // Strip the legacy prefix if present (packages store paths like "opt/pm/live/bin/foo")
+        let clean_path = if let Some(stripped) = file_path.strip_prefix("opt/pm/live/") {
+            stripped
+        } else if file_path == "opt" || file_path == "opt/pm" || file_path == "opt/pm/live" {
+            // Skip these directory entries entirely - they're artifacts of the legacy format
+            continue;
+        } else {
+            &file_path
+        };
 
-        // Check cache first
+        let full_path = ctx.live_path.join(clean_path);
+        tracked_files.insert(PathBuf::from(clean_path));
+
+        // Debug: log the path we're checking
+        if package.name == "bat" {
+            if let Some(sender) = ctx.tx {
+                let _ = sender.send(Event::DebugLog {
+                    message: format!(
+                        "Checking bat file: {} -> {}",
+                        file_path,
+                        full_path.display()
+                    ),
+                    context: HashMap::default(),
+                });
+            }
+        }
+
+        // Check cache first (use original file_path as cache key for consistency)
         if ctx.cache.is_entry_valid(&file_path, ctx.level) {
             // Cache hit - use cached result
             if let Some(cached_entry) = ctx.cache.get_entry(&file_path) {
@@ -262,7 +299,7 @@ pub async fn verify_package(
                             Discrepancy::MissingFile {
                                 package_name: package.name.clone(),
                                 package_version: package.version.clone(),
-                                file_path: file_path.clone(),
+                                file_path: clean_path.to_string(),
                             },
                             operation_id,
                             ctx.tx,
@@ -285,7 +322,7 @@ pub async fn verify_package(
                 Discrepancy::MissingFile {
                     package_name: package.name.clone(),
                     package_version: package.version.clone(),
-                    file_path: file_path.clone(),
+                    file_path: clean_path.to_string(),
                 },
                 operation_id,
                 ctx.tx,
@@ -295,7 +332,7 @@ pub async fn verify_package(
             // Handle symlink verification based on policy
             if handle_symlink_verification(
                 &full_path,
-                &file_path,
+                clean_path,
                 package,
                 discrepancies,
                 SymlinkVerificationParams {
@@ -313,13 +350,26 @@ pub async fn verify_package(
 
             // For Full verification, check content hash
             if ctx.level == crate::types::VerificationLevel::Full {
+                // Debug: log content verification
+                if package.name == "bat" && clean_path == "bin/bat" {
+                    if let Some(sender) = ctx.tx {
+                        let _ = sender.send(Event::DebugLog {
+                            message: format!(
+                                "Running content verification for bat binary at {}",
+                                full_path.display()
+                            ),
+                            context: HashMap::default(),
+                        });
+                    }
+                }
+
                 let discrepancy_count_before = discrepancies.len();
                 verify_file_content(ContentVerificationParams {
                     state_manager: ctx.state_manager,
                     state_id: ctx.state_id,
                     file_path: &full_path,
                     package,
-                    relative_path: &file_path,
+                    relative_path: clean_path,
                     discrepancies,
                     operation_id,
                     tx: ctx.tx,

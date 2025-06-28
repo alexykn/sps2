@@ -23,6 +23,24 @@ pub async fn restore_missing_file(
     package_version: &str,
     file_path: &str,
 ) -> Result<(), Error> {
+    eprintln!(
+        "DEBUG: restore_missing_file starting for {}/{} - {}",
+        package_name, package_version, file_path
+    );
+
+    let result = restore_missing_file_impl(ctx, package_name, package_version, file_path).await;
+
+    // Errors are already logged inside restore_missing_file_impl
+
+    result
+}
+
+async fn restore_missing_file_impl(
+    ctx: &HealingContext<'_>,
+    package_name: &str,
+    package_version: &str,
+    file_path: &str,
+) -> Result<(), Error> {
     // Get package hash from database
     let mut state_tx = ctx.state_manager.begin_transaction().await?;
     let state_id = ctx.state_manager.get_active_state().await?;
@@ -61,13 +79,26 @@ pub async fn restore_missing_file(
         let state_id = ctx.state_manager.get_active_state().await?;
 
         // Get the file entry to find its hash
-        let file_entries = sps2_state::queries::get_package_file_entries_by_name(
+        // First try the current state
+        let mut file_entries = sps2_state::queries::get_package_file_entries_by_name(
             &mut state_tx,
             &state_id,
             package_name,
             package_version,
         )
         .await?;
+
+        // If not found in current state, look for any package with same name/version
+        if file_entries.is_empty() {
+            // This is a workaround - ideally file entries should be copied to new states
+            file_entries = sps2_state::queries::get_package_file_entries_all_states(
+                &mut state_tx,
+                package_name,
+                package_version,
+            )
+            .await?;
+        }
+
         state_tx.commit().await?;
 
         // Find the specific file entry
@@ -179,6 +210,11 @@ pub async fn restore_missing_file(
             })?;
     }
 
+    eprintln!(
+        "DEBUG: Successfully restored {} to {}",
+        file_path,
+        target_path.display()
+    );
     Ok(())
 }
 

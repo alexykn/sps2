@@ -910,6 +910,10 @@ impl EventHandler {
                     || message.contains("guard")
                     || message.contains("Guard")
                     || message.contains("verification")
+                    || message.contains("heal")
+                    || message.contains("Heal")
+                    || message.contains("Restoring")
+                    || message.contains("restored")
                 {
                     if context.is_empty() {
                         self.show_message(&message, EventSeverity::Debug);

@@ -461,6 +461,15 @@ impl AtomicInstaller {
                     .push((package_id.clone(), file_hashes.to_vec()));
 
                 for file_hash in file_hashes {
+                    // Skip manifest.toml and sbom files - they should not be tracked in package_files
+                    if !file_hash.is_directory
+                        && (file_hash.relative_path == "manifest.toml"
+                            || file_hash.relative_path == "sbom.spdx.json"
+                            || file_hash.relative_path == "sbom.cdx.json")
+                    {
+                        continue;
+                    }
+
                     // Strip the opt/pm/live prefix for database storage
                     let relative_path = if file_hash.relative_path.starts_with("opt/pm/live/") {
                         file_hash
@@ -549,8 +558,18 @@ impl AtomicInstaller {
 
         while let Some(entry) = entries.next_entry().await? {
             let src_path = entry.path();
-            let _file_name = entry.file_name();
+            let file_name = entry.file_name();
             let metadata = entry.metadata().await?;
+
+            // Skip manifest.toml and sbom files - they should not be tracked in package_files
+            let file_name_str = file_name.to_string_lossy();
+            if !metadata.is_dir()
+                && (file_name_str == "manifest.toml"
+                    || file_name_str == "sbom.spdx.json"
+                    || file_name_str == "sbom.cdx.json")
+            {
+                continue;
+            }
 
             // Calculate relative path from base for tracking
             let relative_from_base = src_path
@@ -859,6 +878,12 @@ impl AtomicInstaller {
 
                     // Add file paths to transition
                     for file_path in file_paths {
+                        // Skip problematic directory entries that shouldn't be tracked
+                        if file_path == "opt" || file_path == "opt/pm" || file_path == "opt/pm/live"
+                        {
+                            continue;
+                        }
+
                         let staging_file = transition.staging_path.join(&file_path);
                         let is_directory = staging_file.is_dir();
                         transition.package_files.push((

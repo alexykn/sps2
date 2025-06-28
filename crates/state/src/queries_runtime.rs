@@ -112,6 +112,70 @@ pub async fn get_state_packages(
     Ok(packages)
 }
 
+/// Get all packages including from parent states
+///
+/// This follows the parent chain and returns all packages that are effectively
+/// installed in the current state, including those inherited from parent states.
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
+pub async fn get_all_active_packages(
+    tx: &mut Transaction<'_, Sqlite>,
+    state_id: &StateId,
+) -> Result<Vec<Package>, Error> {
+    let id_str = state_id.to_string();
+
+    // Use a recursive CTE to get all states in the parent chain
+    let rows = query(
+        r#"
+        WITH RECURSIVE state_chain AS (
+            -- Start with the current state
+            SELECT id, parent_id FROM states WHERE id = ?1
+            
+            UNION ALL
+            
+            -- Recursively get parent states
+            SELECT s.id, s.parent_id 
+            FROM states s
+            INNER JOIN state_chain sc ON s.id = sc.parent_id
+        )
+        SELECT DISTINCT p.id, p.state_id, p.name, p.version, p.hash, p.size, p.installed_at, p.venv_path
+        FROM packages p
+        INNER JOIN state_chain sc ON p.state_id = sc.id
+        -- Group by name to handle package updates/removals
+        -- We want the most recent version of each package
+        WHERE p.id IN (
+            SELECT MAX(p2.id)
+            FROM packages p2
+            INNER JOIN state_chain sc2 ON p2.state_id = sc2.id
+            WHERE p2.name = p.name
+            GROUP BY p2.name
+        )
+        ORDER BY p.name
+        "#,
+    )
+    .bind(id_str)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let packages = rows
+        .into_iter()
+        .map(|row| Package {
+            id: row.get("id"),
+            state_id: row.get("state_id"),
+            name: row.get("name"),
+            version: row.get("version"),
+            hash: row.get("hash"),
+            size: row.get("size"),
+            installed_at: row.get("installed_at"),
+            venv_path: row.get("venv_path"),
+        })
+        .collect();
+
+    Ok(packages)
+}
+
 /// Add a package to a state
 ///
 /// # Errors
@@ -537,6 +601,52 @@ pub async fn get_package_files(
         "SELECT file_path FROM package_files 
          WHERE state_id = ?1 AND package_name = ?2 AND package_version = ?3
          ORDER BY file_path",
+    )
+    .bind(id_str)
+    .bind(package_name)
+    .bind(package_version)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(rows.into_iter().map(|r| r.get("file_path")).collect())
+}
+
+/// Get package files including from parent states
+///
+/// This follows the parent chain to find files for a package that might be
+/// defined in a parent state rather than the current state.
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
+pub async fn get_package_files_with_inheritance(
+    tx: &mut Transaction<'_, Sqlite>,
+    state_id: &StateId,
+    package_name: &str,
+    package_version: &str,
+) -> Result<Vec<String>, Error> {
+    let id_str = state_id.to_string();
+
+    // Use a recursive CTE to get all states in the parent chain
+    let rows = query(
+        r#"
+        WITH RECURSIVE state_chain AS (
+            -- Start with the current state
+            SELECT id, parent_id FROM states WHERE id = ?1
+            
+            UNION ALL
+            
+            -- Recursively get parent states
+            SELECT s.id, s.parent_id 
+            FROM states s
+            INNER JOIN state_chain sc ON s.id = sc.parent_id
+        )
+        SELECT DISTINCT pf.file_path
+        FROM package_files pf
+        INNER JOIN state_chain sc ON pf.state_id = sc.id
+        WHERE pf.package_name = ?2 AND pf.package_version = ?3
+        ORDER BY pf.file_path
+        "#,
     )
     .bind(id_str)
     .bind(package_name)

@@ -296,6 +296,59 @@ pub async fn get_package_file_entries_by_name(
     }
 }
 
+/// Get package file entries by package name and version across all states
+///
+/// This searches for file entries across all states, not just a specific one.
+/// Useful when a package's file entries haven't been propagated to the current state.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails
+pub async fn get_package_file_entries_all_states(
+    tx: &mut Transaction<'_, Sqlite>,
+    package_name: &str,
+    package_version: &str,
+) -> Result<Vec<PackageFileEntry>, Error> {
+    let rows = query(
+        r#"
+        SELECT DISTINCT 
+            pfe.id,
+            pfe.package_id,
+            pfe.file_hash,
+            pfe.relative_path,
+            pfe.permissions,
+            pfe.uid,
+            pfe.gid,
+            pfe.mtime
+        FROM package_file_entries pfe
+        JOIN packages p ON pfe.package_id = p.id
+        WHERE p.name = ? AND p.version = ?
+        ORDER BY pfe.relative_path
+        "#,
+    )
+    .bind(package_name)
+    .bind(package_version)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(|e| StateError::DatabaseError {
+        message: format!("failed to get package file entries across all states: {e}"),
+    })?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| PackageFileEntry {
+            id: r.get("id"),
+            package_id: r.get("package_id"),
+            file_hash: r.get("file_hash"),
+            relative_path: r.get("relative_path"),
+            permissions: r.get("permissions"),
+            uid: r.get("uid"),
+            gid: r.get("gid"),
+            mtime: r.get("mtime"),
+        })
+        .collect())
+}
+
 /// Get verification cache entry
 ///
 /// # Errors
