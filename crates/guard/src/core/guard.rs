@@ -2,8 +2,8 @@
 
 use crate::cache::VerificationCache;
 use crate::types::{
-    CacheStats, Discrepancy, GuardConfig, HealingContext, OperationType, VerificationContext, VerificationLevel,
-    VerificationResult, VerificationScope,
+    CacheStats, Discrepancy, GuardConfig, HealingContext, OperationType, VerificationContext,
+    VerificationLevel, VerificationResult, VerificationScope,
 };
 use crate::verification;
 use sps2_errors::Error;
@@ -30,11 +30,11 @@ async fn warm_package_cache_standalone(
 ) -> Result<(), Error> {
     // Simplified cache warming: just touch the files to trigger filesystem cache
     // This provides performance benefits without complex verification context setup
-    
+
     if let VerificationScope::Package { name, version } = scope {
         let state_id = state_manager.get_active_state().await?;
         let mut tx = state_manager.begin_transaction().await?;
-        
+
         // Get files for this specific package
         let package_files = queries::get_package_files(&mut tx, &state_id, name, version).await?;
         tx.commit().await?;
@@ -64,10 +64,10 @@ async fn verify_single_package_standalone(
 ) -> Result<SinglePackageResult, Error> {
     let mut discrepancies = Vec::new();
     let mut tracked_files: HashSet<std::path::PathBuf> = HashSet::new();
-    
+
     // Create a minimal verification cache for this task (no shared cache in parallel mode)
     let mut local_cache = VerificationCache::new();
-    
+
     // Create verification context for this package
     let mut verification_ctx = VerificationContext {
         state_manager,
@@ -88,7 +88,8 @@ async fn verify_single_package_standalone(
         &mut discrepancies,
         &mut tracked_files,
         operation_id,
-    ).await?;
+    )
+    .await?;
 
     Ok(SinglePackageResult {
         discrepancies,
@@ -181,7 +182,7 @@ impl StateVerificationGuard {
         for (index, package) in packages.iter().enumerate() {
             // Get cache stats before any verification operations
             let current_hit_rate = self.cache.stats().hit_rate();
-            
+
             // Emit progress update
             let _ = self.tx.send(Event::GuardVerificationProgress {
                 operation_id: operation_id.clone(),
@@ -781,7 +782,7 @@ impl StateVerificationGuard {
             if let Some(version) = &package.to_version {
                 self.cache.invalidate_package(&package.name, version);
                 invalidated_packages += 1;
-                
+
                 // If this is an upgrade/update, also invalidate the old version
                 if let Some(old_version) = &package.from_version {
                     if old_version != version {
@@ -796,7 +797,7 @@ impl StateVerificationGuard {
             if let Some(version) = &package.to_version {
                 self.cache.invalidate_package(&package.name, version);
                 invalidated_packages += 1;
-                
+
                 // Also invalidate the old version
                 if let Some(old_version) = &package.from_version {
                     if old_version != version {
@@ -890,7 +891,10 @@ impl StateVerificationGuard {
     /// # Errors
     ///
     /// Returns an error if cache warming fails.
-    pub async fn warm_cache_for_operation(&mut self, operation: &OperationType) -> Result<(), Error> {
+    pub async fn warm_cache_for_operation(
+        &mut self,
+        operation: &OperationType,
+    ) -> Result<(), Error> {
         // Check if cache warming is enabled
         if !self.config.performance.cache_warming {
             return Ok(());
@@ -926,20 +930,21 @@ impl StateVerificationGuard {
 
                 let task = tokio::spawn(async move {
                     let _permit = permit; // Hold permit for duration
-                    
+
                     // Create lightweight cache warming using Quick verification
                     let scope = VerificationScope::Package {
                         name: package.0,
                         version: package.1,
                     };
-                    
+
                     // Use standalone verification with Quick level for warming
                     warm_package_cache_standalone(
                         &state_manager_clone,
                         &scope,
                         &config_clone,
                         &live_path_clone,
-                    ).await
+                    )
+                    .await
                 });
 
                 tasks.push(task);
@@ -995,7 +1000,11 @@ impl StateVerificationGuard {
             VerificationScope::Packages { packages } => {
                 // Warm cache for specific packages
                 for package in packages {
-                    if self.warm_single_package_cache(package.clone()).await.is_ok() {
+                    if self
+                        .warm_single_package_cache(package.clone())
+                        .await
+                        .is_ok()
+                    {
                         warmed_packages += 1;
                     }
                 }
@@ -1019,7 +1028,9 @@ impl StateVerificationGuard {
                     }
                 }
             }
-            VerificationScope::Directory { .. } | VerificationScope::Directories { .. } | VerificationScope::Mixed { .. } => {
+            VerificationScope::Directory { .. }
+            | VerificationScope::Directories { .. }
+            | VerificationScope::Mixed { .. } => {
                 // For directory-based scopes, we can't easily predict which packages to warm
                 // So we skip cache warming for these cases
                 return Ok(());
@@ -1046,7 +1057,10 @@ impl StateVerificationGuard {
     /// # Errors
     ///
     /// Returns an error if verification fails.
-    pub async fn verify_progressively(&mut self, scope: &VerificationScope) -> Result<VerificationResult, Error> {
+    pub async fn verify_progressively(
+        &mut self,
+        scope: &VerificationScope,
+    ) -> Result<VerificationResult, Error> {
         if !self.config.performance.progressive_verification {
             // Progressive verification disabled - use configured level
             return self.verify_with_scope(scope).await;
@@ -1069,7 +1083,9 @@ impl StateVerificationGuard {
         if quick_result.is_valid {
             // No issues found - we're done!
             let _ = self.tx.send(Event::DebugLog {
-                message: "Progressive verification: Quick verification passed, no escalation needed".to_string(),
+                message:
+                    "Progressive verification: Quick verification passed, no escalation needed"
+                        .to_string(),
                 context: HashMap::default(),
             });
             return Ok(quick_result);
@@ -1108,7 +1124,8 @@ impl StateVerificationGuard {
                 let full_result = self.verify_with_scope(scope).await?;
                 self.config.verification_level = original_level;
 
-                let duration_ms = u64::try_from(start_time.elapsed().as_millis()).unwrap_or(u64::MAX);
+                let duration_ms =
+                    u64::try_from(start_time.elapsed().as_millis()).unwrap_or(u64::MAX);
                 let _ = self.tx.send(Event::DebugLog {
                     message: format!(
                         "Progressive verification completed with Full level in {}ms",
@@ -1128,7 +1145,10 @@ impl StateVerificationGuard {
     }
 
     /// Get packages that should be warmed for an operation
-    async fn get_packages_for_warming(&self, operation: &OperationType) -> Result<Vec<(String, String)>, Error> {
+    async fn get_packages_for_warming(
+        &self,
+        operation: &OperationType,
+    ) -> Result<Vec<(String, String)>, Error> {
         let state_id = self.state_manager.get_active_state().await?;
         let mut tx = self.state_manager.begin_transaction().await?;
 
@@ -1261,7 +1281,7 @@ impl StateVerificationGuard {
 
             let task = tokio::spawn(async move {
                 let _permit = permit; // Hold permit for duration of task
-                
+
                 // Create a minimal verification context for this package
                 let result = verify_single_package_standalone(
                     &state_manager,
@@ -1271,7 +1291,8 @@ impl StateVerificationGuard {
                     &config,
                     &live_path_clone,
                     &state_id_clone,
-                ).await;
+                )
+                .await;
 
                 (package.name.clone(), package.version.clone(), result)
             });
@@ -1346,9 +1367,12 @@ impl StateVerificationGuard {
     /// Determine if Full verification is needed based on Standard verification results
     fn needs_full_verification(&self, result: &VerificationResult) -> bool {
         // Escalate to Full verification if we find corrupted files or serious issues
-        result.discrepancies.iter().any(|d| matches!(d, 
-            crate::types::Discrepancy::CorruptedFile { .. } |
-            crate::types::Discrepancy::MissingFile { .. }
-        )) && result.discrepancies.len() > 3 // Only escalate if we have multiple serious issues
+        result.discrepancies.iter().any(|d| {
+            matches!(
+                d,
+                crate::types::Discrepancy::CorruptedFile { .. }
+                    | crate::types::Discrepancy::MissingFile { .. }
+            )
+        }) && result.discrepancies.len() > 3 // Only escalate if we have multiple serious issues
     }
 }

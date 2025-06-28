@@ -110,7 +110,7 @@ pub async fn upgrade(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRe
     Ok(report)
 }
 
-/// Convert InstallReport to GuardOperationResult for upgrade operations
+/// Convert `InstallReport` to `GuardOperationResult` for upgrade operations
 fn create_guard_operation_result_for_upgrade(report: &InstallReport) -> GuardOperationResult {
     GuardOperationResult {
         installed: report
@@ -118,8 +118,14 @@ fn create_guard_operation_result_for_upgrade(report: &InstallReport) -> GuardOpe
             .iter()
             .map(|pkg| GuardPackageChange {
                 name: pkg.name.clone(),
-                from_version: pkg.from_version.as_ref().map(|v| v.to_string()),
-                to_version: pkg.to_version.as_ref().map(|v| v.to_string()),
+                from_version: pkg
+                    .from_version
+                    .as_ref()
+                    .map(std::string::ToString::to_string),
+                to_version: pkg
+                    .to_version
+                    .as_ref()
+                    .map(std::string::ToString::to_string),
                 size: pkg.size,
             })
             .collect(),
@@ -128,8 +134,14 @@ fn create_guard_operation_result_for_upgrade(report: &InstallReport) -> GuardOpe
             .iter()
             .map(|pkg| GuardPackageChange {
                 name: pkg.name.clone(),
-                from_version: pkg.from_version.as_ref().map(|v| v.to_string()),
-                to_version: pkg.to_version.as_ref().map(|v| v.to_string()),
+                from_version: pkg
+                    .from_version
+                    .as_ref()
+                    .map(std::string::ToString::to_string),
+                to_version: pkg
+                    .to_version
+                    .as_ref()
+                    .map(std::string::ToString::to_string),
                 size: pkg.size,
             })
             .collect(),
@@ -138,8 +150,14 @@ fn create_guard_operation_result_for_upgrade(report: &InstallReport) -> GuardOpe
             .iter()
             .map(|pkg| GuardPackageChange {
                 name: pkg.name.clone(),
-                from_version: pkg.from_version.as_ref().map(|v| v.to_string()),
-                to_version: pkg.to_version.as_ref().map(|v| v.to_string()),
+                from_version: pkg
+                    .from_version
+                    .as_ref()
+                    .map(std::string::ToString::to_string),
+                to_version: pkg
+                    .to_version
+                    .as_ref()
+                    .map(std::string::ToString::to_string),
                 size: pkg.size,
             })
             .collect(),
@@ -157,7 +175,7 @@ fn create_guard_operation_result_for_upgrade(report: &InstallReport) -> GuardOpe
 
 /// Upgrade packages with state verification enabled
 ///
-/// This wrapper uses the advanced GuardedOperation pattern providing:
+/// This wrapper uses the advanced `GuardedOperation` pattern providing:
 /// - Cache warming before operation
 /// - Operation-specific verification scoping for old→new transition verification
 /// - Pre-verification of existing packages before upgrade
@@ -176,7 +194,7 @@ pub async fn upgrade_with_verification(
     package_names: &[String],
 ) -> Result<InstallReport, Error> {
     let package_names_vec = package_names.iter().map(ToString::to_string).collect();
-    
+
     ctx.guarded_upgrade(package_names_vec)
         .execute(|| async {
             let report = upgrade(ctx, package_names).await?;
@@ -314,12 +332,26 @@ mod tests {
         assert_eq!(guard_result.updated.len(), 1);
         assert_eq!(guard_result.removed.len(), 0);
         assert_eq!(guard_result.updated[0].name, "test-package");
-        assert_eq!(guard_result.updated[0].from_version, Some("1.0.0".to_string()));
-        assert_eq!(guard_result.updated[0].to_version, Some("2.0.0".to_string()));
-        assert_eq!(guard_result.install_triggered, false); // Standard upgrade operation
-        assert!(guard_result.modified_directories.contains(&std::path::PathBuf::from("/opt/pm/live")));
-        assert!(guard_result.modified_directories.contains(&std::path::PathBuf::from("/opt/pm/live/bin")));
-        assert!(guard_result.modified_directories.contains(&std::path::PathBuf::from("/opt/pm/live/lib")));
-        assert!(guard_result.modified_directories.contains(&std::path::PathBuf::from("/opt/pm/live/share")));
+        assert_eq!(
+            guard_result.updated[0].from_version,
+            Some("1.0.0".to_string())
+        );
+        assert_eq!(
+            guard_result.updated[0].to_version,
+            Some("2.0.0".to_string())
+        );
+        assert!(!guard_result.install_triggered); // Standard upgrade operation
+        assert!(guard_result
+            .modified_directories
+            .contains(&std::path::PathBuf::from("/opt/pm/live")));
+        assert!(guard_result
+            .modified_directories
+            .contains(&std::path::PathBuf::from("/opt/pm/live/bin")));
+        assert!(guard_result
+            .modified_directories
+            .contains(&std::path::PathBuf::from("/opt/pm/live/lib")));
+        assert!(guard_result
+            .modified_directories
+            .contains(&std::path::PathBuf::from("/opt/pm/live/share")));
     }
 }

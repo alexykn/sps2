@@ -6,6 +6,10 @@
 //! This crate provides hashing functionality for content-addressed storage
 //! and integrity verification.
 
+mod file_hasher;
+
+pub use file_hasher::{calculate_file_storage_path, FileHashResult, FileHasher, FileHasherConfig};
+
 use blake3::Hasher;
 use serde::{Deserialize, Serialize};
 use sps2_errors::{Error, StorageError};

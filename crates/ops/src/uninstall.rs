@@ -82,7 +82,7 @@ pub async fn uninstall(ctx: &OpsCtx, package_names: &[String]) -> Result<Install
     Ok(report)
 }
 
-/// Convert InstallReport to GuardOperationResult for uninstall operations
+/// Convert `InstallReport` to `GuardOperationResult` for uninstall operations
 fn create_guard_operation_result_for_uninstall(report: &InstallReport) -> GuardOperationResult {
     GuardOperationResult {
         installed: report
@@ -90,8 +90,14 @@ fn create_guard_operation_result_for_uninstall(report: &InstallReport) -> GuardO
             .iter()
             .map(|pkg| GuardPackageChange {
                 name: pkg.name.clone(),
-                from_version: pkg.from_version.as_ref().map(|v| v.to_string()),
-                to_version: pkg.to_version.as_ref().map(|v| v.to_string()),
+                from_version: pkg
+                    .from_version
+                    .as_ref()
+                    .map(std::string::ToString::to_string),
+                to_version: pkg
+                    .to_version
+                    .as_ref()
+                    .map(std::string::ToString::to_string),
                 size: pkg.size,
             })
             .collect(),
@@ -100,8 +106,14 @@ fn create_guard_operation_result_for_uninstall(report: &InstallReport) -> GuardO
             .iter()
             .map(|pkg| GuardPackageChange {
                 name: pkg.name.clone(),
-                from_version: pkg.from_version.as_ref().map(|v| v.to_string()),
-                to_version: pkg.to_version.as_ref().map(|v| v.to_string()),
+                from_version: pkg
+                    .from_version
+                    .as_ref()
+                    .map(std::string::ToString::to_string),
+                to_version: pkg
+                    .to_version
+                    .as_ref()
+                    .map(std::string::ToString::to_string),
                 size: pkg.size,
             })
             .collect(),
@@ -110,8 +122,14 @@ fn create_guard_operation_result_for_uninstall(report: &InstallReport) -> GuardO
             .iter()
             .map(|pkg| GuardPackageChange {
                 name: pkg.name.clone(),
-                from_version: pkg.from_version.as_ref().map(|v| v.to_string()),
-                to_version: pkg.to_version.as_ref().map(|v| v.to_string()),
+                from_version: pkg
+                    .from_version
+                    .as_ref()
+                    .map(std::string::ToString::to_string),
+                to_version: pkg
+                    .to_version
+                    .as_ref()
+                    .map(std::string::ToString::to_string),
                 size: pkg.size,
             })
             .collect(),
@@ -128,7 +146,7 @@ fn create_guard_operation_result_for_uninstall(report: &InstallReport) -> GuardO
 
 /// Uninstall packages with state verification enabled
 ///
-/// This wrapper uses the advanced GuardedOperation pattern providing:
+/// This wrapper uses the advanced `GuardedOperation` pattern providing:
 /// - Cache warming before operation
 /// - Operation-specific verification scoping with orphan detection
 /// - Progressive verification when appropriate  
@@ -145,7 +163,7 @@ pub async fn uninstall_with_verification(
     package_names: &[String],
 ) -> Result<InstallReport, Error> {
     let package_names_vec = package_names.iter().map(ToString::to_string).collect();
-    
+
     ctx.guarded_uninstall(package_names_vec)
         .execute(|| async {
             let report = uninstall(ctx, package_names).await?;
@@ -283,9 +301,14 @@ mod tests {
         assert_eq!(guard_result.updated.len(), 0);
         assert_eq!(guard_result.removed.len(), 1);
         assert_eq!(guard_result.removed[0].name, "test-package");
-        assert_eq!(guard_result.removed[0].from_version, Some("1.0.0".to_string()));
+        assert_eq!(
+            guard_result.removed[0].from_version,
+            Some("1.0.0".to_string())
+        );
         assert_eq!(guard_result.removed[0].to_version, None);
-        assert_eq!(guard_result.install_triggered, false); // Uninstall never triggers install
-        assert!(guard_result.modified_directories.contains(&std::path::PathBuf::from("/opt/pm/live")));
+        assert!(!guard_result.install_triggered); // Uninstall never triggers install
+        assert!(guard_result
+            .modified_directories
+            .contains(&std::path::PathBuf::from("/opt/pm/live")));
     }
 }

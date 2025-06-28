@@ -955,8 +955,10 @@ pub struct TransactionData<'a> {
     pub package_refs: &'a [PackageRef],
     /// Package references with venv paths to be added during commit
     pub package_refs_with_venv: &'a [(PackageRef, String)],
-    /// Package files to be added during commit
+    /// Package files to be added during commit (legacy)
     pub package_files: &'a [(String, String, String, bool)], // (package_name, package_version, file_path, is_directory)
+    /// File references for file-level storage
+    pub file_references: &'a [(i64, crate::FileReference)], // (package_id, file_reference)
 }
 
 impl StateManager {
@@ -1065,6 +1067,16 @@ impl StateManager {
                 *is_directory,
             )
             .await?;
+        }
+
+        // Add file-level data if available
+        for (package_id, file_ref) in transition_data.file_references {
+            // First add the file object if it doesn't exist
+            let _dedup_result =
+                queries::add_file_object(&mut tx, &file_ref.hash, &file_ref.metadata).await?;
+
+            // Then add the package file entry
+            queries::add_package_file_entry(&mut tx, *package_id, file_ref).await?;
         }
 
         // Commit the DB transaction

@@ -5,7 +5,7 @@ use crate::python::{is_python_package, PythonVenvManager};
 use crate::{InstallContext, InstallResult, StagingManager};
 use sps2_errors::{Error, InstallError};
 use sps2_events::Event;
-use sps2_hash::Hash;
+use sps2_hash::{Hash, FileHasher, FileHasherConfig};
 use sps2_manifest::Manifest;
 use sps2_resolver::{PackageId, ResolvedNode};
 use sps2_state::{PackageRef, StateManager};
@@ -26,6 +26,8 @@ pub struct AtomicInstaller {
     live_path: PathBuf,
     /// Python virtual environment manager
     python_venv_manager: PythonVenvManager,
+    /// File hasher for file-level operations
+    file_hasher: FileHasher,
 }
 
 impl AtomicInstaller {
@@ -44,12 +46,16 @@ impl AtomicInstaller {
         let venvs_base = PathBuf::from("/opt/pm/venvs");
         let python_venv_manager = PythonVenvManager::new(venvs_base);
 
+        // Create file hasher for file-level operations
+        let file_hasher = FileHasher::new(FileHasherConfig::default());
+
         Ok(Self {
             state_manager,
             store,
             staging_manager,
             live_path,
             python_venv_manager,
+            file_hasher,
         })
     }
 
@@ -186,7 +192,8 @@ impl AtomicInstaller {
             package_refs: &transition.package_refs,
             package_refs_with_venv: &transition.package_refs_with_venv,
             package_files: &transition.package_files,
-        };
+            file_references: &transition.file_references,
+        };,
         let journal = self
             .state_manager
             .prepare_transaction(
@@ -432,41 +439,65 @@ impl AtomicInstaller {
         package_id: &PackageId,
         _is_python: bool,
     ) -> Result<(), Error> {
-        // Create hard links from store to staging directory and collect file paths
         let staging_prefix = &transition.staging_path;
         let mut file_paths = Vec::new();
 
-        // Load the stored package to get the correct files path
+        // Load the stored package
         let stored_package = StoredPackage::load(store_path).await?;
-        let files_path = stored_package.files_path();
 
-        // Check if files directory exists
-        if !files_path.exists() {
-            return Err(InstallError::AtomicOperationFailed {
-                message: format!(
-                    "Package files directory not found at {}",
-                    files_path.display()
-                ),
+        // Check if this is a file-level package
+        if stored_package.has_file_hashes() {
+            // New file-level package - link from file store
+            if let Some(sender) = &transition.event_sender {
+                let _ = sender.send(Event::DebugLog {
+                    message: format!(
+                        "Linking file-level package {} to staging",
+                        package_id.name
+                    ),
+                    context: std::collections::HashMap::new(),
+                });
             }
-            .into());
-        }
 
-        // Debug log
-        if let Some(sender) = &transition.event_sender {
-            let _ = sender.send(Event::DebugLog {
-                message: format!(
-                    "Linking package {} from {} directly to staging FHS directories",
-                    package_id.name,
-                    files_path.display()
-                ),
-                context: std::collections::HashMap::new(),
-            });
-        }
+            // Link files from store to staging
+            stored_package.link_to(staging_prefix).await?;
 
-        // Recursively link files directly to their FHS locations in staging
-        // No package directory creation - direct links only
-        self.link_package_files_to_fhs(&files_path, staging_prefix, &files_path, &mut file_paths)
-            .await?;
+            // Collect file paths for database tracking
+            if let Some(file_hashes) = stored_package.file_hashes() {
+                for file_hash in file_hashes {
+                    file_paths.push((file_hash.relative_path.clone(), file_hash.is_directory));
+                }
+            }
+        } else {
+            // Legacy package - use existing logic
+            let files_path = stored_package.files_path();
+
+            // Check if files directory exists
+            if !files_path.exists() {
+                return Err(InstallError::AtomicOperationFailed {
+                    message: format!(
+                        "Package files directory not found at {}",
+                        files_path.display()
+                    ),
+                }
+                .into());
+            }
+
+            // Debug log
+            if let Some(sender) = &transition.event_sender {
+                let _ = sender.send(Event::DebugLog {
+                    message: format!(
+                        "Linking package {} from {} directly to staging FHS directories",
+                        package_id.name,
+                        files_path.display()
+                    ),
+                    context: std::collections::HashMap::new(),
+                });
+            }
+
+            // Recursively link files directly to their FHS locations in staging
+            self.link_package_files_to_fhs(&files_path, staging_prefix, &files_path, &mut file_paths)
+                .await?;
+        }
 
         // Debug what was linked
         if let Some(sender) = &transition.event_sender {
@@ -991,6 +1022,16 @@ impl AtomicInstaller {
         }
 
         Ok(())
+    }
+
+    /// Enable or disable file-level hashing
+    pub fn set_file_hashing(&mut self, enabled: bool) {
+        self.use_file_hashing = enabled;
+    }
+
+    /// Check if file-level hashing is enabled
+    pub fn is_file_hashing_enabled(&self) -> bool {
+        self.use_file_hashing
     }
 
     /// Rollback to a previous state

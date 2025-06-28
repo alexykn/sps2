@@ -15,9 +15,9 @@ pub use error_context::{
     ContextSummaryStats, GuardErrorContext, VerbosityLevel, VerbosityLevelExt,
 };
 pub use types::{
-    CacheStats, Discrepancy, FileCacheEntry, GuardConfig, HealingContext, OperationImpact,
-    OperationResult, OperationType, OrphanedFileAction, OrphanedFileCategory, PackageChange,
-    PerformanceConfig, SymlinkPolicy, VerificationContext, VerificationCoverage, VerificationLevel,
-    VerificationResult, VerificationScope, derive_post_operation_scope, derive_pre_operation_scope,
-    select_smart_scope,
+    derive_post_operation_scope, derive_pre_operation_scope, select_smart_scope, CacheStats,
+    Discrepancy, FileCacheEntry, GuardConfig, HealingContext, OperationImpact, OperationResult,
+    OperationType, OrphanedFileAction, OrphanedFileCategory, PackageChange, PerformanceConfig,
+    SymlinkPolicy, VerificationContext, VerificationCoverage, VerificationLevel,
+    VerificationResult, VerificationScope,
 };

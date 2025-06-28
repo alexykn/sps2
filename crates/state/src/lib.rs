@@ -6,18 +6,26 @@
 //! This crate manages the `SQLite` database that tracks system state,
 //! installed packages, and enables atomic updates with rollback.
 
+pub mod file_migration;
+pub mod file_models;
+pub mod file_queries_runtime;
 pub mod manager;
 pub mod models;
 
 #[cfg(feature = "runtime-queries")]
 pub use manager::{StateManager, TransactionData};
 pub mod queries {
+    pub use crate::file_queries_runtime::*;
     pub use crate::queries_runtime::*;
 }
 
 #[cfg(feature = "runtime-queries")]
 mod queries_runtime;
 
+pub use file_models::{
+    DeduplicationResult, FileMetadata, FileObject, FileReference, FileStorageStats,
+    FileVerificationCache, InstalledFile, PackageFileEntry,
+};
 pub use models::{Package, PackageRef, State, StoreRef};
 
 use sps2_errors::Error;

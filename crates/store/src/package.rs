@@ -1,6 +1,7 @@
 //! Stored package representation and operations
 
 use sps2_errors::{Error, PackageError};
+use sps2_hash::FileHashResult;
 use sps2_manifest::Manifest;
 use sps2_root::{create_dir_all, exists, hard_link, size};
 use std::path::{Path, PathBuf};
@@ -10,6 +11,8 @@ use tokio::fs;
 pub struct StoredPackage {
     path: PathBuf,
     manifest: Manifest,
+    /// File hash results if available (for new file-level packages)
+    file_hashes: Option<Vec<FileHashResult>>,
 }
 
 impl StoredPackage {
@@ -24,9 +27,19 @@ impl StoredPackage {
         let manifest_path = path.join("manifest.toml");
         let manifest = Manifest::from_file(&manifest_path).await?;
 
+        // Try to load file hashes if available
+        let files_json_path = path.join("files.json");
+        let file_hashes = if exists(&files_json_path).await {
+            let content = fs::read_to_string(&files_json_path).await?;
+            serde_json::from_str(&content).ok()
+        } else {
+            None
+        };
+
         Ok(Self {
             path: path.to_path_buf(),
             manifest,
+            file_hashes,
         })
     }
 
@@ -50,6 +63,18 @@ impl StoredPackage {
             .file_name()
             .and_then(|name| name.to_str())
             .and_then(|hash_str| sps2_hash::Hash::from_hex(hash_str).ok())
+    }
+
+    /// Check if this package has file-level hashes
+    #[must_use]
+    pub fn has_file_hashes(&self) -> bool {
+        self.file_hashes.is_some()
+    }
+
+    /// Get the file hashes if available
+    #[must_use]
+    pub fn file_hashes(&self) -> Option<&[FileHashResult]> {
+        self.file_hashes.as_deref()
     }
 
     /// Get the files directory
@@ -81,6 +106,9 @@ impl StoredPackage {
 
     /// Link package contents to a destination
     ///
+    /// For new file-level packages, this links from the file store.
+    /// For legacy packages, this links from the package directory.
+    ///
     /// # Errors
     ///
     /// Returns an error if:
@@ -88,17 +116,31 @@ impl StoredPackage {
     /// - File linking operations fail
     /// - Directory creation fails
     pub async fn link_to(&self, dest_root: &Path) -> Result<(), Error> {
-        let files_dir = self.files_path();
+        // Check if this is a new file-level package
+        if let Some(file_hashes) = &self.file_hashes {
+            // New file-level package - link from file store
+            let store_base = self.path.parent().unwrap().parent().unwrap();
+            let file_store = crate::FileStore::new(store_base);
 
-        if !exists(&files_dir).await {
-            return Err(PackageError::Corrupted {
-                message: "missing files directory".to_string(),
+            // Link all files from the file store
+            file_store
+                .link_files(file_hashes, &PathBuf::new(), dest_root)
+                .await?;
+            Ok(())
+        } else {
+            // Legacy package - link from package directory
+            let files_dir = self.files_path();
+
+            if !exists(&files_dir).await {
+                return Err(PackageError::Corrupted {
+                    message: "missing files directory".to_string(),
+                }
+                .into());
             }
-            .into());
-        }
 
-        // Recursively link all files
-        self.link_dir(&files_dir, dest_root).await
+            // Recursively link all files
+            self.link_dir(&files_dir, dest_root).await
+        }
     }
 
     async fn link_dir(&self, src: &Path, dest: &Path) -> Result<(), Error> {

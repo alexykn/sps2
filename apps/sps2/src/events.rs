@@ -1084,9 +1084,9 @@ impl EventHandler {
 
             Event::GuardErrorSummary {
                 operation_id: _,
-                total_errors,
-                recoverable_errors,
-                manual_intervention_required,
+                total_errors: _,
+                recoverable_errors: _,
+                manual_intervention_required: _,
                 overall_severity,
                 user_friendly_summary,
                 recommended_actions,

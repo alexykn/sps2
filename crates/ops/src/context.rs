@@ -4,7 +4,10 @@ use sps2_builder::Builder;
 use sps2_config::Config;
 use sps2_errors::Error;
 use sps2_events::{Event, EventSender};
-use sps2_guard::{GuardConfig, OperationType, OperationResult as GuardOperationResult, StateVerificationGuard, derive_pre_operation_scope, derive_post_operation_scope};
+use sps2_guard::{
+    derive_post_operation_scope, derive_pre_operation_scope, GuardConfig,
+    OperationResult as GuardOperationResult, OperationType, StateVerificationGuard,
+};
 use sps2_index::IndexManager;
 use sps2_net::NetClient;
 use sps2_resolver::Resolver;
@@ -43,30 +46,107 @@ impl OpsCtx {
     ///
     /// # Errors
     ///
-    /// Returns an error if verification fails and `fail_on_discrepancy` is true
-    pub async fn verify_state(&self) -> Result<(), Error> {
-        // Take the guard out of the RefCell to avoid holding borrow across await
-        let guard_option = self.guard.borrow_mut().take();
+    /// Returns an error if verification or operation fails
+    ///
+    /// # Panics
+    ///
+    /// Panics if the guard is not properly initialized when verification is enabled
+    pub async fn with_guard_integration<F, Fut, T>(
+        &self,
+        operation_type: OperationType,
+        operation: F,
+    ) -> Result<(T, GuardOperationResult), Error>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<(T, GuardOperationResult), Error>>,
+    {
+        if !self.is_verification_enabled() {
+            // If verification is disabled, just run the operation
+            return operation().await;
+        }
 
+        // Get a mutable reference to the guard
+        let guard_option = self.guard.borrow_mut().take();
         if let Some(mut guard) = guard_option {
-            let result = if self.config.verification.auto_heal {
-                guard.verify_and_heal(&self.config).await?
+            // Phase 1: Cache warming before operation
+            if let Err(e) = guard.warm_cache_for_operation(&operation_type).await {
+                let _ = self.tx.send(Event::DebugLog {
+                    message: format!("Cache warming failed (non-critical): {e}"),
+                    context: HashMap::default(),
+                });
+            }
+
+            // Phase 2: Pre-operation verification with intelligent scoping
+            let pre_scope = derive_pre_operation_scope(&operation_type);
+            let _ = self.tx.send(Event::DebugLog {
+                message: format!("Running pre-operation verification with scope: {pre_scope:?}"),
+                context: HashMap::default(),
+            });
+
+            // Use progressive verification if configured
+            let pre_result = if guard.config().performance.progressive_verification {
+                guard.verify_progressively(&pre_scope).await?
             } else {
-                guard.verify_only().await?
+                guard.verify_with_scope(&pre_scope).await?
             };
 
-            // Put the guard back before checking result
-            *self.guard.borrow_mut() = Some(guard);
-
-            if !result.is_valid && self.config.verification.fail_on_discrepancy {
+            // Check pre-verification result
+            if !pre_result.is_valid && self.config.verification.fail_on_discrepancy {
+                // Put guard back before failing
+                *self.guard.borrow_mut() = Some(guard);
                 return Err(sps2_errors::OpsError::VerificationFailed {
-                    discrepancies: result.discrepancies.len(),
-                    state_id: result.state_id.to_string(),
+                    discrepancies: pre_result.discrepancies.len(),
+                    state_id: pre_result.state_id.to_string(),
                 }
                 .into());
             }
+
+            // Phase 3: Execute the operation
+            let (operation_result, guard_operation_result) = {
+                // Put guard back temporarily for operation execution
+                *self.guard.borrow_mut() = Some(guard);
+                let result = operation().await?;
+                let guard_taken = self.guard.borrow_mut().take().unwrap();
+                (result, guard_taken)
+            };
+
+            let mut guard = guard_operation_result;
+            let (op_result, op_metadata) = operation_result;
+
+            // Phase 4: Post-operation verification with result-based scoping
+            let post_scope = derive_post_operation_scope(&operation_type, &op_metadata);
+            let _ = self.tx.send(Event::DebugLog {
+                message: format!("Running post-operation verification with scope: {post_scope:?}"),
+                context: HashMap::default(),
+            });
+
+            let post_result = if guard.config().performance.progressive_verification {
+                guard.verify_progressively(&post_scope).await?
+            } else {
+                guard.verify_with_scope(&post_scope).await?
+            };
+
+            // Phase 5: Smart cache invalidation based on operation results
+            guard.invalidate_cache_for_operation(&operation_type, &op_metadata);
+
+            // Check post-verification result
+            if !post_result.is_valid && self.config.verification.fail_on_discrepancy {
+                // Put guard back before failing
+                *self.guard.borrow_mut() = Some(guard);
+                return Err(sps2_errors::OpsError::VerificationFailed {
+                    discrepancies: post_result.discrepancies.len(),
+                    state_id: post_result.state_id.to_string(),
+                }
+                .into());
+            }
+
+            // Put guard back and return result
+            *self.guard.borrow_mut() = Some(guard);
+            Ok((op_result, op_metadata))
+        } else {
+            // No guard available - just run operation
+            operation().await
         }
-        Ok(())
     }
 
     /// Check if verification is enabled
@@ -78,16 +158,17 @@ impl OpsCtx {
         } else {
             self.config.verification.enabled
         };
-        
+
         let guard_initialized = self.guard.borrow().is_some();
         let result = guard_initialized && guard_enabled;
-        
+
         let _ = self.tx.send(Event::DebugLog {
-            message: format!("is_verification_enabled: guard_initialized={}, guard_enabled={}, result={}", 
-                guard_initialized, guard_enabled, result),
+            message: format!(
+                "is_verification_enabled: guard_initialized={guard_initialized}, guard_enabled={guard_enabled}, result={result}"
+            ),
             context: std::collections::HashMap::default(),
         });
-        
+
         result
     }
 
@@ -107,21 +188,27 @@ impl OpsCtx {
         let guard_enabled = if let Some(guard_config) = &self.config.guard {
             // Top-level [guard] configuration takes precedence
             let _ = self.tx.send(Event::DebugLog {
-                message: format!("Found top-level guard config, enabled: {}", guard_config.enabled),
+                message: format!(
+                    "Found top-level guard config, enabled: {}",
+                    guard_config.enabled
+                ),
                 context: std::collections::HashMap::default(),
             });
             guard_config.enabled
         } else {
             // Fall back to legacy [verification] configuration
             let _ = self.tx.send(Event::DebugLog {
-                message: format!("Using legacy verification config, enabled: {}", self.config.verification.enabled),
+                message: format!(
+                    "Using legacy verification config, enabled: {}",
+                    self.config.verification.enabled
+                ),
                 context: std::collections::HashMap::default(),
             });
             self.config.verification.enabled
         };
 
         let _ = self.tx.send(Event::DebugLog {
-            message: format!("Guard initialization: enabled={}", guard_enabled),
+            message: format!("Guard initialization: enabled={guard_enabled}"),
             context: std::collections::HashMap::default(),
         });
 
@@ -167,6 +254,36 @@ impl OpsCtx {
         });
 
         *self.guard.borrow_mut() = Some(guard);
+        Ok(())
+    }
+
+    /// Run state verification if guard is enabled
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if verification fails and `fail_on_discrepancy` is true
+    pub async fn verify_state(&self) -> Result<(), Error> {
+        // Take the guard out of the RefCell to avoid holding borrow across await
+        let guard_option = self.guard.borrow_mut().take();
+
+        if let Some(mut guard) = guard_option {
+            let result = if self.config.verification.auto_heal {
+                guard.verify_and_heal(&self.config).await?
+            } else {
+                guard.verify_only().await?
+            };
+
+            // Put the guard back before checking result
+            *self.guard.borrow_mut() = Some(guard);
+
+            if !result.is_valid && self.config.verification.fail_on_discrepancy {
+                return Err(sps2_errors::OpsError::VerificationFailed {
+                    discrepancies: result.discrepancies.len(),
+                    state_id: result.state_id.to_string(),
+                }
+                .into());
+            }
+        }
         Ok(())
     }
 
@@ -226,115 +343,6 @@ impl OpsCtx {
         Ok(result)
     }
 
-    /// Execute an operation with intelligent guard integration
-    ///
-    /// This advanced wrapper provides operation-specific verification using:
-    /// - Cache warming before operation
-    /// - Operation-specific scoping for targeted verification
-    /// - Progressive verification when appropriate
-    /// - Smart cache invalidation after operation
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if verification or operation fails
-    pub async fn with_guard_integration<F, Fut, T>(
-        &self,
-        operation_type: OperationType,
-        operation: F,
-    ) -> Result<(T, GuardOperationResult), Error>
-    where
-        F: FnOnce() -> Fut,
-        Fut: Future<Output = Result<(T, GuardOperationResult), Error>>,
-    {
-        if !self.is_verification_enabled() {
-            // If verification is disabled, just run the operation
-            return operation().await;
-        }
-
-        // Get a mutable reference to the guard
-        let guard_option = self.guard.borrow_mut().take();
-        if let Some(mut guard) = guard_option {
-            // Phase 1: Cache warming before operation
-            if let Err(e) = guard.warm_cache_for_operation(&operation_type).await {
-                let _ = self.tx.send(Event::DebugLog {
-                    message: format!("Cache warming failed (non-critical): {}", e),
-                    context: HashMap::default(),
-                });
-            }
-
-            // Phase 2: Pre-operation verification with intelligent scoping
-            let pre_scope = derive_pre_operation_scope(&operation_type);
-            let _ = self.tx.send(Event::DebugLog {
-                message: format!("Running pre-operation verification with scope: {:?}", pre_scope),
-                context: HashMap::default(),
-            });
-
-            // Use progressive verification if configured
-            let pre_result = if guard.config().performance.progressive_verification {
-                guard.verify_progressively(&pre_scope).await?
-            } else {
-                guard.verify_with_scope(&pre_scope).await?
-            };
-
-            // Check pre-verification result
-            if !pre_result.is_valid && self.config.verification.fail_on_discrepancy {
-                // Put guard back before failing
-                *self.guard.borrow_mut() = Some(guard);
-                return Err(sps2_errors::OpsError::VerificationFailed {
-                    discrepancies: pre_result.discrepancies.len(),
-                    state_id: pre_result.state_id.to_string(),
-                }
-                .into());
-            }
-
-            // Phase 3: Execute the operation
-            let (operation_result, guard_operation_result) = {
-                // Put guard back temporarily for operation execution
-                *self.guard.borrow_mut() = Some(guard);
-                let result = operation().await?;
-                let guard_taken = self.guard.borrow_mut().take().unwrap();
-                (result, guard_taken)
-            };
-
-            let mut guard = guard_operation_result;
-            let (op_result, op_metadata) = operation_result;
-
-            // Phase 4: Post-operation verification with result-based scoping
-            let post_scope = derive_post_operation_scope(&operation_type, &op_metadata);
-            let _ = self.tx.send(Event::DebugLog {
-                message: format!("Running post-operation verification with scope: {:?}", post_scope),
-                context: HashMap::default(),
-            });
-
-            let post_result = if guard.config().performance.progressive_verification {
-                guard.verify_progressively(&post_scope).await?
-            } else {
-                guard.verify_with_scope(&post_scope).await?
-            };
-
-            // Phase 5: Smart cache invalidation based on operation results
-            guard.invalidate_cache_for_operation(&operation_type, &op_metadata);
-
-            // Check post-verification result
-            if !post_result.is_valid && self.config.verification.fail_on_discrepancy {
-                // Put guard back before failing
-                *self.guard.borrow_mut() = Some(guard);
-                return Err(sps2_errors::OpsError::VerificationFailed {
-                    discrepancies: post_result.discrepancies.len(),
-                    state_id: post_result.state_id.to_string(),
-                }
-                .into());
-            }
-
-            // Put guard back and return result
-            *self.guard.borrow_mut() = Some(guard);
-            Ok((op_result, op_metadata))
-        } else {
-            // No guard available - just run operation
-            operation().await
-        }
-    }
-
     /// Create a guarded install operation
     #[must_use]
     pub fn guarded_install<T>(&self, package_specs: Vec<String>) -> GuardedOperation<T> {
@@ -372,7 +380,7 @@ impl OpsCtx {
     }
 }
 
-/// GuardedOperation wrapper for seamless guard integration
+/// `GuardedOperation` wrapper for seamless guard integration
 ///
 /// This wrapper provides a standardized way to integrate any operation with the guard system,
 /// automatically handling cache warming, operation-specific verification, and cache invalidation.
@@ -398,19 +406,16 @@ impl<'a, T> GuardedOperation<'a, T> {
     /// # Errors
     ///
     /// Returns an error if verification or operation fails
-    pub async fn execute<F, Fut>(
-        self,
-        operation: F,
-    ) -> Result<T, Error>
+    pub async fn execute<F, Fut>(self, operation: F) -> Result<T, Error>
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<(T, GuardOperationResult), Error>>,
     {
-        let (result, _metadata) = self.ctx.with_guard_integration(
-            self.operation_type,
-            operation,
-        ).await?;
-        
+        let (result, _metadata) = self
+            .ctx
+            .with_guard_integration(self.operation_type, operation)
+            .await?;
+
         Ok(result)
     }
 
@@ -432,12 +437,12 @@ impl<'a, T> GuardedOperation<'a, T> {
     {
         // Store the event sender before consuming self
         let tx = self.ctx.tx.clone();
-        
+
         match self.execute(operation).await {
             Ok(result) => Ok(result),
             Err(e) => {
                 let _ = tx.send(Event::DebugLog {
-                    message: format!("Operation failed, attempting recovery: {}", e),
+                    message: format!("Operation failed, attempting recovery: {e}"),
                     context: HashMap::default(),
                 });
                 recovery(e).await
@@ -456,10 +461,7 @@ impl<'a, T> GuardedOperation<'a, T> {
     /// # Errors
     ///
     /// Returns an error if all recovery attempts fail
-    pub async fn execute_with_intelligent_recovery<F, Fut>(
-        self,
-        operation: F,
-    ) -> Result<T, Error>
+    pub async fn execute_with_intelligent_recovery<F, Fut>(self, operation: F) -> Result<T, Error>
     where
         F: Fn() -> Fut + Clone,
         Fut: Future<Output = Result<(T, GuardOperationResult), Error>>,
@@ -471,19 +473,26 @@ impl<'a, T> GuardedOperation<'a, T> {
 
         loop {
             let attempt_start = std::time::Instant::now();
-            
+
             // Clone operation for retry
             let op_clone = operation.clone();
-            
-            match self.ctx.with_guard_integration(operation_type.clone(), op_clone).await {
+
+            match self
+                .ctx
+                .with_guard_integration(operation_type.clone(), op_clone)
+                .await
+            {
                 Ok((result, _metadata)) => {
                     if retry_count > 0 {
                         let _ = tx.send(Event::DebugLog {
-                            message: format!("Operation succeeded on retry attempt {}", retry_count),
+                            message: format!("Operation succeeded on retry attempt {retry_count}"),
                             context: HashMap::from([
-                                ("operation_type".to_string(), format!("{:?}", operation_type)),
+                                ("operation_type".to_string(), format!("{operation_type:?}")),
                                 ("retry_count".to_string(), retry_count.to_string()),
-                                ("duration_ms".to_string(), attempt_start.elapsed().as_millis().to_string()),
+                                (
+                                    "duration_ms".to_string(),
+                                    attempt_start.elapsed().as_millis().to_string(),
+                                ),
                             ]),
                         });
                     }
@@ -491,11 +500,11 @@ impl<'a, T> GuardedOperation<'a, T> {
                 }
                 Err(e) => {
                     retry_count += 1;
-                    
+
                     let _ = tx.send(Event::DebugLog {
-                        message: format!("Operation attempt {} failed: {}", retry_count, e),
+                        message: format!("Operation attempt {retry_count} failed: {e}"),
                         context: HashMap::from([
-                            ("operation_type".to_string(), format!("{:?}", operation_type)),
+                            ("operation_type".to_string(), format!("{operation_type:?}")),
                             ("retry_count".to_string(), retry_count.to_string()),
                             ("error_type".to_string(), Self::categorize_error(&e)),
                         ]),
@@ -510,9 +519,14 @@ impl<'a, T> GuardedOperation<'a, T> {
                     // Wait before retry with exponential backoff
                     let delay_ms = 100 * (1 << (retry_count - 1)); // 100ms, 200ms, 400ms
                     tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                    
+
                     let _ = tx.send(Event::DebugLog {
-                        message: format!("Retrying operation in {}ms (attempt {} of {})", delay_ms, retry_count + 1, max_retries),
+                        message: format!(
+                            "Retrying operation in {}ms (attempt {} of {})",
+                            delay_ms,
+                            retry_count + 1,
+                            max_retries
+                        ),
                         context: HashMap::default(),
                     });
                 }
@@ -527,12 +541,12 @@ impl<'a, T> GuardedOperation<'a, T> {
         operation_type: &OperationType,
     ) -> Result<T, Error> {
         let tx = &self.ctx.tx;
-        
+
         let _ = tx.send(Event::DebugLog {
-            message: format!("Attempting intelligent recovery for {:?}", operation_type),
+            message: format!("Attempting intelligent recovery for {operation_type:?}"),
             context: HashMap::from([
                 ("error_category".to_string(), Self::categorize_error(&error)),
-                ("operation_type".to_string(), format!("{:?}", operation_type)),
+                ("operation_type".to_string(), format!("{operation_type:?}")),
             ]),
         });
 
@@ -546,7 +560,7 @@ impl<'a, T> GuardedOperation<'a, T> {
             // Attempt to heal the state
             if let Err(heal_error) = self.ctx.verify_state().await {
                 let _ = tx.send(Event::DebugLog {
-                    message: format!("State healing failed: {}", heal_error),
+                    message: format!("State healing failed: {heal_error}"),
                     context: HashMap::default(),
                 });
                 return Err(heal_error);
@@ -563,21 +577,24 @@ impl<'a, T> GuardedOperation<'a, T> {
             OperationType::Install { .. } => {
                 // For install failures, try to clean up any partial installations
                 let _ = tx.send(Event::DebugLog {
-                    message: "Install operation failed - consider manual cleanup or retry".to_string(),
+                    message: "Install operation failed - consider manual cleanup or retry"
+                        .to_string(),
                     context: HashMap::default(),
                 });
             }
             OperationType::Uninstall { .. } => {
                 // For uninstall failures, verify if packages were actually removed
                 let _ = tx.send(Event::DebugLog {
-                    message: "Uninstall operation failed - verifying package removal status".to_string(),
+                    message: "Uninstall operation failed - verifying package removal status"
+                        .to_string(),
                     context: HashMap::default(),
                 });
             }
             OperationType::Upgrade { .. } => {
                 // For upgrade failures, check if rollback is needed
                 let _ = tx.send(Event::DebugLog {
-                    message: "Upgrade operation failed - consider rollback to previous state".to_string(),
+                    message: "Upgrade operation failed - consider rollback to previous state"
+                        .to_string(),
                     context: HashMap::default(),
                 });
             }
@@ -596,7 +613,7 @@ impl<'a, T> GuardedOperation<'a, T> {
     /// Categorize error for better recovery strategies
     fn categorize_error(error: &Error) -> String {
         let error_str = error.to_string();
-        
+
         if error_str.contains("verification") {
             "verification".to_string()
         } else if error_str.contains("network") || error_str.contains("timeout") {
@@ -615,22 +632,28 @@ impl<'a, T> GuardedOperation<'a, T> {
     /// Check if an error is retryable
     fn is_retryable_error(error: &Error) -> bool {
         let error_str = error.to_string();
-        
+
         // Network errors are usually retryable
-        if error_str.contains("network") || error_str.contains("timeout") || error_str.contains("connection") {
+        if error_str.contains("network")
+            || error_str.contains("timeout")
+            || error_str.contains("connection")
+        {
             return true;
         }
-        
+
         // Temporary filesystem issues might be retryable
         if error_str.contains("busy") || error_str.contains("lock") {
             return true;
         }
-        
+
         // Don't retry permission, dependency, or verification errors
-        if error_str.contains("permission") || error_str.contains("dependency") || error_str.contains("verification") {
+        if error_str.contains("permission")
+            || error_str.contains("dependency")
+            || error_str.contains("verification")
+        {
             return false;
         }
-        
+
         // Default to not retrying for safety
         false
     }
@@ -924,18 +947,28 @@ mod tests {
         let network_error = sps2_errors::Error::from(sps2_errors::OpsError::MissingComponent {
             component: "network timeout".to_string(),
         });
-        assert_eq!(GuardedOperation::<()>::categorize_error(&network_error), "network");
+        assert_eq!(
+            GuardedOperation::<()>::categorize_error(&network_error),
+            "network"
+        );
 
-        let verification_error = sps2_errors::Error::from(sps2_errors::OpsError::VerificationFailed {
-            discrepancies: 1,
-            state_id: "test".to_string(),
-        });
-        assert_eq!(GuardedOperation::<()>::categorize_error(&verification_error), "verification");
+        let verification_error =
+            sps2_errors::Error::from(sps2_errors::OpsError::VerificationFailed {
+                discrepancies: 1,
+                state_id: "test".to_string(),
+            });
+        assert_eq!(
+            GuardedOperation::<()>::categorize_error(&verification_error),
+            "verification"
+        );
 
         let permission_error = sps2_errors::Error::from(sps2_errors::OpsError::MissingComponent {
             component: "permission denied".to_string(),
         });
-        assert_eq!(GuardedOperation::<()>::categorize_error(&permission_error), "permission");
+        assert_eq!(
+            GuardedOperation::<()>::categorize_error(&permission_error),
+            "permission"
+        );
     }
 
     #[tokio::test]
@@ -945,25 +978,33 @@ mod tests {
         });
         assert!(GuardedOperation::<()>::is_retryable_error(&network_error));
 
-        let verification_error = sps2_errors::Error::from(sps2_errors::OpsError::VerificationFailed {
-            discrepancies: 1,
-            state_id: "test".to_string(),
-        });
-        assert!(!GuardedOperation::<()>::is_retryable_error(&verification_error));
+        let verification_error =
+            sps2_errors::Error::from(sps2_errors::OpsError::VerificationFailed {
+                discrepancies: 1,
+                state_id: "test".to_string(),
+            });
+        assert!(!GuardedOperation::<()>::is_retryable_error(
+            &verification_error
+        ));
 
         let permission_error = sps2_errors::Error::from(sps2_errors::OpsError::MissingComponent {
             component: "permission denied".to_string(),
         });
-        assert!(!GuardedOperation::<()>::is_retryable_error(&permission_error));
+        assert!(!GuardedOperation::<()>::is_retryable_error(
+            &permission_error
+        ));
     }
 
     #[tokio::test]
     async fn test_verification_error_detection() {
-        let verification_error = sps2_errors::Error::from(sps2_errors::OpsError::VerificationFailed {
-            discrepancies: 1,
-            state_id: "test".to_string(),
-        });
-        assert!(GuardedOperation::<()>::is_verification_error(&verification_error));
+        let verification_error =
+            sps2_errors::Error::from(sps2_errors::OpsError::VerificationFailed {
+                discrepancies: 1,
+                state_id: "test".to_string(),
+            });
+        assert!(GuardedOperation::<()>::is_verification_error(
+            &verification_error
+        ));
 
         let other_error = sps2_errors::Error::from(sps2_errors::OpsError::MissingComponent {
             component: "test".to_string(),
@@ -1005,19 +1046,21 @@ mod tests {
         // Test successful recovery
         let package_specs = vec!["test-package".to_string()];
         let guarded_op = ctx.guarded_install(package_specs);
-        
+
         let result = guarded_op
             .execute_with_recovery(
                 || async {
                     // Simulate operation failure
-                    Err(sps2_errors::Error::from(sps2_errors::OpsError::MissingComponent {
-                        component: "test failure".to_string(),
-                    }))
+                    Err(sps2_errors::Error::from(
+                        sps2_errors::OpsError::MissingComponent {
+                            component: "test failure".to_string(),
+                        },
+                    ))
                 },
                 |_error| async {
                     // Recovery succeeds
                     Ok("recovered".to_string())
-                }
+                },
             )
             .await;
 

@@ -36,6 +36,22 @@ pub fn channel() -> (EventSender, EventReceiver) {
     tokio::sync::mpsc::unbounded_channel()
 }
 
+/// Parameters for creating a guard discrepancy found event
+#[derive(Debug, Clone)]
+pub struct GuardDiscrepancyParams {
+    pub operation_id: String,
+    pub discrepancy_type: String,
+    pub severity: String,
+    pub file_path: String,
+    pub package: Option<String>,
+    pub package_version: Option<String>,
+    pub user_message: String,
+    pub technical_details: String,
+    pub auto_heal_available: bool,
+    pub requires_confirmation: bool,
+    pub estimated_fix_time_seconds: Option<u64>,
+}
+
 /// Core event enum for all async communication
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -723,31 +739,20 @@ impl Event {
     }
 
     /// Create a guard discrepancy found event
-    pub fn guard_discrepancy_found(
-        operation_id: impl Into<String>,
-        discrepancy_type: impl Into<String>,
-        severity: impl Into<String>,
-        file_path: impl Into<String>,
-        package: Option<String>,
-        package_version: Option<String>,
-        user_message: impl Into<String>,
-        technical_details: impl Into<String>,
-        auto_heal_available: bool,
-        requires_confirmation: bool,
-        estimated_fix_time_seconds: Option<u64>,
-    ) -> Self {
+    #[must_use]
+    pub fn guard_discrepancy_found(params: GuardDiscrepancyParams) -> Self {
         Self::GuardDiscrepancyFound {
-            operation_id: operation_id.into(),
-            discrepancy_type: discrepancy_type.into(),
-            severity: severity.into(),
-            file_path: file_path.into(),
-            package,
-            package_version,
-            user_message: user_message.into(),
-            technical_details: technical_details.into(),
-            auto_heal_available,
-            requires_confirmation,
-            estimated_fix_time_seconds,
+            operation_id: params.operation_id,
+            discrepancy_type: params.discrepancy_type,
+            severity: params.severity,
+            file_path: params.file_path,
+            package: params.package,
+            package_version: params.package_version,
+            user_message: params.user_message,
+            technical_details: params.technical_details,
+            auto_heal_available: params.auto_heal_available,
+            requires_confirmation: params.requires_confirmation,
+            estimated_fix_time_seconds: params.estimated_fix_time_seconds,
         }
     }
 

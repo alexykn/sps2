@@ -17,17 +17,20 @@ fn add_discrepancy_with_event(
 ) {
     // Determine severity and user message based on discrepancy type
     let (severity, user_message, auto_heal_available) = match &discrepancy {
-        Discrepancy::CorruptedFile { .. } => (
-            "high", 
-            "File content does not match expected hash",
-            true,
-        ),
+        Discrepancy::CorruptedFile { .. } => {
+            ("high", "File content does not match expected hash", true)
+        }
         _ => ("medium", "Unknown discrepancy", false),
     };
 
     // Extract file path and package info
     let (file_path, package, package_version) = match &discrepancy {
-        Discrepancy::CorruptedFile { file_path, package_name, package_version, .. } => (
+        Discrepancy::CorruptedFile {
+            file_path,
+            package_name,
+            package_version,
+            ..
+        } => (
             file_path.clone(),
             Some(package_name.clone()),
             Some(package_version.to_string()),

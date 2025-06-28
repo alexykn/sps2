@@ -130,7 +130,10 @@ impl DiscrepancyContext {
     /// Check if user action is required
     #[must_use]
     pub fn requires_user_action(&self) -> bool {
-        matches!(self.recommended_action, RecommendedAction::UserConfirmation | RecommendedAction::ManualIntervention)
+        matches!(
+            self.recommended_action,
+            RecommendedAction::UserConfirmation | RecommendedAction::ManualIntervention
+        )
     }
 }
 
@@ -155,7 +158,7 @@ pub enum GuardError {
         file_path: String,
         reason: String,
         recoverable: bool,
-        context: Option<DiscrepancyContext>,
+        context: Option<Box<DiscrepancyContext>>,
     },
 
     /// Cache operation failed
@@ -232,7 +235,10 @@ impl GuardError {
     #[must_use]
     pub fn severity(&self) -> DiscrepancySeverity {
         match self {
-            Self::VerificationFailed { discrepancies_count, .. } => {
+            Self::VerificationFailed {
+                discrepancies_count,
+                ..
+            } => {
                 if *discrepancies_count > 10 {
                     DiscrepancySeverity::Critical
                 } else if *discrepancies_count > 0 {
@@ -249,13 +255,15 @@ impl GuardError {
                 }
             }
             Self::CacheError { .. } => DiscrepancySeverity::Low,
-            Self::ConfigurationError { .. } => DiscrepancySeverity::High,
+            Self::ConfigurationError { .. } | Self::ResourceExhausted { .. } => {
+                DiscrepancySeverity::High
+            }
             Self::PermissionError { .. } => DiscrepancySeverity::Critical,
-            Self::ScopeError { .. } => DiscrepancySeverity::Medium,
-            Self::TimeoutError { .. } => DiscrepancySeverity::Medium,
-            Self::ResourceExhausted { .. } => DiscrepancySeverity::High,
+            Self::ScopeError { .. } | Self::TimeoutError { .. } => DiscrepancySeverity::Medium,
             Self::IntegrityError { severity, .. } => *severity,
-            Self::StateInconsistency { recovery_possible, .. } => {
+            Self::StateInconsistency {
+                recovery_possible, ..
+            } => {
                 if *recovery_possible {
                     DiscrepancySeverity::Medium
                 } else {
@@ -269,16 +277,18 @@ impl GuardError {
     #[must_use]
     pub fn is_recoverable(&self) -> bool {
         match self {
-            Self::VerificationFailed { .. } => false, // Verification itself doesn't recover
+            Self::VerificationFailed { .. }
+            | Self::PermissionError { .. }
+            | Self::ResourceExhausted { .. }
+            | Self::IntegrityError { .. } => false,
             Self::HealingFailed { recoverable, .. } => *recoverable,
-            Self::CacheError { .. } => true,
-            Self::ConfigurationError { .. } => true,
-            Self::PermissionError { .. } => false,
-            Self::ScopeError { .. } => true,
-            Self::TimeoutError { .. } => true,
-            Self::ResourceExhausted { .. } => false,
-            Self::IntegrityError { .. } => false,
-            Self::StateInconsistency { recovery_possible, .. } => *recovery_possible,
+            Self::CacheError { .. }
+            | Self::ConfigurationError { .. }
+            | Self::ScopeError { .. }
+            | Self::TimeoutError { .. } => true,
+            Self::StateInconsistency {
+                recovery_possible, ..
+            } => *recovery_possible,
         }
     }
 
@@ -286,113 +296,159 @@ impl GuardError {
     #[must_use]
     pub fn user_context(&self) -> DiscrepancyContext {
         match self {
-            Self::VerificationFailed { operation, discrepancies_count, .. } => {
-                DiscrepancyContext::new(
-                    self.severity(),
-                    RecommendedAction::UserConfirmation,
-                    format!(
-                        "System verification failed during {} with {} issue(s) found. Your system may not be functioning correctly.",
-                        operation, discrepancies_count
-                    ),
-                    format!("Verification operation: {}, discrepancies: {}", operation, discrepancies_count),
-                )
-                .with_manual_steps(vec![
-                    "Run 'sps2 verify --heal' to attempt automatic repair".to_string(),
-                    "Check system logs for specific issues".to_string(),
-                    "Contact support if issues persist".to_string(),
-                ])
-                .with_prevention_tips(vec![
-                    "Run verification regularly to catch issues early".to_string(),
-                    "Avoid manual modification of package files".to_string(),
-                ])
-            }
-            Self::HealingFailed { discrepancy_type, file_path, reason, recoverable, .. } => {
-                let action = if *recoverable {
-                    RecommendedAction::UserConfirmation
-                } else {
-                    RecommendedAction::ManualIntervention
-                };
-                
-                DiscrepancyContext::new(
-                    self.severity(),
-                    action,
-                    format!(
-                        "Failed to automatically fix {} issue for '{}'. {}",
-                        discrepancy_type,
-                        file_path,
-                        if *recoverable { "Retry may succeed." } else { "Manual intervention required." }
-                    ),
-                    format!("Healing failed: {} - {}", discrepancy_type, reason),
-                )
-                .with_manual_steps(if *recoverable {
-                    vec![
-                        "Retry the healing operation".to_string(),
-                        "Check file permissions".to_string(),
-                        "Ensure sufficient disk space".to_string(),
-                    ]
-                } else {
-                    vec![
-                        format!("Manually inspect file: {}", file_path),
-                        "Check file permissions and ownership".to_string(),
-                        "Reinstall the affected package if necessary".to_string(),
-                    ]
-                })
-            }
-            Self::PermissionError { operation, path, required_permissions, .. } => {
-                DiscrepancyContext::new(
-                    DiscrepancySeverity::Critical,
-                    RecommendedAction::ManualIntervention,
-                    format!(
-                        "Permission denied for {} on '{}'. Required permissions: {}",
-                        operation, path, required_permissions
-                    ),
-                    format!("Operation: {}, path: {}, required: {}", operation, path, required_permissions),
-                )
-                .with_manual_steps(vec![
-                    "Run with appropriate privileges (sudo if needed)".to_string(),
-                    format!("Check file permissions on: {}", path),
-                    "Ensure sps2 has necessary access rights".to_string(),
-                ])
-                .with_prevention_tips(vec![
-                    "Ensure proper installation permissions".to_string(),
-                    "Avoid running as root unless necessary".to_string(),
-                ])
-            }
-            Self::ConfigurationError { field, reason, suggested_fix, .. } => {
-                let mut context = DiscrepancyContext::new(
-                    DiscrepancySeverity::High,
-                    RecommendedAction::UserConfirmation,
-                    format!("Configuration error in '{}': {}", field, reason),
-                    format!("Field: {}, reason: {}", field, reason),
-                );
-
-                if let Some(fix) = suggested_fix {
-                    context = context.with_manual_steps(vec![
-                        format!("Update configuration: {}", fix),
-                        "Validate configuration with 'sps2 config validate'".to_string(),
-                    ]);
-                }
-
-                context
-                    .with_prevention_tips(vec![
-                        "Use 'sps2 config validate' after making changes".to_string(),
-                        "Backup configuration before modifications".to_string(),
-                    ])
-            }
-            _ => {
-                // Default context for other error types
-                DiscrepancyContext::new(
-                    self.severity(),
-                    if self.is_recoverable() {
-                        RecommendedAction::UserConfirmation
-                    } else {
-                        RecommendedAction::ManualIntervention
-                    },
-                    self.to_string(),
-                    format!("Error type: {}", std::any::type_name::<Self>()),
-                )
-            }
+            Self::VerificationFailed {
+                operation,
+                discrepancies_count,
+                ..
+            } => self.verification_failed_context(operation, *discrepancies_count),
+            Self::HealingFailed {
+                discrepancy_type,
+                file_path,
+                reason,
+                recoverable,
+                ..
+            } => self.healing_failed_context(discrepancy_type, file_path, reason, *recoverable),
+            Self::PermissionError {
+                operation,
+                path,
+                required_permissions,
+                ..
+            } => Self::permission_error_context(operation, path, required_permissions),
+            Self::ConfigurationError {
+                field,
+                reason,
+                suggested_fix,
+                ..
+            } => Self::configuration_error_context(field, reason, suggested_fix.as_ref()),
+            _ => self.default_context(),
         }
+    }
+
+    fn verification_failed_context(
+        &self,
+        operation: &str,
+        discrepancies_count: usize,
+    ) -> DiscrepancyContext {
+        DiscrepancyContext::new(
+            self.severity(),
+            RecommendedAction::UserConfirmation,
+            format!(
+                "System verification failed during {operation} with {discrepancies_count} issue(s) found. Your system may not be functioning correctly."
+            ),
+            format!("Verification operation: {operation}, discrepancies: {discrepancies_count}"),
+        )
+        .with_manual_steps(vec![
+            "Run 'sps2 verify --heal' to attempt automatic repair".to_string(),
+            "Check system logs for specific issues".to_string(),
+            "Contact support if issues persist".to_string(),
+        ])
+        .with_prevention_tips(vec![
+            "Run verification regularly to catch issues early".to_string(),
+            "Avoid manual modification of package files".to_string(),
+        ])
+    }
+
+    fn healing_failed_context(
+        &self,
+        discrepancy_type: &str,
+        file_path: &str,
+        reason: &str,
+        recoverable: bool,
+    ) -> DiscrepancyContext {
+        let action = if recoverable {
+            RecommendedAction::UserConfirmation
+        } else {
+            RecommendedAction::ManualIntervention
+        };
+
+        DiscrepancyContext::new(
+            self.severity(),
+            action,
+            format!(
+                "Failed to automatically fix {discrepancy_type} issue for '{file_path}'. {}",
+                if recoverable {
+                    "Retry may succeed."
+                } else {
+                    "Manual intervention required."
+                }
+            ),
+            format!("Healing failed: {discrepancy_type} - {reason}"),
+        )
+        .with_manual_steps(if recoverable {
+            vec![
+                "Retry the healing operation".to_string(),
+                "Check file permissions".to_string(),
+                "Ensure sufficient disk space".to_string(),
+            ]
+        } else {
+            vec![
+                format!("Manually inspect file: {file_path}"),
+                "Check file permissions and ownership".to_string(),
+                "Reinstall the affected package if necessary".to_string(),
+            ]
+        })
+    }
+
+    fn permission_error_context(
+        operation: &str,
+        path: &str,
+        required_permissions: &str,
+    ) -> DiscrepancyContext {
+        DiscrepancyContext::new(
+            DiscrepancySeverity::Critical,
+            RecommendedAction::ManualIntervention,
+            format!(
+                "Permission denied for {operation} on '{path}'. Required permissions: {required_permissions}"
+            ),
+            format!("Operation: {operation}, path: {path}, required: {required_permissions}"),
+        )
+        .with_manual_steps(vec![
+            "Run with appropriate privileges (sudo if needed)".to_string(),
+            format!("Check file permissions on: {path}"),
+            "Ensure sps2 has necessary access rights".to_string(),
+        ])
+        .with_prevention_tips(vec![
+            "Ensure proper installation permissions".to_string(),
+            "Avoid running as root unless necessary".to_string(),
+        ])
+    }
+
+    fn configuration_error_context(
+        field: &str,
+        reason: &str,
+        suggested_fix: Option<&String>,
+    ) -> DiscrepancyContext {
+        let mut context = DiscrepancyContext::new(
+            DiscrepancySeverity::High,
+            RecommendedAction::UserConfirmation,
+            format!("Configuration error in '{field}': {reason}"),
+            format!("Field: {field}, reason: {reason}"),
+        );
+
+        if let Some(fix) = suggested_fix {
+            context = context.with_manual_steps(vec![
+                format!("Update configuration: {fix}"),
+                "Validate configuration with 'sps2 config validate'".to_string(),
+            ]);
+        }
+
+        context.with_prevention_tips(vec![
+            "Use 'sps2 config validate' after making changes".to_string(),
+            "Backup configuration before modifications".to_string(),
+        ])
+    }
+
+    fn default_context(&self) -> DiscrepancyContext {
+        DiscrepancyContext::new(
+            self.severity(),
+            if self.is_recoverable() {
+                RecommendedAction::UserConfirmation
+            } else {
+                RecommendedAction::ManualIntervention
+            },
+            self.to_string(),
+            format!("Error type: {}", std::any::type_name::<Self>()),
+        )
     }
 }
 
@@ -440,10 +496,17 @@ impl GuardErrorSummary {
                 GuardError::ResourceExhausted { .. } => "resource",
                 GuardError::IntegrityError { .. } => "integrity",
                 GuardError::StateInconsistency { .. } => "state",
-            }.to_string();
+            }
+            .to_string();
 
-            by_severity.entry(severity).or_insert_with(Vec::new).push(error.clone());
-            by_type.entry(error_type).or_insert_with(Vec::new).push(error.clone());
+            by_severity
+                .entry(severity)
+                .or_insert_with(Vec::new)
+                .push(error.clone());
+            by_type
+                .entry(error_type)
+                .or_insert_with(Vec::new)
+                .push(error.clone());
 
             if error.is_recoverable() {
                 recoverable_errors.push(error.clone());
@@ -453,20 +516,27 @@ impl GuardErrorSummary {
         }
 
         // Determine overall severity (highest severity present)
-        let overall_severity = by_severity.keys()
+        let overall_severity = by_severity
+            .keys()
             .max()
             .copied()
             .unwrap_or(DiscrepancySeverity::Low);
 
         // Generate recommended actions
         let mut recommended_actions = Vec::new();
-        
+
         if !recoverable_errors.is_empty() {
-            recommended_actions.push(format!("Try automatic healing for {} recoverable issue(s)", recoverable_errors.len()));
+            recommended_actions.push(format!(
+                "Try automatic healing for {} recoverable issue(s)",
+                recoverable_errors.len()
+            ));
         }
-        
+
         if !manual_intervention_required.is_empty() {
-            recommended_actions.push(format!("Manual intervention required for {} issue(s)", manual_intervention_required.len()));
+            recommended_actions.push(format!(
+                "Manual intervention required for {} issue(s)",
+                manual_intervention_required.len()
+            ));
         }
 
         if total_errors == 0 {

@@ -1,12 +1,14 @@
 //! Type definitions for state verification and healing
 
+use sps2_errors::{DiscrepancyContext, DiscrepancySeverity, RecommendedAction};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
-use sps2_errors::{DiscrepancySeverity, RecommendedAction, DiscrepancyContext};
 
 /// Verification level for state checking
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum VerificationLevel {
     /// Quick check - file existence only
     Quick,
@@ -354,10 +356,7 @@ impl Discrepancy {
     /// Check if this discrepancy can be automatically healed
     #[must_use]
     pub fn can_auto_heal(&self) -> bool {
-        matches!(
-            self.recommended_action(),
-            RecommendedAction::AutoHeal
-        )
+        matches!(self.recommended_action(), RecommendedAction::AutoHeal)
     }
 
     /// Check if this discrepancy requires user confirmation before healing
@@ -374,13 +373,26 @@ impl Discrepancy {
     pub fn short_description(&self) -> String {
         match self {
             Self::MissingFile { file_path, .. } => format!("Missing file: {}", file_path),
-            Self::TypeMismatch { file_path, expected_directory, .. } => {
-                let expected = if *expected_directory { "directory" } else { "file" };
+            Self::TypeMismatch {
+                file_path,
+                expected_directory,
+                ..
+            } => {
+                let expected = if *expected_directory {
+                    "directory"
+                } else {
+                    "file"
+                };
                 format!("Wrong type for {}: expected {}", file_path, expected)
             }
             Self::CorruptedFile { file_path, .. } => format!("Corrupted file: {}", file_path),
-            Self::OrphanedFile { file_path, category } => format!("Orphaned {:?}: {}", category, file_path),
-            Self::MissingVenv { venv_path, .. } => format!("Missing virtual environment: {}", venv_path),
+            Self::OrphanedFile {
+                file_path,
+                category,
+            } => format!("Orphaned {:?}: {}", category, file_path),
+            Self::MissingVenv { venv_path, .. } => {
+                format!("Missing virtual environment: {}", venv_path)
+            }
         }
     }
 
@@ -412,10 +424,18 @@ impl Discrepancy {
     #[must_use]
     pub fn package_version(&self) -> Option<&str> {
         match self {
-            Self::MissingFile { package_version, .. }
-            | Self::TypeMismatch { package_version, .. }
-            | Self::CorruptedFile { package_version, .. }
-            | Self::MissingVenv { package_version, .. } => Some(package_version),
+            Self::MissingFile {
+                package_version, ..
+            }
+            | Self::TypeMismatch {
+                package_version, ..
+            }
+            | Self::CorruptedFile {
+                package_version, ..
+            }
+            | Self::MissingVenv {
+                package_version, ..
+            } => Some(package_version),
             Self::OrphanedFile { .. } => None,
         }
     }
@@ -857,7 +877,12 @@ pub fn derive_post_operation_scope(
     let removed_packages: Vec<_> = result
         .removed
         .iter()
-        .map(|p| (p.name.clone(), p.from_version.clone().unwrap_or_else(|| "*".to_string())))
+        .map(|p| {
+            (
+                p.name.clone(),
+                p.from_version.clone().unwrap_or_else(|| "*".to_string()),
+            )
+        })
         .collect();
 
     match operation {
@@ -878,7 +903,7 @@ pub fn derive_post_operation_scope(
             if modified_directories.is_empty() {
                 modified_directories.push(PathBuf::from("/opt/pm/live"));
             }
-            
+
             if removed_packages.is_empty() && affected_packages.is_empty() {
                 VerificationScope::Full
             } else {

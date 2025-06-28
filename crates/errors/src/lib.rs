@@ -22,7 +22,9 @@ pub mod version;
 pub use audit::AuditError;
 pub use build::BuildError;
 pub use config::ConfigError;
-pub use guard::{GuardError, DiscrepancySeverity, RecommendedAction, DiscrepancyContext, GuardErrorSummary};
+pub use guard::{
+    DiscrepancyContext, DiscrepancySeverity, GuardError, GuardErrorSummary, RecommendedAction,
+};
 pub use install::InstallError;
 pub use network::NetworkError;
 pub use ops::OpsError;

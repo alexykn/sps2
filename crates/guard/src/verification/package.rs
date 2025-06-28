@@ -19,52 +19,57 @@ fn add_discrepancy_with_event(
 ) {
     // Determine severity and user message based on discrepancy type
     let (severity, user_message, auto_heal_available) = match &discrepancy {
-        Discrepancy::MissingFile { .. } => (
-            "high",
-            "File is missing from the filesystem",
-            true,
-        ),
-        Discrepancy::CorruptedFile { .. } => (
-            "high", 
-            "File content does not match expected hash",
-            true,
-        ),
-        Discrepancy::MissingVenv { .. } => (
-            "medium",
-            "Python virtual environment is missing",
-            true,
-        ),
+        Discrepancy::MissingFile { .. } => ("high", "File is missing from the filesystem", true),
+        Discrepancy::CorruptedFile { .. } => {
+            ("high", "File content does not match expected hash", true)
+        }
+        Discrepancy::MissingVenv { .. } => {
+            ("medium", "Python virtual environment is missing", true)
+        }
         Discrepancy::OrphanedFile { .. } => (
             "low",
             "File exists but is not tracked by any package",
             false,
         ),
-        Discrepancy::TypeMismatch { .. } => (
-            "medium",
-            "File type does not match expected type",
-            true,
-        ),
+        Discrepancy::TypeMismatch { .. } => {
+            ("medium", "File type does not match expected type", true)
+        }
     };
 
     // Extract file path and package info
     let (file_path, package, package_version) = match &discrepancy {
-        Discrepancy::MissingFile { file_path, package_name, package_version, .. } |
-        Discrepancy::CorruptedFile { file_path, package_name, package_version, .. } => (
+        Discrepancy::MissingFile {
+            file_path,
+            package_name,
+            package_version,
+            ..
+        }
+        | Discrepancy::CorruptedFile {
+            file_path,
+            package_name,
+            package_version,
+            ..
+        } => (
             file_path.clone(),
             Some(package_name.clone()),
             Some(package_version.to_string()),
         ),
-        Discrepancy::MissingVenv { venv_path, package_name, package_version } => (
+        Discrepancy::MissingVenv {
+            venv_path,
+            package_name,
+            package_version,
+        } => (
             venv_path.clone(),
             Some(package_name.clone()),
             Some(package_version.to_string()),
         ),
-        Discrepancy::OrphanedFile { file_path, .. } => (
-            file_path.clone(),
-            None,
-            None,
-        ),
-        Discrepancy::TypeMismatch { file_path, package_name, package_version, .. } => (
+        Discrepancy::OrphanedFile { file_path, .. } => (file_path.clone(), None, None),
+        Discrepancy::TypeMismatch {
+            file_path,
+            package_name,
+            package_version,
+            ..
+        } => (
             file_path.clone(),
             Some(package_name.clone()),
             Some(package_version.to_string()),
@@ -102,16 +107,21 @@ fn should_be_lenient_with_symlinks(path: &Path, lenient_directories: &[PathBuf])
     false
 }
 
+/// Parameters for symlink verification
+struct SymlinkVerificationParams<'a> {
+    symlink_policy: SymlinkPolicy,
+    lenient_directories: &'a [PathBuf],
+    operation_id: &'a str,
+    tx: Option<&'a sps2_events::EventSender>,
+}
+
 /// Handle symlink verification based on policy
 async fn handle_symlink_verification(
     full_path: &Path,
     relative_path: &str,
     package: &sps2_state::models::Package,
-    symlink_policy: SymlinkPolicy,
-    lenient_directories: &[PathBuf],
     discrepancies: &mut Vec<Discrepancy>,
-    operation_id: &str,
-    tx: Option<&sps2_events::EventSender>,
+    params: SymlinkVerificationParams<'_>,
 ) -> Result<bool, Error> {
     // Check if path exists and is a symlink
     if !full_path.exists() {
@@ -123,10 +133,10 @@ async fn handle_symlink_verification(
         return Ok(false); // Not a symlink, proceed with normal verification
     }
 
-    match symlink_policy {
+    match params.symlink_policy {
         SymlinkPolicy::Ignore => {
             // Skip symlink verification entirely
-            if let Some(sender) = tx {
+            if let Some(sender) = params.tx {
                 let _ = sender.send(Event::DebugLog {
                     message: format!("Ignoring symlink verification: {relative_path}"),
                     context: HashMap::default(),
@@ -136,8 +146,8 @@ async fn handle_symlink_verification(
         }
         SymlinkPolicy::Lenient => {
             // Check if this path should be handled leniently
-            if should_be_lenient_with_symlinks(full_path, lenient_directories) {
-                if let Some(sender) = tx {
+            if should_be_lenient_with_symlinks(full_path, params.lenient_directories) {
+                if let Some(sender) = params.tx {
                     let _ = sender.send(Event::DebugLog {
                         message: format!(
                             "Lenient symlink handling for bootstrap directory: {relative_path}"
@@ -166,8 +176,10 @@ async fn handle_symlink_verification(
 
             if !absolute_target.exists() {
                 // Symlink points to non-existent target
-                if symlink_policy == SymlinkPolicy::Lenient && should_be_lenient_with_symlinks(full_path, lenient_directories) {
-                    if let Some(sender) = tx {
+                if params.symlink_policy == SymlinkPolicy::Lenient
+                    && should_be_lenient_with_symlinks(full_path, params.lenient_directories)
+                {
+                    if let Some(sender) = params.tx {
                         let _ = sender.send(Event::DebugLog {
                             message: format!(
                                 "Broken symlink in lenient directory (not failing): {relative_path} -> {}",
@@ -188,8 +200,8 @@ async fn handle_symlink_verification(
                             expected_hash: "valid_symlink".to_string(),
                             actual_hash: "broken_symlink".to_string(),
                         },
-                        operation_id,
-                        tx,
+                        params.operation_id,
+                        params.tx,
                     );
                     return Ok(true); // Handled as discrepancy
                 }
@@ -197,8 +209,10 @@ async fn handle_symlink_verification(
         }
         Err(_) => {
             // Error reading symlink
-            if symlink_policy == SymlinkPolicy::Lenient && should_be_lenient_with_symlinks(full_path, lenient_directories) {
-                if let Some(sender) = tx {
+            if params.symlink_policy == SymlinkPolicy::Lenient
+                && should_be_lenient_with_symlinks(full_path, params.lenient_directories)
+            {
+                if let Some(sender) = params.tx {
                     let _ = sender.send(Event::DebugLog {
                         message: format!("Symlink read error in lenient directory (not failing): {relative_path}"),
                         context: HashMap::default(),
@@ -208,7 +222,8 @@ async fn handle_symlink_verification(
             } else {
                 return Err(sps2_errors::OpsError::OperationFailed {
                     message: format!("Failed to read symlink: {relative_path}"),
-                }.into());
+                }
+                .into());
             }
         }
     }
@@ -282,11 +297,13 @@ pub async fn verify_package(
                 &full_path,
                 &file_path,
                 package,
-                ctx.guard_config.symlink_policy,
-                &ctx.guard_config.lenient_symlink_directories,
                 discrepancies,
-                operation_id,
-                ctx.tx,
+                SymlinkVerificationParams {
+                    symlink_policy: ctx.guard_config.symlink_policy,
+                    lenient_directories: &ctx.guard_config.lenient_symlink_directories,
+                    operation_id,
+                    tx: ctx.tx,
+                },
             )
             .await?
             {
@@ -297,8 +314,16 @@ pub async fn verify_package(
             // For Full verification, check content hash
             if ctx.level == crate::types::VerificationLevel::Full {
                 let discrepancy_count_before = discrepancies.len();
-                verify_file_content(ctx.store, &full_path, package, &file_path, discrepancies, operation_id, ctx.tx)
-                    .await?;
+                verify_file_content(
+                    ctx.store,
+                    &full_path,
+                    package,
+                    &file_path,
+                    discrepancies,
+                    operation_id,
+                    ctx.tx,
+                )
+                .await?;
                 // If discrepancies were added, file was invalid
                 if discrepancies.len() > discrepancy_count_before {
                     file_was_valid = false;

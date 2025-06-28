@@ -8,17 +8,19 @@
 //! can be hard-linked into multiple state directories.
 
 mod archive;
+mod file_store;
 mod format_detection;
 mod package;
 
 pub use archive::{
     create_package, extract_package, extract_package_with_events, list_package_contents,
 };
+pub use file_store::FileStore;
 pub use format_detection::{PackageFormatDetector, PackageFormatInfo, StoreFormatValidator};
 pub use package::StoredPackage;
 
 use sps2_errors::{Error, StorageError};
-use sps2_hash::{content_path, Hash};
+use sps2_hash::Hash;
 use sps2_root::{create_dir_all, exists, remove_dir_all, set_compression, size};
 use std::path::{Path, PathBuf};
 
@@ -27,15 +29,18 @@ use std::path::{Path, PathBuf};
 pub struct PackageStore {
     base_path: PathBuf,
     format_validator: StoreFormatValidator,
+    file_store: FileStore,
 }
 
 impl PackageStore {
     /// Create a new store instance
     #[must_use]
     pub fn new(base_path: PathBuf) -> Self {
+        let file_store = FileStore::new(&base_path);
         Self {
             base_path,
             format_validator: StoreFormatValidator::new(),
+            file_store,
         }
     }
 
@@ -44,17 +49,24 @@ impl PackageStore {
     /// This is useful for migration tools that need to work with older package formats
     #[must_use]
     pub fn new_with_migration_support(base_path: PathBuf) -> Self {
+        let file_store = FileStore::new(&base_path);
         Self {
             base_path,
             format_validator: StoreFormatValidator::allow_incompatible(),
+            file_store,
         }
     }
 
     /// Get the path for a package hash
     #[must_use]
     pub fn package_path(&self, hash: &Hash) -> PathBuf {
-        let content = content_path(hash);
-        self.base_path.join(content)
+        self.base_path.join("packages").join(hash.to_hex())
+    }
+
+    /// Get the file store for file-level operations
+    #[must_use]
+    pub fn file_store(&self) -> &FileStore {
+        &self.file_store
     }
 
     /// Check if a package exists in the store
@@ -64,6 +76,9 @@ impl PackageStore {
     }
 
     /// Add a package to the store from a .sp file
+    ///
+    /// This extracts the package, hashes individual files for deduplication,
+    /// and stores the package metadata with file references.
     ///
     /// # Errors
     ///
@@ -100,36 +115,51 @@ impl PackageStore {
 
         extract_package(sp_file, temp_dir.path()).await?;
 
-        // Compute hash of the extracted contents (true content-addressable storage)
-        let hash = sps2_hash::Hash::hash_directory(temp_dir.path()).await?;
+        // Compute hash of the extracted contents for package identity
+        let package_hash = sps2_hash::Hash::hash_directory(temp_dir.path()).await?;
 
-        // Check if already exists
-        let dest_path = self.package_path(&hash);
-        if exists(&dest_path).await {
-            // Validate existing package format too
-            let _existing_format = self
-                .format_validator
-                .validate_stored_package(&dest_path)
-                .await?;
-            return StoredPackage::load(&dest_path).await;
+        // Check if package already exists
+        let package_path = self.base_path.join("packages").join(package_hash.to_hex());
+        if exists(&package_path).await {
+            // Package already stored, just return it
+            return StoredPackage::load(&package_path).await;
         }
 
-        // Create parent directory
-        if let Some(parent) = dest_path.parent() {
-            create_dir_all(parent).await?;
+        // Initialize file store if needed
+        self.file_store.initialize().await?;
+
+        // Hash and store all individual files
+        let file_results = self.file_store.store_directory(temp_dir.path()).await?;
+
+        // Create package directory
+        create_dir_all(&package_path).await?;
+
+        // Copy manifest to package directory
+        let manifest_src = temp_dir.path().join("manifest.toml");
+        let manifest_dest = package_path.join("manifest.toml");
+        tokio::fs::copy(&manifest_src, &manifest_dest).await?;
+
+        // Copy SBOM if it exists
+        for sbom_name in &["sbom.spdx.json", "sbom.cdx.json"] {
+            let sbom_src = temp_dir.path().join(sbom_name);
+            if exists(&sbom_src).await {
+                let sbom_dest = package_path.join(sbom_name);
+                tokio::fs::copy(&sbom_src, &sbom_dest).await?;
+            }
         }
 
-        // Move to final location
-        tokio::fs::rename(temp_dir.path(), &dest_path)
-            .await
-            .map_err(|e| StorageError::IoError {
-                message: format!("failed to move package to store: {e}"),
+        // Create files.json with all file references
+        let files_json =
+            serde_json::to_string_pretty(&file_results).map_err(|e| StorageError::IoError {
+                message: format!("failed to serialize file results: {e}"),
             })?;
+        let files_path = package_path.join("files.json");
+        tokio::fs::write(&files_path, files_json).await?;
 
         // Set compression on macOS
-        set_compression(&dest_path)?;
+        set_compression(&package_path)?;
 
-        StoredPackage::load(&dest_path).await
+        StoredPackage::load(&package_path).await
     }
 
     /// Remove a package from the store
@@ -420,6 +450,9 @@ impl PackageStore {
 
     /// Add package from staging directory
     ///
+    /// This computes the package hash, stores individual files,
+    /// and creates the package metadata directory.
+    ///
     /// # Errors
     ///
     /// Returns an error if staging directory processing fails
@@ -436,27 +469,49 @@ impl PackageStore {
                 message: format!("failed to read manifest from staging: {e}"),
             })?;
 
-        // Compute hash of staging directory contents
-        let hash = self.compute_staging_hash(staging_path).await?;
+        // Compute hash of staging directory contents for package identity
+        let package_hash = self.compute_staging_hash(staging_path).await?;
 
-        // Check if already exists
-        let dest_path = self.package_path(&hash);
-        if exists(&dest_path).await {
-            return StoredPackage::load(&dest_path).await;
+        // Check if package already exists
+        let package_path = self.base_path.join("packages").join(package_hash.to_hex());
+        if exists(&package_path).await {
+            return StoredPackage::load(&package_path).await;
         }
 
-        // Create parent directory
-        if let Some(parent) = dest_path.parent() {
-            create_dir_all(parent).await?;
+        // Initialize file store if needed
+        self.file_store.initialize().await?;
+
+        // Hash and store all individual files
+        let file_results = self.file_store.store_directory(staging_path).await?;
+
+        // Create package directory
+        create_dir_all(&package_path).await?;
+
+        // Copy manifest to package directory
+        let manifest_dest = package_path.join("manifest.toml");
+        tokio::fs::copy(&manifest_path, &manifest_dest).await?;
+
+        // Copy SBOM if it exists
+        for sbom_name in &["sbom.spdx.json", "sbom.cdx.json"] {
+            let sbom_src = staging_path.join(sbom_name);
+            if exists(&sbom_src).await {
+                let sbom_dest = package_path.join(sbom_name);
+                tokio::fs::copy(&sbom_src, &sbom_dest).await?;
+            }
         }
 
-        // Copy staging directory to store
-        self.copy_staging_to_store(staging_path, &dest_path).await?;
+        // Create files.json with all file references
+        let files_json =
+            serde_json::to_string_pretty(&file_results).map_err(|e| StorageError::IoError {
+                message: format!("failed to serialize file results: {e}"),
+            })?;
+        let files_path = package_path.join("files.json");
+        tokio::fs::write(&files_path, files_json).await?;
 
         // Set compression on macOS
-        set_compression(&dest_path)?;
+        set_compression(&package_path)?;
 
-        StoredPackage::load(&dest_path).await
+        StoredPackage::load(&package_path).await
     }
 
     /// Compute hash of staging directory contents
