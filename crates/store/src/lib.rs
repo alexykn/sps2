@@ -520,54 +520,5 @@ impl PackageStore {
         sps2_hash::Hash::hash_directory(staging_path).await
     }
 
-    /// Copy staging directory to store location
-    async fn copy_staging_to_store(
-        &self,
-        staging_path: &Path,
-        dest_path: &Path,
-    ) -> Result<(), Error> {
-        // Create destination directory
-        create_dir_all(dest_path).await?;
 
-        // Copy all files from staging to destination
-        let mut entries =
-            tokio::fs::read_dir(staging_path)
-                .await
-                .map_err(|e| StorageError::IoError {
-                    message: format!("failed to read staging directory: {e}"),
-                })?;
-
-        while let Some(entry) = entries
-            .next_entry()
-            .await
-            .map_err(|e| StorageError::IoError {
-                message: format!("failed to read staging entry: {e}"),
-            })?
-        {
-            let entry_path = entry.path();
-            let file_name = entry.file_name();
-            let dest_file = dest_path.join(&file_name);
-
-            if entry
-                .file_type()
-                .await
-                .map_err(|e| StorageError::IoError {
-                    message: format!("failed to get file type: {e}"),
-                })?
-                .is_dir()
-            {
-                // Recursively copy directory
-                Box::pin(self.copy_staging_to_store(&entry_path, &dest_file)).await?;
-            } else {
-                // Copy file
-                tokio::fs::copy(&entry_path, &dest_file)
-                    .await
-                    .map_err(|e| StorageError::IoError {
-                        message: format!("failed to copy file {}: {e}", entry_path.display()),
-                    })?;
-            }
-        }
-
-        Ok(())
-    }
 }

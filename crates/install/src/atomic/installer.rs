@@ -5,7 +5,7 @@ use crate::python::{is_python_package, PythonVenvManager};
 use crate::{InstallContext, InstallResult, StagingManager};
 use sps2_errors::{Error, InstallError};
 use sps2_events::Event;
-use sps2_hash::{FileHasher, FileHasherConfig, Hash};
+use sps2_hash::Hash;
 use sps2_manifest::Manifest;
 use sps2_resolver::{PackageId, ResolvedNode};
 use sps2_state::{PackageRef, StateManager};
@@ -26,8 +26,6 @@ pub struct AtomicInstaller {
     live_path: PathBuf,
     /// Python virtual environment manager
     python_venv_manager: PythonVenvManager,
-    /// File hasher for file-level operations
-    file_hasher: FileHasher,
 }
 
 impl AtomicInstaller {
@@ -46,16 +44,12 @@ impl AtomicInstaller {
         let venvs_base = PathBuf::from("/opt/pm/venvs");
         let python_venv_manager = PythonVenvManager::new(venvs_base);
 
-        // Create file hasher for file-level operations
-        let file_hasher = FileHasher::new(FileHasherConfig::default());
-
         Ok(Self {
             state_manager,
             store,
             staging_manager,
             live_path,
             python_venv_manager,
-            file_hasher,
         })
     }
 
@@ -874,6 +868,7 @@ impl AtomicInstaller {
             package_refs: &transition.package_refs,
             package_refs_with_venv: &transition.package_refs_with_venv,
             package_files: &transition.package_files,
+            file_references: &transition.file_references,
         };
         let journal = self
             .state_manager
@@ -1026,15 +1021,7 @@ impl AtomicInstaller {
         Ok(())
     }
 
-    /// Enable or disable file-level hashing
-    pub fn set_file_hashing(&mut self, enabled: bool) {
-        self.use_file_hashing = enabled;
-    }
 
-    /// Check if file-level hashing is enabled
-    pub fn is_file_hashing_enabled(&self) -> bool {
-        self.use_file_hashing
-    }
 
     /// Rollback to a previous state
     ///
