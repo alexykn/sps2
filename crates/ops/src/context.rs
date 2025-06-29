@@ -68,15 +68,7 @@ impl OpsCtx {
         // Get a mutable reference to the guard
         let guard_option = self.guard.borrow_mut().take();
         if let Some(mut guard) = guard_option {
-            // Phase 1: Cache warming before operation
-            if let Err(e) = guard.warm_cache_for_operation(&operation_type).await {
-                let _ = self.tx.send(Event::DebugLog {
-                    message: format!("Cache warming failed (non-critical): {e}"),
-                    context: HashMap::default(),
-                });
-            }
-
-            // Phase 2: Pre-operation verification with intelligent scoping
+            // Phase 1: Pre-operation verification with intelligent scoping
             let pre_scope = derive_pre_operation_scope(&operation_type);
             let _ = self.tx.send(Event::DebugLog {
                 message: format!("Running pre-operation verification with scope: {pre_scope:?}"),
@@ -91,7 +83,7 @@ impl OpsCtx {
             };
 
             // Check pre-verification result
-            if !pre_result.is_valid && self.config.verification.fail_on_discrepancy {
+            if !pre_result.is_valid && self.config.verification.should_fail_on_discrepancy() {
                 // Put guard back before failing
                 *self.guard.borrow_mut() = Some(guard);
                 return Err(sps2_errors::OpsError::VerificationFailed {
@@ -126,11 +118,8 @@ impl OpsCtx {
                 guard.verify_with_scope(&post_scope).await?
             };
 
-            // Phase 5: Smart cache invalidation based on operation results
-            guard.invalidate_cache_for_operation(&operation_type, &op_metadata);
-
             // Check post-verification result
-            if !post_result.is_valid && self.config.verification.fail_on_discrepancy {
+            if !post_result.is_valid && self.config.verification.should_fail_on_discrepancy() {
                 // Put guard back before failing
                 *self.guard.borrow_mut() = Some(guard);
                 return Err(sps2_errors::OpsError::VerificationFailed {
@@ -267,7 +256,7 @@ impl OpsCtx {
         let guard_option = self.guard.borrow_mut().take();
 
         if let Some(mut guard) = guard_option {
-            let result = if self.config.verification.auto_heal {
+            let result = if self.config.verification.should_auto_heal() {
                 guard.verify_and_heal(&self.config).await?
             } else {
                 guard.verify_only().await?
@@ -276,7 +265,7 @@ impl OpsCtx {
             // Put the guard back before checking result
             *self.guard.borrow_mut() = Some(guard);
 
-            if !result.is_valid && self.config.verification.fail_on_discrepancy {
+            if !result.is_valid && self.config.verification.should_fail_on_discrepancy() {
                 return Err(sps2_errors::OpsError::VerificationFailed {
                     discrepancies: result.discrepancies.len(),
                     state_id: result.state_id.to_string(),
@@ -551,7 +540,7 @@ impl<'a, T> GuardedOperation<'a, T> {
         });
 
         // Check if this is a verification failure that can be healed
-        if Self::is_verification_error(&error) && self.ctx.config.verification.auto_heal {
+        if Self::is_verification_error(&error) && self.ctx.config.verification.should_auto_heal() {
             let _ = tx.send(Event::DebugLog {
                 message: "Attempting state healing for verification failure".to_string(),
                 context: HashMap::default(),

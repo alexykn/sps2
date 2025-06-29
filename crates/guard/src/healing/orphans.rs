@@ -68,10 +68,12 @@ pub fn determine_orphaned_file_action(
     }
 
     // User-created files respect configuration
-    if matches!(category, OrphanedFileCategory::UserCreated)
-        && config.verification.preserve_user_files
-    {
-        return OrphanedFileAction::Preserve;
+    if matches!(category, OrphanedFileCategory::UserCreated) {
+        match config.verification.user_file_policy {
+            sps2_config::UserFilePolicy::Preserve => return OrphanedFileAction::Preserve,
+            sps2_config::UserFilePolicy::Backup => return OrphanedFileAction::Backup,
+            sps2_config::UserFilePolicy::Remove => return OrphanedFileAction::Remove,
+        }
     }
 
     // Parse the configured action

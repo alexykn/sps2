@@ -215,6 +215,29 @@ async fn restore_missing_file_impl(
         file_path,
         target_path.display()
     );
+
+    // Clear the verification cache for this package so the healed file is re-verified
+    let _ = ctx.tx.send(Event::DebugLog {
+        message: format!("About to clear verification cache for {package_name}-{package_version}"),
+        context: HashMap::default(),
+    });
+
+    let mut state_tx = ctx.state_manager.begin_transaction().await?;
+    let cleared = sps2_state::queries::clear_package_verification_cache(
+        &mut state_tx,
+        package_name,
+        package_version,
+    )
+    .await?;
+    state_tx.commit().await?;
+
+    let _ = ctx.tx.send(Event::DebugLog {
+        message: format!(
+            "Cleared {cleared} verification cache entries for {package_name}-{package_version}"
+        ),
+        context: HashMap::default(),
+    });
+
     Ok(())
 }
 
@@ -389,9 +412,19 @@ pub async fn heal_corrupted_file(
             })?;
     }
 
+    // Clear the verification cache for this package so the healed file is re-verified
+    let mut state_tx = ctx.state_manager.begin_transaction().await?;
+    let cleared = sps2_state::queries::clear_package_verification_cache(
+        &mut state_tx,
+        package_name,
+        package_version,
+    )
+    .await?;
+    state_tx.commit().await?;
+
     // Emit success event
     let _ = ctx.tx.send(Event::DebugLog {
-        message: format!("Restored corrupted file: {file_path}"),
+        message: format!("Restored corrupted file: {file_path}, cleared {cleared} cache entries"),
         context: HashMap::default(),
     });
 

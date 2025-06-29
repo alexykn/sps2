@@ -1,14 +1,13 @@
 //! Package verification logic
 
-use crate::types::{Discrepancy, FileCacheEntry, SymlinkPolicy, VerificationContext};
+use crate::types::{Discrepancy, SymlinkPolicy, VerificationContext};
 use crate::verification::content::{verify_file_content, ContentVerificationParams};
 use sps2_errors::Error;
 use sps2_events::Event;
-use sps2_hash::Hash;
 use sps2_state::queries;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::time::{Instant, SystemTime};
+use std::time::Instant;
 
 /// Helper function to add a discrepancy and emit the corresponding event
 fn add_discrepancy_with_event(
@@ -293,33 +292,8 @@ pub async fn verify_package(
             }
         }
 
-        // Check cache first (use original file_path as cache key for consistency)
-        if ctx.cache.is_entry_valid(&file_path, ctx.level) {
-            // Cache hit - use cached result
-            if let Some(cached_entry) = ctx.cache.get_entry(&file_path) {
-                if !cached_entry.was_valid {
-                    // Cached entry indicates previous failure, add to discrepancies
-                    if !full_path.exists() {
-                        add_discrepancy_with_event(
-                            discrepancies,
-                            Discrepancy::MissingFile {
-                                package_name: package.name.clone(),
-                                package_version: package.version.clone(),
-                                file_path: clean_path.to_string(),
-                            },
-                            operation_id,
-                            ctx.tx,
-                        );
-                    }
-                }
-                // Skip verification for cached files
-                continue;
-            }
-        }
-
-        // Cache miss - perform verification
+        // Perform verification
         let _verification_start = Instant::now();
-        let mut file_was_valid = true;
 
         // Check if file exists
         if !full_path.exists() {
@@ -333,7 +307,6 @@ pub async fn verify_package(
                 operation_id,
                 ctx.tx,
             );
-            file_was_valid = false;
         } else {
             // Handle symlink verification based on policy
             if handle_symlink_verification(
@@ -369,7 +342,6 @@ pub async fn verify_package(
                     }
                 }
 
-                let discrepancy_count_before = discrepancies.len();
                 verify_file_content(ContentVerificationParams {
                     state_manager: ctx.state_manager,
                     state_id: ctx.state_id,
@@ -381,41 +353,6 @@ pub async fn verify_package(
                     tx: ctx.tx,
                 })
                 .await?;
-                // If discrepancies were added, file was invalid
-                if discrepancies.len() > discrepancy_count_before {
-                    file_was_valid = false;
-                }
-            }
-        }
-
-        // Update cache with verification result
-        if let Ok(metadata) = std::fs::metadata(&full_path) {
-            if let Ok(mtime) = metadata.modified() {
-                let size = metadata.len();
-                let content_hash =
-                    if ctx.level == crate::types::VerificationLevel::Full && file_was_valid {
-                        // Calculate hash for Full verification
-                        match Hash::hash_file(&full_path).await {
-                            Ok(hash) => Some(hash.to_string()),
-                            Err(_) => None,
-                        }
-                    } else {
-                        None
-                    };
-
-                let cache_entry = FileCacheEntry {
-                    file_path: file_path.clone(),
-                    package_name: package.name.clone(),
-                    package_version: package.version.clone(),
-                    mtime,
-                    size,
-                    content_hash,
-                    verified_at: SystemTime::now(),
-                    verification_level: ctx.level,
-                    was_valid: file_was_valid,
-                };
-
-                ctx.cache.update_entry(cache_entry);
             }
         }
     }

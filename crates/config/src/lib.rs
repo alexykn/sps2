@@ -139,39 +139,64 @@ impl Default for SymlinkPolicyConfig {
     }
 }
 
+/// How to handle discrepancies found during verification
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiscrepancyHandling {
+    /// Fail the operation when discrepancies are found
+    FailFast,
+    /// Report discrepancies but continue operation
+    ReportOnly,
+    /// Automatically heal discrepancies when possible
+    AutoHeal,
+    /// Auto-heal but fail if healing is not possible
+    AutoHealOrFail,
+}
+
+impl Default for DiscrepancyHandling {
+    fn default() -> Self {
+        Self::FailFast
+    }
+}
+
+/// Policy for handling user files
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UserFilePolicy {
+    /// Preserve user-created files
+    Preserve,
+    /// Remove user-created files
+    Remove,
+    /// Backup user-created files before removal
+    Backup,
+}
+
+impl Default for UserFilePolicy {
+    fn default() -> Self {
+        Self::Preserve
+    }
+}
+
 /// Performance configuration for guard operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(clippy::struct_excessive_bools)]
 pub struct PerformanceConfigToml {
-    #[serde(default = "default_use_cache")]
-    pub use_cache: bool,
     #[serde(default = "default_parallel_verification")]
     pub parallel_verification: bool,
-    #[serde(default = "default_cache_warming")]
-    pub cache_warming: bool,
     #[serde(default = "default_progressive_verification")]
     pub progressive_verification: bool,
     #[serde(default = "default_max_concurrent_tasks")]
     pub max_concurrent_tasks: usize,
     #[serde(default = "default_verification_timeout_seconds")]
     pub verification_timeout_seconds: u64,
-    #[serde(default = "default_cache_size_mb")]
-    pub cache_size_mb: usize,
-    #[serde(default = "default_cache_ttl_seconds")]
-    pub cache_ttl_seconds: u64,
 }
 
 impl Default for PerformanceConfigToml {
     fn default() -> Self {
         Self {
-            use_cache: default_use_cache(),
             parallel_verification: default_parallel_verification(),
-            cache_warming: default_cache_warming(),
             progressive_verification: default_progressive_verification(),
             max_concurrent_tasks: default_max_concurrent_tasks(),
             verification_timeout_seconds: default_verification_timeout_seconds(),
-            cache_size_mb: default_cache_size_mb(),
-            cache_ttl_seconds: default_cache_ttl_seconds(),
         }
     }
 }
@@ -196,56 +221,66 @@ impl Default for GuardConfigToml {
 
 /// Verification configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(clippy::struct_excessive_bools)]
 pub struct VerificationConfig {
     #[serde(default = "default_enabled")]
     pub enabled: bool,
     #[serde(default = "default_verification_level")]
     pub level: String, // "quick", "standard", or "full"
-    #[serde(default = "default_fail_on_discrepancy")]
-    pub fail_on_discrepancy: bool,
-    #[serde(default = "default_auto_heal")]
-    pub auto_heal: bool,
+    #[serde(default)]
+    pub discrepancy_handling: DiscrepancyHandling,
     #[serde(default = "default_orphaned_file_action")]
     pub orphaned_file_action: String, // "remove", "preserve", or "backup"
     #[serde(default = "default_orphaned_backup_dir")]
     pub orphaned_backup_dir: PathBuf,
-    #[serde(default = "default_preserve_user_files")]
-    pub preserve_user_files: bool,
+    #[serde(default)]
+    pub user_file_policy: UserFilePolicy,
 
     // Enhanced guard configuration
     #[serde(default)]
     pub guard: GuardConfigToml,
     #[serde(default)]
     pub performance: PerformanceConfigToml,
+
+    // Legacy compatibility fields - deprecated
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fail_on_discrepancy: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_heal: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preserve_user_files: Option<bool>,
 }
 
 /// Top-level guard configuration (alternative to verification.guard approach)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(clippy::struct_excessive_bools)]
 pub struct GuardConfiguration {
     #[serde(default = "default_guard_enabled")]
     pub enabled: bool,
     #[serde(default = "default_verification_level")]
     pub verification_level: String, // "quick", "standard", or "full"
-    #[serde(default = "default_auto_heal")]
-    pub auto_heal: bool,
-    #[serde(default = "default_fail_on_discrepancy")]
-    pub fail_on_discrepancy: bool,
+    #[serde(default)]
+    pub discrepancy_handling: DiscrepancyHandling,
     #[serde(default)]
     pub symlink_policy: GuardSymlinkPolicy,
     #[serde(default = "default_orphaned_file_action")]
     pub orphaned_file_action: String, // "remove", "preserve", or "backup"
     #[serde(default = "default_orphaned_backup_dir")]
     pub orphaned_backup_dir: PathBuf,
-    #[serde(default = "default_preserve_user_files")]
-    pub preserve_user_files: bool,
+    #[serde(default)]
+    pub user_file_policy: UserFilePolicy,
 
     // Nested configuration sections
     #[serde(default)]
     pub performance: GuardPerformanceConfig,
     #[serde(default = "default_guard_lenient_symlink_directories")]
     pub lenient_symlink_directories: Vec<GuardDirectoryConfig>,
+
+    // Legacy compatibility fields - deprecated
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_heal: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fail_on_discrepancy: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preserve_user_files: Option<bool>,
 }
 
 impl Default for GuardConfiguration {
@@ -253,14 +288,16 @@ impl Default for GuardConfiguration {
         Self {
             enabled: default_guard_enabled(),
             verification_level: default_verification_level(),
-            auto_heal: default_auto_heal(),
-            fail_on_discrepancy: default_fail_on_discrepancy(),
+            discrepancy_handling: DiscrepancyHandling::default(),
             symlink_policy: GuardSymlinkPolicy::default(),
             orphaned_file_action: default_orphaned_file_action(),
             orphaned_backup_dir: default_orphaned_backup_dir(),
-            preserve_user_files: default_preserve_user_files(),
+            user_file_policy: UserFilePolicy::default(),
             performance: GuardPerformanceConfig::default(),
             lenient_symlink_directories: default_guard_lenient_symlink_directories(),
+            auto_heal: None,
+            fail_on_discrepancy: None,
+            preserve_user_files: None,
         }
     }
 }
@@ -285,37 +322,24 @@ impl Default for GuardSymlinkPolicy {
 
 /// Performance configuration for top-level guard
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(clippy::struct_excessive_bools)]
 pub struct GuardPerformanceConfig {
-    #[serde(default = "default_use_cache")]
-    pub use_cache: bool,
     #[serde(default = "default_parallel_verification")]
     pub parallel_verification: bool,
-    #[serde(default = "default_cache_warming")]
-    pub cache_warming: bool,
     #[serde(default = "default_progressive_verification")]
     pub progressive_verification: bool,
     #[serde(default = "default_max_concurrent_tasks")]
     pub max_concurrent_tasks: usize,
     #[serde(default = "default_verification_timeout_seconds")]
     pub verification_timeout_seconds: u64,
-    #[serde(default = "default_cache_size_mb")]
-    pub cache_size_mb: usize,
-    #[serde(default = "default_cache_ttl_seconds")]
-    pub cache_ttl_seconds: u64,
 }
 
 impl Default for GuardPerformanceConfig {
     fn default() -> Self {
         Self {
-            use_cache: default_use_cache(),
             parallel_verification: default_parallel_verification(),
-            cache_warming: default_cache_warming(),
             progressive_verification: default_progressive_verification(),
             max_concurrent_tasks: default_max_concurrent_tasks(),
             verification_timeout_seconds: default_verification_timeout_seconds(),
-            cache_size_mb: default_cache_size_mb(),
-            cache_ttl_seconds: default_cache_ttl_seconds(),
         }
     }
 }
@@ -394,13 +418,15 @@ impl Default for VerificationConfig {
         Self {
             enabled: false, // Disabled by default during development
             level: "standard".to_string(),
-            fail_on_discrepancy: true,
-            auto_heal: false,
+            discrepancy_handling: DiscrepancyHandling::default(),
             orphaned_file_action: "preserve".to_string(),
             orphaned_backup_dir: PathBuf::from("/opt/pm/orphaned-backup"),
-            preserve_user_files: true,
+            user_file_policy: UserFilePolicy::default(),
             guard: GuardConfigToml::default(),
             performance: PerformanceConfigToml::default(),
+            fail_on_discrepancy: None,
+            auto_heal: None,
+            preserve_user_files: None,
         }
     }
 }
@@ -470,14 +496,6 @@ fn default_verification_level() -> String {
     "standard".to_string()
 }
 
-fn default_fail_on_discrepancy() -> bool {
-    true
-}
-
-fn default_auto_heal() -> bool {
-    false
-}
-
 fn default_orphaned_file_action() -> String {
     "preserve".to_string()
 }
@@ -486,21 +504,9 @@ fn default_orphaned_backup_dir() -> PathBuf {
     PathBuf::from("/opt/pm/orphaned-backup")
 }
 
-fn default_preserve_user_files() -> bool {
-    true
-}
-
 // Guard configuration defaults
 
-fn default_use_cache() -> bool {
-    true
-}
-
 fn default_parallel_verification() -> bool {
-    true
-}
-
-fn default_cache_warming() -> bool {
     true
 }
 
@@ -514,14 +520,6 @@ fn default_max_concurrent_tasks() -> usize {
 
 fn default_verification_timeout_seconds() -> u64 {
     300 // 5 minutes
-}
-
-fn default_cache_size_mb() -> usize {
-    128
-}
-
-fn default_cache_ttl_seconds() -> u64 {
-    3600 // 1 hour
 }
 
 // Top-level guard configuration defaults
@@ -781,6 +779,106 @@ fn default_allowed_shell() -> Vec<String> {
     .collect()
 }
 
+impl VerificationConfig {
+    /// Apply legacy fields if present and convert to new enum-based fields
+    pub fn apply_legacy_fields(&mut self) {
+        // Handle legacy fail_on_discrepancy and auto_heal
+        match (self.fail_on_discrepancy, self.auto_heal) {
+            (Some(true), Some(true)) => {
+                self.discrepancy_handling = DiscrepancyHandling::AutoHealOrFail;
+            }
+            (Some(false), Some(true)) => self.discrepancy_handling = DiscrepancyHandling::AutoHeal,
+            (Some(true), Some(false)) => self.discrepancy_handling = DiscrepancyHandling::FailFast,
+            (Some(false), Some(false)) => {
+                self.discrepancy_handling = DiscrepancyHandling::ReportOnly;
+            }
+            _ => {} // Keep current discrepancy_handling
+        }
+
+        // Handle legacy preserve_user_files
+        if let Some(preserve) = self.preserve_user_files {
+            self.user_file_policy = if preserve {
+                UserFilePolicy::Preserve
+            } else {
+                UserFilePolicy::Remove
+            };
+        }
+
+        // Clear legacy fields after conversion
+        self.fail_on_discrepancy = None;
+        self.auto_heal = None;
+        self.preserve_user_files = None;
+    }
+
+    /// Check if should fail on discrepancy (for backward compatibility)
+    #[must_use]
+    pub fn should_fail_on_discrepancy(&self) -> bool {
+        matches!(
+            self.discrepancy_handling,
+            DiscrepancyHandling::FailFast | DiscrepancyHandling::AutoHealOrFail
+        )
+    }
+
+    /// Check if should auto-heal (for backward compatibility)
+    #[must_use]
+    pub fn should_auto_heal(&self) -> bool {
+        matches!(
+            self.discrepancy_handling,
+            DiscrepancyHandling::AutoHeal | DiscrepancyHandling::AutoHealOrFail
+        )
+    }
+}
+
+impl GuardConfiguration {
+    /// Apply legacy fields if present and convert to new enum-based fields
+    pub fn apply_legacy_fields(&mut self) {
+        // Handle legacy fail_on_discrepancy and auto_heal
+        match (self.fail_on_discrepancy, self.auto_heal) {
+            (Some(true), Some(true)) => {
+                self.discrepancy_handling = DiscrepancyHandling::AutoHealOrFail;
+            }
+            (Some(false), Some(true)) => self.discrepancy_handling = DiscrepancyHandling::AutoHeal,
+            (Some(true), Some(false)) => self.discrepancy_handling = DiscrepancyHandling::FailFast,
+            (Some(false), Some(false)) => {
+                self.discrepancy_handling = DiscrepancyHandling::ReportOnly;
+            }
+            _ => {} // Keep current discrepancy_handling
+        }
+
+        // Handle legacy preserve_user_files
+        if let Some(preserve) = self.preserve_user_files {
+            self.user_file_policy = if preserve {
+                UserFilePolicy::Preserve
+            } else {
+                UserFilePolicy::Remove
+            };
+        }
+
+        // Clear legacy fields after conversion
+        self.fail_on_discrepancy = None;
+        self.auto_heal = None;
+        self.preserve_user_files = None;
+    }
+
+    /// Check if should fail on discrepancy (for backward compatibility)
+    #[must_use]
+    pub fn should_fail_on_discrepancy(&self) -> bool {
+        matches!(
+            self.discrepancy_handling,
+            DiscrepancyHandling::FailFast | DiscrepancyHandling::AutoHealOrFail
+        )
+    }
+
+    /// Check if should auto-heal (for backward compatibility)
+    #[must_use]
+    pub fn should_auto_heal(&self) -> bool {
+        matches!(
+            self.discrepancy_handling,
+            DiscrepancyHandling::AutoHeal | DiscrepancyHandling::AutoHealOrFail
+        )
+    }
+}
+
 impl Config {
     /// Get the default config file path
     ///
@@ -807,11 +905,17 @@ impl Config {
                 path: path.display().to_string(),
             })?;
 
-        toml::from_str(&contents)
-            .map_err(|e| ConfigError::ParseError {
-                message: e.to_string(),
-            })
-            .map_err(Into::into)
+        let mut config: Self = toml::from_str(&contents).map_err(|e| ConfigError::ParseError {
+            message: e.to_string(),
+        })?;
+
+        // Apply legacy field conversions
+        config.verification.apply_legacy_fields();
+        if let Some(ref mut guard) = config.guard {
+            guard.apply_legacy_fields();
+        }
+
+        Ok(config)
     }
 
     /// Load configuration with fallback to defaults
@@ -1146,14 +1250,6 @@ impl Config {
             .into());
         }
 
-        if perf.cache_size_mb == 0 {
-            return Err(ConfigError::InvalidValue {
-                field: format!("{field_prefix}.cache_size_mb"),
-                value: "0".to_string(),
-            }
-            .into());
-        }
-
         Ok(())
     }
 
@@ -1172,14 +1268,6 @@ impl Config {
         if perf.verification_timeout_seconds == 0 {
             return Err(ConfigError::InvalidValue {
                 field: format!("{field_prefix}.verification_timeout_seconds"),
-                value: "0".to_string(),
-            }
-            .into());
-        }
-
-        if perf.cache_size_mb == 0 {
-            return Err(ConfigError::InvalidValue {
-                field: format!("{field_prefix}.cache_size_mb"),
                 value: "0".to_string(),
             }
             .into());
@@ -1248,7 +1336,7 @@ mod tests {
         config.verification.orphaned_file_action = "preserve".to_string();
         config.verification.performance.max_concurrent_tasks = 8;
         config.verification.performance.verification_timeout_seconds = 300;
-        config.verification.performance.cache_size_mb = 128;
+        // cache_size_mb removed along with caching feature
         config.verification.guard.lenient_symlink_directories = vec![
             PathBuf::from("/opt/pm/live/bin"),
             PathBuf::from("/opt/pm/live/sbin"),
@@ -1303,7 +1391,6 @@ mod tests {
         config.verification.enabled = true;
         config.verification.guard.symlink_policy = SymlinkPolicyConfig::LenientBootstrap;
         config.verification.performance.parallel_verification = true;
-        config.verification.performance.cache_warming = true;
         config.verification.performance.max_concurrent_tasks = 6;
 
         // Save config
@@ -1338,8 +1425,12 @@ mod tests {
         // Test default verification config
         assert!(!config.verification.enabled);
         assert_eq!(config.verification.level, "standard");
-        assert!(!config.verification.auto_heal);
-        assert!(config.verification.fail_on_discrepancy);
+        assert_eq!(
+            config.verification.discrepancy_handling,
+            DiscrepancyHandling::FailFast
+        );
+        assert!(config.verification.should_fail_on_discrepancy());
+        assert!(!config.verification.should_auto_heal());
 
         // Test default guard config
         assert_eq!(
@@ -1355,17 +1446,13 @@ mod tests {
         );
 
         // Test default performance config
-        assert!(config.verification.performance.use_cache);
         assert!(config.verification.performance.parallel_verification);
-        assert!(config.verification.performance.cache_warming);
         assert!(config.verification.performance.progressive_verification);
         assert_eq!(config.verification.performance.max_concurrent_tasks, 8);
         assert_eq!(
             config.verification.performance.verification_timeout_seconds,
             300
         );
-        assert_eq!(config.verification.performance.cache_size_mb, 128);
-        assert_eq!(config.verification.performance.cache_ttl_seconds, 3600);
     }
 
     #[tokio::test]
@@ -1378,25 +1465,23 @@ mod tests {
             guard: Some(GuardConfiguration {
                 enabled: true,
                 verification_level: "full".to_string(),
-                auto_heal: true,
-                fail_on_discrepancy: false,
+                discrepancy_handling: DiscrepancyHandling::AutoHeal,
                 symlink_policy: GuardSymlinkPolicy::Strict,
                 orphaned_file_action: "backup".to_string(),
                 orphaned_backup_dir: PathBuf::from("/tmp/backup"),
-                preserve_user_files: false,
+                user_file_policy: UserFilePolicy::Remove,
                 performance: GuardPerformanceConfig {
-                    use_cache: false,
                     parallel_verification: false,
-                    cache_warming: false,
                     progressive_verification: false,
                     max_concurrent_tasks: 4,
                     verification_timeout_seconds: 600,
-                    cache_size_mb: 64,
-                    cache_ttl_seconds: 1800,
                 },
                 lenient_symlink_directories: vec![GuardDirectoryConfig {
                     path: PathBuf::from("/custom/path"),
                 }],
+                auto_heal: None,
+                fail_on_discrepancy: None,
+                preserve_user_files: None,
             }),
             ..Default::default()
         };
@@ -1409,18 +1494,21 @@ mod tests {
         let guard_config = loaded_config.guard.as_ref().unwrap();
         assert!(guard_config.enabled);
         assert_eq!(guard_config.verification_level, "full");
-        assert!(guard_config.auto_heal);
-        assert!(!guard_config.fail_on_discrepancy);
+        assert_eq!(
+            guard_config.discrepancy_handling,
+            DiscrepancyHandling::AutoHeal
+        );
+        assert!(guard_config.should_auto_heal());
+        assert!(!guard_config.should_fail_on_discrepancy());
         assert_eq!(guard_config.symlink_policy, GuardSymlinkPolicy::Strict);
         assert_eq!(guard_config.orphaned_file_action, "backup");
         assert_eq!(
             guard_config.orphaned_backup_dir,
             PathBuf::from("/tmp/backup")
         );
-        assert!(!guard_config.preserve_user_files);
+        assert_eq!(guard_config.user_file_policy, UserFilePolicy::Remove);
 
         // Verify performance config
-        assert!(!guard_config.performance.use_cache);
         assert!(!guard_config.performance.parallel_verification);
         assert_eq!(guard_config.performance.max_concurrent_tasks, 4);
         assert_eq!(guard_config.performance.verification_timeout_seconds, 600);
@@ -1442,12 +1530,11 @@ mod tests {
             guard: Some(GuardConfiguration {
                 enabled: true,
                 verification_level: "standard".to_string(),
-                auto_heal: false,
-                fail_on_discrepancy: true,
+                discrepancy_handling: DiscrepancyHandling::FailFast,
                 symlink_policy: GuardSymlinkPolicy::Lenient,
                 orphaned_file_action: "preserve".to_string(),
                 orphaned_backup_dir: PathBuf::from("/opt/pm/orphaned-backup"),
-                preserve_user_files: true,
+                user_file_policy: UserFilePolicy::Preserve,
                 performance: GuardPerformanceConfig::default(),
                 lenient_symlink_directories: vec![
                     GuardDirectoryConfig {
@@ -1457,6 +1544,9 @@ mod tests {
                         path: PathBuf::from("/opt/pm/live/sbin"),
                     },
                 ],
+                auto_heal: None,
+                fail_on_discrepancy: None,
+                preserve_user_files: None,
             }),
             ..Default::default()
         };
@@ -1471,7 +1561,6 @@ mod tests {
         assert!(contents.contains("verification_level = \"standard\""));
         assert!(contents.contains("symlink_policy = \"lenient\""));
         assert!(contents.contains("[guard.performance]"));
-        assert!(contents.contains("use_cache = true"));
         assert!(contents.contains("[[guard.lenient_symlink_directories]]"));
         assert!(contents.contains("path = \"/opt/pm/live/bin\""));
         assert!(contents.contains("path = \"/opt/pm/live/sbin\""));
@@ -1556,21 +1645,21 @@ mod tests {
         // Test default values
         assert!(!guard_config.enabled);
         assert_eq!(guard_config.verification_level, "standard");
-        assert!(!guard_config.auto_heal);
-        assert!(guard_config.fail_on_discrepancy);
+        assert_eq!(
+            guard_config.discrepancy_handling,
+            DiscrepancyHandling::FailFast
+        );
+        assert!(guard_config.should_fail_on_discrepancy());
+        assert!(!guard_config.should_auto_heal());
         assert_eq!(guard_config.symlink_policy, GuardSymlinkPolicy::Lenient);
         assert_eq!(guard_config.orphaned_file_action, "preserve");
-        assert!(guard_config.preserve_user_files);
+        assert_eq!(guard_config.user_file_policy, UserFilePolicy::Preserve);
 
         // Test default performance config
-        assert!(guard_config.performance.use_cache);
         assert!(guard_config.performance.parallel_verification);
-        assert!(guard_config.performance.cache_warming);
         assert!(guard_config.performance.progressive_verification);
         assert_eq!(guard_config.performance.max_concurrent_tasks, 8);
         assert_eq!(guard_config.performance.verification_timeout_seconds, 300);
-        assert_eq!(guard_config.performance.cache_size_mb, 128);
-        assert_eq!(guard_config.performance.cache_ttl_seconds, 3600);
 
         // Test default directories
         assert_eq!(guard_config.lenient_symlink_directories.len(), 2);

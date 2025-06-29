@@ -1,6 +1,5 @@
 //! Builder pattern for StateVerificationGuard
 
-use crate::cache::VerificationCache;
 use crate::core::guard::StateVerificationGuard;
 use crate::types::{GuardConfig, VerificationLevel};
 use sps2_errors::{Error, OpsError};
@@ -83,15 +82,11 @@ impl StateVerificationGuardBuilder {
             component: "EventSender".to_string(),
         })?;
 
-        // Create cache
-        let cache = VerificationCache::new();
-
         Ok(StateVerificationGuard::new(
             state_manager,
             store,
             tx,
             self.config,
-            cache,
         ))
     }
 }

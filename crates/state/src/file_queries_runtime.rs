@@ -515,17 +515,34 @@ pub async fn clear_package_verification_cache(
     package_name: &str,
     package_version: &str,
 ) -> Result<u64, Error> {
+    // Clear cache entries for all file hashes associated with this package
+    // across ALL states (not just the current state)
     let result = query(
         r#"
         DELETE FROM file_verification_cache
         WHERE file_hash IN (
-            SELECT pfe.file_hash
+            SELECT DISTINCT pfe.file_hash
             FROM package_file_entries pfe
             JOIN packages p ON p.id = pfe.package_id
             WHERE p.name = ? AND p.version = ?
+            
+            UNION
+            
+            -- Also get hashes from the cache itself where the path contains files
+            -- that are likely from this package (handles orphaned cache entries)
+            SELECT DISTINCT fvc.file_hash
+            FROM file_verification_cache fvc
+            WHERE fvc.installed_path IN (
+                SELECT DISTINCT '/opt/pm/live/' || pfe2.relative_path
+                FROM package_file_entries pfe2
+                JOIN packages p2 ON p2.id = pfe2.package_id
+                WHERE p2.name = ? AND p2.version = ?
+            )
         )
         "#,
     )
+    .bind(package_name)
+    .bind(package_version)
     .bind(package_name)
     .bind(package_version)
     .execute(&mut **tx)

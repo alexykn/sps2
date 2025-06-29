@@ -1,8 +1,9 @@
 //! Type definitions for state verification and healing
 
+use sps2_config::DiscrepancyHandling;
 use sps2_errors::{DiscrepancyContext, DiscrepancySeverity, RecommendedAction};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 use uuid::Uuid;
 
 /// Verification level for state checking
@@ -488,66 +489,12 @@ impl VerificationResult {
     }
 }
 
-/// Cache entry for a verified file
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct FileCacheEntry {
-    /// File path relative to live directory
-    pub file_path: String,
-    /// Package name this file belongs to
-    pub package_name: String,
-    /// Package version
-    pub package_version: String,
-    /// File modification time when last verified
-    pub mtime: SystemTime,
-    /// File size when last verified
-    pub size: u64,
-    /// Content hash (only for Full verification level)
-    pub content_hash: Option<String>,
-    /// Timestamp when this entry was created
-    pub verified_at: SystemTime,
-    /// Verification level used for this entry
-    pub verification_level: VerificationLevel,
-    /// Whether file was valid at time of verification
-    pub was_valid: bool,
-}
-
-/// Cache statistics for monitoring performance
-#[derive(Debug, Clone, Default, serde::Serialize)]
-pub struct CacheStats {
-    /// Total cache lookups attempted
-    pub lookups: u64,
-    /// Cache hits (valid entries found)
-    pub hits: u64,
-    /// Cache misses (no entry or invalidated)
-    pub misses: u64,
-    /// Number of entries in cache
-    pub entry_count: u64,
-    /// Total memory usage estimate in bytes
-    pub memory_usage_bytes: u64,
-    /// Time saved by cache hits in milliseconds
-    pub time_saved_ms: u64,
-}
-
-impl CacheStats {
-    /// Calculate cache hit rate as percentage
-    #[must_use]
-    pub fn hit_rate(&self) -> f64 {
-        if self.lookups == 0 {
-            0.0
-        } else {
-            (self.hits as f64 / self.lookups as f64) * 100.0
-        }
-    }
-}
-
 /// Context for verification operations to reduce argument count
 pub struct VerificationContext<'a> {
     /// State manager for database operations
     pub state_manager: &'a sps2_state::StateManager,
     /// Package store for content verification
     pub store: &'a sps2_store::PackageStore,
-    /// Verification cache for performance optimization
-    pub cache: &'a mut crate::cache::VerificationCache,
     /// Verification level
     pub level: VerificationLevel,
     /// Current state ID being verified
@@ -593,12 +540,8 @@ impl Default for SymlinkPolicy {
 /// Performance configuration for guard operations
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PerformanceConfig {
-    /// Enable verification cache for faster repeated verifications
-    pub use_cache: bool,
     /// Enable parallel verification of multiple packages
     pub parallel_verification: bool,
-    /// Pre-warm cache before operations
-    pub cache_warming: bool,
     /// Use progressive verification (Quick → Standard → Full as needed)
     pub progressive_verification: bool,
     /// Maximum number of concurrent verification tasks
@@ -610,9 +553,7 @@ pub struct PerformanceConfig {
 impl Default for PerformanceConfig {
     fn default() -> Self {
         Self {
-            use_cache: true,
             parallel_verification: true,
-            cache_warming: true,
             progressive_verification: true,
             max_concurrent_tasks: 8,
             verification_timeout: Duration::from_secs(300), // 5 minutes
@@ -625,10 +566,8 @@ impl Default for PerformanceConfig {
 pub struct GuardConfig {
     /// Verification level to use
     pub verification_level: VerificationLevel,
-    /// Whether to automatically heal discrepancies
-    pub auto_heal: bool,
-    /// Whether to fail operations on verification discrepancies
-    pub fail_on_discrepancy: bool,
+    /// How to handle discrepancies
+    pub discrepancy_handling: DiscrepancyHandling,
     /// Policy for handling symlinks
     pub symlink_policy: SymlinkPolicy,
     /// Performance configuration
@@ -641,8 +580,7 @@ impl Default for GuardConfig {
     fn default() -> Self {
         Self {
             verification_level: VerificationLevel::Standard,
-            auto_heal: true,
-            fail_on_discrepancy: false,
+            discrepancy_handling: DiscrepancyHandling::AutoHeal,
             symlink_policy: SymlinkPolicy::Lenient,
             performance: PerformanceConfig::default(),
             lenient_symlink_directories: vec![
@@ -650,6 +588,24 @@ impl Default for GuardConfig {
                 PathBuf::from("/opt/pm/live/sbin"),
             ],
         }
+    }
+}
+
+impl GuardConfig {
+    /// Check if should fail on discrepancy (for backward compatibility)
+    pub fn should_fail_on_discrepancy(&self) -> bool {
+        matches!(
+            self.discrepancy_handling,
+            DiscrepancyHandling::FailFast | DiscrepancyHandling::AutoHealOrFail
+        )
+    }
+
+    /// Check if should auto-heal (for backward compatibility)
+    pub fn should_auto_heal(&self) -> bool {
+        matches!(
+            self.discrepancy_handling,
+            DiscrepancyHandling::AutoHeal | DiscrepancyHandling::AutoHealOrFail
+        )
     }
 }
 
@@ -1037,9 +993,7 @@ impl From<sps2_config::SymlinkPolicyConfig> for SymlinkPolicy {
 impl From<&sps2_config::PerformanceConfigToml> for PerformanceConfig {
     fn from(config: &sps2_config::PerformanceConfigToml) -> Self {
         Self {
-            use_cache: config.use_cache,
             parallel_verification: config.parallel_verification,
-            cache_warming: config.cache_warming,
             progressive_verification: config.progressive_verification,
             max_concurrent_tasks: config.max_concurrent_tasks,
             verification_timeout: Duration::from_secs(config.verification_timeout_seconds),
@@ -1068,8 +1022,7 @@ impl From<&sps2_config::VerificationConfig> for GuardConfig {
 
         Self {
             verification_level,
-            auto_heal: config.auto_heal,
-            fail_on_discrepancy: config.fail_on_discrepancy,
+            discrepancy_handling: config.discrepancy_handling,
             symlink_policy,
             performance: (&config.performance).into(),
             lenient_symlink_directories: config.guard.lenient_symlink_directories.clone(),
@@ -1094,9 +1047,7 @@ impl From<sps2_config::GuardSymlinkPolicy> for SymlinkPolicy {
 impl From<&sps2_config::GuardPerformanceConfig> for PerformanceConfig {
     fn from(config: &sps2_config::GuardPerformanceConfig) -> Self {
         Self {
-            use_cache: config.use_cache,
             parallel_verification: config.parallel_verification,
-            cache_warming: config.cache_warming,
             progressive_verification: config.progressive_verification,
             max_concurrent_tasks: config.max_concurrent_tasks,
             verification_timeout: Duration::from_secs(config.verification_timeout_seconds),
@@ -1116,8 +1067,7 @@ impl From<&sps2_config::GuardConfiguration> for GuardConfig {
 
         Self {
             verification_level,
-            auto_heal: config.auto_heal,
-            fail_on_discrepancy: config.fail_on_discrepancy,
+            discrepancy_handling: config.discrepancy_handling,
             symlink_policy: config.symlink_policy.into(),
             performance: (&config.performance).into(),
             lenient_symlink_directories: config
