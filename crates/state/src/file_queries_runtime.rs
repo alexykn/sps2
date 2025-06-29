@@ -419,3 +419,107 @@ pub async fn mark_package_file_hashed(
 
     Ok(())
 }
+
+/// Get all cached verification results for files in a package
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails
+pub async fn get_package_file_verification_cache(
+    tx: &mut Transaction<'_, Sqlite>,
+    package_name: &str,
+    package_version: &str,
+) -> Result<Vec<FileVerificationCache>, Error> {
+    let rows = query(
+        r#"
+        SELECT DISTINCT
+            fvc.file_hash,
+            fvc.installed_path,
+            fvc.verified_at,
+            fvc.is_valid,
+            fvc.error_message
+        FROM file_verification_cache fvc
+        JOIN package_file_entries pfe ON pfe.file_hash = fvc.file_hash
+        JOIN packages p ON p.id = pfe.package_id
+        WHERE p.name = ? AND p.version = ?
+        ORDER BY fvc.installed_path
+        "#,
+    )
+    .bind(package_name)
+    .bind(package_version)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(|e| StateError::DatabaseError {
+        message: format!("failed to get package verification cache: {e}"),
+    })?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| FileVerificationCache {
+            file_hash: r.get("file_hash"),
+            installed_path: r.get("installed_path"),
+            verified_at: r.get("verified_at"),
+            is_valid: r.get("is_valid"),
+            error_message: r.get("error_message"),
+        })
+        .collect())
+}
+
+/// Clear verification cache for a package
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails
+pub async fn clear_package_verification_cache(
+    tx: &mut Transaction<'_, Sqlite>,
+    package_name: &str,
+    package_version: &str,
+) -> Result<u64, Error> {
+    let result = query(
+        r#"
+        DELETE FROM file_verification_cache
+        WHERE file_hash IN (
+            SELECT pfe.file_hash
+            FROM package_file_entries pfe
+            JOIN packages p ON p.id = pfe.package_id
+            WHERE p.name = ? AND p.version = ?
+        )
+        "#,
+    )
+    .bind(package_name)
+    .bind(package_version)
+    .execute(&mut **tx)
+    .await
+    .map_err(|e| StateError::DatabaseError {
+        message: format!("failed to clear package verification cache: {e}"),
+    })?;
+
+    Ok(result.rows_affected())
+}
+
+/// Clear old verification cache entries
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails
+pub async fn clear_old_verification_cache(
+    tx: &mut Transaction<'_, Sqlite>,
+    max_age_seconds: i64,
+) -> Result<u64, Error> {
+    let cutoff_time = chrono::Utc::now().timestamp() - max_age_seconds;
+    
+    let result = query(
+        r#"
+        DELETE FROM file_verification_cache
+        WHERE verified_at < ?
+        "#,
+    )
+    .bind(cutoff_time)
+    .execute(&mut **tx)
+    .await
+    .map_err(|e| StateError::DatabaseError {
+        message: format!("failed to clear old verification cache: {e}"),
+    })?;
+
+    Ok(result.rows_affected())
+}

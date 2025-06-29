@@ -78,6 +78,7 @@ async fn verify_single_package_standalone(
         live_path,
         guard_config,
         tx: None, // No event logging in parallel tasks to avoid conflicts
+        scope: &VerificationScope::Full, // Parallel verification always uses full scope
     };
 
     // Verify the package using the existing verification logic
@@ -204,6 +205,7 @@ impl StateVerificationGuard {
                 live_path: &live_path,
                 guard_config: &self.config,
                 tx: Some(&self.tx),
+                scope: &VerificationScope::Full,
             };
 
             verification::package::verify_package(
@@ -287,6 +289,7 @@ impl StateVerificationGuard {
             live_path: &live_path,
             guard_config: &self.config,
             tx: Some(&self.tx),
+            scope,
         };
 
         // Verify selected packages

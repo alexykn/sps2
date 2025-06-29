@@ -558,6 +558,8 @@ pub struct VerificationContext<'a> {
     pub guard_config: &'a GuardConfig,
     /// Event sender for logging (optional)
     pub tx: Option<&'a sps2_events::EventSender>,
+    /// Verification scope for filtering
+    pub scope: &'a VerificationScope,
 }
 
 /// Context for healing operations to reduce argument count

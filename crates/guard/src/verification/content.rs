@@ -96,6 +96,14 @@ pub async fn verify_file_content(params: ContentVerificationParams<'_>) -> Resul
         return Ok(());
     }
 
+    // Get file modification time for cache validation
+    let file_mtime = metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+
     // Get expected hash from database
     let mut db_tx = state_manager.begin_transaction().await?;
 
@@ -121,10 +129,9 @@ pub async fn verify_file_content(params: ContentVerificationParams<'_>) -> Resul
         .await?;
     }
 
-    db_tx.commit().await?;
-
     // Debug: log if no entries found
     if file_entries.is_empty() {
+        db_tx.commit().await?;
         if let Some(sender) = tx {
             let _ = sender.send(Event::DebugLog {
                 message: format!(
@@ -173,6 +180,7 @@ pub async fn verify_file_content(params: ContentVerificationParams<'_>) -> Resul
     let Some(entry) = file_entry else {
         // No hash in database for this file - this might be a legacy package
         // or the file-level data hasn't been populated yet
+        db_tx.commit().await?;
         if let Some(sender) = tx {
             let _ = sender.send(Event::DebugLog {
                 message: format!(
@@ -185,14 +193,88 @@ pub async fn verify_file_content(params: ContentVerificationParams<'_>) -> Resul
         return Ok(());
     };
 
-    // Calculate actual file hash
-    let actual_hash = Hash::hash_file(file_path).await?;
     let expected_hash =
         Hash::from_hex(&entry.file_hash).map_err(|e| OpsError::OperationFailed {
             message: format!("Invalid file hash in database: {e}"),
         })?;
 
-    if actual_hash != expected_hash {
+    // Check verification cache first
+    let cache_entry = sps2_state::queries::get_verification_cache(
+        &mut db_tx,
+        &expected_hash,
+        file_path.to_str().unwrap_or_default(),
+    )
+    .await?;
+
+    let needs_verification = if let Some(cache) = cache_entry {
+        // Cache exists - check if it's still valid
+        let now_timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let cache_age_seconds = now_timestamp - cache.verified_at;
+        let cache_ttl_seconds = 300; // 5 minutes default
+        
+        // Check if cache is expired by TTL
+        let ttl_expired = cache_age_seconds > cache_ttl_seconds;
+        
+        // Check if file was modified after cache entry
+        let file_modified_after_cache = file_mtime > cache.verified_at;
+        
+        if ttl_expired || file_modified_after_cache {
+            if let Some(sender) = tx {
+                let _ = sender.send(Event::DebugLog {
+                    message: format!(
+                        "Cache invalidated for {}: ttl_expired={}, file_modified={}",
+                        relative_path, ttl_expired, file_modified_after_cache
+                    ),
+                    context: std::collections::HashMap::new(),
+                });
+            }
+            true
+        } else if !cache.is_valid {
+            // Previous verification failed - report it without re-verifying
+            add_discrepancy_with_event(
+                discrepancies,
+                Discrepancy::CorruptedFile {
+                    package_name: package.name.clone(),
+                    package_version: package.version.clone(),
+                    file_path: relative_path.to_string(),
+                    expected_hash: expected_hash.to_hex(),
+                    actual_hash: cache.error_message.unwrap_or_else(|| "unknown".to_string()),
+                },
+                operation_id,
+                tx,
+            );
+            false
+        } else {
+            // Cache hit - file was verified recently and hasn't changed
+            if let Some(sender) = tx {
+                let _ = sender.send(Event::DebugLog {
+                    message: format!("Cache hit for {}: verified {} seconds ago", 
+                        relative_path, cache_age_seconds),
+                    context: std::collections::HashMap::new(),
+                });
+            }
+            false
+        }
+    } else {
+        // No cache entry - need to verify
+        true
+    };
+
+    if !needs_verification {
+        db_tx.commit().await?;
+        return Ok(());
+    }
+
+    // Calculate actual file hash
+    let actual_hash = Hash::hash_file(file_path).await?;
+
+    // Compare hashes and update cache
+    let is_valid = actual_hash == expected_hash;
+    
+    if !is_valid {
         add_discrepancy_with_event(
             discrepancies,
             Discrepancy::CorruptedFile {
@@ -207,5 +289,23 @@ pub async fn verify_file_content(params: ContentVerificationParams<'_>) -> Resul
         );
     }
 
+    // Update verification cache with result
+    let error_message = if is_valid {
+        None
+    } else {
+        Some(format!("Hash mismatch: expected {}, got {}", 
+            expected_hash.to_hex(), actual_hash.to_hex()))
+    };
+
+    sps2_state::queries::update_verification_cache(
+        &mut db_tx,
+        &expected_hash,
+        file_path.to_str().unwrap_or_default(),
+        is_valid,
+        error_message.as_deref(),
+    )
+    .await?;
+
+    db_tx.commit().await?;
     Ok(())
 }
