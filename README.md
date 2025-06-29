@@ -356,6 +356,91 @@ install:
   auto: true
 ```
 
+## Developer Tools
+
+### Store List (sls) - Debugging Content-Addressed Storage
+
+The `sls` utility is a specialized debugging tool for exploring sps2's content-addressed storage system. It provides ls-like functionality for both the object store and package metadata.
+
+#### Basic Usage
+
+```bash
+# List all hash prefix directories (00-ff)
+sls
+
+# List objects with a specific hash prefix
+sls ff
+
+# List a specific object by partial hash
+sls ffff5aa9
+
+# Show full hash without filename mapping
+sls --hash ff
+```
+
+#### Object Store Exploration
+
+```bash
+# Long format with permissions and sizes
+sls -l ff
+
+# Example output:
+# -r--r--r-- 2.11 KiB ffff5aa98bd51ec0 -> include/c++/15/fenv.h (gcc:15.1.0)
+# -r--r--r-- 6.46 KiB ffff1d26e56791c5 -> share/man/man3/SSL_config.3ossl (openssl:3.5.0)
+
+# Recursive listing of entire store
+sls -R
+
+# Find all files from a specific package
+sls -R | grep "bat:0.25.0"
+
+# Find all Python files
+sls -R | grep "\.py "
+
+# Find files by name pattern using ripgrep
+sls -R | rg "libcurl.*dylib"
+
+# Find all files from multiple packages
+sls -R | rg "(gcc|clang|llvm):"
+```
+
+#### Package Directory Exploration
+
+```bash
+# List all packages with their names and versions
+sls -p
+
+# Example output:
+# 0543d3aaf01da99f -> bat:0.25.0
+# 098b0c7c800fd65f -> autoconf:2.72.0
+# 0c0be36a37e74b78 -> cmake:4.0.3
+
+# List specific package by hash prefix
+sls -p 0543
+
+# Long format for packages (shows metadata files)
+sls -p -l
+
+# Find packages by name pattern
+sls -p | grep "python"
+
+# Find all compiler packages using ripgrep
+sls -p | rg "(gcc|clang|llvm|rust)"
+```
+
+#### Key Insights
+
+- **Object Storage**: Files are stored by BLAKE3 hash in `/opt/pm/store/objects/[first-2-chars]/[remaining-62-chars]`
+- **Package Storage**: Packages are stored in `/opt/pm/store/packages/[full-hash]/` with metadata files:
+  - `manifest.toml` - Package metadata and file list
+  - `files.json` - Detailed file information
+  - `sbom.spdx.json` - Software Bill of Materials
+- **Deduplication**: Multiple packages can reference the same file hash (content deduplication)
+- **Database Format**: The SQLite database stores hashes without the 2-character prefix for objects
+```
+
+This tool is essential for debugging package installation issues, verifying deduplication, and understanding the internal storage structure.
+
 ## Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
