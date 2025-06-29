@@ -224,12 +224,6 @@ pub enum Commands {
         #[arg(long, default_value = "standard")]
         level: String,
     },
-
-    /// Explore the content-addressed store
-    Store {
-        #[command(subcommand)]
-        command: StoreCommands,
-    },
 }
 
 /// Vulnerability database subcommands

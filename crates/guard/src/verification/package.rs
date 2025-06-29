@@ -271,12 +271,12 @@ pub async fn verify_package(
         };
 
         let full_path = ctx.live_path.join(clean_path);
-        
+
         // Check if this file should be verified based on scope
         if !crate::verification::scope::should_verify_file(&full_path, ctx.scope) {
             continue;
         }
-        
+
         tracked_files.insert(PathBuf::from(clean_path));
 
         // Debug: log the path we're checking

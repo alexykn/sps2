@@ -224,6 +224,46 @@ pub async fn get_package_file_entries(
         .collect())
 }
 
+/// Get file entries by hash
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails
+pub async fn get_file_entries_by_hash(
+    tx: &mut Transaction<'_, Sqlite>,
+    file_hash: &str,
+) -> Result<Vec<(String, String, String)>, Error> {
+    let rows = query(
+        r#"
+        SELECT DISTINCT 
+            pfe.relative_path,
+            p.name as package_name,
+            p.version as package_version
+        FROM package_file_entries pfe
+        JOIN packages p ON p.id = pfe.package_id
+        WHERE pfe.file_hash = ?
+        ORDER BY pfe.relative_path
+        "#,
+    )
+    .bind(file_hash)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(|e| StateError::DatabaseError {
+        message: format!("failed to get file entries by hash: {e}"),
+    })?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            (
+                r.get("relative_path"),
+                r.get("package_name"),
+                r.get("package_version"),
+            )
+        })
+        .collect())
+}
+
 /// Update verification cache
 ///
 /// # Errors
@@ -507,7 +547,7 @@ pub async fn clear_old_verification_cache(
     max_age_seconds: i64,
 ) -> Result<u64, Error> {
     let cutoff_time = chrono::Utc::now().timestamp() - max_age_seconds;
-    
+
     let result = query(
         r#"
         DELETE FROM file_verification_cache

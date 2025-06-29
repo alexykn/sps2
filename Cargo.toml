@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "apps/sps2",
+    "apps/sls",
     "crates/builder",
     "crates/config",
     "crates/drafter",

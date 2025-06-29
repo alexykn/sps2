@@ -214,13 +214,13 @@ pub async fn verify_file_content(params: ContentVerificationParams<'_>) -> Resul
             .unwrap_or(0);
         let cache_age_seconds = now_timestamp - cache.verified_at;
         let cache_ttl_seconds = 300; // 5 minutes default
-        
+
         // Check if cache is expired by TTL
         let ttl_expired = cache_age_seconds > cache_ttl_seconds;
-        
+
         // Check if file was modified after cache entry
         let file_modified_after_cache = file_mtime > cache.verified_at;
-        
+
         if ttl_expired || file_modified_after_cache {
             if let Some(sender) = tx {
                 let _ = sender.send(Event::DebugLog {
@@ -251,8 +251,10 @@ pub async fn verify_file_content(params: ContentVerificationParams<'_>) -> Resul
             // Cache hit - file was verified recently and hasn't changed
             if let Some(sender) = tx {
                 let _ = sender.send(Event::DebugLog {
-                    message: format!("Cache hit for {}: verified {} seconds ago", 
-                        relative_path, cache_age_seconds),
+                    message: format!(
+                        "Cache hit for {}: verified {} seconds ago",
+                        relative_path, cache_age_seconds
+                    ),
                     context: std::collections::HashMap::new(),
                 });
             }
@@ -273,7 +275,7 @@ pub async fn verify_file_content(params: ContentVerificationParams<'_>) -> Resul
 
     // Compare hashes and update cache
     let is_valid = actual_hash == expected_hash;
-    
+
     if !is_valid {
         add_discrepancy_with_event(
             discrepancies,
@@ -293,8 +295,11 @@ pub async fn verify_file_content(params: ContentVerificationParams<'_>) -> Resul
     let error_message = if is_valid {
         None
     } else {
-        Some(format!("Hash mismatch: expected {}, got {}", 
-            expected_hash.to_hex(), actual_hash.to_hex()))
+        Some(format!(
+            "Hash mismatch: expected {}, got {}",
+            expected_hash.to_hex(),
+            actual_hash.to_hex()
+        ))
     };
 
     sps2_state::queries::update_verification_cache(
