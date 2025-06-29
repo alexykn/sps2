@@ -434,7 +434,6 @@ sls -p | rg "(gcc|clang|llvm|rust)"
   - `files.json` - Detailed file information
   - `sbom.spdx.json` - Software Bill of Materials
 - **Deduplication**: Multiple packages can reference the same file hash (content deduplication)
-- **Database Format**: The SQLite database stores hashes without the 2-character prefix for objects
 
 ## Contributing
 
