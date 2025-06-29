@@ -428,21 +428,17 @@ sls -p | grep "python"
 sls -p | rg "(gcc|clang|llvm|rust)"
 ```
 
-- **Object Storage**: Files are stored hash in `/opt/pm/store/objects/[first-2-chars]/[full-64-char-hash]`
+- **Object Storage**: Files are stored hash in
 - **Package Storage**: Package Metadata stored in `/opt/pm/store/packages/[package-hash]/` with files:
   - `manifest.toml` - Package metadata and file list
   - `files.json` - Detailed file information
   - `sbom.spdx.json` - Software Bill of Materials
 - **Deduplication**: Multiple packages can reference the same file hash (content deduplication)
 - **Database Format**: The SQLite database stores hashes without the 2-character prefix for objects
-```
-
-This tool is essential for debugging package installation issues, verifying deduplication, and understanding the internal storage structure.
 
 ## Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
 
 ## Documentation
 
