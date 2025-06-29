@@ -429,7 +429,7 @@ sls -p | rg "(gcc|clang|llvm|rust)"
 ```
 
 - **Object Storage**: Files are stored hash in `/opt/pm/store/objects/[first-2-chars]/[full-64-char-hash]`
-- **Package Storage**: Packages are stored in `/opt/pm/store/packages/[full-hash]/` with metadata files:
+- **Package Storage**: Package Metadata stored in `/opt/pm/store/packages/[package-hash]/` with files:
   - `manifest.toml` - Package metadata and file list
   - `files.json` - Detailed file information
   - `sbom.spdx.json` - Software Bill of Materials
