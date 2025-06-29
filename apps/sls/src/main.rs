@@ -46,6 +46,10 @@ struct Cli {
     /// Disable colored output
     #[arg(long)]
     no_color: bool,
+
+    /// List packages instead of objects
+    #[arg(short = 'p', long = "packages")]
+    packages: bool,
 }
 
 #[tokio::main]
@@ -58,23 +62,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| PathBuf::from("/opt/pm/state.sqlite"));
     let use_color = !cli.no_color && atty::is(atty::Stream::Stdout);
 
-    // Open database to get file mappings
-    let file_map = load_file_mappings(&db_path).await?;
-
-    if let Some(path) = cli.path {
-        // User specified a path/hash
-        list_specific(&store_path, &path, &file_map, cli.long, cli.hash, use_color).await?;
+    if cli.packages {
+        // List packages instead of objects
+        let package_map = load_package_mappings(&db_path).await?;
+        if let Some(path) = cli.path {
+            list_specific_package(&store_path, &path, &package_map, cli.long, use_color).await?;
+        } else {
+            list_packages(
+                &store_path,
+                &package_map,
+                cli.long,
+                cli.recursive,
+                use_color,
+            )
+            .await?;
+        }
     } else {
-        // List all
-        list_store(
-            &store_path,
-            &file_map,
-            cli.long,
-            cli.hash,
-            cli.recursive,
-            use_color,
-        )
-        .await?;
+        // Open database to get file mappings
+        let file_map = load_file_mappings(&db_path).await?;
+
+        if let Some(path) = cli.path {
+            // User specified a path/hash
+            list_specific(&store_path, &path, &file_map, cli.long, cli.hash, use_color).await?;
+        } else {
+            // List all
+            list_store(
+                &store_path,
+                &file_map,
+                cli.long,
+                cli.hash,
+                cli.recursive,
+                use_color,
+            )
+            .await?;
+        }
     }
 
     Ok(())
@@ -440,4 +461,293 @@ fn format_permissions(metadata: &std::fs::Metadata) -> String {
             "-rw-rw-rw-".to_string()
         }
     }
+}
+
+async fn load_package_mappings(
+    db_path: &Path,
+) -> Result<HashMap<String, (String, String)>, Box<dyn std::error::Error>> {
+    let mut map = HashMap::new();
+
+    // Open database connection using state crate
+    let pool = create_pool(db_path).await?;
+    let mut conn = pool.acquire().await?;
+    let mut tx = conn.begin().await?;
+
+    // Query packages with their hashes
+    use sqlx::Row;
+    let rows = sqlx::query(
+        r#"
+        SELECT 
+            hash,
+            name,
+            version
+        FROM packages
+        ORDER BY name, version
+        "#,
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+
+    for row in rows {
+        let hash: String = row.get("hash");
+        let name: String = row.get("name");
+        let version: String = row.get("version");
+
+        map.insert(hash, (name, version));
+    }
+
+    tx.commit().await?;
+
+    Ok(map)
+}
+
+async fn list_packages(
+    store_path: &Path,
+    package_map: &HashMap<String, (String, String)>,
+    long_format: bool,
+    recursive: bool,
+    use_color: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let packages_dir = store_path.join("packages");
+
+    if !packages_dir.exists() {
+        eprintln!(
+            "Packages directory does not exist: {}",
+            packages_dir.display()
+        );
+        return Ok(());
+    }
+
+    let mut entries = fs::read_dir(&packages_dir).await?;
+    let mut packages = Vec::new();
+
+    while let Some(entry) = entries.next_entry().await? {
+        if entry.file_type().await?.is_dir() {
+            packages.push(entry);
+        }
+    }
+
+    // Sort by name
+    packages.sort_by_key(|e| e.file_name());
+
+    for entry in packages {
+        let hash = entry.file_name().to_string_lossy().to_string();
+
+        if long_format {
+            let metadata = entry.metadata().await?;
+            let perms = format_permissions(&metadata);
+
+            if let Some((name, version)) = package_map.get(&hash) {
+                println!(
+                    "{} {} ({}:{})",
+                    perms,
+                    if use_color {
+                        hash.dimmed()
+                    } else {
+                        hash.normal()
+                    },
+                    if use_color {
+                        name.cyan()
+                    } else {
+                        name.normal()
+                    },
+                    if use_color {
+                        version.yellow()
+                    } else {
+                        version.normal()
+                    }
+                );
+            } else {
+                println!(
+                    "{} {} (unknown package)",
+                    perms,
+                    if use_color {
+                        hash.dimmed()
+                    } else {
+                        hash.normal()
+                    }
+                );
+            }
+
+            if recursive {
+                // List contents of package directory
+                let mut pkg_entries = fs::read_dir(entry.path()).await?;
+                let mut files = Vec::new();
+
+                while let Some(pkg_entry) = pkg_entries.next_entry().await? {
+                    files.push(pkg_entry.file_name().to_string_lossy().to_string());
+                }
+
+                files.sort();
+                for file in files {
+                    println!(
+                        "  {}",
+                        if use_color {
+                            file.green()
+                        } else {
+                            file.normal()
+                        }
+                    );
+                }
+            }
+        } else {
+            // Short format
+            if let Some((name, version)) = package_map.get(&hash) {
+                println!(
+                    "{} -> {}:{}",
+                    if use_color {
+                        hash[..16].dimmed()
+                    } else {
+                        hash[..16].normal()
+                    },
+                    if use_color {
+                        name.cyan()
+                    } else {
+                        name.normal()
+                    },
+                    if use_color {
+                        version.yellow()
+                    } else {
+                        version.normal()
+                    }
+                );
+            } else {
+                println!(
+                    "{} (unknown)",
+                    if use_color {
+                        hash[..16].dimmed()
+                    } else {
+                        hash[..16].normal()
+                    }
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn list_specific_package(
+    store_path: &Path,
+    hash_prefix: &str,
+    package_map: &HashMap<String, (String, String)>,
+    long_format: bool,
+    use_color: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let packages_dir = store_path.join("packages");
+
+    if !packages_dir.exists() {
+        eprintln!(
+            "Packages directory does not exist: {}",
+            packages_dir.display()
+        );
+        return Ok(());
+    }
+
+    let mut entries = fs::read_dir(&packages_dir).await?;
+    let mut found = false;
+
+    while let Some(entry) = entries.next_entry().await? {
+        if entry.file_type().await?.is_dir() {
+            let hash = entry.file_name().to_string_lossy().to_string();
+
+            if hash.starts_with(hash_prefix) {
+                found = true;
+
+                if long_format {
+                    let metadata = entry.metadata().await?;
+                    let perms = format_permissions(&metadata);
+
+                    if let Some((name, version)) = package_map.get(&hash) {
+                        println!(
+                            "{} {} ({}:{})",
+                            perms,
+                            if use_color {
+                                hash.dimmed()
+                            } else {
+                                hash.normal()
+                            },
+                            if use_color {
+                                name.cyan()
+                            } else {
+                                name.normal()
+                            },
+                            if use_color {
+                                version.yellow()
+                            } else {
+                                version.normal()
+                            }
+                        );
+                    } else {
+                        println!(
+                            "{} {} (unknown package)",
+                            perms,
+                            if use_color {
+                                hash.dimmed()
+                            } else {
+                                hash.normal()
+                            }
+                        );
+                    }
+
+                    // List contents of package directory
+                    let mut pkg_entries = fs::read_dir(entry.path()).await?;
+                    let mut files = Vec::new();
+
+                    while let Some(pkg_entry) = pkg_entries.next_entry().await? {
+                        files.push(pkg_entry.file_name().to_string_lossy().to_string());
+                    }
+
+                    files.sort();
+                    for file in files {
+                        println!(
+                            "  {}",
+                            if use_color {
+                                file.green()
+                            } else {
+                                file.normal()
+                            }
+                        );
+                    }
+                } else {
+                    // Short format
+                    if let Some((name, version)) = package_map.get(&hash) {
+                        println!(
+                            "{} -> {}:{}",
+                            if use_color {
+                                hash.dimmed()
+                            } else {
+                                hash.normal()
+                            },
+                            if use_color {
+                                name.cyan()
+                            } else {
+                                name.normal()
+                            },
+                            if use_color {
+                                version.yellow()
+                            } else {
+                                version.normal()
+                            }
+                        );
+                    } else {
+                        println!(
+                            "{} (unknown)",
+                            if use_color {
+                                hash.dimmed()
+                            } else {
+                                hash.normal()
+                            }
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    if !found {
+        eprintln!("No packages found with prefix '{}'", hash_prefix);
+    }
+
+    Ok(())
 }
