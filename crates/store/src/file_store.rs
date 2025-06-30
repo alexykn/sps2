@@ -189,12 +189,8 @@ impl FileStore {
             }
 
             // Strip opt/pm/live/ prefix from paths for the result
-            if result.relative_path.starts_with("opt/pm/live/") {
-                result.relative_path = result
-                    .relative_path
-                    .strip_prefix("opt/pm/live/")
-                    .unwrap()
-                    .to_string();
+            if let Some(stripped) = result.relative_path.strip_prefix("opt/pm/live/") {
+                result.relative_path = stripped.to_string();
             }
 
             filtered_results.push(result);
@@ -207,9 +203,6 @@ impl FileStore {
     ///
     /// # Errors
     /// Returns an error if linking operations fail
-    ///
-    /// # Panics
-    /// Panics if path stripping fails unexpectedly
     pub async fn link_files(
         &self,
         hash_results: &[FileHashResult],
@@ -226,11 +219,10 @@ impl FileStore {
             }
 
             // Strip the opt/pm/live/ prefix if present
-            let relative_path = if result.relative_path.starts_with("opt/pm/live/") {
-                result.relative_path.strip_prefix("opt/pm/live/").unwrap()
-            } else {
-                &result.relative_path
-            };
+            let relative_path = result
+                .relative_path
+                .strip_prefix("opt/pm/live/")
+                .unwrap_or(&result.relative_path);
             let dest_path = dest_base.join(relative_path);
 
             if result.is_directory {

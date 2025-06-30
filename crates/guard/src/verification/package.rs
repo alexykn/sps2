@@ -284,7 +284,7 @@ pub async fn verify_package(
                 message: format!(
                     "Processing file chunk {}/{} ({} files) for package {}",
                     chunk_idx + 1,
-                    (file_paths.len() + chunk_size - 1) / chunk_size,
+                    file_paths.len().div_ceil(chunk_size),
                     chunk.len(),
                     package.name
                 ),
@@ -301,7 +301,7 @@ pub async fn verify_package(
                 // Skip these directory entries entirely - they're artifacts of the legacy format
                 continue;
             } else {
-                &file_path
+                file_path
             };
 
             let full_path = ctx.live_path.join(clean_path);
