@@ -33,6 +33,9 @@ fn add_discrepancy_with_event(
         Discrepancy::TypeMismatch { .. } => {
             ("medium", "File type does not match expected type", true)
         }
+        Discrepancy::MissingPackageContent { .. } => {
+            ("critical", "Package content missing from store", false)
+        }
     };
 
     // Extract file path and package info
@@ -70,6 +73,14 @@ fn add_discrepancy_with_event(
             ..
         } => (
             file_path.clone(),
+            Some(package_name.clone()),
+            Some(package_version.to_string()),
+        ),
+        Discrepancy::MissingPackageContent {
+            package_name,
+            package_version,
+        } => (
+            String::new(),
             Some(package_name.clone()),
             Some(package_version.to_string()),
         ),
@@ -257,102 +268,127 @@ pub async fn verify_package(
         });
     }
 
-    // Verify each file
-    for file_path in file_paths {
-        // Strip the legacy prefix if present (packages store paths like "opt/pm/live/bin/foo")
-        let clean_path = if let Some(stripped) = file_path.strip_prefix("opt/pm/live/") {
-            stripped
-        } else if file_path == "opt" || file_path == "opt/pm" || file_path == "opt/pm/live" {
-            // Skip these directory entries entirely - they're artifacts of the legacy format
-            continue;
-        } else {
-            &file_path
-        };
+    // Check if chunked operations are enabled
+    let chunk_size = if ctx.guard_config.performance.enable_chunked_operations {
+        ctx.guard_config.performance.file_chunk_size
+    } else {
+        // Process all files in one chunk if chunking is disabled
+        file_paths.len()
+    };
 
-        let full_path = ctx.live_path.join(clean_path);
-
-        // Check if this file should be verified based on scope
-        if !crate::verification::scope::should_verify_file(&full_path, ctx.scope) {
-            continue;
+    // Process files in chunks for better performance
+    for (chunk_idx, chunk) in file_paths.chunks(chunk_size).enumerate() {
+        // Emit progress for chunk processing
+        if let Some(sender) = ctx.tx {
+            let _ = sender.send(Event::DebugLog {
+                message: format!(
+                    "Processing file chunk {}/{} ({} files) for package {}",
+                    chunk_idx + 1,
+                    (file_paths.len() + chunk_size - 1) / chunk_size,
+                    chunk.len(),
+                    package.name
+                ),
+                context: HashMap::default(),
+            });
         }
 
-        tracked_files.insert(PathBuf::from(clean_path));
+        // Process all files in this chunk
+        for file_path in chunk {
+            // Strip the legacy prefix if present (packages store paths like "opt/pm/live/bin/foo")
+            let clean_path = if let Some(stripped) = file_path.strip_prefix("opt/pm/live/") {
+                stripped
+            } else if file_path == "opt" || file_path == "opt/pm" || file_path == "opt/pm/live" {
+                // Skip these directory entries entirely - they're artifacts of the legacy format
+                continue;
+            } else {
+                &file_path
+            };
 
-        // Debug: log the path we're checking
-        if package.name == "bat" {
-            if let Some(sender) = ctx.tx {
-                let _ = sender.send(Event::DebugLog {
-                    message: format!(
-                        "Checking bat file: {} -> {}",
-                        file_path,
-                        full_path.display()
-                    ),
-                    context: HashMap::default(),
-                });
-            }
-        }
+            let full_path = ctx.live_path.join(clean_path);
 
-        // Perform verification
-        let _verification_start = Instant::now();
-
-        // Check if file exists
-        if !full_path.exists() {
-            add_discrepancy_with_event(
-                discrepancies,
-                Discrepancy::MissingFile {
-                    package_name: package.name.clone(),
-                    package_version: package.version.clone(),
-                    file_path: clean_path.to_string(),
-                },
-                operation_id,
-                ctx.tx,
-            );
-        } else {
-            // Handle symlink verification based on policy
-            if handle_symlink_verification(
-                &full_path,
-                clean_path,
-                package,
-                discrepancies,
-                SymlinkVerificationParams {
-                    symlink_policy: ctx.guard_config.symlink_policy,
-                    lenient_directories: &ctx.guard_config.lenient_symlink_directories,
-                    operation_id,
-                    tx: ctx.tx,
-                },
-            )
-            .await?
-            {
-                // Symlink was handled (skipped or logged), continue to next file
+            // Check if this file should be verified based on scope
+            if !crate::verification::scope::should_verify_file(&full_path, ctx.scope) {
                 continue;
             }
 
-            // For Full verification, check content hash
-            if ctx.level == crate::types::VerificationLevel::Full {
-                // Debug: log content verification
-                if package.name == "bat" && clean_path == "bin/bat" {
-                    if let Some(sender) = ctx.tx {
-                        let _ = sender.send(Event::DebugLog {
-                            message: format!(
-                                "Running content verification for bat binary at {}",
-                                full_path.display()
-                            ),
-                            context: HashMap::default(),
-                        });
-                    }
+            tracked_files.insert(PathBuf::from(clean_path));
+
+            // Debug: log the path we're checking
+            if package.name == "bat" {
+                if let Some(sender) = ctx.tx {
+                    let _ = sender.send(Event::DebugLog {
+                        message: format!(
+                            "Checking bat file: {} -> {}",
+                            file_path,
+                            full_path.display()
+                        ),
+                        context: HashMap::default(),
+                    });
+                }
+            }
+
+            // Perform verification
+            let _verification_start = Instant::now();
+
+            // Check if file exists
+            if !full_path.exists() {
+                add_discrepancy_with_event(
+                    discrepancies,
+                    Discrepancy::MissingFile {
+                        package_name: package.name.clone(),
+                        package_version: package.version.clone(),
+                        file_path: clean_path.to_string(),
+                    },
+                    operation_id,
+                    ctx.tx,
+                );
+            } else {
+                // Handle symlink verification based on policy
+                if handle_symlink_verification(
+                    &full_path,
+                    clean_path,
+                    package,
+                    discrepancies,
+                    SymlinkVerificationParams {
+                        symlink_policy: ctx.guard_config.symlink_policy,
+                        lenient_directories: &ctx.guard_config.lenient_symlink_directories,
+                        operation_id,
+                        tx: ctx.tx,
+                    },
+                )
+                .await?
+                {
+                    // Symlink was handled (skipped or logged), continue to next file
+                    continue;
                 }
 
-                verify_file_content(ContentVerificationParams {
-                    state_manager: ctx.state_manager,
-                    state_id: ctx.state_id,
-                    file_path: &full_path,
-                    package,
-                    relative_path: clean_path,
-                    discrepancies,
-                    operation_id,
-                    tx: ctx.tx,
-                })
-                .await?;
+                // For Full verification, check content hash
+                if ctx.level == crate::types::VerificationLevel::Full {
+                    // Debug: log content verification
+                    if package.name == "bat" && clean_path == "bin/bat" {
+                        if let Some(sender) = ctx.tx {
+                            let _ = sender.send(Event::DebugLog {
+                                message: format!(
+                                    "Running content verification for bat binary at {}",
+                                    full_path.display()
+                                ),
+                                context: HashMap::default(),
+                            });
+                        }
+                    }
+
+                    verify_file_content(ContentVerificationParams {
+                        state_manager: ctx.state_manager,
+                        state_id: ctx.state_id,
+                        file_path: &full_path,
+                        package,
+                        relative_path: clean_path,
+                        discrepancies,
+                        operation_id,
+                        tx: ctx.tx,
+                    })
+                    .await?;
+                }
             }
         }
     }

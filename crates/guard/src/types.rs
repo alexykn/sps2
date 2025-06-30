@@ -170,6 +170,11 @@ pub enum Discrepancy {
         package_version: String,
         venv_path: String,
     },
+    /// Package content missing from store
+    MissingPackageContent {
+        package_name: String,
+        package_version: String,
+    },
 }
 
 impl Discrepancy {
@@ -338,6 +343,26 @@ impl Discrepancy {
                 ])
                 .with_estimated_fix_time(Duration::from_secs(120))
             }
+            Self::MissingPackageContent { package_name, package_version } => {
+                DiscrepancyContext::new(
+                    DiscrepancySeverity::Critical,
+                    RecommendedAction::UserConfirmation,
+                    format!(
+                        "Package content missing from store for '{}' v{}. Package files cannot be verified.",
+                        package_name, package_version
+                    ),
+                    format!("Package {}:{} store content is missing", package_name, package_version),
+                )
+                .with_manual_steps(vec![
+                    format!("Reinstall package: sps2 install {}:{}", package_name, package_version),
+                    "Or remove the package if no longer needed: sps2 remove <package>".to_string(),
+                ])
+                .with_prevention_tips(vec![
+                    "Avoid manually modifying the package store".to_string(),
+                    "Use sps2 commands for all package operations".to_string(),
+                ])
+                .with_estimated_fix_time(Duration::from_secs(60))
+            }
         }
     }
 
@@ -393,6 +418,15 @@ impl Discrepancy {
             Self::MissingVenv { venv_path, .. } => {
                 format!("Missing virtual environment: {}", venv_path)
             }
+            Self::MissingPackageContent {
+                package_name,
+                package_version,
+            } => {
+                format!(
+                    "Missing package content: {}:{}",
+                    package_name, package_version
+                )
+            }
         }
     }
 
@@ -405,6 +439,7 @@ impl Discrepancy {
             | Self::CorruptedFile { file_path, .. }
             | Self::OrphanedFile { file_path, .. } => file_path,
             Self::MissingVenv { venv_path, .. } => venv_path,
+            Self::MissingPackageContent { .. } => "",
         }
     }
 
@@ -415,7 +450,8 @@ impl Discrepancy {
             Self::MissingFile { package_name, .. }
             | Self::TypeMismatch { package_name, .. }
             | Self::CorruptedFile { package_name, .. }
-            | Self::MissingVenv { package_name, .. } => Some(package_name),
+            | Self::MissingVenv { package_name, .. }
+            | Self::MissingPackageContent { package_name, .. } => Some(package_name),
             Self::OrphanedFile { .. } => None,
         }
     }
@@ -434,6 +470,9 @@ impl Discrepancy {
                 package_version, ..
             }
             | Self::MissingVenv {
+                package_version, ..
+            }
+            | Self::MissingPackageContent {
                 package_version, ..
             } => Some(package_version),
             Self::OrphanedFile { .. } => None,
@@ -548,6 +587,14 @@ pub struct PerformanceConfig {
     pub max_concurrent_tasks: usize,
     /// Timeout for individual verification operations
     pub verification_timeout: Duration,
+    /// Enable chunked file operations for better performance
+    pub enable_chunked_operations: bool,
+    /// Number of files to process in each chunk
+    pub file_chunk_size: usize,
+    /// Enable batch database operations
+    pub batch_database_operations: bool,
+    /// Database batch size for bulk operations
+    pub database_batch_size: usize,
 }
 
 impl Default for PerformanceConfig {
@@ -557,6 +604,10 @@ impl Default for PerformanceConfig {
             progressive_verification: true,
             max_concurrent_tasks: 8,
             verification_timeout: Duration::from_secs(300), // 5 minutes
+            enable_chunked_operations: true,                // Chunking enabled by default
+            file_chunk_size: 100,                           // Process 100 files per chunk
+            batch_database_operations: true, // Batch DB operations enabled by default
+            database_batch_size: 50,         // 50 records per batch for DB operations
         }
     }
 }
@@ -997,6 +1048,11 @@ impl From<&sps2_config::PerformanceConfigToml> for PerformanceConfig {
             progressive_verification: config.progressive_verification,
             max_concurrent_tasks: config.max_concurrent_tasks,
             verification_timeout: Duration::from_secs(config.verification_timeout_seconds),
+            // Use defaults for new fields until they're added to config TOML
+            enable_chunked_operations: true,
+            file_chunk_size: 100,
+            batch_database_operations: true,
+            database_batch_size: 50,
         }
     }
 }
@@ -1051,6 +1107,11 @@ impl From<&sps2_config::GuardPerformanceConfig> for PerformanceConfig {
             progressive_verification: config.progressive_verification,
             max_concurrent_tasks: config.max_concurrent_tasks,
             verification_timeout: Duration::from_secs(config.verification_timeout_seconds),
+            // Use defaults for new fields until they're added to config TOML
+            enable_chunked_operations: true,
+            file_chunk_size: 100,
+            batch_database_operations: true,
+            database_batch_size: 50,
         }
     }
 }

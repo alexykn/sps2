@@ -159,15 +159,48 @@ impl FileStore {
         // Hash all files in the directory
         let hash_results = self.file_hasher.hash_directory(dir_path).await?;
 
-        // Store each file
-        for result in &hash_results {
+        // Filter out manifest.toml and sbom files before storing
+        // Also fix paths by stripping opt/pm/live/ prefix
+        let mut filtered_results = Vec::new();
+
+        for mut result in hash_results {
+            // Skip manifest and sbom files - they should only exist in package metadata
+            if result.relative_path == "manifest.toml"
+                || result.relative_path == "sbom.spdx.json"
+                || result.relative_path == "sbom.cdx.json"
+            {
+                continue;
+            }
+
+            // Skip opt/pm/live directory entries themselves
+            if result.relative_path == "opt"
+                || result.relative_path == "opt/pm"
+                || result.relative_path == "opt/pm/live"
+            {
+                continue;
+            }
+
+            // Store the file if it's not a directory or symlink
             if !result.is_directory && !result.is_symlink {
-                let file_path = dir_path.join(&result.relative_path);
+                // Use original path for file storage
+                let original_path = result.relative_path.clone();
+                let file_path = dir_path.join(&original_path);
                 self.store_file(&file_path, &result.hash).await?;
             }
+
+            // Strip opt/pm/live/ prefix from paths for the result
+            if result.relative_path.starts_with("opt/pm/live/") {
+                result.relative_path = result
+                    .relative_path
+                    .strip_prefix("opt/pm/live/")
+                    .unwrap()
+                    .to_string();
+            }
+
+            filtered_results.push(result);
         }
 
-        Ok(hash_results)
+        Ok(filtered_results)
     }
 
     /// Link files from hash results to a destination directory

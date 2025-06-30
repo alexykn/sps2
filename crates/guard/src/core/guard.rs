@@ -7,7 +7,8 @@ use crate::types::{
 use crate::verification;
 use sps2_errors::Error;
 use sps2_events::{Event, EventSender};
-use sps2_state::{queries, StateManager};
+use sps2_hash::Hash;
+use sps2_state::{queries, FileVerificationCache, PackageFileEntry, StateManager};
 use sps2_store::PackageStore;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
@@ -18,48 +19,217 @@ use uuid;
 struct SinglePackageResult {
     discrepancies: Vec<Discrepancy>,
     tracked_files: HashSet<std::path::PathBuf>,
+    cache_updates: Vec<CacheUpdate>,
 }
 
-/// Verify a single package independently (for parallel verification)
-async fn verify_single_package_standalone(
-    state_manager: &StateManager,
+/// Cache update to be applied after parallel verification
+#[derive(Debug, Clone)]
+struct CacheUpdate {
+    file_hash: Hash,
+    file_path: String,
+    is_valid: bool,
+    error_message: Option<String>,
+}
+
+/// Pre-fetched data for a package
+#[derive(Debug, Clone)]
+struct PackageData {
+    package: sps2_state::Package,
+    file_entries: Vec<PackageFileEntry>,
+    cache_entries: HashMap<String, FileVerificationCache>, // hash -> cache entry
+}
+
+/// Verify a single package with pre-fetched data (for parallel verification)
+async fn verify_single_package_with_data(
+    _state_manager: &StateManager,
     store: &PackageStore,
-    package: &sps2_state::Package,
+    package_data: PackageData,
     level: VerificationLevel,
-    guard_config: &GuardConfig,
+    _guard_config: &GuardConfig,
     live_path: &std::path::Path,
-    state_id: &uuid::Uuid,
-) -> Result<SinglePackageResult, Error> {
+    _state_id: &uuid::Uuid,
+) -> Result<(String, String, SinglePackageResult), Error> {
+    let package = &package_data.package;
+    let file_entries = &package_data.file_entries;
     let mut discrepancies = Vec::new();
     let mut tracked_files: HashSet<std::path::PathBuf> = HashSet::new();
+    let mut cache_updates = Vec::new();
 
-    // Create verification context for this package
-    let mut verification_ctx = VerificationContext {
-        state_manager,
-        store,
-        level,
-        state_id,
-        live_path,
-        guard_config,
-        tx: None, // No event logging in parallel tasks to avoid conflicts
-        scope: &VerificationScope::Full, // Parallel verification always uses full scope
-    };
+    // Get package manifest from store
+    let package_hash =
+        Hash::from_hex(&package.hash).map_err(|e| sps2_errors::OpsError::OperationFailed {
+            message: format!("Invalid package hash: {e}"),
+        })?;
+    let store_path = store.package_path(&package_hash);
 
-    // Verify the package using the existing verification logic
-    let operation_id = "parallel-verify"; // Placeholder for parallel operations
-    verification::package::verify_package(
-        &mut verification_ctx,
-        package,
-        &mut discrepancies,
-        &mut tracked_files,
-        operation_id,
-    )
-    .await?;
+    if !store_path.exists() {
+        // Package content missing - can't verify files
+        discrepancies.push(Discrepancy::MissingPackageContent {
+            package_name: package.name.clone(),
+            package_version: package.version.clone(),
+        });
+        return Ok((
+            package.name.clone(),
+            package.version.clone(),
+            SinglePackageResult {
+                discrepancies,
+                tracked_files,
+                cache_updates,
+            },
+        ));
+    }
 
-    Ok(SinglePackageResult {
-        discrepancies,
-        tracked_files,
-    })
+    // Verify package exists in store (but we already have file entries from pre-fetch)
+    let _ = sps2_store::StoredPackage::load(&store_path).await?;
+
+    // Process all files from pre-fetched file entries to ensure they're all tracked
+    for entry in file_entries {
+        let file_path = &entry.relative_path;
+        // Strip legacy prefix if present
+        let clean_path = if let Some(stripped) = file_path.strip_prefix("opt/pm/live/") {
+            stripped
+        } else if file_path == "opt" || file_path == "opt/pm" || file_path == "opt/pm/live" {
+            continue;
+        } else {
+            file_path
+        };
+
+        tracked_files.insert(std::path::PathBuf::from(clean_path));
+        let full_path = live_path.join(clean_path);
+
+        // Basic existence check
+        if !full_path.exists() {
+            discrepancies.push(Discrepancy::MissingFile {
+                package_name: package.name.clone(),
+                package_version: package.version.clone(),
+                file_path: clean_path.to_string(),
+            });
+            continue;
+        }
+
+        // For Full verification, check content hash
+        if level == VerificationLevel::Full {
+            // Skip hash verification for directories and symlinks
+            let metadata = tokio::fs::symlink_metadata(&full_path).await?;
+            if metadata.is_dir() || metadata.is_symlink() {
+                continue;
+            }
+
+            // Find the file entry for this path
+            let file_entry = file_entries
+                .iter()
+                .find(|entry| entry.relative_path == clean_path);
+
+            if let Some(entry) = file_entry {
+                let expected_hash = Hash::from_hex(&entry.file_hash).map_err(|e| {
+                    sps2_errors::OpsError::OperationFailed {
+                        message: format!("Invalid file hash in database: {e}"),
+                    }
+                })?;
+
+                // Check if we have a valid cache entry
+                let needs_verification =
+                    if let Some(cache_entry) = package_data.cache_entries.get(&entry.file_hash) {
+                        // Get file modification time for cache validation
+                        let file_mtime = metadata
+                            .modified()
+                            .ok()
+                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                            .map(|d| d.as_secs() as i64)
+                            .unwrap_or(0);
+
+                        let now_timestamp = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs() as i64)
+                            .unwrap_or(0);
+                        let cache_age_seconds = now_timestamp - cache_entry.verified_at;
+                        let cache_ttl_seconds = 300; // 5 minutes default
+
+                        // Check if cache is expired or file was modified
+                        let ttl_expired = cache_age_seconds > cache_ttl_seconds;
+                        let file_modified_after_cache = file_mtime > cache_entry.verified_at;
+
+                        if ttl_expired || file_modified_after_cache {
+                            true // Need to re-verify
+                        } else if !cache_entry.is_valid {
+                            // Previous verification failed - report it without re-verifying
+                            discrepancies.push(Discrepancy::CorruptedFile {
+                                package_name: package.name.clone(),
+                                package_version: package.version.clone(),
+                                file_path: clean_path.to_string(),
+                                expected_hash: expected_hash.to_hex(),
+                                actual_hash: cache_entry
+                                    .error_message
+                                    .clone()
+                                    .unwrap_or_else(|| "unknown".to_string()),
+                            });
+                            false // No need to re-verify
+                        } else {
+                            // Cache hit - file was verified recently and hasn't changed
+                            false // No need to re-verify
+                        }
+                    } else {
+                        true // No cache entry - need to verify
+                    };
+
+                if needs_verification {
+                    // Calculate actual hash
+                    let actual_hash = Hash::hash_file(&full_path).await?;
+
+                    if actual_hash != expected_hash {
+                        discrepancies.push(Discrepancy::CorruptedFile {
+                            package_name: package.name.clone(),
+                            package_version: package.version.clone(),
+                            file_path: clean_path.to_string(),
+                            expected_hash: expected_hash.to_hex(),
+                            actual_hash: actual_hash.to_hex(),
+                        });
+
+                        // Collect cache update
+                        cache_updates.push(CacheUpdate {
+                            file_hash: expected_hash.clone(),
+                            file_path: full_path.to_string_lossy().to_string(),
+                            is_valid: false,
+                            error_message: Some(format!(
+                                "Hash mismatch: expected {}, got {}",
+                                expected_hash.to_hex(),
+                                actual_hash.to_hex()
+                            )),
+                        });
+                    } else {
+                        // File is valid - collect cache update
+                        cache_updates.push(CacheUpdate {
+                            file_hash: expected_hash,
+                            file_path: full_path.to_string_lossy().to_string(),
+                            is_valid: true,
+                            error_message: None,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // Check Python venv if applicable
+    if let Some(venv_path) = &package.venv_path {
+        if !std::path::Path::new(venv_path).exists() {
+            discrepancies.push(Discrepancy::MissingVenv {
+                package_name: package.name.clone(),
+                package_version: package.version.clone(),
+                venv_path: venv_path.clone(),
+            });
+        }
+    }
+
+    Ok((
+        package.name.clone(),
+        package.version.clone(),
+        SinglePackageResult {
+            discrepancies,
+            tracked_files,
+            cache_updates,
+        },
+    ))
 }
 
 /// State verification guard for consistency checking
@@ -139,39 +309,59 @@ impl StateVerificationGuard {
         let mut discrepancies = Vec::new();
         let mut tracked_files = HashSet::new();
 
-        // Verify each package using the verification module
-        for (index, package) in packages.iter().enumerate() {
-            // Emit progress update
-            let _ = self.tx.send(Event::GuardVerificationProgress {
-                operation_id: operation_id.clone(),
-                verified_packages: index,
-                total_packages: packages.len(),
-                verified_files: 0, // TODO: Track file count
-                total_files: 0,
-                current_package: Some(package.name.clone()),
-                cache_hit_rate: None,
+        // Check if we should use parallel verification
+        if self.config.performance.parallel_verification && packages.len() > 1 {
+            // Use parallel verification for better performance
+            let _ = self.tx.send(Event::DebugLog {
+                message: format!(
+                    "Using parallel verification for {} packages (max concurrent: {})",
+                    packages.len(),
+                    self.config.performance.max_concurrent_tasks
+                ),
+                context: HashMap::default(),
             });
 
-            // Create verification context for this package
-            let mut verification_ctx = VerificationContext {
-                state_manager: &self.state_manager,
-                store: &self.store,
-                level: self.config.verification_level,
-                state_id: &state_id,
-                live_path: &live_path,
-                guard_config: &self.config,
-                tx: Some(&self.tx),
-                scope: &VerificationScope::Full,
-            };
+            // Note: verify_packages_parallel handles orphan detection internally
+            // when verification level is not Quick
+            return self
+                .verify_packages_parallel(&packages, &VerificationScope::Full)
+                .await;
+        } else {
+            // Use sequential verification for single package or when parallel is disabled
+            // Verify each package using the verification module
+            for (index, package) in packages.iter().enumerate() {
+                // Emit progress update
+                let _ = self.tx.send(Event::GuardVerificationProgress {
+                    operation_id: operation_id.clone(),
+                    verified_packages: index,
+                    total_packages: packages.len(),
+                    verified_files: 0, // TODO: Track file count
+                    total_files: 0,
+                    current_package: Some(package.name.clone()),
+                    cache_hit_rate: None,
+                });
 
-            verification::package::verify_package(
-                &mut verification_ctx,
-                package,
-                &mut discrepancies,
-                &mut tracked_files,
-                &operation_id,
-            )
-            .await?;
+                // Create verification context for this package
+                let mut verification_ctx = VerificationContext {
+                    state_manager: &self.state_manager,
+                    store: &self.store,
+                    level: self.config.verification_level,
+                    state_id: &state_id,
+                    live_path: &live_path,
+                    guard_config: &self.config,
+                    tx: Some(&self.tx),
+                    scope: &VerificationScope::Full,
+                };
+
+                verification::package::verify_package(
+                    &mut verification_ctx,
+                    package,
+                    &mut discrepancies,
+                    &mut tracked_files,
+                    &operation_id,
+                )
+                .await?;
+            }
         }
 
         // Check for orphaned files if not in Quick mode
@@ -234,29 +424,67 @@ impl StateVerificationGuard {
             verification::scope::get_packages_for_scope(&self.state_manager, &state_id, scope)
                 .await?;
 
-        // Create verification context
-        let mut verification_ctx = VerificationContext {
-            state_manager: &self.state_manager,
-            store: &self.store,
-            level: self.config.verification_level,
-            state_id: &state_id,
-            live_path: &live_path,
-            guard_config: &self.config,
-            tx: Some(&self.tx),
-            scope,
-        };
+        // Check if we should use parallel verification
+        if self.config.performance.parallel_verification && packages_to_verify.len() > 1 {
+            // Use parallel verification for better performance
+            let _ = self.tx.send(Event::DebugLog {
+                message: format!(
+                    "Using parallel verification for {} packages in scope {:?} (max concurrent: {})",
+                    packages_to_verify.len(),
+                    scope,
+                    self.config.performance.max_concurrent_tasks
+                ),
+                context: HashMap::default(),
+            });
 
-        // Verify selected packages
-        let operation_id = uuid::Uuid::new_v4().to_string(); // Generate operation ID for scoped verification
-        for package in &packages_to_verify {
-            verification::package::verify_package(
-                &mut verification_ctx,
-                package,
-                &mut discrepancies,
-                &mut tracked_files,
-                &operation_id,
-            )
-            .await?;
+            // Use parallel verification
+            let mut result = self
+                .verify_packages_parallel(&packages_to_verify, scope)
+                .await?;
+
+            // Update coverage with scope-specific totals
+            if let Some(ref mut coverage) = result.coverage {
+                coverage.total_packages = total_packages;
+                coverage.total_files = total_files;
+                coverage.package_coverage_percent = if total_packages > 0 {
+                    (coverage.verified_packages as f64 / total_packages as f64) * 100.0
+                } else {
+                    100.0
+                };
+                coverage.file_coverage_percent = if total_files > 0 {
+                    (coverage.verified_files as f64 / total_files as f64) * 100.0
+                } else {
+                    100.0
+                };
+            }
+
+            return Ok(result);
+        } else {
+            // Use sequential verification for single package or when parallel is disabled
+            // Create verification context
+            let mut verification_ctx = VerificationContext {
+                state_manager: &self.state_manager,
+                store: &self.store,
+                level: self.config.verification_level,
+                state_id: &state_id,
+                live_path: &live_path,
+                guard_config: &self.config,
+                tx: Some(&self.tx),
+                scope,
+            };
+
+            // Verify selected packages
+            let operation_id = uuid::Uuid::new_v4().to_string(); // Generate operation ID for scoped verification
+            for package in &packages_to_verify {
+                verification::package::verify_package(
+                    &mut verification_ctx,
+                    package,
+                    &mut discrepancies,
+                    &mut tracked_files,
+                    &operation_id,
+                )
+                .await?;
+            }
         }
 
         let duration_ms = u64::try_from(start_time.elapsed().as_millis()).unwrap_or(u64::MAX);
@@ -822,10 +1050,8 @@ impl StateVerificationGuard {
         packages: &[sps2_state::Package],
         scope: &VerificationScope,
     ) -> Result<VerificationResult, Error> {
-        if !self.config.performance.parallel_verification || packages.len() <= 1 {
-            // Fall back to sequential verification
-            return self.verify_with_scope(scope).await;
-        }
+        // This method always performs parallel verification
+        // The decision to use parallel vs sequential should be made by the caller
 
         let start_time = Instant::now();
         let state_id = self.state_manager.get_active_state().await?;
@@ -840,6 +1066,74 @@ impl StateVerificationGuard {
             context: HashMap::default(),
         });
 
+        // Pre-fetch all data from database to avoid locking issues
+        let _ = self.tx.send(Event::DebugLog {
+            message: "Pre-fetching package data and verification cache...".to_string(),
+            context: HashMap::default(),
+        });
+
+        let mut package_data_list = Vec::new();
+        let mut all_file_hashes = HashSet::new();
+
+        // Pre-fetch all package file entries
+        let mut db_tx = self.state_manager.begin_transaction().await?;
+        for package in packages {
+            // Get file entries for this package
+            let mut file_entries = queries::get_package_file_entries_by_name(
+                &mut db_tx,
+                &state_id,
+                &package.name,
+                &package.version,
+            )
+            .await?;
+
+            // If not found in current state, try all states
+            if file_entries.is_empty() {
+                file_entries = queries::get_package_file_entries_all_states(
+                    &mut db_tx,
+                    &package.name,
+                    &package.version,
+                )
+                .await?;
+            }
+
+            // Collect all file hashes for cache lookup
+            for entry in &file_entries {
+                all_file_hashes.insert(entry.file_hash.clone());
+            }
+
+            // Get verification cache for this package
+            let cache_entries = queries::get_package_file_verification_cache(
+                &mut db_tx,
+                &package.name,
+                &package.version,
+            )
+            .await?;
+
+            // Convert to HashMap for efficient lookup by hash
+            let cache_map: HashMap<String, FileVerificationCache> = cache_entries
+                .into_iter()
+                .map(|entry| (entry.file_hash.clone(), entry))
+                .collect();
+
+            package_data_list.push(PackageData {
+                package: package.clone(),
+                file_entries,
+                cache_entries: cache_map,
+            });
+        }
+
+        db_tx.commit().await?;
+
+        let _ = self.tx.send(Event::DebugLog {
+            message: format!(
+                "Pre-fetched data for {} packages with {} unique file hashes",
+                package_data_list.len(),
+                all_file_hashes.len()
+            ),
+            context: HashMap::default(),
+        });
+
         // Prepare shared data for parallel tasks
         let max_concurrent = self.config.performance.max_concurrent_tasks;
         let verification_level = self.config.verification_level;
@@ -849,7 +1143,7 @@ impl StateVerificationGuard {
         let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(max_concurrent));
         let mut tasks = Vec::new();
 
-        for package in packages.iter().cloned() {
+        for package_data in package_data_list {
             let permit = semaphore.clone().acquire_owned().await.unwrap();
             let state_manager = self.state_manager.clone();
             let store = self.store.clone();
@@ -862,10 +1156,10 @@ impl StateVerificationGuard {
                 let _permit = permit; // Hold permit for duration of task
 
                 // Create a minimal verification context for this package
-                let result = verify_single_package_standalone(
+                let result = verify_single_package_with_data(
                     &state_manager,
                     &store,
-                    &package,
+                    package_data,
                     level,
                     &config,
                     &live_path_clone,
@@ -873,7 +1167,7 @@ impl StateVerificationGuard {
                 )
                 .await;
 
-                (package.name.clone(), package.version.clone(), result)
+                result
             });
 
             tasks.push(task);
@@ -882,31 +1176,70 @@ impl StateVerificationGuard {
         // Collect results from all tasks
         let mut all_discrepancies = Vec::new();
         let mut tracked_files = HashSet::new();
+        let mut all_cache_updates = Vec::new();
         let mut successful_verifications = 0;
 
         for task in tasks {
             match task.await {
-                Ok((_package_name, _package_version, Ok(package_result))) => {
+                Ok(Ok((package_name, package_version, package_result))) => {
                     successful_verifications += 1;
+                    let files_count = package_result.tracked_files.len();
                     all_discrepancies.extend(package_result.discrepancies);
                     tracked_files.extend(package_result.tracked_files);
-                }
-                Ok((package_name, package_version, Err(e))) => {
+                    all_cache_updates.extend(package_result.cache_updates);
+
                     let _ = self.tx.send(Event::DebugLog {
                         message: format!(
-                            "Failed to verify package {}-{}: {}",
-                            package_name, package_version, e
+                            "Successfully verified package {}-{} ({} files)",
+                            package_name, package_version, files_count
                         ),
+                        context: HashMap::default(),
+                    });
+                }
+                Ok(Err(e)) => {
+                    // Even if verification fails, we should have tracked files to avoid false orphans
+                    let _ = self.tx.send(Event::DebugLog {
+                        message: format!("Package verification error: {}", e),
                         context: HashMap::default(),
                     });
                 }
                 Err(e) => {
                     let _ = self.tx.send(Event::DebugLog {
-                        message: format!("Verification task failed: {}", e),
+                        message: format!("Verification task panicked: {}", e),
                         context: HashMap::default(),
                     });
                 }
             }
+        }
+
+        // Apply all cache updates in a single transaction
+        if !all_cache_updates.is_empty() {
+            let _ = self.tx.send(Event::DebugLog {
+                message: format!("Applying {} cache updates...", all_cache_updates.len()),
+                context: HashMap::default(),
+            });
+
+            let mut db_tx = self.state_manager.begin_transaction().await?;
+            for update in all_cache_updates {
+                queries::update_verification_cache(
+                    &mut db_tx,
+                    &update.file_hash,
+                    &update.file_path,
+                    update.is_valid,
+                    update.error_message.as_deref(),
+                )
+                .await?;
+            }
+            db_tx.commit().await?;
+        }
+
+        // Check for orphaned files if not in Quick mode
+        if self.level() != VerificationLevel::Quick {
+            crate::orphan::detection::find_orphaned_files(
+                &live_path,
+                &tracked_files,
+                &mut all_discrepancies,
+            );
         }
 
         let duration_ms = u64::try_from(start_time.elapsed().as_millis()).unwrap_or(u64::MAX);
@@ -917,12 +1250,18 @@ impl StateVerificationGuard {
         let total_files = tracked_files.len(); // Approximation
         let verified_files = tracked_files.len();
 
+        let orphan_checked_directories = if self.level() != VerificationLevel::Quick {
+            vec![live_path.clone()]
+        } else {
+            vec![]
+        };
+
         let coverage = crate::types::VerificationCoverage::new(
             total_packages,
             verified_packages,
             total_files,
             verified_files,
-            vec![], // No orphan checking in parallel mode for now
+            orphan_checked_directories,
             matches!(scope, VerificationScope::Full),
         );
 
