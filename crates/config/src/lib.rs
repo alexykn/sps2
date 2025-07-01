@@ -180,8 +180,6 @@ impl Default for UserFilePolicy {
 /// Performance configuration for guard operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerformanceConfigToml {
-    #[serde(default = "default_parallel_verification")]
-    pub parallel_verification: bool,
     #[serde(default = "default_progressive_verification")]
     pub progressive_verification: bool,
     #[serde(default = "default_max_concurrent_tasks")]
@@ -193,7 +191,6 @@ pub struct PerformanceConfigToml {
 impl Default for PerformanceConfigToml {
     fn default() -> Self {
         Self {
-            parallel_verification: default_parallel_verification(),
             progressive_verification: default_progressive_verification(),
             max_concurrent_tasks: default_max_concurrent_tasks(),
             verification_timeout_seconds: default_verification_timeout_seconds(),
@@ -323,8 +320,6 @@ impl Default for GuardSymlinkPolicy {
 /// Performance configuration for top-level guard
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GuardPerformanceConfig {
-    #[serde(default = "default_parallel_verification")]
-    pub parallel_verification: bool,
     #[serde(default = "default_progressive_verification")]
     pub progressive_verification: bool,
     #[serde(default = "default_max_concurrent_tasks")]
@@ -336,7 +331,6 @@ pub struct GuardPerformanceConfig {
 impl Default for GuardPerformanceConfig {
     fn default() -> Self {
         Self {
-            parallel_verification: default_parallel_verification(),
             progressive_verification: default_progressive_verification(),
             max_concurrent_tasks: default_max_concurrent_tasks(),
             verification_timeout_seconds: default_verification_timeout_seconds(),
@@ -505,10 +499,6 @@ fn default_orphaned_backup_dir() -> PathBuf {
 }
 
 // Guard configuration defaults
-
-fn default_parallel_verification() -> bool {
-    true
-}
 
 fn default_progressive_verification() -> bool {
     true
@@ -1390,7 +1380,6 @@ mod tests {
         let mut config = Config::default();
         config.verification.enabled = true;
         config.verification.guard.symlink_policy = SymlinkPolicyConfig::LenientBootstrap;
-        config.verification.performance.parallel_verification = true;
         config.verification.performance.max_concurrent_tasks = 6;
 
         // Save config
@@ -1401,7 +1390,6 @@ mod tests {
         assert!(contents.contains("[verification.guard]"));
         assert!(contents.contains("[verification.performance]"));
         assert!(contents.contains("symlink_policy = \"lenient_bootstrap\""));
-        assert!(contents.contains("parallel_verification = true"));
         assert!(contents.contains("max_concurrent_tasks = 6"));
 
         // Load config back and verify it matches
@@ -1411,7 +1399,6 @@ mod tests {
             loaded_config.verification.guard.symlink_policy,
             SymlinkPolicyConfig::LenientBootstrap
         );
-        assert!(loaded_config.verification.performance.parallel_verification);
         assert_eq!(
             loaded_config.verification.performance.max_concurrent_tasks,
             6
@@ -1446,7 +1433,6 @@ mod tests {
         );
 
         // Test default performance config
-        assert!(config.verification.performance.parallel_verification);
         assert!(config.verification.performance.progressive_verification);
         assert_eq!(config.verification.performance.max_concurrent_tasks, 8);
         assert_eq!(
@@ -1471,7 +1457,6 @@ mod tests {
                 orphaned_backup_dir: PathBuf::from("/tmp/backup"),
                 user_file_policy: UserFilePolicy::Remove,
                 performance: GuardPerformanceConfig {
-                    parallel_verification: false,
                     progressive_verification: false,
                     max_concurrent_tasks: 4,
                     verification_timeout_seconds: 600,
@@ -1509,7 +1494,6 @@ mod tests {
         assert_eq!(guard_config.user_file_policy, UserFilePolicy::Remove);
 
         // Verify performance config
-        assert!(!guard_config.performance.parallel_verification);
         assert_eq!(guard_config.performance.max_concurrent_tasks, 4);
         assert_eq!(guard_config.performance.verification_timeout_seconds, 600);
 
@@ -1656,7 +1640,6 @@ mod tests {
         assert_eq!(guard_config.user_file_policy, UserFilePolicy::Preserve);
 
         // Test default performance config
-        assert!(guard_config.performance.parallel_verification);
         assert!(guard_config.performance.progressive_verification);
         assert_eq!(guard_config.performance.max_concurrent_tasks, 8);
         assert_eq!(guard_config.performance.verification_timeout_seconds, 300);

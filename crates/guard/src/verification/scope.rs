@@ -113,22 +113,3 @@ pub async fn count_total_files(
     }
     Ok(total_files)
 }
-
-/// Check if a file path should be verified based on the verification scope
-pub fn should_verify_file(file_path: &std::path::Path, scope: &VerificationScope) -> bool {
-    match scope {
-        VerificationScope::Full => true,
-        VerificationScope::Package { .. } | VerificationScope::Packages { .. } => true,
-        VerificationScope::Directory { path } => file_path.starts_with(path),
-        VerificationScope::Directories { paths } => {
-            paths.iter().any(|dir| file_path.starts_with(dir))
-        }
-        VerificationScope::Mixed { directories, .. } => {
-            if directories.is_empty() {
-                true
-            } else {
-                directories.iter().any(|dir| file_path.starts_with(dir))
-            }
-        }
-    }
-}

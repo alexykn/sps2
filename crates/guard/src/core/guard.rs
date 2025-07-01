@@ -1,8 +1,8 @@
 //! Main StateVerificationGuard implementation
 
 use crate::types::{
-    Discrepancy, GuardConfig, HealingContext, VerificationContext, VerificationLevel,
-    VerificationResult, VerificationScope,
+    Discrepancy, GuardConfig, HealingContext, VerificationLevel, VerificationResult,
+    VerificationScope,
 };
 use crate::verification;
 use sps2_errors::Error;
@@ -287,9 +287,7 @@ impl StateVerificationGuard {
     ///
     /// Returns an error if state verification fails or database operations fail.
     pub async fn verify_only(&mut self) -> Result<VerificationResult, Error> {
-        let start_time = Instant::now();
         let state_id = self.state_manager.get_active_state().await?;
-        let live_path = self.state_manager.live_path().to_path_buf();
 
         // Get all installed packages from current state
         let mut tx = self.state_manager.begin_transaction().await?;
@@ -299,99 +297,27 @@ impl StateVerificationGuard {
         // Emit verification started event
         let operation_id = uuid::Uuid::new_v4().to_string();
         let _ = self.tx.send(Event::GuardVerificationStarted {
-            operation_id: operation_id.clone(),
+            operation_id,
             scope: "system".to_string(),
             level: format!("{:?}", self.config.verification_level),
             packages_count: packages.len(),
             files_count: None,
         });
 
-        let mut discrepancies = Vec::new();
-        let mut tracked_files = HashSet::new();
-
-        // Check if we should use parallel verification
-        if self.config.performance.parallel_verification && packages.len() > 1 {
-            // Use parallel verification for better performance
-            let _ = self.tx.send(Event::DebugLog {
-                message: format!(
-                    "Using parallel verification for {} packages (max concurrent: {})",
-                    packages.len(),
-                    self.config.performance.max_concurrent_tasks
-                ),
-                context: HashMap::default(),
-            });
-
-            // Note: verify_packages_parallel handles orphan detection internally
-            // when verification level is not Quick
-            return self
-                .verify_packages_parallel(&packages, &VerificationScope::Full)
-                .await;
-        } else {
-            // Use sequential verification for single package or when parallel is disabled
-            // Verify each package using the verification module
-            for (index, package) in packages.iter().enumerate() {
-                // Emit progress update
-                let _ = self.tx.send(Event::GuardVerificationProgress {
-                    operation_id: operation_id.clone(),
-                    verified_packages: index,
-                    total_packages: packages.len(),
-                    verified_files: 0, // TODO: Track file count
-                    total_files: 0,
-                    current_package: Some(package.name.clone()),
-                    cache_hit_rate: None,
-                });
-
-                // Create verification context for this package
-                let mut verification_ctx = VerificationContext {
-                    state_manager: &self.state_manager,
-                    store: &self.store,
-                    level: self.config.verification_level,
-                    state_id: &state_id,
-                    live_path: &live_path,
-                    guard_config: &self.config,
-                    tx: Some(&self.tx),
-                    scope: &VerificationScope::Full,
-                };
-
-                verification::package::verify_package(
-                    &mut verification_ctx,
-                    package,
-                    &mut discrepancies,
-                    &mut tracked_files,
-                    &operation_id,
-                )
-                .await?;
-            }
-        }
-
-        // Check for orphaned files if not in Quick mode
-        if self.level() != VerificationLevel::Quick {
-            crate::orphan::detection::find_orphaned_files(
-                &live_path,
-                &tracked_files,
-                &mut discrepancies,
-            );
-        }
-
-        let duration_ms = u64::try_from(start_time.elapsed().as_millis()).unwrap_or(u64::MAX);
-
-        // Emit verification completed event
-        let by_severity = HashMap::new(); // TODO: Categorize discrepancies by severity
-        let _ = self.tx.send(Event::GuardVerificationCompleted {
-            operation_id,
-            total_discrepancies: discrepancies.len(),
-            by_severity,
-            duration_ms,
-            cache_hit_rate: 0.0,
-            coverage_percent: 100.0, // TODO: Calculate actual coverage
-            scope_description: format!("System-wide verification of {} packages", packages.len()),
+        // Always use parallel verification (better performance with batched DB writes)
+        let _ = self.tx.send(Event::DebugLog {
+            message: format!(
+                "Using parallel verification for {} packages (max concurrent: {})",
+                packages.len(),
+                self.config.performance.max_concurrent_tasks
+            ),
+            context: HashMap::default(),
         });
 
-        Ok(VerificationResult::new(
-            state_id,
-            discrepancies,
-            duration_ms,
-        ))
+        // Note: verify_packages_parallel handles orphan detection internally
+        // when verification level is not Quick
+        self.verify_packages_parallel(&packages, &VerificationScope::Full)
+            .await
     }
 
     /// Verify current state with specific scope without healing
@@ -403,9 +329,7 @@ impl StateVerificationGuard {
         &mut self,
         scope: &VerificationScope,
     ) -> Result<VerificationResult, Error> {
-        let start_time = Instant::now();
         let state_id = self.state_manager.get_active_state().await?;
-        let live_path = self.state_manager.live_path().to_path_buf();
 
         // Emit verification started event
         let _ = self.tx.send(Event::DebugLog {
@@ -416,123 +340,44 @@ impl StateVerificationGuard {
             context: HashMap::default(),
         });
 
-        let mut discrepancies = Vec::new();
-        let mut tracked_files = HashSet::new();
-
         // Get packages based on scope
         let (packages_to_verify, total_packages, total_files) =
             verification::scope::get_packages_for_scope(&self.state_manager, &state_id, scope)
                 .await?;
 
-        // Check if we should use parallel verification
-        if self.config.performance.parallel_verification && packages_to_verify.len() > 1 {
-            // Use parallel verification for better performance
-            let _ = self.tx.send(Event::DebugLog {
-                message: format!(
-                    "Using parallel verification for {} packages in scope {:?} (max concurrent: {})",
-                    packages_to_verify.len(),
-                    scope,
-                    self.config.performance.max_concurrent_tasks
-                ),
-                context: HashMap::default(),
-            });
-
-            // Use parallel verification
-            let mut result = self
-                .verify_packages_parallel(&packages_to_verify, scope)
-                .await?;
-
-            // Update coverage with scope-specific totals
-            if let Some(ref mut coverage) = result.coverage {
-                coverage.total_packages = total_packages;
-                coverage.total_files = total_files;
-                coverage.package_coverage_percent = if total_packages > 0 {
-                    (coverage.verified_packages as f64 / total_packages as f64) * 100.0
-                } else {
-                    100.0
-                };
-                coverage.file_coverage_percent = if total_files > 0 {
-                    (coverage.verified_files as f64 / total_files as f64) * 100.0
-                } else {
-                    100.0
-                };
-            }
-
-            return Ok(result);
-        } else {
-            // Use sequential verification for single package or when parallel is disabled
-            // Create verification context
-            let mut verification_ctx = VerificationContext {
-                state_manager: &self.state_manager,
-                store: &self.store,
-                level: self.config.verification_level,
-                state_id: &state_id,
-                live_path: &live_path,
-                guard_config: &self.config,
-                tx: Some(&self.tx),
-                scope,
-            };
-
-            // Verify selected packages
-            let operation_id = uuid::Uuid::new_v4().to_string(); // Generate operation ID for scoped verification
-            for package in &packages_to_verify {
-                verification::package::verify_package(
-                    &mut verification_ctx,
-                    package,
-                    &mut discrepancies,
-                    &mut tracked_files,
-                    &operation_id,
-                )
-                .await?;
-            }
-        }
-
-        let duration_ms = u64::try_from(start_time.elapsed().as_millis()).unwrap_or(u64::MAX);
-
-        // Calculate coverage
-        // Check for orphaned files based on scope
-        let orphan_checked_directories = if self.level() != VerificationLevel::Quick {
-            crate::orphan::detection::find_orphaned_files_scoped(
-                scope,
-                &live_path,
-                &tracked_files,
-                &mut discrepancies,
-            )
-        } else {
-            Vec::new()
-        };
-
-        let verified_files = tracked_files.len();
-        let coverage = crate::types::VerificationCoverage::new(
-            total_packages,
-            packages_to_verify.len(),
-            total_files,
-            verified_files,
-            orphan_checked_directories,
-            matches!(scope, VerificationScope::Full),
-        );
-
-        // Emit verification completed event with coverage stats
+        // Always use parallel verification (better performance with batched DB writes)
         let _ = self.tx.send(Event::DebugLog {
             message: format!(
-                "Scoped verification completed in {duration_ms}ms with {} discrepancies. Coverage: {:.1}% packages ({}/{}), {:.1}% files ({}/{})",
-                discrepancies.len(),
-                coverage.package_coverage_percent,
-                coverage.verified_packages,
-                coverage.total_packages,
-                coverage.file_coverage_percent,
-                coverage.verified_files,
-                coverage.total_files
+                "Using parallel verification for {} packages in scope {:?} (max concurrent: {})",
+                packages_to_verify.len(),
+                scope,
+                self.config.performance.max_concurrent_tasks
             ),
             context: HashMap::default(),
         });
 
-        Ok(VerificationResult::with_coverage(
-            state_id,
-            discrepancies,
-            duration_ms,
-            coverage,
-        ))
+        // Use parallel verification
+        let mut result = self
+            .verify_packages_parallel(&packages_to_verify, scope)
+            .await?;
+
+        // Update coverage with scope-specific totals
+        if let Some(ref mut coverage) = result.coverage {
+            coverage.total_packages = total_packages;
+            coverage.total_files = total_files;
+            coverage.package_coverage_percent = if total_packages > 0 {
+                (coverage.verified_packages as f64 / total_packages as f64) * 100.0
+            } else {
+                100.0
+            };
+            coverage.file_coverage_percent = if total_files > 0 {
+                (coverage.verified_files as f64 / total_files as f64) * 100.0
+            } else {
+                100.0
+            };
+        }
+
+        Ok(result)
     }
 
     /// Verify current state and optionally heal discrepancies

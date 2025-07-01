@@ -579,35 +579,23 @@ impl Default for SymlinkPolicy {
 /// Performance configuration for guard operations
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PerformanceConfig {
-    /// Enable parallel verification of multiple packages
-    pub parallel_verification: bool,
     /// Use progressive verification (Quick → Standard → Full as needed)
     pub progressive_verification: bool,
     /// Maximum number of concurrent verification tasks
     pub max_concurrent_tasks: usize,
     /// Timeout for individual verification operations
     pub verification_timeout: Duration,
-    /// Enable chunked file operations for better performance
-    pub enable_chunked_operations: bool,
     /// Number of files to process in each chunk
     pub file_chunk_size: usize,
-    /// Enable batch database operations
-    pub batch_database_operations: bool,
-    /// Database batch size for bulk operations
-    pub database_batch_size: usize,
 }
 
 impl Default for PerformanceConfig {
     fn default() -> Self {
         Self {
-            parallel_verification: true,
             progressive_verification: true,
             max_concurrent_tasks: 8,
             verification_timeout: Duration::from_secs(300), // 5 minutes
-            enable_chunked_operations: true,                // Chunking enabled by default
             file_chunk_size: 100,                           // Process 100 files per chunk
-            batch_database_operations: true, // Batch DB operations enabled by default
-            database_batch_size: 50,         // 50 records per batch for DB operations
         }
     }
 }
@@ -1044,15 +1032,10 @@ impl From<sps2_config::SymlinkPolicyConfig> for SymlinkPolicy {
 impl From<&sps2_config::PerformanceConfigToml> for PerformanceConfig {
     fn from(config: &sps2_config::PerformanceConfigToml) -> Self {
         Self {
-            parallel_verification: config.parallel_verification,
             progressive_verification: config.progressive_verification,
             max_concurrent_tasks: config.max_concurrent_tasks,
             verification_timeout: Duration::from_secs(config.verification_timeout_seconds),
-            // Use defaults for new fields until they're added to config TOML
-            enable_chunked_operations: true,
-            file_chunk_size: 100,
-            batch_database_operations: true,
-            database_batch_size: 50,
+            file_chunk_size: 100, // Use default chunk size
         }
     }
 }
@@ -1103,15 +1086,10 @@ impl From<sps2_config::GuardSymlinkPolicy> for SymlinkPolicy {
 impl From<&sps2_config::GuardPerformanceConfig> for PerformanceConfig {
     fn from(config: &sps2_config::GuardPerformanceConfig) -> Self {
         Self {
-            parallel_verification: config.parallel_verification,
             progressive_verification: config.progressive_verification,
             max_concurrent_tasks: config.max_concurrent_tasks,
             verification_timeout: Duration::from_secs(config.verification_timeout_seconds),
-            // Use defaults for new fields until they're added to config TOML
-            enable_chunked_operations: true,
-            file_chunk_size: 100,
-            batch_database_operations: true,
-            database_batch_size: 50,
+            file_chunk_size: 100, // Use default chunk size
         }
     }
 }
