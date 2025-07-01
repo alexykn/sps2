@@ -116,7 +116,7 @@ async fn load_file_mappings(
     use sqlx::Row;
     let rows = sqlx::query(
         r#"
-        SELECT DISTINCT 
+        SELECT DISTINCT
             pfe.file_hash,
             pfe.relative_path,
             p.name as package_name,
@@ -226,13 +226,13 @@ async fn list_recursive(
             // It's a file - reconstruct the hash
             if let Some(parent) = entry.path().parent() {
                 if let Some(prefix) = parent.file_name() {
-                    let full_hash = format!("{}{}", prefix.to_string_lossy(), name);
+                    let _full_hash = format!("{}{}", prefix.to_string_lossy(), name);
                     // Remove the prefix for database lookup
                     let hash_without_prefix = &name;
 
                     if hash_only {
                         // Just show the full hash
-                        println!("{}{}", indent, full_hash);
+                        println!("{}{}", indent, hash_without_prefix);
                     } else if long_format {
                         let size = format_size(metadata.len(), BINARY);
                         let perms = format_permissions(&metadata);
@@ -277,9 +277,9 @@ async fn list_recursive(
                                     "{}{} {}",
                                     indent,
                                     if use_color {
-                                        full_hash[..8].dimmed()
+                                        hash_without_prefix[..8].dimmed()
                                     } else {
-                                        full_hash[..8].normal()
+                                        hash_without_prefix[..8].normal()
                                     },
                                     if use_color {
                                         file_name.green()
@@ -293,9 +293,9 @@ async fn list_recursive(
                                 "{}{} (unknown)",
                                 indent,
                                 if use_color {
-                                    full_hash[..8].dimmed()
+                                    hash_without_prefix[..8].dimmed()
                                 } else {
-                                    full_hash[..8].normal()
+                                    hash_without_prefix[..8].normal()
                                 }
                             );
                         }
@@ -342,7 +342,7 @@ async fn list_specific(
 
                     if hash_only {
                         // Just show the full hash
-                        println!("{}", full_hash);
+                        println!("{}", hash_without_prefix);
                     } else if long_format {
                         let size = format_size(metadata.len(), BINARY);
                         let perms = format_permissions(&metadata);
@@ -354,9 +354,9 @@ async fn list_specific(
                                     perms,
                                     size,
                                     if use_color {
-                                        full_hash[..16].dimmed()
+                                        hash_without_prefix[..16].dimmed()
                                     } else {
-                                        full_hash[..16].normal()
+                                        hash_without_prefix[..16].normal()
                                     },
                                     if use_color {
                                         file_name.green()
@@ -371,9 +371,9 @@ async fn list_specific(
                                 perms,
                                 size,
                                 if use_color {
-                                    full_hash[..16].dimmed()
+                                    hash_without_prefix[..16].dimmed()
                                 } else {
-                                    full_hash[..16].normal()
+                                    hash_without_prefix[..16].normal()
                                 }
                             );
                         }
@@ -384,9 +384,9 @@ async fn list_specific(
                                 println!(
                                     "{} {}",
                                     if use_color {
-                                        full_hash[..8].dimmed()
+                                        hash_without_prefix[..8].dimmed()
                                     } else {
-                                        full_hash[..8].normal()
+                                        hash_without_prefix[..8].normal()
                                     },
                                     if use_color {
                                         file_name.green()
@@ -399,9 +399,9 @@ async fn list_specific(
                             println!(
                                 "{} (unknown)",
                                 if use_color {
-                                    full_hash[..8].dimmed()
+                                    hash_without_prefix[..8].dimmed()
                                 } else {
-                                    full_hash[..8].normal()
+                                    hash_without_prefix[..8].normal()
                                 }
                             );
                         }
@@ -477,7 +477,7 @@ async fn load_package_mappings(
     use sqlx::Row;
     let rows = sqlx::query(
         r#"
-        SELECT 
+        SELECT
             hash,
             name,
             version
