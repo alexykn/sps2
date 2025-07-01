@@ -9,7 +9,7 @@ sps2-state = { path = "../../crates/state" }
 
 clap = { version = "4.5", features = ["derive"] }
 tokio = { version = "1.45", features = ["full"] }
-colored = "2.1"
+colored = "3.0"
 humansize = "2.1"
 chrono = "0.4"
 atty = "0.2"
