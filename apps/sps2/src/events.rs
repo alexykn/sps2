@@ -1,9 +1,7 @@
 //! Event handling and progress display
 
-use console::{style, Emoji, Term};
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use console::{style, Term};
 use sps2_events::Event;
-use std::collections::HashMap;
 
 /// Event severity levels for UI styling
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,29 +50,25 @@ impl UiStyle {
             };
         }
 
-        // Use emojis and colors when supported
+        // Use clean text prefixes
         match severity {
             EventSeverity::Debug => {
-                format!("{} {}", Emoji("🔍", "🔍"), style("DEBUG").dim().cyan())
+                format!("{}", style("[DEBUG]").dim().cyan())
             }
             EventSeverity::Info => {
-                format!("{}  {}", Emoji("ℹ️", "i"), style("INFO").blue())
+                format!("{}", style("[INFO]").blue())
             }
             EventSeverity::Success => {
-                format!("{} {}", Emoji("✅", "✓"), style("OK").green().bold())
+                format!("{}", style("[OK]").green().bold())
             }
             EventSeverity::Warning => {
-                format!("{} {}", Emoji("⚠️", "!"), style("WARN").yellow().bold())
+                format!("{}", style("[WARN]").yellow().bold())
             }
             EventSeverity::Error => {
-                format!("{} {}", Emoji("❌", "✗"), style("ERROR").red().bold())
+                format!("{}", style("[ERROR]").red().bold())
             }
             EventSeverity::Critical => {
-                format!(
-                    "{} {}",
-                    Emoji("🚨", "‼"),
-                    style("CRITICAL").red().bold().underlined()
-                )
+                format!("{}", style("[CRITICAL]").red().bold().underlined())
             }
         }
     }
@@ -159,27 +153,21 @@ impl UiStyle {
             op if op.contains("build") => "•",
             op if op.contains("download") => "•",
             op if op.contains("search") => "•",
-            op if op.contains("sync") => "🔄",
-            op if op.contains("clean") => "🧹",
-            op if op.contains("rollback") => "⏪",
-            op if op.contains("health") => "🩺",
-            op if op.contains("verify") || op.contains("guard") => "🔍",
-            op if op.contains("heal") => "🩹",
-            op if op.contains("cache") => "💾",
-            op if op.contains("qa") || op.contains("audit") => "🔍",
+            op if op.contains("sync") => "•",
+            op if op.contains("clean") => "•",
+            op if op.contains("rollback") => "•",
+            op if op.contains("health") => "•",
+            op if op.contains("verify") || op.contains("guard") => "•",
+            op if op.contains("heal") => "•",
+            op if op.contains("cache") => "•",
+            op if op.contains("qa") || op.contains("audit") => "•",
             _ => "•",
         }
     }
 }
 
-/// Event handler for progress display and user feedback
+/// Event handler for user feedback
 pub struct EventHandler {
-    /// Multi-progress manager for concurrent progress bars
-    multi_progress: MultiProgress,
-    /// Active progress bars by URL
-    download_bars: HashMap<String, ProgressBar>,
-    /// Active progress bars for installations by package name
-    install_bars: HashMap<String, ProgressBar>,
     /// Output renderer for final results
     #[allow(dead_code)]
     renderer: crate::display::OutputRenderer,
@@ -197,9 +185,6 @@ impl EventHandler {
         debug_enabled: bool,
     ) -> Self {
         Self {
-            multi_progress: MultiProgress::new(),
-            download_bars: HashMap::new(),
-            install_bars: HashMap::new(),
             renderer,
             ui_style: UiStyle::new(colors_enabled),
             debug_enabled,
@@ -229,47 +214,22 @@ impl EventHandler {
 
             // Package events
             Event::PackageInstalling { name, version } => {
-                // Update existing progress bar or show message if no progress bar exists
-                let package_key = format!("{}-{}", name, version);
-                if let Some(pb) = self.install_bars.get(&name) {
-                    let styled_message = self.ui_style.style_operation_message(
-                        &format!("Installing {} {}", name, version),
-                        "install",
-                        EventSeverity::Info,
-                    );
-                    pb.set_message(format!(
-                        "{} {}",
-                        self.ui_style.get_operation_icon("install"),
-                        styled_message
-                    ));
-                } else {
-                    // Start progress bar if it doesn't exist
-                    self.handle_install_started(&package_key);
-                }
+                self.show_operation_message(
+                    &format!("Installing {} {}", name, version),
+                    "install",
+                    EventSeverity::Info,
+                );
             }
             Event::PackageInstalled {
                 name,
                 version,
                 path: _,
             } => {
-                // Try to complete existing progress bar, otherwise show regular message
-                let package_key = format!("{}-{}", name, version);
-                if self.install_bars.contains_key(&name)
-                    || self.install_bars.contains_key(&package_key)
-                {
-                    // Complete the progress bar (try both keys)
-                    if self.install_bars.contains_key(&name) {
-                        self.handle_install_completed(&name, &format!("v{}", version));
-                    } else {
-                        self.handle_install_completed(&package_key, &format!("v{}", version));
-                    }
-                } else {
-                    self.show_operation_message(
-                        &format!("Installed {} {}", name, version),
-                        "install",
-                        EventSeverity::Success,
-                    );
-                }
+                self.show_operation_message(
+                    &format!("Installed {} {}", name, version),
+                    "install",
+                    EventSeverity::Success,
+                );
             }
             Event::PackageDownloaded { name, version } => {
                 self.show_operation_message(
@@ -693,20 +653,11 @@ impl EventHandler {
                 );
             }
             Event::OperationFailed { operation, error } => {
-                // Check if this is an installation operation and clean up progress bars
-                if operation.to_lowercase().contains("install") {
-                    // Find and remove any active installation progress bars
-                    let keys_to_remove: Vec<String> = self.install_bars.keys().cloned().collect();
-                    for key in keys_to_remove {
-                        self.handle_install_failed(&key, &error);
-                    }
-                } else {
-                    self.show_operation_message(
-                        &format!("{} failed: {}", operation, error),
-                        &operation.to_lowercase(),
-                        EventSeverity::Error,
-                    );
-                }
+                self.show_operation_message(
+                    &format!("{} failed: {}", operation, error),
+                    &operation.to_lowercase(),
+                    EventSeverity::Error,
+                );
             }
 
             // Index events
@@ -905,16 +856,7 @@ impl EventHandler {
 
             // Debug events (only show if debug mode enabled)
             Event::DebugLog { message, context } => {
-                // Always show guard-related debug messages for troubleshooting
-                if self.debug_enabled
-                    || message.contains("guard")
-                    || message.contains("Guard")
-                    || message.contains("verification")
-                    || message.contains("heal")
-                    || message.contains("Heal")
-                    || message.contains("Restoring")
-                    || message.contains("restored")
-                {
+                if self.debug_enabled {
                     if context.is_empty() {
                         self.show_message(&message, EventSeverity::Debug);
                     } else {
@@ -1047,8 +989,13 @@ impl EventHandler {
             } => {
                 if total_discrepancies == 0 {
                     self.show_operation_message(
-                        &format!("✓ Verification completed: {} ({:.1}% coverage, {:.1}% cache hits, {}ms)",
-                            scope_description, coverage_percent, cache_hit_rate * 100.0, duration_ms),
+                        &format!(
+                            "Verification completed: {} ({:.1}% coverage, {:.1}% cache hits, {}ms)",
+                            scope_description,
+                            coverage_percent,
+                            cache_hit_rate * 100.0,
+                            duration_ms
+                        ),
                         "verify",
                         EventSeverity::Success,
                     );
@@ -1060,7 +1007,7 @@ impl EventHandler {
                         .join(", ");
                     self.show_operation_message(
                         &format!(
-                            "⚠ Verification completed: {} discrepancies found ({}) ({}ms)",
+                            "Verification completed: {} discrepancies found ({}) ({}ms)",
                             total_discrepancies, severity_breakdown, duration_ms
                         ),
                         "verify",
@@ -1078,7 +1025,7 @@ impl EventHandler {
             } => {
                 self.show_operation_message(
                     &format!(
-                        "✗ Verification failed after verifying {} packages, {} files ({}ms): {}",
+                        "Verification failed after verifying {} packages, {} files ({}ms): {}",
                         packages_verified, files_verified, duration_ms, error
                     ),
                     "verify",
@@ -1105,7 +1052,7 @@ impl EventHandler {
                 };
 
                 self.show_message(
-                    &format!("📋 Guard Summary: {}", user_friendly_summary),
+                    &format!("Guard Summary: {}", user_friendly_summary),
                     severity_level,
                 );
 
@@ -1165,14 +1112,14 @@ impl EventHandler {
             } => {
                 if success {
                     self.show_operation_message(
-                        &format!("✓ Healed {}: {}", file_path, healing_action),
+                        &format!("Healed {}: {}", file_path, healing_action),
                         "heal",
                         EventSeverity::Success,
                     );
                 } else {
                     let error_msg = error.as_deref().unwrap_or("unknown error");
                     self.show_operation_message(
-                        &format!("✗ Failed to heal {}: {}", file_path, error_msg),
+                        &format!("Failed to heal {}: {}", file_path, error_msg),
                         "heal",
                         EventSeverity::Error,
                     );
@@ -1190,7 +1137,7 @@ impl EventHandler {
                 if failed_count == 0 {
                     self.show_operation_message(
                         &format!(
-                            "✓ Healing completed: {}/{} healed ({} skipped, {}ms)",
+                            "Healing completed: {}/{} healed ({} skipped, {}ms)",
                             healed_count, total, skipped_count, duration_ms
                         ),
                         "heal",
@@ -1199,7 +1146,7 @@ impl EventHandler {
                 } else {
                     self.show_operation_message(
                         &format!(
-                            "⚠ Healing completed: {} healed, {} failed, {} skipped ({}ms)",
+                            "Healing completed: {} healed, {} failed, {} skipped ({}ms)",
                             healed_count, failed_count, skipped_count, duration_ms
                         ),
                         "heal",
@@ -1217,7 +1164,7 @@ impl EventHandler {
             } => {
                 self.show_operation_message(
                     &format!(
-                        "✗ Healing operation failed: {} ({} completed, {} failed, {}ms)",
+                        "Healing operation failed: {} ({} completed, {} failed, {}ms)",
                         error, completed_healing, failed_healing, duration_ms
                     ),
                     "heal",
@@ -1334,7 +1281,7 @@ impl EventHandler {
             } => {
                 self.show_message(
                     &format!(
-                        "✓ Recovery successful for {} error: {} (attempt {}, {}ms)",
+                        "Recovery successful for {} error: {} (attempt {}, {}ms)",
                         error_category, recovery_strategy, attempt_number, recovery_duration_ms
                     ),
                     EventSeverity::Success,
@@ -1350,7 +1297,7 @@ impl EventHandler {
             } => {
                 self.show_message(
                     &format!(
-                        "✗ Recovery failed for {} error after {} attempts using {}: {}",
+                        "Recovery failed for {} error after {} attempts using {}: {}",
                         error_category, attempts_made, recovery_strategy, final_error
                     ),
                     EventSeverity::Error,
@@ -1374,139 +1321,56 @@ impl EventHandler {
     /// Handle download started event
     fn handle_download_started(&mut self, url: &str, size: Option<u64>) {
         let filename = url.split('/').next_back().unwrap_or(url);
-
-        let pb = if let Some(total) = size {
-            ProgressBar::new(total)
+        let size_info = if let Some(total) = size {
+            format!(" ({})", self.format_bytes(total))
         } else {
-            ProgressBar::new_spinner()
+            String::new()
         };
 
-        // Enhanced progress bar styling
-        let template = if self.ui_style.colors_enabled
-            && self.ui_style.term.features().colors_supported()
-        {
-            "{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta}) {msg}"
-        } else {
-            "{spinner} [{elapsed_precise}] [{wide_bar}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta}) {msg}"
-        };
-
-        pb.set_style(
-            ProgressStyle::default_bar()
-                .template(template)
-                .unwrap()
-                .progress_chars("━━╾─"),
+        self.show_operation_message(
+            &format!("Downloading {}{}", filename, size_info),
+            "download",
+            EventSeverity::Info,
         );
-
-        let icon = self.ui_style.get_operation_icon("download");
-        pb.set_message(format!("{} {}", icon, filename));
-
-        let pb = self.multi_progress.add(pb);
-        self.download_bars.insert(url.to_string(), pb);
     }
 
     /// Handle download progress event
-    fn handle_download_progress(&mut self, url: &str, bytes_downloaded: u64, total_bytes: u64) {
-        if let Some(pb) = self.download_bars.get(url) {
-            pb.set_length(total_bytes);
-            pb.set_position(bytes_downloaded);
-        }
+    fn handle_download_progress(&mut self, _url: &str, _bytes_downloaded: u64, _total_bytes: u64) {
+        // Progress updates are now silent for fast operations
     }
 
     /// Handle download completed event
     fn handle_download_completed(&mut self, url: &str) {
-        if let Some(pb) = self.download_bars.remove(url) {
-            let icon = if self.ui_style.colors_enabled
-                && self.ui_style.term.features().colors_supported()
-            {
-                "✅"
-            } else {
-                "✓"
-            };
-            pb.finish_with_message(format!("{} Downloaded", icon));
-        }
+        let filename = url.split('/').next_back().unwrap_or(url);
+        self.show_operation_message(
+            &format!("Downloaded {}", filename),
+            "download",
+            EventSeverity::Success,
+        );
     }
 
     /// Handle download failed event
     fn handle_download_failed(&mut self, url: &str, error: &str) {
-        if let Some(pb) = self.download_bars.remove(url) {
-            let icon = if self.ui_style.colors_enabled
-                && self.ui_style.term.features().colors_supported()
-            {
-                "❌"
-            } else {
-                "✗"
-            };
-            pb.finish_with_message(format!("{} Failed: {}", icon, error));
-        }
+        let filename = url.split('/').next_back().unwrap_or(url);
+        self.show_error(&format!("Failed to download {}: {}", filename, error));
     }
 
-    /// Handle installation started event - create loading animation
+    /// Handle installation started event
     fn handle_install_started(&mut self, package_name: &str) {
-        let pb = ProgressBar::new_spinner();
-
-        // Enhanced spinner styling
-        let template =
-            if self.ui_style.colors_enabled && self.ui_style.term.features().colors_supported() {
-                "{spinner:.green} {msg}"
-            } else {
-                "{spinner} {msg}"
-            };
-
-        pb.set_style(
-            ProgressStyle::default_spinner()
-                .template(template)
-                .unwrap()
-                .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
-        );
-
-        let icon = self.ui_style.get_operation_icon("install");
-        let styled_message = self.ui_style.style_operation_message(
+        self.show_operation_message(
             &format!("Installing {}", package_name),
             "install",
             EventSeverity::Info,
         );
-        pb.set_message(format!("{} {}", icon, styled_message));
-
-        let pb = self.multi_progress.add(pb);
-        self.install_bars.insert(package_name.to_string(), pb);
     }
 
-    /// Handle installation completed event - finish animation
+    /// Handle installation completed event
     fn handle_install_completed(&mut self, package_name: &str, state_id: &impl std::fmt::Display) {
-        if let Some(pb) = self.install_bars.remove(package_name) {
-            let icon = if self.ui_style.colors_enabled
-                && self.ui_style.term.features().colors_supported()
-            {
-                "✅"
-            } else {
-                "✓"
-            };
-            let styled_message = self.ui_style.style_operation_message(
-                &format!("Installed {} (state: {})", package_name, state_id),
-                "install",
-                EventSeverity::Success,
-            );
-            pb.finish_with_message(format!("{} {}", icon, styled_message));
-        }
-    }
-
-    /// Handle installation failed event - finish animation with error
-    fn handle_install_failed(&mut self, package_name: &str, error: &str) {
-        if let Some(pb) = self.install_bars.remove(package_name) {
-            let icon = if self.ui_style.colors_enabled
-                && self.ui_style.term.features().colors_supported()
-            {
-                "❌"
-            } else {
-                "✗"
-            };
-            let styled_message = self.ui_style.style_operation_message(
-                &format!("Failed to install {}: {}", package_name, error),
-                "install",
-                EventSeverity::Error,
-            );
-            pb.finish_with_message(format!("{} {}", icon, styled_message));
-        }
+        self.show_operation_message(
+            &format!("Installed {} (state: {})", package_name, state_id),
+            "install",
+            EventSeverity::Success,
+        );
     }
 
     /// Show styled message based on severity
@@ -1514,7 +1378,7 @@ impl EventHandler {
         let prefix = self.ui_style.get_prefix(severity);
         let styled_message = self.ui_style.style_message(message, severity);
         let formatted = format!("{} {}", prefix, styled_message);
-        self.multi_progress.println(formatted).unwrap_or(());
+        println!("{}", formatted);
     }
 
     /// Show operation message with appropriate icon and styling
@@ -1524,14 +1388,34 @@ impl EventHandler {
             .ui_style
             .style_operation_message(message, operation, severity);
         let formatted = format!("{} {}", icon, styled_message);
-        self.multi_progress.println(formatted).unwrap_or(());
+        println!("{}", formatted);
     }
 
     /// Show warning message
     fn show_warning(&self, message: &str) {
-        // Use multi_progress to avoid interfering with progress bars
-        self.multi_progress
-            .println(format!("WARNING: {}", message))
-            .unwrap_or(());
+        self.show_message(message, EventSeverity::Warning);
+    }
+
+    /// Show error message
+    fn show_error(&self, message: &str) {
+        self.show_message(message, EventSeverity::Error);
+    }
+
+    /// Format bytes for display
+    fn format_bytes(&self, bytes: u64) -> String {
+        const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
+        let mut size = bytes as f64;
+        let mut unit_index = 0;
+
+        while size >= 1024.0 && unit_index < UNITS.len() - 1 {
+            size /= 1024.0;
+            unit_index += 1;
+        }
+
+        if unit_index == 0 {
+            format!("{} {}", size as u64, UNITS[unit_index])
+        } else {
+            format!("{:.1} {}", size, UNITS[unit_index])
+        }
     }
 }

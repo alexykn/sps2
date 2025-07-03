@@ -1,7 +1,8 @@
 //! Main StateVerificationGuard implementation
 
+use crate::error_context::{GuardErrorContext, VerbosityLevel};
 use crate::types::{
-    Discrepancy, GuardConfig, HealingContext, VerificationLevel, VerificationResult,
+    Discrepancy, GuardConfig, HealingContext, OperationType, VerificationLevel, VerificationResult,
     VerificationScope,
 };
 use crate::verification;
@@ -294,30 +295,53 @@ impl StateVerificationGuard {
         let packages = queries::get_state_packages(&mut tx, &state_id).await?;
         tx.commit().await?;
 
-        // Emit verification started event
-        let operation_id = uuid::Uuid::new_v4().to_string();
-        let _ = self.tx.send(Event::GuardVerificationStarted {
-            operation_id,
-            scope: "system".to_string(),
-            level: format!("{:?}", self.config.verification_level),
-            packages_count: packages.len(),
-            files_count: None,
-        });
+        // Create error context for comprehensive event emission
+        let mut error_ctx = GuardErrorContext::for_verification(
+            OperationType::Verify {
+                scope: VerificationScope::Full,
+            },
+            self.tx.clone(),
+            VerbosityLevel::Standard,
+        );
 
-        // Always use parallel verification (better performance with batched DB writes)
-        let _ = self.tx.send(Event::DebugLog {
-            message: format!(
-                "Using parallel verification for {} packages (max concurrent: {})",
-                packages.len(),
-                self.config.performance.max_concurrent_tasks
-            ),
-            context: HashMap::default(),
-        });
+        // Emit verification started event
+        error_ctx.emit_operation_start(
+            "system",
+            &format!("{:?}", self.config.verification_level),
+            packages.len(),
+            None,
+        );
 
         // Note: verify_packages_parallel handles orphan detection internally
         // when verification level is not Quick
-        self.verify_packages_parallel(&packages, &VerificationScope::Full)
-            .await
+        let result = self
+            .verify_packages_parallel(&packages, &VerificationScope::Full)
+            .await;
+
+        // Emit completion or failure events
+        match &result {
+            Ok(verification_result) => {
+                error_ctx.record_verification_result(verification_result);
+                let coverage_percent = verification_result
+                    .coverage
+                    .as_ref()
+                    .map(|c| c.package_coverage_percent)
+                    .unwrap_or(100.0);
+                error_ctx.emit_operation_completed(0.0, coverage_percent, "system verification");
+                error_ctx.emit_error_summary();
+            }
+            Err(_) => {
+                let _ = self.tx.send(Event::GuardVerificationFailed {
+                    operation_id: error_ctx.operation_id().to_string(),
+                    error: "Verification operation failed".to_string(),
+                    packages_verified: 0,
+                    files_verified: 0,
+                    duration_ms: 0,
+                });
+            }
+        }
+
+        result
     }
 
     /// Verify current state with specific scope without healing
@@ -389,8 +413,6 @@ impl StateVerificationGuard {
         &mut self,
         config: &sps2_config::Config,
     ) -> Result<VerificationResult, Error> {
-        let start_time = Instant::now();
-
         // First, run verification to detect discrepancies
         let mut verification_result = self.verify_only().await?;
 
@@ -399,13 +421,35 @@ impl StateVerificationGuard {
             return Ok(verification_result);
         }
 
+        // Create healing error context
+        let mut healing_ctx_events = GuardErrorContext::for_healing(
+            OperationType::Verify {
+                scope: VerificationScope::Full,
+            },
+            self.tx.clone(),
+            VerbosityLevel::Standard,
+        );
+
         // Emit healing start event
-        let _ = self.tx.send(Event::DebugLog {
-            message: format!(
-                "Starting healing process for {} discrepancies",
-                verification_result.discrepancies.len()
-            ),
-            context: HashMap::default(),
+        let auto_heal_count = verification_result
+            .discrepancies
+            .iter()
+            .filter(|d| d.can_auto_heal())
+            .count();
+        let confirmation_required = verification_result
+            .discrepancies
+            .iter()
+            .filter(|d| d.requires_confirmation())
+            .count();
+        let manual_intervention_count =
+            verification_result.discrepancies.len() - auto_heal_count - confirmation_required;
+
+        let _ = self.tx.send(Event::GuardHealingStarted {
+            operation_id: healing_ctx_events.operation_id().to_string(),
+            discrepancies_count: verification_result.discrepancies.len(),
+            auto_heal_count,
+            confirmation_required_count: confirmation_required,
+            manual_intervention_count,
         });
 
         // Create healing context
@@ -421,18 +465,14 @@ impl StateVerificationGuard {
 
         // Process each discrepancy
         let discrepancies = verification_result.discrepancies.clone();
-        let _ = self.tx.send(Event::DebugLog {
-            message: format!(
-                "Processing {} discrepancies for healing",
-                discrepancies.len()
-            ),
-            context: HashMap::default(),
-        });
-
-        for discrepancy in &discrepancies {
-            let _ = self.tx.send(Event::DebugLog {
-                message: format!("Processing discrepancy: {:?}", discrepancy),
-                context: HashMap::default(),
+        for (idx, discrepancy) in discrepancies.iter().enumerate() {
+            // Emit healing progress
+            let _ = self.tx.send(Event::GuardHealingProgress {
+                operation_id: healing_ctx_events.operation_id().to_string(),
+                completed: idx,
+                total: discrepancies.len(),
+                current_operation: discrepancy.short_description().to_string(),
+                current_file: Some(discrepancy.file_path().to_string()),
             });
 
             match discrepancy {
@@ -451,19 +491,23 @@ impl StateVerificationGuard {
                     {
                         Ok(()) => {
                             healed_count += 1;
-                            let _ = self.tx.send(Event::DebugLog {
-                                message: format!(
-                                    "Restored missing file: {file_path} from {package_name}-{package_version}"
-                                ),
-                                context: HashMap::default(),
-                            });
+                            healing_ctx_events.emit_healing_result(
+                                "MissingFile",
+                                file_path,
+                                true,
+                                "file restored from store",
+                                None,
+                            );
                         }
                         Err(e) => {
                             failed_healings.push(discrepancy.clone());
-                            let _ = self.tx.send(Event::DebugLog {
-                                message: format!("Failed to restore {file_path}: {e}"),
-                                context: HashMap::default(),
-                            });
+                            healing_ctx_events.emit_healing_result(
+                                "MissingFile",
+                                file_path,
+                                false,
+                                "file restoration failed",
+                                Some(e.to_string()),
+                            );
                         }
                     }
                 }
@@ -570,22 +614,32 @@ impl StateVerificationGuard {
         }
 
         // Update verification result with healing results
-        verification_result.discrepancies = failed_healings;
+        verification_result.discrepancies = failed_healings.clone();
         verification_result.is_valid = verification_result.discrepancies.is_empty();
 
-        let duration_ms = u64::try_from(start_time.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let duration_ms = u64::try_from(
+            healing_ctx_events
+                .get_summary_stats()
+                .operation_duration
+                .as_millis(),
+        )
+        .unwrap_or(u64::MAX);
         verification_result.duration_ms = duration_ms;
 
-        // Emit healing complete event
-        let _ = self.tx.send(Event::DebugLog {
-            message: format!(
-                "Healing completed: {} healed, {} failed in {}ms",
-                healed_count,
-                verification_result.discrepancies.len(),
-                duration_ms
-            ),
-            context: HashMap::default(),
+        // Emit healing completion event
+        let _ = self.tx.send(Event::GuardHealingCompleted {
+            operation_id: healing_ctx_events.operation_id().to_string(),
+            healed_count,
+            failed_count: failed_healings.len(),
+            skipped_count: 0,
+            duration_ms,
         });
+
+        // Record healing results in context and emit summary
+        for discrepancy in &failed_healings {
+            healing_ctx_events.record_discrepancy(discrepancy.clone());
+        }
+        healing_ctx_events.emit_error_summary();
 
         Ok(verification_result)
     }
@@ -610,14 +664,35 @@ impl StateVerificationGuard {
             return Ok(verification_result);
         }
 
+        // Create healing error context for events
+        let healing_ctx_events = GuardErrorContext::for_healing(
+            OperationType::Verify {
+                scope: scope.clone(),
+            },
+            self.tx.clone(),
+            VerbosityLevel::Standard,
+        );
+
         // Emit healing start event
-        let _ = self.tx.send(Event::DebugLog {
-            message: format!(
-                "Starting scoped healing process for {} discrepancies (scope: {:?})",
-                verification_result.discrepancies.len(),
-                scope
-            ),
-            context: HashMap::default(),
+        let auto_heal_count = verification_result
+            .discrepancies
+            .iter()
+            .filter(|d| d.can_auto_heal())
+            .count();
+        let confirmation_required = verification_result
+            .discrepancies
+            .iter()
+            .filter(|d| d.requires_confirmation())
+            .count();
+        let manual_intervention_count =
+            verification_result.discrepancies.len() - auto_heal_count - confirmation_required;
+
+        let _ = self.tx.send(Event::GuardHealingStarted {
+            operation_id: healing_ctx_events.operation_id().to_string(),
+            discrepancies_count: verification_result.discrepancies.len(),
+            auto_heal_count,
+            confirmation_required_count: confirmation_required,
+            manual_intervention_count,
         });
 
         // Create healing context
@@ -649,19 +724,23 @@ impl StateVerificationGuard {
                     {
                         Ok(()) => {
                             healed_count += 1;
-                            let _ = self.tx.send(Event::DebugLog {
-                                message: format!(
-                                    "Restored missing file: {file_path} from {package_name}-{package_version}"
-                                ),
-                                context: HashMap::default(),
-                            });
+                            healing_ctx_events.emit_healing_result(
+                                "MissingFile",
+                                file_path,
+                                true,
+                                "file restored from store",
+                                None,
+                            );
                         }
                         Err(e) => {
                             failed_healings.push(discrepancy.clone());
-                            let _ = self.tx.send(Event::DebugLog {
-                                message: format!("Failed to restore {file_path}: {e}"),
-                                context: HashMap::default(),
-                            });
+                            healing_ctx_events.emit_healing_result(
+                                "MissingFile",
+                                file_path,
+                                false,
+                                "file restoration failed",
+                                Some(e.to_string()),
+                            );
                         }
                     }
                 }
