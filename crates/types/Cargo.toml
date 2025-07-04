@@ -11,6 +11,7 @@ repository.workspace = true
 sps2-errors = { path = "../errors" }
 semver = { workspace = true }
 serde = { workspace = true }
+serde_yml = "0.0.12"
 thiserror = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }

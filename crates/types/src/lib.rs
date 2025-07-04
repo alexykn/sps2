@@ -8,6 +8,7 @@
 
 pub mod format;
 pub mod package;
+pub mod recipe;
 pub mod reports;
 pub mod state;
 pub mod version;
@@ -21,6 +22,11 @@ pub use format::{
 pub use package::{
     DepEdge, DepKind, PackageId, PackageInfo, PackageSpec, PackageStatus, PythonPackageMetadata,
     SearchResult,
+};
+pub use recipe::{
+    Build, BuildSystem, Checksum, ChecksumAlgorithm, Dependencies, Environment, FetchSource,
+    GitSource, Install, IsolationLevel, LocalSource, Metadata, ParsedStep, Post, PostOption,
+    Source, SourceMethod, YamlRecipe,
 };
 pub use reports::{BuildReport, InstallReport, PackageChange};
 pub use semver::Version;

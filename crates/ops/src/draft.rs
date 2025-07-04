@@ -49,7 +49,7 @@ pub async fn draft_recipe(
     let output_path = if let Some(path) = output {
         if path.is_dir() {
             path.join(format!(
-                "{}-{}.star",
+                "{}-{}.yaml",
                 draft_result.metadata.name, draft_result.metadata.version
             ))
         } else {
@@ -57,7 +57,7 @@ pub async fn draft_recipe(
         }
     } else {
         let filename = format!(
-            "{}-{}.star",
+            "{}-{}.yaml",
             draft_result.metadata.name, draft_result.metadata.version
         );
         std::env::current_dir()
@@ -85,7 +85,10 @@ pub async fn draft_recipe(
 
     // Send success event
     let _ = ctx.tx.send(sps2_events::Event::OperationCompleted {
-        operation: format!("Recipe successfully written to {}", output_path.display()),
+        operation: format!(
+            "YAML recipe successfully written to {}",
+            output_path.display()
+        ),
         success: true,
     });
 

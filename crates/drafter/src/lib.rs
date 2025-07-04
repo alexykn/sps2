@@ -4,13 +4,13 @@
 //! Recipe drafter for sps2
 //!
 //! This crate provides functionality to analyze source code and generate
-//! Starlark build recipes automatically.
+//! YAML build recipes automatically.
 
 mod archive;
 mod detector;
 mod metadata;
 mod source;
-mod template;
+mod yaml;
 
 pub use source::SourceLocation;
 
@@ -126,7 +126,7 @@ impl Drafter {
         build_info: &BuildInfo,
         _source_dir: &Path,
     ) -> Result<String> {
-        template::render(metadata, build_info, &self.source_location)
+        yaml::generate_yaml_recipe(metadata, build_info, &self.source_location)
     }
 }
 

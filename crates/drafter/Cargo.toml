@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# Template engine
-tera = "1.20.0"
+# YAML serialization
+serde_yml = "0.0.12"
 
 # File system traversal and inspection
 walkdir = "2.5.0"
@@ -27,7 +27,7 @@ git2 = "0.20.2"
 
 # Temporary directories and async operations
 tempfile = "3.20.0"
-tokio = { version = "1.45.1", features = ["full"] }
+tokio = { version = "1.46.0", features = ["full"] }
 
 # Error handling
 thiserror = "2.0.12"
@@ -37,3 +37,4 @@ sps2-net = { path = "../net" }
 sps2-errors = { path = "../errors" }
 sps2-hash = { path = "../hash" }
 sps2-events = { path = "../events" }
+sps2-types = { path = "../types" }

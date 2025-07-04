@@ -9,7 +9,7 @@ license = "MIT"
 [dependencies]
 # Core dependencies
 serde = { version = "1.0.219", features = ["derive"] }
-tokio = { version = "1.45.1", features = ["sync", "time", "macros"] }
+tokio = { version = "1.46.0", features = ["sync", "time", "macros"] }
 uuid = { version = "1.17.0", features = ["v4", "serde"] }
 
 # Internal dependencies 
