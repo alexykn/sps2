@@ -2,7 +2,7 @@
 //! This is a temporary implementation until sqlx prepare is run
 
 use crate::file_models::{
-    DeduplicationResult, FileMetadata, FileObject, FileReference, FileVerificationCache,
+    DeduplicationResult, FileMTimeTracker, FileMetadata, FileObject, FileReference,
     PackageFileEntry,
 };
 use sps2_errors::{Error, StateError};
@@ -264,37 +264,29 @@ pub async fn get_file_entries_by_hash(
         .collect())
 }
 
-/// Update verification cache
+/// Update file modification time tracker
 ///
 /// # Errors
 ///
 /// Returns an error if the database operation fails
-pub async fn update_verification_cache(
+pub async fn update_file_mtime(
     tx: &mut Transaction<'_, Sqlite>,
-    file_hash: &Hash,
-    installed_path: &str,
-    is_valid: bool,
-    error_message: Option<&str>,
+    file_path: &str,
+    verified_mtime: i64,
 ) -> Result<(), Error> {
-    let hash_str = file_hash.to_hex();
-    let now = chrono::Utc::now().timestamp();
-
     query(
         r#"
-        INSERT OR REPLACE INTO file_verification_cache (
-            file_hash, installed_path, verified_at, is_valid, error_message
-        ) VALUES (?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO file_mtime_tracker (
+            file_path, last_verified_mtime
+        ) VALUES (?, ?)
         "#,
     )
-    .bind(&hash_str)
-    .bind(installed_path)
-    .bind(now)
-    .bind(is_valid)
-    .bind(error_message)
+    .bind(file_path)
+    .bind(verified_mtime)
     .execute(&mut **tx)
     .await
     .map_err(|e| StateError::DatabaseError {
-        message: format!("failed to update verification cache: {e}"),
+        message: format!("failed to update file mtime tracker: {e}"),
     })?;
 
     Ok(())
@@ -389,44 +381,34 @@ pub async fn get_package_file_entries_all_states(
         .collect())
 }
 
-/// Get verification cache entry
+/// Get file modification time tracker entry
 ///
 /// # Errors
 ///
 /// Returns an error if the database operation fails
-pub async fn get_verification_cache(
+pub async fn get_file_mtime(
     tx: &mut Transaction<'_, Sqlite>,
-    file_hash: &Hash,
-    installed_path: &str,
-) -> Result<Option<FileVerificationCache>, Error> {
-    let hash_str = file_hash.to_hex();
-
+    file_path: &str,
+) -> Result<Option<FileMTimeTracker>, Error> {
     let row = query(
         r#"
         SELECT 
-            file_hash,
-            installed_path,
-            verified_at,
-            is_valid,
-            error_message
-        FROM file_verification_cache
-        WHERE file_hash = ? AND installed_path = ?
+            file_path,
+            last_verified_mtime
+        FROM file_mtime_tracker
+        WHERE file_path = ?
         "#,
     )
-    .bind(&hash_str)
-    .bind(installed_path)
+    .bind(file_path)
     .fetch_optional(&mut **tx)
     .await
     .map_err(|e| StateError::DatabaseError {
-        message: format!("failed to get verification cache: {e}"),
+        message: format!("failed to get file mtime tracker: {e}"),
     })?;
 
-    Ok(row.map(|r| FileVerificationCache {
-        file_hash: r.get("file_hash"),
-        installed_path: r.get("installed_path"),
-        verified_at: r.get("verified_at"),
-        is_valid: r.get("is_valid"),
-        error_message: r.get("error_message"),
+    Ok(row.map(|r| FileMTimeTracker {
+        file_path: r.get("file_path"),
+        last_verified_mtime: r.get("last_verified_mtime"),
     }))
 }
 
@@ -460,29 +442,26 @@ pub async fn mark_package_file_hashed(
     Ok(())
 }
 
-/// Get all cached verification results for files in a package
+/// Get all mtime trackers for files in a package
 ///
 /// # Errors
 ///
 /// Returns an error if the database operation fails
-pub async fn get_package_file_verification_cache(
+pub async fn get_package_file_mtimes(
     tx: &mut Transaction<'_, Sqlite>,
     package_name: &str,
     package_version: &str,
-) -> Result<Vec<FileVerificationCache>, Error> {
+) -> Result<Vec<FileMTimeTracker>, Error> {
     let rows = query(
         r#"
         SELECT DISTINCT
-            fvc.file_hash,
-            fvc.installed_path,
-            fvc.verified_at,
-            fvc.is_valid,
-            fvc.error_message
-        FROM file_verification_cache fvc
-        JOIN package_file_entries pfe ON pfe.file_hash = fvc.file_hash
+            fmt.file_path,
+            fmt.last_verified_mtime
+        FROM file_mtime_tracker fmt
+        JOIN package_file_entries pfe ON pfe.relative_path = fmt.file_path
         JOIN packages p ON p.id = pfe.package_id
         WHERE p.name = ? AND p.version = ?
-        ORDER BY fvc.installed_path
+        ORDER BY fmt.file_path
         "#,
     )
     .bind(package_name)
@@ -490,76 +469,57 @@ pub async fn get_package_file_verification_cache(
     .fetch_all(&mut **tx)
     .await
     .map_err(|e| StateError::DatabaseError {
-        message: format!("failed to get package verification cache: {e}"),
+        message: format!("failed to get package file mtime trackers: {e}"),
     })?;
 
     Ok(rows
         .into_iter()
-        .map(|r| FileVerificationCache {
-            file_hash: r.get("file_hash"),
-            installed_path: r.get("installed_path"),
-            verified_at: r.get("verified_at"),
-            is_valid: r.get("is_valid"),
-            error_message: r.get("error_message"),
+        .map(|r| FileMTimeTracker {
+            file_path: r.get("file_path"),
+            last_verified_mtime: r.get("last_verified_mtime"),
         })
         .collect())
 }
 
-/// Clear verification cache for a package
+/// Clear mtime trackers for a package
 ///
 /// # Errors
 ///
 /// Returns an error if the database operation fails
-pub async fn clear_package_verification_cache(
+pub async fn clear_package_mtime_trackers(
     tx: &mut Transaction<'_, Sqlite>,
     package_name: &str,
     package_version: &str,
 ) -> Result<u64, Error> {
-    // Clear cache entries for all file hashes associated with this package
-    // across ALL states (not just the current state)
+    // Clear mtime trackers for all files associated with this package
     let result = query(
         r#"
-        DELETE FROM file_verification_cache
-        WHERE file_hash IN (
-            SELECT DISTINCT pfe.file_hash
+        DELETE FROM file_mtime_tracker
+        WHERE file_path IN (
+            SELECT DISTINCT pfe.relative_path
             FROM package_file_entries pfe
             JOIN packages p ON p.id = pfe.package_id
             WHERE p.name = ? AND p.version = ?
-            
-            UNION
-            
-            -- Also get hashes from the cache itself where the path contains files
-            -- that are likely from this package (handles orphaned cache entries)
-            SELECT DISTINCT fvc.file_hash
-            FROM file_verification_cache fvc
-            WHERE fvc.installed_path IN (
-                SELECT DISTINCT '/opt/pm/live/' || pfe2.relative_path
-                FROM package_file_entries pfe2
-                JOIN packages p2 ON p2.id = pfe2.package_id
-                WHERE p2.name = ? AND p2.version = ?
-            )
         )
         "#,
     )
     .bind(package_name)
     .bind(package_version)
-    .bind(package_name)
-    .bind(package_version)
     .execute(&mut **tx)
     .await
     .map_err(|e| StateError::DatabaseError {
-        message: format!("failed to clear package verification cache: {e}"),
+        message: format!("failed to clear package mtime trackers: {e}"),
     })?;
 
     Ok(result.rows_affected())
 }
 
-/// Clear old verification cache entries
+/// Clear old mtime tracker entries
 ///
 /// # Errors
 ///
 /// Returns an error if the database operation fails
-pub async fn clear_old_verification_cache(
+pub async fn clear_old_mtime_trackers(
     tx: &mut Transaction<'_, Sqlite>,
     max_age_seconds: i64,
 ) -> Result<u64, Error> {
@@ -567,15 +527,15 @@ pub async fn clear_old_verification_cache(
 
     let result = query(
         r#"
-        DELETE FROM file_verification_cache
-        WHERE verified_at < ?
+        DELETE FROM file_mtime_tracker
+        WHERE updated_at < ?
         "#,
     )
     .bind(cutoff_time)
     .execute(&mut **tx)
     .await
     .map_err(|e| StateError::DatabaseError {
-        message: format!("failed to clear old verification cache: {e}"),
+        message: format!("failed to clear old mtime trackers: {e}"),
     })?;
 
     Ok(result.rows_affected())

@@ -115,43 +115,11 @@ impl InstalledFile {
     }
 }
 
-/// A file verification cache entry
-#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
-pub struct FileVerificationCache {
-    pub file_hash: String,
-    pub installed_path: String,
-    pub verified_at: i64,
-    pub is_valid: bool,
-    pub error_message: Option<String>,
-}
-
-impl FileVerificationCache {
-    /// Parse the file hash
-    ///
-    /// # Panics
-    ///
-    /// Panics if the stored hash string is not valid.
-    #[must_use]
-    pub fn file_hash(&self) -> Hash {
-        Hash::from_hex(&self.file_hash).expect("valid hash in database")
-    }
-
-    /// Get verification timestamp
-    ///
-    /// # Panics
-    ///
-    /// Panics if the stored timestamp is not valid.
-    #[must_use]
-    pub fn verified_at(&self) -> DateTime<Utc> {
-        DateTime::from_timestamp(self.verified_at, 0).expect("valid timestamp in database")
-    }
-
-    /// Check if the cache entry is still fresh (within TTL)
-    #[must_use]
-    pub fn is_fresh(&self, ttl_seconds: i64) -> bool {
-        let now = Utc::now().timestamp();
-        (now - self.verified_at) < ttl_seconds
-    }
+/// Simple modification time tracker for file verification optimization
+#[derive(Debug, Clone)]
+pub struct FileMTimeTracker {
+    pub file_path: String,
+    pub last_verified_mtime: i64,
 }
 
 /// Summary statistics for file-level storage

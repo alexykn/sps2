@@ -99,7 +99,7 @@ async fn test_package_file_entries() {
 }
 
 #[tokio::test]
-async fn test_file_verification_cache() {
+async fn test_file_mtime_tracker() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
 
@@ -114,19 +114,20 @@ async fn test_file_verification_cache() {
     let mut tx = pool.begin().await.unwrap();
     add_file_object(&mut tx, &hash, &metadata).await.unwrap();
 
-    // Update cache
-    update_verification_cache(&mut tx, &hash, path, true, None)
+    // Update mtime tracker
+    let current_mtime = chrono::Utc::now().timestamp();
+    update_file_mtime(&mut tx, path, current_mtime)
         .await
         .unwrap();
 
-    // Retrieve cache
-    let cache = get_verification_cache(&mut tx, &hash, path).await.unwrap();
+    // Retrieve mtime tracker
+    let tracker = get_file_mtime(&mut tx, path).await.unwrap();
     tx.commit().await.unwrap();
-    assert!(cache.is_some());
+    assert!(tracker.is_some());
 
-    let entry = cache.unwrap();
-    assert!(entry.is_valid);
-    assert!(entry.is_fresh(3600)); // Fresh within 1 hour
+    let entry = tracker.unwrap();
+    assert_eq!(entry.file_path, path);
+    assert_eq!(entry.last_verified_mtime, current_mtime);
 }
 
 #[tokio::test]

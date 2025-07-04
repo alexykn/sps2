@@ -9,7 +9,7 @@ use crate::verification;
 use sps2_errors::Error;
 use sps2_events::{Event, EventSender};
 use sps2_hash::Hash;
-use sps2_state::{queries, FileVerificationCache, PackageFileEntry, StateManager};
+use sps2_state::{queries, PackageFileEntry, StateManager};
 use sps2_store::PackageStore;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
@@ -20,16 +20,16 @@ use uuid;
 struct SinglePackageResult {
     discrepancies: Vec<Discrepancy>,
     tracked_files: HashSet<std::path::PathBuf>,
-    cache_updates: Vec<CacheUpdate>,
+    mtime_updates: Vec<MTimeUpdate>,
+    cache_hits: usize,
+    cache_misses: usize,
 }
 
-/// Cache update to be applied after parallel verification
+/// MTime update to be applied after parallel verification
 #[derive(Debug, Clone)]
-struct CacheUpdate {
-    file_hash: Hash,
+struct MTimeUpdate {
     file_path: String,
-    is_valid: bool,
-    error_message: Option<String>,
+    verified_mtime: i64,
 }
 
 /// Pre-fetched data for a package
@@ -37,7 +37,7 @@ struct CacheUpdate {
 struct PackageData {
     package: sps2_state::Package,
     file_entries: Vec<PackageFileEntry>,
-    cache_entries: HashMap<String, FileVerificationCache>, // hash -> cache entry
+    mtime_trackers: HashMap<String, i64>, // file_path -> last_verified_mtime
 }
 
 /// Verify a single package with pre-fetched data (for parallel verification)
@@ -54,7 +54,9 @@ async fn verify_single_package_with_data(
     let file_entries = &package_data.file_entries;
     let mut discrepancies = Vec::new();
     let mut tracked_files: HashSet<std::path::PathBuf> = HashSet::new();
-    let mut cache_updates = Vec::new();
+    let mut mtime_updates = Vec::new();
+    let mut cache_hits = 0;
+    let mut cache_misses = 0;
 
     // Get package manifest from store
     let package_hash =
@@ -75,7 +77,9 @@ async fn verify_single_package_with_data(
             SinglePackageResult {
                 discrepancies,
                 tracked_files,
-                cache_updates,
+                mtime_updates,
+                cache_hits,
+                cache_misses,
             },
         ));
     }
@@ -128,52 +132,44 @@ async fn verify_single_package_with_data(
                     }
                 })?;
 
-                // Check if we have a valid cache entry
-                let needs_verification =
-                    if let Some(cache_entry) = package_data.cache_entries.get(&entry.file_hash) {
-                        // Get file modification time for cache validation
-                        let file_mtime = metadata
-                            .modified()
-                            .ok()
-                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                            .map(|d| d.as_secs() as i64)
-                            .unwrap_or(0);
+                // MTIME-ONLY OPTIMIZATION: Only verify if file has been modified
+                let needs_verification = {
+                    // Get current file modification time
+                    let file_mtime = metadata
+                        .modified()
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs() as i64)
+                        .unwrap_or(0);
 
-                        let now_timestamp = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .map(|d| d.as_secs() as i64)
-                            .unwrap_or(0);
-                        let cache_age_seconds = now_timestamp - cache_entry.verified_at;
-                        let cache_ttl_seconds = 300; // 5 minutes default
-
-                        // Check if cache is expired or file was modified
-                        let ttl_expired = cache_age_seconds > cache_ttl_seconds;
-                        let file_modified_after_cache = file_mtime > cache_entry.verified_at;
-
-                        if ttl_expired || file_modified_after_cache {
-                            true // Need to re-verify
-                        } else if !cache_entry.is_valid {
-                            // Previous verification failed - report it without re-verifying
-                            discrepancies.push(Discrepancy::CorruptedFile {
-                                package_name: package.name.clone(),
-                                package_version: package.version.clone(),
-                                file_path: clean_path.to_string(),
-                                expected_hash: expected_hash.to_hex(),
-                                actual_hash: cache_entry
-                                    .error_message
-                                    .clone()
-                                    .unwrap_or_else(|| "unknown".to_string()),
-                            });
-                            false // No need to re-verify
+                    // Check if we have a stored mtime for this file
+                    if let Some(&last_verified_mtime) = package_data.mtime_trackers.get(clean_path)
+                    {
+                        if file_mtime > last_verified_mtime {
+                            // File has been modified since last verification
+                            cache_misses += 1;
+                            true
                         } else {
-                            // Cache hit - file was verified recently and hasn't changed
-                            false // No need to re-verify
+                            // File unchanged since last verification - skip
+                            cache_hits += 1;
+                            false
                         }
                     } else {
-                        true // No cache entry - need to verify
-                    };
+                        // No mtime stored - need to verify
+                        cache_misses += 1;
+                        true
+                    }
+                };
 
                 if needs_verification {
+                    // Get current file mtime for tracking
+                    let file_mtime = metadata
+                        .modified()
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs() as i64)
+                        .unwrap_or(0);
+
                     // Calculate actual hash
                     let actual_hash = Hash::hash_file(&full_path).await?;
 
@@ -185,27 +181,13 @@ async fn verify_single_package_with_data(
                             expected_hash: expected_hash.to_hex(),
                             actual_hash: actual_hash.to_hex(),
                         });
-
-                        // Collect cache update
-                        cache_updates.push(CacheUpdate {
-                            file_hash: expected_hash.clone(),
-                            file_path: full_path.to_string_lossy().to_string(),
-                            is_valid: false,
-                            error_message: Some(format!(
-                                "Hash mismatch: expected {}, got {}",
-                                expected_hash.to_hex(),
-                                actual_hash.to_hex()
-                            )),
-                        });
-                    } else {
-                        // File is valid - collect cache update
-                        cache_updates.push(CacheUpdate {
-                            file_hash: expected_hash,
-                            file_path: full_path.to_string_lossy().to_string(),
-                            is_valid: true,
-                            error_message: None,
-                        });
                     }
+
+                    // Always update mtime tracker after verification (success or failure)
+                    mtime_updates.push(MTimeUpdate {
+                        file_path: clean_path.to_string(),
+                        verified_mtime: file_mtime,
+                    });
                 }
             }
         }
@@ -228,7 +210,9 @@ async fn verify_single_package_with_data(
         SinglePackageResult {
             discrepancies,
             tracked_files,
-            cache_updates,
+            mtime_updates,
+            cache_hits,
+            cache_misses,
         },
     ))
 }
@@ -327,7 +311,11 @@ impl StateVerificationGuard {
                     .as_ref()
                     .map(|c| c.package_coverage_percent)
                     .unwrap_or(100.0);
-                error_ctx.emit_operation_completed(0.0, coverage_percent, "system verification");
+                error_ctx.emit_operation_completed(
+                    verification_result.cache_hit_rate,
+                    coverage_percent,
+                    "system verification",
+                );
                 error_ctx.emit_error_summary();
             }
             Err(_) => {
@@ -1026,24 +1014,20 @@ impl StateVerificationGuard {
                 all_file_hashes.insert(entry.file_hash.clone());
             }
 
-            // Get verification cache for this package
-            let cache_entries = queries::get_package_file_verification_cache(
-                &mut db_tx,
-                &package.name,
-                &package.version,
-            )
-            .await?;
+            // Get mtime trackers from database
+            let mtime_tracker_list =
+                queries::get_package_file_mtimes(&mut db_tx, &package.name, &package.version)
+                    .await?;
 
-            // Convert to HashMap for efficient lookup by hash
-            let cache_map: HashMap<String, FileVerificationCache> = cache_entries
+            let mtime_trackers: HashMap<String, i64> = mtime_tracker_list
                 .into_iter()
-                .map(|entry| (entry.file_hash.clone(), entry))
+                .map(|tracker| (tracker.file_path, tracker.last_verified_mtime))
                 .collect();
 
             package_data_list.push(PackageData {
                 package: package.clone(),
                 file_entries,
-                cache_entries: cache_map,
+                mtime_trackers,
             });
         }
 
@@ -1100,8 +1084,10 @@ impl StateVerificationGuard {
         // Collect results from all tasks
         let mut all_discrepancies = Vec::new();
         let mut tracked_files = HashSet::new();
-        let mut all_cache_updates = Vec::new();
+        let mut all_mtime_updates = Vec::new();
         let mut successful_verifications = 0;
+        let mut total_cache_hits = 0;
+        let mut total_cache_misses = 0;
 
         for task in tasks {
             match task.await {
@@ -1110,7 +1096,9 @@ impl StateVerificationGuard {
                     let files_count = package_result.tracked_files.len();
                     all_discrepancies.extend(package_result.discrepancies);
                     tracked_files.extend(package_result.tracked_files);
-                    all_cache_updates.extend(package_result.cache_updates);
+                    all_mtime_updates.extend(package_result.mtime_updates);
+                    total_cache_hits += package_result.cache_hits;
+                    total_cache_misses += package_result.cache_misses;
 
                     let _ = self.tx.send(Event::DebugLog {
                         message: format!(
@@ -1136,25 +1124,28 @@ impl StateVerificationGuard {
             }
         }
 
-        // Apply all cache updates in a single transaction
-        if !all_cache_updates.is_empty() {
+        // Apply all mtime updates in a single transaction
+        if !all_mtime_updates.is_empty() {
             let _ = self.tx.send(Event::DebugLog {
-                message: format!("Applying {} cache updates...", all_cache_updates.len()),
+                message: format!("Applying {} mtime updates...", all_mtime_updates.len()),
                 context: HashMap::default(),
             });
 
+            // Apply mtime updates to database
             let mut db_tx = self.state_manager.begin_transaction().await?;
-            for update in all_cache_updates {
-                queries::update_verification_cache(
-                    &mut db_tx,
-                    &update.file_hash,
-                    &update.file_path,
-                    update.is_valid,
-                    update.error_message.as_deref(),
-                )
-                .await?;
+            for update in &all_mtime_updates {
+                queries::update_file_mtime(&mut db_tx, &update.file_path, update.verified_mtime)
+                    .await?;
             }
             db_tx.commit().await?;
+
+            let _ = self.tx.send(Event::DebugLog {
+                message: format!(
+                    "Applied {} mtime updates to database",
+                    all_mtime_updates.len()
+                ),
+                context: HashMap::default(),
+            });
         }
 
         // Check for orphaned files if not in Quick mode
@@ -1189,20 +1180,29 @@ impl StateVerificationGuard {
             matches!(scope, VerificationScope::Full),
         );
 
+        // Calculate cache hit rate
+        let cache_hit_rate = if total_cache_hits + total_cache_misses > 0 {
+            total_cache_hits as f64 / (total_cache_hits + total_cache_misses) as f64
+        } else {
+            0.0
+        };
+
         // Emit completion event
         let _ = self.tx.send(Event::DebugLog {
             message: format!(
-                "Parallel verification completed: {}/{} packages verified in {}ms with {} discrepancies",
-                successful_verifications, total_packages, duration_ms, all_discrepancies.len()
+                "Parallel verification completed: {}/{} packages verified in {}ms with {} discrepancies (cache: {:.1}% hit rate, {}/{} hits/total)",
+                successful_verifications, total_packages, duration_ms, all_discrepancies.len(),
+                cache_hit_rate * 100.0, total_cache_hits, total_cache_hits + total_cache_misses
             ),
             context: HashMap::default(),
         });
 
-        Ok(VerificationResult::with_coverage(
+        Ok(VerificationResult::with_coverage_and_cache(
             state_id,
             all_discrepancies,
             duration_ms,
             coverage,
+            cache_hit_rate,
         ))
     }
 

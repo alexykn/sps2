@@ -216,14 +216,14 @@ async fn restore_missing_file_impl(
         target_path.display()
     );
 
-    // Clear the verification cache for this package so the healed file is re-verified
+    // Clear the mtime trackers for this package so the healed file is re-verified
     let _ = ctx.tx.send(Event::DebugLog {
-        message: format!("About to clear verification cache for {package_name}-{package_version}"),
+        message: format!("About to clear mtime trackers for {package_name}-{package_version}"),
         context: HashMap::default(),
     });
 
     let mut state_tx = ctx.state_manager.begin_transaction().await?;
-    let cleared = sps2_state::queries::clear_package_verification_cache(
+    let cleared = sps2_state::queries::clear_package_mtime_trackers(
         &mut state_tx,
         package_name,
         package_version,
@@ -233,7 +233,7 @@ async fn restore_missing_file_impl(
 
     let _ = ctx.tx.send(Event::DebugLog {
         message: format!(
-            "Cleared {cleared} verification cache entries for {package_name}-{package_version}"
+            "Cleared {cleared} mtime tracker entries for {package_name}-{package_version}"
         ),
         context: HashMap::default(),
     });
@@ -412,9 +412,9 @@ pub async fn heal_corrupted_file(
             })?;
     }
 
-    // Clear the verification cache for this package so the healed file is re-verified
+    // Clear the mtime trackers for this package so the healed file is re-verified
     let mut state_tx = ctx.state_manager.begin_transaction().await?;
-    let cleared = sps2_state::queries::clear_package_verification_cache(
+    let cleared = sps2_state::queries::clear_package_mtime_trackers(
         &mut state_tx,
         package_name,
         package_version,
@@ -424,7 +424,9 @@ pub async fn heal_corrupted_file(
 
     // Emit success event
     let _ = ctx.tx.send(Event::DebugLog {
-        message: format!("Restored corrupted file: {file_path}, cleared {cleared} cache entries"),
+        message: format!(
+            "Restored corrupted file: {file_path}, cleared {cleared} mtime tracker entries"
+        ),
         context: HashMap::default(),
     });
 

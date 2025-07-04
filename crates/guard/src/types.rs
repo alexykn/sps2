@@ -493,6 +493,8 @@ pub struct VerificationResult {
     pub duration_ms: u64,
     /// Coverage information for scoped verification
     pub coverage: Option<VerificationCoverage>,
+    /// Cache hit rate as a fraction between 0.0 and 1.0
+    pub cache_hit_rate: f64,
 }
 
 impl VerificationResult {
@@ -506,6 +508,7 @@ impl VerificationResult {
             is_valid,
             duration_ms,
             coverage: None,
+            cache_hit_rate: 0.0,
         }
     }
 
@@ -524,6 +527,27 @@ impl VerificationResult {
             is_valid,
             duration_ms,
             coverage: Some(coverage),
+            cache_hit_rate: 0.0,
+        }
+    }
+
+    /// Create a new verification result with coverage information and cache hit rate
+    #[must_use]
+    pub fn with_coverage_and_cache(
+        state_id: Uuid,
+        discrepancies: Vec<Discrepancy>,
+        duration_ms: u64,
+        coverage: VerificationCoverage,
+        cache_hit_rate: f64,
+    ) -> Self {
+        let is_valid = discrepancies.is_empty();
+        Self {
+            state_id,
+            discrepancies,
+            is_valid,
+            duration_ms,
+            coverage: Some(coverage),
+            cache_hit_rate,
         }
     }
 }

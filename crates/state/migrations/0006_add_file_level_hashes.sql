@@ -58,18 +58,27 @@ CREATE INDEX idx_installed_files_package_id ON installed_files(package_id);
 CREATE INDEX idx_installed_files_file_hash ON installed_files(file_hash);
 CREATE INDEX idx_installed_files_path ON installed_files(installed_path);
 
--- Table 4: File verification cache
-CREATE TABLE file_verification_cache (
-    file_hash TEXT NOT NULL,            -- References file_objects(hash)
-    installed_path TEXT NOT NULL,       -- Path that was verified
-    verified_at INTEGER NOT NULL,       -- Unix timestamp of verification
-    is_valid BOOLEAN NOT NULL,          -- Verification result
-    error_message TEXT,                 -- Error details if verification failed
-    PRIMARY KEY (file_hash, installed_path),
-    FOREIGN KEY (file_hash) REFERENCES file_objects(hash) ON DELETE CASCADE
+-- Table 4: File modification time tracking for verification optimization
+CREATE TABLE file_mtime_tracker (
+    file_path TEXT PRIMARY KEY,
+    last_verified_mtime INTEGER NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
-CREATE INDEX idx_file_verification_cache_verified_at ON file_verification_cache(verified_at);
+-- Index for faster lookups
+CREATE INDEX idx_file_mtime_tracker_path ON file_mtime_tracker(file_path);
+CREATE INDEX idx_file_mtime_tracker_mtime ON file_mtime_tracker(last_verified_mtime);
+
+-- Trigger to update the updated_at timestamp
+CREATE TRIGGER update_file_mtime_tracker_updated_at
+    AFTER UPDATE ON file_mtime_tracker
+    FOR EACH ROW
+BEGIN
+    UPDATE file_mtime_tracker
+    SET updated_at = strftime('%s', 'now')
+    WHERE file_path = NEW.file_path;
+END;
 
 -- Modify packages table to support file-level hashing
 ALTER TABLE packages ADD COLUMN computed_hash TEXT;

@@ -33,8 +33,8 @@ pub mod queries {
 mod queries_runtime;
 
 pub use file_models::{
-    DeduplicationResult, FileMetadata, FileObject, FileReference, FileStorageStats,
-    FileVerificationCache, InstalledFile, PackageFileEntry,
+    DeduplicationResult, FileMTimeTracker, FileMetadata, FileObject, FileReference,
+    FileStorageStats, InstalledFile, PackageFileEntry,
 };
 pub use models::{Package, PackageRef, State, StoreRef};
 
