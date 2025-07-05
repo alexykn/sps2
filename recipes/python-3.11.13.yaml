@@ -1,0 +1,39 @@
+metadata:
+  name: python3.11
+  version: "3.11.13"
+  description: "High-level programming language"
+  homepage: "https://www.python.org"
+  license: "PSF-2.0"
+  runtime_deps:
+    - openssl
+    - sqlite
+    - xz
+    - zlib
+    - bzip2
+  build_deps:
+    - pkgconf
+
+environment:
+  defaults: true
+
+source:
+  fetch:
+    url: "https://www.python.org/ftp/python/3.11.13/Python-3.11.13.tar.xz"
+
+build:
+  steps:
+    - shell: |
+        ./configure --prefix=${PREFIX} \
+          --enable-optimizations \
+          --enable-loadable-sqlite-extensions \
+          --with-openssl=${PREFIX} \
+          --with-lto \
+          --enable-ipv6 \
+          --with-system-expat \
+          --with-dbmliborder=ndbm \
+          --without-ensurepip
+        make
+        make install
+
+post:
+  fix_permissions: true
