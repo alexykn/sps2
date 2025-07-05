@@ -28,6 +28,29 @@ pub fn copy_directory_recursive<'a>(
     })
 }
 
+/// Recursively copy directory contents while stripping the opt/pm/live prefix
+pub fn copy_directory_strip_live_prefix<'a>(
+    src: &'a Path,
+    dst: &'a Path,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Error>> + Send + 'a>> {
+    Box::pin(async move {
+        fs::create_dir_all(dst).await?;
+
+        // Look for opt/pm/live subdirectory in the staging directory
+        let live_prefix_path = src.join("opt").join("pm").join("live");
+
+        if live_prefix_path.exists() && live_prefix_path.is_dir() {
+            // Copy contents of opt/pm/live directly to dst, stripping the prefix
+            copy_directory_recursive(&live_prefix_path, dst).await?;
+        } else {
+            // Fallback: copy everything as-is if no opt/pm/live structure found
+            copy_directory_recursive(src, dst).await?;
+        }
+
+        Ok(())
+    })
+}
+
 /// Copy source files from recipe directory to working directory (excluding .star files)
 pub async fn copy_source_files(
     recipe_dir: &Path,

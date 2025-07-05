@@ -1081,16 +1081,7 @@ impl StateManager {
         for (package_id, file_hashes) in transition_data.pending_file_hashes {
             if let Some(&db_package_id) = package_id_map.get(package_id) {
                 for file_hash in file_hashes {
-                    // Strip the opt/pm/live prefix if present
-                    let relative_path = if file_hash.relative_path.starts_with("opt/pm/live/") {
-                        file_hash
-                            .relative_path
-                            .strip_prefix("opt/pm/live/")
-                            .unwrap()
-                            .to_string()
-                    } else {
-                        file_hash.relative_path.clone()
-                    };
+                    let relative_path = file_hash.relative_path.clone();
 
                     let file_ref = crate::FileReference {
                         package_id: db_package_id,

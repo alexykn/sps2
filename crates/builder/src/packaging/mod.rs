@@ -11,7 +11,7 @@ use self::compression::compress_with_zstd;
 use self::sbom::SbomFiles;
 use self::signing::PackageSigner;
 use crate::utils::events::send_event;
-use crate::utils::fileops::copy_directory_recursive;
+use crate::utils::fileops::copy_directory_strip_live_prefix;
 use crate::{BuildConfig, BuildContext, BuildEnvironment};
 use sps2_errors::{BuildError, Error};
 use sps2_events::Event;
@@ -126,10 +126,9 @@ pub async fn create_sp_package(
         },
     );
 
-    // The staging directory already contains the package-name-version/ structure
-    // created by the build system, so just copy it directly
+    // Copy staging directory contents, stripping the opt/pm/live prefix
     if staging_dir.exists() {
-        copy_directory_recursive(staging_dir, &package_temp_dir).await?;
+        copy_directory_strip_live_prefix(staging_dir, &package_temp_dir).await?;
     }
 
     send_event(

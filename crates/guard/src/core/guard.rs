@@ -90,24 +90,16 @@ async fn verify_single_package_with_data(
     // Process all files from pre-fetched file entries to ensure they're all tracked
     for entry in file_entries {
         let file_path = &entry.relative_path;
-        // Strip legacy prefix if present
-        let clean_path = if let Some(stripped) = file_path.strip_prefix("opt/pm/live/") {
-            stripped
-        } else if file_path == "opt" || file_path == "opt/pm" || file_path == "opt/pm/live" {
-            continue;
-        } else {
-            file_path
-        };
 
-        tracked_files.insert(std::path::PathBuf::from(clean_path));
-        let full_path = live_path.join(clean_path);
+        tracked_files.insert(std::path::PathBuf::from(file_path));
+        let full_path = live_path.join(file_path);
 
         // Basic existence check
         if !full_path.exists() {
             discrepancies.push(Discrepancy::MissingFile {
                 package_name: package.name.clone(),
                 package_version: package.version.clone(),
-                file_path: clean_path.to_string(),
+                file_path: file_path.to_string(),
             });
             continue;
         }
@@ -123,7 +115,7 @@ async fn verify_single_package_with_data(
             // Find the file entry for this path
             let file_entry = file_entries
                 .iter()
-                .find(|entry| entry.relative_path == clean_path);
+                .find(|entry| entry.relative_path == *file_path);
 
             if let Some(entry) = file_entry {
                 let expected_hash = Hash::from_hex(&entry.file_hash).map_err(|e| {
@@ -143,8 +135,7 @@ async fn verify_single_package_with_data(
                         .unwrap_or(0);
 
                     // Check if we have a stored mtime for this file
-                    if let Some(&last_verified_mtime) = package_data.mtime_trackers.get(clean_path)
-                    {
+                    if let Some(&last_verified_mtime) = package_data.mtime_trackers.get(file_path) {
                         if file_mtime > last_verified_mtime {
                             // File has been modified since last verification
                             cache_misses += 1;
@@ -177,7 +168,7 @@ async fn verify_single_package_with_data(
                         discrepancies.push(Discrepancy::CorruptedFile {
                             package_name: package.name.clone(),
                             package_version: package.version.clone(),
-                            file_path: clean_path.to_string(),
+                            file_path: file_path.to_string(),
                             expected_hash: expected_hash.to_hex(),
                             actual_hash: actual_hash.to_hex(),
                         });
@@ -185,7 +176,7 @@ async fn verify_single_package_with_data(
 
                     // Always update mtime tracker after verification (success or failure)
                     mtime_updates.push(MTimeUpdate {
-                        file_path: clean_path.to_string(),
+                        file_path: file_path.to_string(),
                         verified_mtime: file_mtime,
                     });
                 }

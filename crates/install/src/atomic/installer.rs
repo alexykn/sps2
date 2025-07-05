@@ -440,84 +440,35 @@ impl AtomicInstaller {
         // Load the stored package
         let stored_package = StoredPackage::load(store_path).await?;
 
-        // Check if this is a file-level package
-        if stored_package.has_file_hashes() {
-            // New file-level package - link from file store
-            if let Some(sender) = &transition.event_sender {
-                let _ = sender.send(Event::DebugLog {
-                    message: format!("Linking file-level package {} to staging", package_id.name),
-                    context: std::collections::HashMap::new(),
-                });
-            }
+        // Link files from store to staging
+        if let Some(sender) = &transition.event_sender {
+            let _ = sender.send(Event::DebugLog {
+                message: format!("Linking package {} to staging", package_id.name),
+                context: std::collections::HashMap::new(),
+            });
+        }
 
-            // Link files from store to staging
-            stored_package.link_to(staging_prefix).await?;
+        stored_package.link_to(staging_prefix).await?;
 
-            // Collect file paths for database tracking AND store file hash info
-            if let Some(file_hashes) = stored_package.file_hashes() {
-                // Store the file hash information for later use when we have package IDs
-                transition
-                    .pending_file_hashes
-                    .push((package_id.clone(), file_hashes.to_vec()));
+        // Collect file paths for database tracking AND store file hash info
+        if let Some(file_hashes) = stored_package.file_hashes() {
+            // Store the file hash information for later use when we have package IDs
+            transition
+                .pending_file_hashes
+                .push((package_id.clone(), file_hashes.to_vec()));
 
-                for file_hash in file_hashes {
-                    // Skip manifest.toml and sbom files - they should not be tracked in package_files
-                    if !file_hash.is_directory
-                        && (file_hash.relative_path == "manifest.toml"
-                            || file_hash.relative_path == "sbom.spdx.json"
-                            || file_hash.relative_path == "sbom.cdx.json")
-                    {
-                        continue;
-                    }
-
-                    // Strip the opt/pm/live prefix for database storage
-                    let relative_path = if file_hash.relative_path.starts_with("opt/pm/live/") {
-                        file_hash
-                            .relative_path
-                            .strip_prefix("opt/pm/live/")
-                            .unwrap()
-                            .to_string()
-                    } else {
-                        file_hash.relative_path.clone()
-                    };
-                    file_paths.push((relative_path, file_hash.is_directory));
+            for file_hash in file_hashes {
+                // Skip manifest.toml and sbom files - they should not be tracked in package_files
+                if !file_hash.is_directory
+                    && (file_hash.relative_path == "manifest.toml"
+                        || file_hash.relative_path == "sbom.spdx.json"
+                        || file_hash.relative_path == "sbom.cdx.json")
+                {
+                    continue;
                 }
-            }
-        } else {
-            // Legacy package - use existing logic
-            let files_path = stored_package.files_path();
 
-            // Check if files directory exists
-            if !files_path.exists() {
-                return Err(InstallError::AtomicOperationFailed {
-                    message: format!(
-                        "Package files directory not found at {}",
-                        files_path.display()
-                    ),
-                }
-                .into());
+                file_paths.push((file_hash.relative_path.clone(), file_hash.is_directory));
             }
-
-            // Debug log
-            if let Some(sender) = &transition.event_sender {
-                let _ = sender.send(Event::DebugLog {
-                    message: format!(
-                        "Linking package {} from {} directly to staging FHS directories",
-                        package_id.name,
-                        files_path.display()
-                    ),
-                    context: std::collections::HashMap::new(),
-                });
-            }
-
-            // Recursively link files directly to their FHS locations in staging
-            self.link_package_files_to_fhs(
-                &files_path,
-                staging_prefix,
-                &files_path,
-                &mut file_paths,
-            )
-            .await?;
         }
 
         // Debug what was linked
@@ -541,115 +492,6 @@ impl AtomicInstaller {
                 file_path,
                 is_directory,
             ));
-        }
-
-        Ok(())
-    }
-
-    /// Link package files directly to FHS locations without creating package directories
-    async fn link_package_files_to_fhs(
-        &self,
-        src_dir: &Path,
-        staging_root: &Path,
-        base_path: &Path,
-        file_paths: &mut Vec<(String, bool)>,
-    ) -> Result<(), Error> {
-        let mut entries = tokio::fs::read_dir(src_dir).await?;
-
-        while let Some(entry) = entries.next_entry().await? {
-            let src_path = entry.path();
-            let file_name = entry.file_name();
-            let metadata = entry.metadata().await?;
-
-            // Skip manifest.toml and sbom files - they should not be tracked in package_files
-            let file_name_str = file_name.to_string_lossy();
-            if !metadata.is_dir()
-                && (file_name_str == "manifest.toml"
-                    || file_name_str == "sbom.spdx.json"
-                    || file_name_str == "sbom.cdx.json")
-            {
-                continue;
-            }
-
-            // Calculate relative path from base for tracking
-            let relative_from_base = src_path
-                .strip_prefix(base_path)
-                .unwrap_or(&src_path)
-                .to_path_buf();
-
-            // Create destination path directly in staging root
-            let dest_path = staging_root.join(&relative_from_base);
-
-            if metadata.is_dir() {
-                // Create directory if it doesn't exist
-                sps2_root::create_dir_all(&dest_path).await?;
-
-                // Track directory
-                let relative_path = dest_path
-                    .strip_prefix(staging_root)
-                    .unwrap_or(&dest_path)
-                    .display()
-                    .to_string();
-                file_paths.push((relative_path, true));
-
-                // Recursively process subdirectory
-                Box::pin(self.link_package_files_to_fhs(
-                    &src_path,
-                    staging_root,
-                    base_path,
-                    file_paths,
-                ))
-                .await?;
-            } else if metadata.is_file() {
-                // Ensure parent directory exists
-                if let Some(parent) = dest_path.parent() {
-                    sps2_root::create_dir_all(parent).await?;
-                }
-
-                // Remove existing file if it exists
-                if dest_path.exists() {
-                    tokio::fs::remove_file(&dest_path).await?;
-                }
-
-                // Create hard link
-                sps2_root::hard_link(&src_path, &dest_path).await?;
-
-                // Track file
-                let relative_path = dest_path
-                    .strip_prefix(staging_root)
-                    .unwrap_or(&dest_path)
-                    .display()
-                    .to_string();
-                file_paths.push((relative_path, false));
-            } else if metadata.is_symlink() {
-                // For symlinks, read the target and create a new symlink
-                let target = tokio::fs::read_link(&src_path).await?;
-
-                // Ensure parent directory exists
-                if let Some(parent) = dest_path.parent() {
-                    sps2_root::create_dir_all(parent).await?;
-                }
-
-                // Remove existing symlink if it exists
-                if dest_path.exists() {
-                    tokio::fs::remove_file(&dest_path).await?;
-                }
-
-                // Create symlink
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::symlink;
-                    symlink(&target, &dest_path)?;
-                }
-
-                // Track symlink
-                let relative_path = dest_path
-                    .strip_prefix(staging_root)
-                    .unwrap_or(&dest_path)
-                    .display()
-                    .to_string();
-                file_paths.push((relative_path, false));
-            }
         }
 
         Ok(())
@@ -878,12 +720,6 @@ impl AtomicInstaller {
 
                     // Add file paths to transition
                     for file_path in file_paths {
-                        // Skip problematic directory entries that shouldn't be tracked
-                        if file_path == "opt" || file_path == "opt/pm" || file_path == "opt/pm/live"
-                        {
-                            continue;
-                        }
-
                         let staging_file = transition.staging_path.join(&file_path);
                         let is_directory = staging_file.is_dir();
                         transition.package_files.push((
@@ -958,13 +794,7 @@ impl AtomicInstaller {
         let mut directories = Vec::new();
 
         for file_path in file_paths {
-            // Strip the opt/pm/live/ prefix if present (for file-level storage compatibility)
-            let stripped_path = if file_path.starts_with("opt/pm/live/") {
-                file_path.strip_prefix("opt/pm/live/").unwrap()
-            } else {
-                &file_path
-            };
-            let staging_file = transition.staging_path.join(stripped_path);
+            let staging_file = transition.staging_path.join(&file_path);
 
             if staging_file.exists() {
                 // Check if it's a symlink
@@ -984,13 +814,7 @@ impl AtomicInstaller {
 
         // 1. Remove symlinks
         for file_path in symlinks {
-            // Strip the opt/pm/live/ prefix if present
-            let stripped_path = if file_path.starts_with("opt/pm/live/") {
-                file_path.strip_prefix("opt/pm/live/").unwrap()
-            } else {
-                &file_path
-            };
-            let staging_file = transition.staging_path.join(stripped_path);
+            let staging_file = transition.staging_path.join(&file_path);
             if staging_file.exists() {
                 tokio::fs::remove_file(&staging_file).await.map_err(|e| {
                     InstallError::FilesystemError {
@@ -1004,13 +828,7 @@ impl AtomicInstaller {
 
         // 2. Remove regular files
         for file_path in regular_files {
-            // Strip the opt/pm/live/ prefix if present
-            let stripped_path = if file_path.starts_with("opt/pm/live/") {
-                file_path.strip_prefix("opt/pm/live/").unwrap()
-            } else {
-                &file_path
-            };
-            let staging_file = transition.staging_path.join(stripped_path);
+            let staging_file = transition.staging_path.join(&file_path);
             if staging_file.exists() {
                 tokio::fs::remove_file(&staging_file).await.map_err(|e| {
                     InstallError::FilesystemError {
@@ -1025,13 +843,7 @@ impl AtomicInstaller {
         // 3. Remove directories in reverse order (deepest first)
         directories.sort_by(|a, b| b.cmp(a)); // Reverse lexicographic order
         for file_path in directories {
-            // Strip the opt/pm/live/ prefix if present
-            let stripped_path = if file_path.starts_with("opt/pm/live/") {
-                file_path.strip_prefix("opt/pm/live/").unwrap()
-            } else {
-                &file_path
-            };
-            let staging_file = transition.staging_path.join(stripped_path);
+            let staging_file = transition.staging_path.join(&file_path);
             if staging_file.exists() {
                 // Try to remove directory if it's empty
                 if let Ok(mut entries) = tokio::fs::read_dir(&staging_file).await {

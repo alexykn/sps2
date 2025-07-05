@@ -163,7 +163,7 @@ impl FileStore {
         // Also fix paths by stripping opt/pm/live/ prefix
         let mut filtered_results = Vec::new();
 
-        for mut result in hash_results {
+        for result in hash_results {
             // Skip manifest and sbom files - they should only exist in package metadata
             if result.relative_path == "manifest.toml"
                 || result.relative_path == "sbom.spdx.json"
@@ -186,11 +186,6 @@ impl FileStore {
                 let original_path = result.relative_path.clone();
                 let file_path = dir_path.join(&original_path);
                 self.store_file(&file_path, &result.hash).await?;
-            }
-
-            // Strip opt/pm/live/ prefix from paths for the result
-            if let Some(stripped) = result.relative_path.strip_prefix("opt/pm/live/") {
-                result.relative_path = stripped.to_string();
             }
 
             filtered_results.push(result);
@@ -218,12 +213,7 @@ impl FileStore {
                 continue;
             }
 
-            // Strip the opt/pm/live/ prefix if present
-            let relative_path = result
-                .relative_path
-                .strip_prefix("opt/pm/live/")
-                .unwrap_or(&result.relative_path);
-            let dest_path = dest_base.join(relative_path);
+            let dest_path = dest_base.join(&result.relative_path);
 
             if result.is_directory {
                 // Create directory
