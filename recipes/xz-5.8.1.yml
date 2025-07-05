@@ -1,0 +1,20 @@
+metadata:
+  name: xz
+  version: "5.8.1"
+  description: "XZ Utils is a free general-purpose data compression software with a high compression ratio."
+  license: "Public-Domain"
+  homepage: "https://tukaani.org/xz/"
+
+environment:
+  defaults: true
+
+source:
+  fetch:
+    url: "https://github.com/tukaani-project/xz/releases/download/v5.8.1/xz-5.8.1.tar.gz"
+
+build:
+  system: autotools
+  args:
+    - "--disable-dependency-tracking"
+    - "--disable-silent-rules"
+    - "--disable-static"

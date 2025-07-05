@@ -1,0 +1,20 @@
+metadata:
+  name: autoconf
+  version: "2.72.0"
+  description: "GNU Autoconf is a tool for producing shell scripts that automatically configure software source code packages."
+  license: "GPL-3.0-or-later"
+  homepage: "https://www.gnu.org/software/autoconf/"
+
+environment:
+  defaults: true
+
+dependencies:
+  build:
+    - m4
+
+source:
+  fetch:
+    url: "https://ftp.gnu.org/gnu/autoconf/autoconf-2.72.tar.gz"
+
+build:
+  system: autotools

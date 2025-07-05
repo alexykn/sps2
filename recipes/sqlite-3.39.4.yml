@@ -1,0 +1,21 @@
+metadata:
+  name: sqlite
+  version: "3.39.4"
+  description: "SQLite is a C-language library that implements a small, fast, self-contained, high-reliability, full-featured, SQL database engine."
+  license: "Public-Domain"
+  homepage: "https://www.sqlite.org/"
+
+environment:
+  defaults: true
+
+source:
+  fetch:
+    url: "https://www.sqlite.org/2022/sqlite-autoconf-3390400.tar.gz"
+
+build:
+  system: autotools
+  args:
+    - "--disable-dependency-tracking"
+    - "--disable-silent-rules"
+    - "--disable-static"
+    - "--enable-fts5"

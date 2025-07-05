@@ -1,0 +1,18 @@
+metadata:
+  name: ninja
+  version: "1.13.0"
+  description: "Ninja is a small build system with a focus on speed."
+  license: "Apache-2.0"
+  homepage: "https://ninja-build.org/"
+
+environment:
+  defaults: true
+
+source:
+  fetch:
+    url: "https://github.com/ninja-build/ninja/archive/refs/tags/v1.13.0.tar.gz"
+
+build:
+  system: cmake
+  args:
+    - "-DCMAKE_BUILD_TYPE=Release"

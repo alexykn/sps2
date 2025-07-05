@@ -1,0 +1,19 @@
+metadata:
+  name: meson
+  version: "1.8.2"
+  description: "Meson is an open source build system meant to be both extremely fast, and, even more importantly, as user friendly as possible."
+  license: "Apache-2.0"
+  homepage: "https://mesonbuild.com/"
+  build_deps:
+    - ninja
+
+environment:
+  defaults: true
+  network: true
+
+source:
+  fetch:
+    url: "https://github.com/mesonbuild/meson/releases/download/1.8.2/meson-1.8.2.tar.gz"
+
+build:
+  system: python

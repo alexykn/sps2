@@ -1,0 +1,20 @@
+metadata:
+  name: automake
+  version: "1.18.0"
+  description: "GNU Automake is a tool for automatically generating Makefile.in files from Makefile.am files."
+  license: "GPL-2.0-or-later"
+  homepage: "https://www.gnu.org/software/automake/"
+
+environment:
+  defaults: true
+
+dependencies:
+  build:
+    - autoconf
+
+source:
+  fetch:
+    url: "https://ftp.gnu.org/gnu/automake/automake-1.18.tar.gz"
+
+build:
+  system: autotools
