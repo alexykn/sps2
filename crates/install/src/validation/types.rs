@@ -10,7 +10,7 @@ pub const MAX_PACKAGE_SIZE: u64 = 500 * 1024 * 1024;
 pub const MAX_EXTRACTED_SIZE: u64 = 1024 * 1024 * 1024;
 
 /// Maximum number of files in a package
-pub const MAX_FILE_COUNT: usize = 10_000;
+pub const MAX_FILE_COUNT: usize = 100_000;
 
 /// Maximum path length to prevent path-based attacks
 pub const MAX_PATH_LENGTH: usize = 4096;

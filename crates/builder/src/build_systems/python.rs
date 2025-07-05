@@ -124,6 +124,10 @@ impl PythonBuildSystem {
     fn get_pip_args(ctx: &BuildSystemContext, user_args: &[String]) -> Vec<String> {
         let mut args = vec!["install".to_string()];
 
+        // Add non-interactive flags to prevent prompting
+        args.push("--no-input".to_string());
+        args.push("--disable-pip-version-check".to_string());
+
         // Add offline mode if network is disabled
         if !ctx.network_allowed {
             args.push("--no-index".to_string());
@@ -137,10 +141,7 @@ impl PythonBuildSystem {
         let prefix_in_staging = staging_dir.join(ctx.env.get_live_prefix().trim_start_matches('/'));
         args.push(prefix_in_staging.display().to_string());
 
-        // Add no-deps to avoid installing dependencies (they should be handled by sps2)
-        if !user_args.contains(&"--no-deps".to_string()) {
-            args.push("--no-deps".to_string());
-        }
+        // Install with dependencies for self-contained packages
 
         // Add user arguments
         args.extend(user_args.iter().cloned());
@@ -774,12 +775,13 @@ impl BuildSystem for PythonBuildSystem {
             .into());
         }
 
-        // Fix shebangs in installed scripts
+        // Fix shebangs to point to the correct packaged Python version
         let staging_dir = ctx.env.staging_dir();
         let prefix_in_staging = staging_dir.join(ctx.env.get_live_prefix().trim_start_matches('/'));
         let scripts_dir = prefix_in_staging.join("bin");
         if scripts_dir.exists() {
-            self.fix_shebangs(&scripts_dir, ctx).await?;
+            self.fix_shebangs(&scripts_dir, &prefix_in_staging, ctx)
+                .await?;
         }
 
         // Remove direct_url.json files which contain hardcoded paths
@@ -829,23 +831,55 @@ impl BuildSystem for PythonBuildSystem {
 }
 
 impl PythonBuildSystem {
+    /// Detect Python version from site-packages directory structure
+    async fn detect_python_version(&self, prefix_in_staging: &Path) -> Result<String, Error> {
+        let lib_dir = prefix_in_staging.join("lib");
+        if !lib_dir.exists() {
+            return Err(BuildError::InstallFailed {
+                message: "No lib directory found in staging".to_string(),
+            }
+            .into());
+        }
+
+        let mut entries = fs::read_dir(&lib_dir).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if path.is_dir() {
+                let dir_name = path.file_name().unwrap().to_string_lossy();
+                if dir_name.starts_with("python3.") {
+                    // Extract version from directory name like "python3.11"
+                    return Ok(dir_name.to_string());
+                }
+            }
+        }
+
+        Err(BuildError::InstallFailed {
+            message: "Could not detect Python version from site-packages directory".to_string(),
+        }
+        .into())
+    }
+
     /// Fix shebangs in Python scripts to use correct Python path
     async fn fix_shebangs(
         &self,
         scripts_dir: &Path,
+        prefix_in_staging: &Path,
         _ctx: &BuildSystemContext,
     ) -> Result<(), Error> {
-        let mut entries = fs::read_dir(scripts_dir).await?;
+        // Detect the Python version used during build
+        let python_version = self.detect_python_version(prefix_in_staging).await?;
+        let target_shebang = format!("#!/opt/pm/live/bin/{}", python_version);
 
+        let mut entries = fs::read_dir(scripts_dir).await?;
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
             if path.is_file() {
                 let content = fs::read_to_string(&path).await?;
                 if content.starts_with("#!") {
-                    // Replace shebang with generic python3
                     let lines: Vec<&str> = content.lines().collect();
                     if !lines.is_empty() && lines[0].contains("python") {
-                        let mut new_content = String::from("#!/usr/bin/env python3\n");
+                        // Replace any Python shebang with our target shebang
+                        let mut new_content = format!("{}\n", target_shebang);
                         new_content.push_str(&lines[1..].join("\n"));
                         fs::write(&path, new_content).await?;
                     }

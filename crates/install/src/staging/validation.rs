@@ -222,21 +222,7 @@ pub async fn validate_directory_structure(path: &Path) -> Result<(), Error> {
         let file_name = entry.file_name();
         let file_name_str = file_name.to_string_lossy();
 
-        // Check for suspicious file names
-        if file_name_str.starts_with('.') && file_name_str != "." && file_name_str != ".." {
-            // Allow common hidden files and macOS metadata files
-            if !matches!(file_name_str.as_ref(), ".gitkeep" | ".gitignore") 
-                && !file_name_str.starts_with("._") // macOS resource forks/metadata
-                && !file_name_str.starts_with(".DS_Store")
-            // macOS finder metadata
-            {
-                return Err(InstallError::InvalidPackageFile {
-                    path: entry_path.display().to_string(),
-                    message: format!("suspicious hidden file: {file_name_str}"),
-                }
-                .into());
-            }
-        }
+        // Hidden files are allowed - modern packages often contain legitimate hidden files
 
         // Check for overly long file names
         if file_name_str.len() > 255 {
