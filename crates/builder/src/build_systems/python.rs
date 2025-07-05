@@ -868,7 +868,7 @@ impl PythonBuildSystem {
     ) -> Result<(), Error> {
         // Detect the Python version used during build
         let python_version = self.detect_python_version(prefix_in_staging).await?;
-        let target_shebang = format!("#!/opt/pm/live/bin/{}", python_version);
+        let target_shebang = format!("#!/opt/pm/live/bin/{python_version}");
 
         let mut entries = fs::read_dir(scripts_dir).await?;
         while let Some(entry) = entries.next_entry().await? {
@@ -879,7 +879,7 @@ impl PythonBuildSystem {
                     let lines: Vec<&str> = content.lines().collect();
                     if !lines.is_empty() && lines[0].contains("python") {
                         // Replace any Python shebang with our target shebang
-                        let mut new_content = format!("{}\n", target_shebang);
+                        let mut new_content = format!("{target_shebang}\n");
                         new_content.push_str(&lines[1..].join("\n"));
                         fs::write(&path, new_content).await?;
                     }
