@@ -1,12 +1,11 @@
 //! Atomic installer implementation using APFS optimizations
 
 use crate::atomic::{rollback, transition::StateTransition};
-use crate::python::{is_python_package, PythonVenvManager};
+// Removed Python venv handling - Python packages are now handled like regular packages
 use crate::{InstallContext, InstallResult, StagingManager};
 use sps2_errors::{Error, InstallError};
 use sps2_events::Event;
 use sps2_hash::Hash;
-use sps2_manifest::Manifest;
 use sps2_resolver::{PackageId, ResolvedNode};
 use sps2_state::{PackageRef, StateManager};
 use sps2_store::{PackageStore, StoredPackage};
@@ -24,8 +23,6 @@ pub struct AtomicInstaller {
     staging_manager: StagingManager,
     /// Live prefix path
     live_path: PathBuf,
-    /// Python virtual environment manager
-    python_venv_manager: PythonVenvManager,
 }
 
 impl AtomicInstaller {
@@ -40,16 +37,11 @@ impl AtomicInstaller {
         let staging_manager = StagingManager::new(store.clone(), staging_base_path).await?;
         let live_path = state_manager.live_path().to_path_buf();
 
-        // Initialize Python venv manager with base path
-        let venvs_base = PathBuf::from("/opt/pm/venvs");
-        let python_venv_manager = PythonVenvManager::new(venvs_base);
-
         Ok(Self {
             state_manager,
             store,
             staging_manager,
             live_path,
-            python_venv_manager,
         })
     }
 
@@ -108,28 +100,15 @@ impl AtomicInstaller {
                 if !is_being_replaced {
                     // Just add the package reference - no need to re-link files
                     let package_id = sps2_resolver::PackageId::new(pkg.name.clone(), pkg.version());
-                    let is_python = pkg.venv_path.is_some();
 
-                    if !is_python {
-                        let package_ref = PackageRef {
-                            state_id: transition.staging_id,
-                            package_id: package_id.clone(),
-                            hash: pkg.hash.clone(),
-                            size: pkg.size,
-                        };
-                        transition.package_refs.push(package_ref);
-                    } else if let Some(venv_path) = &pkg.venv_path {
-                        // For Python packages, add with venv path
-                        let package_ref = PackageRef {
-                            state_id: transition.staging_id,
-                            package_id: package_id.clone(),
-                            hash: pkg.hash.clone(),
-                            size: pkg.size,
-                        };
-                        transition
-                            .package_refs_with_venv
-                            .push((package_ref, venv_path.clone()));
-                    }
+                    // Add package reference (Python packages are now treated like regular packages)
+                    let package_ref = PackageRef {
+                        state_id: transition.staging_id,
+                        package_id: package_id.clone(),
+                        hash: pkg.hash.clone(),
+                        size: pkg.size,
+                    };
+                    transition.package_refs.push(package_ref);
 
                     // Carry forward package file information from parent state
                     // This is needed so the new state knows which files belong to this package
@@ -184,7 +163,6 @@ impl AtomicInstaller {
         // Phase 1: Prepare and commit the database changes
         let transition_data = sps2_state::TransactionData {
             package_refs: &transition.package_refs,
-            package_refs_with_venv: &transition.package_refs_with_venv,
             package_files: &transition.package_files,
             file_references: &transition.file_references,
             pending_file_hashes: &transition.pending_file_hashes,
@@ -259,9 +237,8 @@ impl AtomicInstaller {
                     }
                 };
 
-                // Check if this is a Python package that needs venv setup
+                // Load package for size calculation
                 let stored_package = StoredPackage::load(&store_path).await?;
-                let is_python = is_python_package(stored_package.manifest());
 
                 // Get package size for store ref
                 let size = stored_package.size().await?;
@@ -281,35 +258,17 @@ impl AtomicInstaller {
                     .await?;
 
                 // Link package files to staging
-                self.link_package_to_staging(transition, &store_path, package_id, is_python)
+                self.link_package_to_staging(transition, &store_path, package_id)
                     .await?;
 
-                // For non-Python packages, add the package reference now
-                // Python packages are handled in install_python_package
-                if !is_python {
-                    // Calculate actual installed size
-                    let size = stored_package.size().await?;
-
-                    let package_ref = PackageRef {
-                        state_id: transition.staging_id,
-                        package_id: package_id.clone(),
-                        hash: hash.to_hex(),
-                        size: size as i64,
-                    };
-                    transition.package_refs.push(package_ref);
-                }
-
-                // If it's a Python package, also set up the venv
-                if is_python {
-                    self.install_python_package(
-                        transition,
-                        package_id,
-                        stored_package.manifest(),
-                        &store_path,
-                        Some(&hash),
-                    )
-                    .await?;
-                }
+                // Add the package reference
+                let package_ref = PackageRef {
+                    state_id: transition.staging_id,
+                    package_id: package_id.clone(),
+                    hash: hash.to_hex(),
+                    size: size as i64,
+                };
+                transition.package_refs.push(package_ref);
             }
             sps2_resolver::NodeAction::Local => {
                 if let Some(local_path) = &node.path {
@@ -379,9 +338,6 @@ impl AtomicInstaller {
         // Get the store path where the package was stored
         let store_path = stored_package.path();
 
-        // Check if this is a Python package
-        let is_python = is_python_package(stored_package.manifest());
-
         // Debug log
         if let Some(sender) = &transition.event_sender {
             let _ = sender.send(Event::DebugLog {
@@ -394,31 +350,19 @@ impl AtomicInstaller {
             });
         }
 
-        // Link package files from store to staging (same as downloaded packages)
-        self.link_package_to_staging(transition, store_path, package_id, is_python)
+        // Link package files from store to staging
+        self.link_package_to_staging(transition, store_path, package_id)
             .await?;
 
-        // For non-Python packages, add the package reference now
-        if !is_python {
-            let size = stored_package.size().await?;
-            let package_ref = PackageRef {
-                state_id: transition.staging_id,
-                package_id: package_id.clone(),
-                hash: hash.to_hex(),
-                size: size as i64,
-            };
-            transition.package_refs.push(package_ref);
-        } else {
-            // If it's a Python package, set up the venv
-            self.install_python_package(
-                transition,
-                package_id,
-                stored_package.manifest(),
-                store_path,
-                Some(&hash),
-            )
-            .await?;
-        }
+        // Add the package reference
+        let size = stored_package.size().await?;
+        let package_ref = PackageRef {
+            state_id: transition.staging_id,
+            package_id: package_id.clone(),
+            hash: hash.to_hex(),
+            size: size as i64,
+        };
+        transition.package_refs.push(package_ref);
 
         // Successfully processed - prevent cleanup
         let _staging_dir = staging_guard.take()?;
@@ -432,7 +376,6 @@ impl AtomicInstaller {
         transition: &mut StateTransition,
         store_path: &Path,
         package_id: &PackageId,
-        _is_python: bool,
     ) -> Result<(), Error> {
         let staging_prefix = &transition.staging_path;
         let mut file_paths = Vec::new();
@@ -497,117 +440,7 @@ impl AtomicInstaller {
         Ok(())
     }
 
-    /// Install Python package with virtual environment
-    async fn install_python_package(
-        &self,
-        transition: &mut StateTransition,
-        package_id: &PackageId,
-        manifest: &Manifest,
-        store_path: &Path,
-        package_hash: Option<&Hash>,
-    ) -> Result<(), Error> {
-        let python_metadata = manifest
-            .python
-            .as_ref()
-            .ok_or_else(|| InstallError::Failed {
-                message: format!("Package {} has no Python metadata", package_id.name),
-            })?;
-
-        let event_sender = transition.event_sender.as_ref();
-
-        // Create virtual environment in the venvs directory
-        let venv_path = self
-            .python_venv_manager
-            .create_venv(package_id, python_metadata, event_sender)
-            .await?;
-
-        // Get paths to wheel and requirements files
-        let stored_package = StoredPackage::load(store_path).await?;
-        let files_path = stored_package.files_path();
-        let wheel_path = files_path.join(&python_metadata.wheel_file);
-        let requirements_path = if python_metadata.requirements_file.is_empty() {
-            None
-        } else {
-            Some(files_path.join(&python_metadata.requirements_file))
-        };
-
-        // Install wheel into venv
-        self.python_venv_manager
-            .install_wheel(
-                package_id,
-                &venv_path,
-                &wheel_path,
-                requirements_path.as_deref(),
-                event_sender,
-            )
-            .await?;
-
-        // Create wrapper scripts in staging bin directory
-        let staging_bin_dir = transition.staging_path.join("bin");
-        let created_scripts = self
-            .python_venv_manager
-            .create_wrapper_scripts(
-                package_id,
-                &venv_path,
-                &python_metadata.executables,
-                &staging_bin_dir,
-                event_sender,
-            )
-            .await?;
-
-        // Track the wrapper scripts as package files
-        for script_path in created_scripts {
-            let relative_path = script_path
-                .strip_prefix(&transition.staging_path)
-                .unwrap_or(&script_path);
-            transition.package_files.push((
-                package_id.name.clone(),
-                package_id.version.to_string(),
-                relative_path.display().to_string(),
-                false, // scripts are files, not directories
-            ));
-        }
-
-        // Clone venv to staging for atomic installation
-        let staging_venv_path = transition
-            .staging_path
-            .parent()
-            .unwrap_or(&transition.staging_path)
-            .join("venvs")
-            .join(format!("{}-{}", package_id.name, package_id.version));
-
-        self.python_venv_manager
-            .clone_venv(package_id, &venv_path, &staging_venv_path, event_sender)
-            .await?;
-
-        // Store package reference with venv path to be added during commit
-        // Get the actual venv path that will be used in production
-        let production_venv_path =
-            format!("/opt/pm/venvs/{}-{}", package_id.name, package_id.version);
-
-        // Calculate actual installed size
-        let stored_package = StoredPackage::load(store_path).await?;
-        let size = stored_package.size().await?;
-
-        let package_ref = PackageRef {
-            state_id: transition.staging_id,
-            package_id: package_id.clone(),
-            hash: package_hash
-                .ok_or_else(|| InstallError::AtomicOperationFailed {
-                    message: format!(
-                        "No hash available for Python package {}-{}",
-                        package_id.name, package_id.version
-                    ),
-                })?
-                .to_hex(),
-            size: size as i64,
-        };
-        transition
-            .package_refs_with_venv
-            .push((package_ref, production_venv_path));
-
-        Ok(())
-    }
+    // Removed install_python_package - Python packages are now handled like regular packages
 
     /// Perform atomic uninstallation
     ///
@@ -666,10 +499,7 @@ impl AtomicInstaller {
                     // Remove package files from staging
                     result.add_removed(PackageId::new(pkg.name.clone(), pkg.version()));
 
-                    // Remove venv if it exists
-                    if let Some(venv_path) = &pkg.venv_path {
-                        self.remove_package_venv(&pkg, venv_path, context).await?;
-                    }
+                    // No special cleanup needed - all packages are handled the same way
 
                     // Remove package files from staging
                     self.remove_package_from_staging(&mut transition, &pkg)
@@ -684,28 +514,13 @@ impl AtomicInstaller {
                 } else {
                     // Keep this package - just add the reference, no need to re-link files
                     let package_id = PackageId::new(pkg.name.clone(), pkg.version());
-                    let is_python = pkg.venv_path.is_some();
-
-                    if !is_python {
-                        let package_ref = PackageRef {
-                            state_id: transition.staging_id,
-                            package_id: package_id.clone(),
-                            hash: pkg.hash.clone(),
-                            size: pkg.size,
-                        };
-                        transition.package_refs.push(package_ref);
-                    } else if let Some(venv_path) = &pkg.venv_path {
-                        // For Python packages, add with venv path
-                        let package_ref = PackageRef {
-                            state_id: transition.staging_id,
-                            package_id: package_id.clone(),
-                            hash: pkg.hash.clone(),
-                            size: pkg.size,
-                        };
-                        transition
-                            .package_refs_with_venv
-                            .push((package_ref, venv_path.clone()));
-                    }
+                    let package_ref = PackageRef {
+                        state_id: transition.staging_id,
+                        package_id: package_id.clone(),
+                        hash: pkg.hash.clone(),
+                        size: pkg.size,
+                    };
+                    transition.package_refs.push(package_ref);
 
                     // Carry forward package file information from parent state
                     let mut tx = self.state_manager.begin_transaction().await?;
@@ -743,7 +558,6 @@ impl AtomicInstaller {
         // Phase 1: Prepare and commit the database changes
         let transition_data = sps2_state::TransactionData {
             package_refs: &transition.package_refs,
-            package_refs_with_venv: &transition.package_refs_with_venv,
             package_files: &transition.package_files,
             file_references: &transition.file_references,
             pending_file_hashes: &transition.pending_file_hashes,
@@ -863,41 +677,7 @@ impl AtomicInstaller {
         Ok(())
     }
 
-    /// Remove Python virtual environment for a package
-    async fn remove_package_venv(
-        &self,
-        package: &sps2_state::models::Package,
-        venv_path: &str,
-        context: &crate::UninstallContext,
-    ) -> Result<(), Error> {
-        let venv_path_buf = std::path::Path::new(venv_path);
-
-        // Send event about venv removal
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::PythonVenvRemoving {
-                package: package.name.clone(),
-                version: sps2_types::Version::parse(&package.version)
-                    .unwrap_or_else(|_| sps2_types::Version::new(0, 0, 0)),
-                venv_path: venv_path_buf.display().to_string(),
-            });
-        }
-
-        // Remove the venv directory if it exists
-        if venv_path_buf.exists() {
-            sps2_root::remove_dir_all(venv_path_buf).await?;
-
-            if let Some(sender) = &context.event_sender {
-                let _ = sender.send(Event::PythonVenvRemoved {
-                    package: package.name.clone(),
-                    version: sps2_types::Version::parse(&package.version)
-                        .unwrap_or_else(|_| sps2_types::Version::new(0, 0, 0)),
-                    venv_path: venv_path_buf.display().to_string(),
-                });
-            }
-        }
-
-        Ok(())
-    }
+    // Removed remove_package_venv - Python packages are now handled like regular packages
 
     /// Rollback to a previous state
     ///

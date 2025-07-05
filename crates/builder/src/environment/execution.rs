@@ -7,7 +7,6 @@ use sps2_events::Event;
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Stdio;
-use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
 impl BuildEnvironment {
@@ -48,6 +47,7 @@ impl BuildEnvironment {
         cmd.envs(&build_env_vars);
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
+        cmd.stdin(Stdio::null());
 
         if let Some(dir) = working_dir {
             cmd.current_dir(dir);
@@ -79,49 +79,23 @@ impl BuildEnvironment {
         let stdout = child.stdout.take().unwrap();
         let stderr = child.stderr.take().unwrap();
 
-        let mut stdout_reader = BufReader::new(stdout).lines();
-        let mut stderr_reader = BufReader::new(stderr).lines();
+        let (stdout_lines, stderr_lines) = self
+            .handle_process_output(stdout, stderr, &mut child)
+            .await?;
 
-        let mut stdout_lines = Vec::new();
-        let mut stderr_lines = Vec::new();
-
-        // Read output in real-time and print directly to stdout/stderr
-        loop {
-            tokio::select! {
-                line = stdout_reader.next_line() => {
-                    match line {
-                        Ok(Some(line)) => {
-                            // Send build output via events
-                            Self::send_build_output(&self.context, &line, false);
-                            stdout_lines.push(line);
-                        }
-                        Ok(None) => break,
-                        Err(e) => {
-                            return Err(BuildError::CompileFailed {
-                                message: format!("Failed to read stdout: {e}"),
-                            }.into());
-                        }
-                    }
-                }
-                line = stderr_reader.next_line() => {
-                    match line {
-                        Ok(Some(line)) => {
-                            // Send build errors via events
-                            Self::send_build_output(&self.context, &line, true);
-                            stderr_lines.push(line);
-                        }
-                        Ok(None) => {},
-                        Err(e) => {
-                            return Err(BuildError::CompileFailed {
-                                message: format!("Failed to read stderr: {e}"),
-                            }.into());
-                        }
-                    }
-                }
-            }
-        }
-
-        let status = child.wait().await.map_err(|e| BuildError::CompileFailed {
+        // Add timeout for individual commands (default: 10 minutes)
+        let status = tokio::time::timeout(
+            std::time::Duration::from_secs(600), // 10 minutes timeout
+            child.wait(),
+        )
+        .await
+        .map_err(|_| BuildError::CompileFailed {
+            message: format!(
+                "Command '{program} {}' timed out after 10 minutes",
+                args.join(" ")
+            ),
+        })?
+        .map_err(|e| BuildError::CompileFailed {
             message: format!("Failed to wait for {program}: {e}"),
         })?;
 
@@ -150,7 +124,83 @@ impl BuildEnvironment {
         Ok(result)
     }
 
+    /// Handle process output streams with timeout and real-time event emission
+    async fn handle_process_output(
+        &self,
+        stdout: tokio::process::ChildStdout,
+        stderr: tokio::process::ChildStderr,
+        child: &mut tokio::process::Child,
+    ) -> Result<(Vec<String>, Vec<String>), Error> {
+        use tokio::io::{AsyncBufReadExt, BufReader};
+
+        let mut stdout_reader = BufReader::new(stdout).lines();
+        let mut stderr_reader = BufReader::new(stderr).lines();
+
+        let mut stdout_lines = Vec::new();
+        let mut stderr_lines = Vec::new();
+
+        // Read output in real-time with timeout to prevent deadlock
+        let mut stdout_closed = false;
+        let mut stderr_closed = false;
+
+        while !stdout_closed || !stderr_closed {
+            tokio::select! {
+                line = stdout_reader.next_line(), if !stdout_closed => {
+                    match line {
+                        Ok(Some(line)) => {
+                            // Send build output via events
+                            Self::send_build_output(&self.context, &line, false);
+                            stdout_lines.push(line);
+                        }
+                        Ok(None) => stdout_closed = true,
+                        Err(e) => {
+                            return Err(BuildError::CompileFailed {
+                                message: format!("Failed to read stdout: {e}"),
+                            }.into());
+                        }
+                    }
+                }
+                line = stderr_reader.next_line(), if !stderr_closed => {
+                    match line {
+                        Ok(Some(line)) => {
+                            // Send stderr as normal build output (not error) since many tools output progress to stderr
+                            Self::send_build_output(&self.context, &line, false);
+                            stderr_lines.push(line);
+                        }
+                        Ok(None) => stderr_closed = true,
+                        Err(e) => {
+                            return Err(BuildError::CompileFailed {
+                                message: format!("Failed to read stderr: {e}"),
+                            }.into());
+                        }
+                    }
+                }
+                // Add timeout to prevent hanging on output reading
+                () = tokio::time::sleep(std::time::Duration::from_secs(30)) => {
+                    // Check if child process is still alive
+                    match child.try_wait() {
+                        Ok(Some(_)) => {
+                            // Process finished, break out of loop
+                            break;
+                        }
+                        Ok(None) => {
+                            // Process still running, continue reading
+                        }
+                        Err(e) => {
+                            return Err(BuildError::CompileFailed {
+                                message: format!("Failed to check process status: {e}"),
+                            }.into());
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok((stdout_lines, stderr_lines))
+    }
+
     /// Send build output via events instead of direct printing
+    /// Note: `is_error` should only be true for actual errors, not stderr output
     fn send_build_output(context: &BuildContext, line: &str, is_error: bool) {
         if let Some(sender) = &context.event_sender {
             let _ = sender.send(if is_error {

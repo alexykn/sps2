@@ -39,7 +39,13 @@ pub async fn generate_sbom_and_manifest(
             operation: "Creating package manifest".to_string(),
         },
     );
-    let manifest = create_manifest(context, runtime_deps, &sbom_files, recipe_metadata);
+    let manifest = create_manifest(
+        context,
+        runtime_deps,
+        &sbom_files,
+        recipe_metadata,
+        environment,
+    );
     send_event(
         context,
         Event::OperationCompleted {
@@ -77,6 +83,7 @@ pub fn create_manifest(
     runtime_deps: Vec<String>,
     sbom_files: &SbomFiles,
     recipe_metadata: &RecipeMetadata,
+    environment: &BuildEnvironment,
 ) -> Manifest {
     use sps2_manifest::{CompressionInfo, Dependencies, PackageInfo, SbomInfo};
     use sps2_types::format::CompressionFormatType;
@@ -93,6 +100,13 @@ pub fn create_manifest(
         frame_size: None,
         frame_count: None,
     });
+
+    // Generate Python metadata if this is a Python package
+    let python_metadata = if environment.used_build_systems().contains("python") {
+        Some(create_python_metadata_from_env(environment))
+    } else {
+        None
+    };
 
     Manifest {
         format_version: sps2_types::PackageFormatVersion::CURRENT,
@@ -111,6 +125,32 @@ pub fn create_manifest(
             build: Vec::new(), // Build deps not included in final manifest
         },
         sbom: sbom_info,
-        python: None, // TODO: Add Python metadata support in builder
+        python: python_metadata,
+    }
+}
+
+/// Create Python metadata for builder-centric approach
+fn create_python_metadata_from_env(
+    environment: &BuildEnvironment,
+) -> sps2_types::PythonPackageMetadata {
+    use std::collections::HashMap;
+
+    // Extract metadata from build environment
+    let requires_python = environment
+        .get_extra_env("PYTHON_REQUIRES_VERSION")
+        .unwrap_or_else(|| ">=3.8".to_string());
+
+    let executables = environment
+        .get_extra_env("PYTHON_ENTRY_POINTS")
+        .and_then(|json_str| serde_json::from_str::<HashMap<String, String>>(&json_str).ok())
+        .unwrap_or_default();
+
+    // For builder-centric approach, wheel_file and requirements_file are not used
+    // since the builder has already installed the package to staging
+    sps2_types::PythonPackageMetadata {
+        requires_python,
+        wheel_file: String::new(), // Not used in builder-centric approach
+        requirements_file: String::new(), // Not used in builder-centric approach
+        executables,
     }
 }

@@ -953,8 +953,6 @@ impl StateManager {
 pub struct TransactionData<'a> {
     /// Package references to be added during commit
     pub package_refs: &'a [PackageRef],
-    /// Package references with venv paths to be added during commit
-    pub package_refs_with_venv: &'a [(PackageRef, String)],
     /// Package files to be added during commit (legacy)
     pub package_files: &'a [(String, String, String, bool)], // (package_name, package_version, file_path, is_directory)
     /// File references for file-level storage
@@ -1051,14 +1049,6 @@ impl StateManager {
         // Add all package references to the database
         for package_ref in transition_data.package_refs {
             let package_id = self.add_package_ref_with_tx(&mut tx, package_ref).await?;
-            package_id_map.insert(package_ref.package_id.clone(), package_id);
-        }
-
-        // Add all packages with venv paths to the database
-        for (package_ref, venv_path) in transition_data.package_refs_with_venv {
-            let package_id = self
-                .add_package_ref_with_venv_tx(&mut tx, package_ref, Some(venv_path))
-                .await?;
             package_id_map.insert(package_ref.package_id.clone(), package_id);
         }
 

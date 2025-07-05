@@ -86,40 +86,35 @@ impl PythonBuildSystem {
         let use_uv = self.check_uv_available(ctx).await?;
 
         if use_uv {
-            // Use uv for faster venv creation
+            // Try uv for faster venv creation
             let result = ctx
                 .execute(
                     "uv",
-                    &["venv", &venv_path.display().to_string()],
+                    &["venv", "--seed", &venv_path.display().to_string()],
                     Some(&ctx.source_dir),
                 )
                 .await?;
 
-            if !result.success {
-                return Err(BuildError::ConfigureFailed {
-                    message: format!(
-                        "Failed to create virtual environment with uv: {}",
-                        result.stderr
-                    ),
-                }
-                .into());
+            if result.success {
+                return Ok(venv_path);
             }
-        } else {
-            // Fall back to standard venv
-            let result = ctx
-                .execute(
-                    "python3",
-                    &["-m", "venv", &venv_path.display().to_string()],
-                    Some(&ctx.source_dir),
-                )
-                .await?;
+            // If uv failed, fall back to standard venv
+        }
 
-            if !result.success {
-                return Err(BuildError::ConfigureFailed {
-                    message: format!("Failed to create virtual environment: {}", result.stderr),
-                }
-                .into());
+        // Fall back to standard venv (either uv not available or failed)
+        let result = ctx
+            .execute(
+                "python3",
+                &["-m", "venv", &venv_path.display().to_string()],
+                Some(&ctx.source_dir),
+            )
+            .await?;
+
+        if !result.success {
+            return Err(BuildError::ConfigureFailed {
+                message: format!("Failed to create virtual environment: {}", result.stderr),
             }
+            .into());
         }
 
         Ok(venv_path)
@@ -328,16 +323,54 @@ enum BuildBackend {
 }
 
 impl PythonBuildSystem {
-    /// Generate lockfile for reproducible builds
-    async fn generate_lockfile(
+    /// Generate lockfile with graceful fallback from uv to pip-compile
+    async fn generate_lockfile_with_fallback(
         &self,
         ctx: &BuildSystemContext,
-        use_uv: bool,
     ) -> Result<PathBuf, Error> {
         let lockfile_path = ctx.build_dir.join("requirements.lock.txt");
 
-        if use_uv {
-            // Use uv to generate lockfile
+        // Try uv first if available
+        if self.check_uv_available(ctx).await? {
+            if let Ok(path) = self.generate_lockfile_uv(ctx, &lockfile_path).await {
+                return Ok(path);
+            }
+            // If uv failed, fall through to pip-compile fallback
+        }
+
+        // Fall back to pip-compile
+        self.generate_lockfile_pip_compile(ctx, &lockfile_path)
+            .await
+    }
+
+    /// Generate lockfile using uv
+    async fn generate_lockfile_uv(
+        &self,
+        ctx: &BuildSystemContext,
+        lockfile_path: &std::path::Path,
+    ) -> Result<PathBuf, Error> {
+        // Try pyproject.toml first
+        let result = ctx
+            .execute(
+                "uv",
+                &[
+                    "pip",
+                    "compile",
+                    "--output-file",
+                    &lockfile_path.display().to_string(),
+                    "pyproject.toml",
+                ],
+                Some(&ctx.source_dir),
+            )
+            .await?;
+
+        if result.success {
+            return Ok(lockfile_path.to_path_buf());
+        }
+
+        // Try requirements.txt if pyproject.toml fails
+        let req_txt = ctx.source_dir.join("requirements.txt");
+        if req_txt.exists() {
             let result = ctx
                 .execute(
                     "uv",
@@ -346,90 +379,70 @@ impl PythonBuildSystem {
                         "compile",
                         "--output-file",
                         &lockfile_path.display().to_string(),
-                        "pyproject.toml",
+                        "requirements.txt",
                     ],
                     Some(&ctx.source_dir),
                 )
                 .await?;
 
-            if !result.success {
-                // Try requirements.txt if pyproject.toml fails
-                let req_txt = ctx.source_dir.join("requirements.txt");
-                if req_txt.exists() {
-                    let result = ctx
-                        .execute(
-                            "uv",
-                            &[
-                                "pip",
-                                "compile",
-                                "--output-file",
-                                &lockfile_path.display().to_string(),
-                                "requirements.txt",
-                            ],
-                            Some(&ctx.source_dir),
-                        )
-                        .await?;
-
-                    if !result.success {
-                        return Err(BuildError::CompilationFailed {
-                            message: format!(
-                                "Failed to generate lockfile with uv: {}",
-                                result.stderr
-                            ),
-                        }
-                        .into());
-                    }
-                } else {
-                    return Err(BuildError::CompilationFailed {
-                        message: format!("Failed to generate lockfile with uv: {}", result.stderr),
-                    }
-                    .into());
-                }
-            }
-        } else {
-            // Fall back to pip-compile if available
-            let venv_path = if let Ok(extra_env) = ctx.extra_env.read() {
-                extra_env
-                    .get("PYTHON_VENV_PATH")
-                    .map_or_else(|| ctx.build_dir.join("venv"), PathBuf::from)
-            } else {
-                ctx.build_dir.join("venv")
-            };
-
-            let pip_path = venv_path.join("bin/pip");
-
-            // Install pip-tools
-            let _ = ctx
-                .execute(
-                    &pip_path.display().to_string(),
-                    &["install", "pip-tools"],
-                    Some(&ctx.source_dir),
-                )
-                .await?;
-
-            // Use pip-compile
-            let pip_compile = venv_path.join("bin/pip-compile");
-            let result = ctx
-                .execute(
-                    &pip_compile.display().to_string(),
-                    &[
-                        "--output-file",
-                        &lockfile_path.display().to_string(),
-                        "pyproject.toml",
-                    ],
-                    Some(&ctx.source_dir),
-                )
-                .await?;
-
-            if !result.success {
-                return Err(BuildError::CompilationFailed {
-                    message: format!("Failed to generate lockfile: {}", result.stderr),
-                }
-                .into());
+            if result.success {
+                return Ok(lockfile_path.to_path_buf());
             }
         }
 
-        Ok(lockfile_path)
+        Err(BuildError::CompilationFailed {
+            message: "Failed to generate lockfile with uv".to_string(),
+        }
+        .into())
+    }
+
+    /// Generate lockfile using pip-compile
+    async fn generate_lockfile_pip_compile(
+        &self,
+        ctx: &BuildSystemContext,
+        lockfile_path: &std::path::Path,
+    ) -> Result<PathBuf, Error> {
+        let venv_path = if let Ok(extra_env) = ctx.extra_env.read() {
+            extra_env
+                .get("PYTHON_VENV_PATH")
+                .map_or_else(|| ctx.build_dir.join("venv"), std::path::PathBuf::from)
+        } else {
+            ctx.build_dir.join("venv")
+        };
+
+        let pip_path = venv_path.join("bin/pip");
+
+        // Install pip-tools
+        let _ = ctx
+            .execute(
+                &pip_path.display().to_string(),
+                &["install", "pip-tools"],
+                Some(&ctx.source_dir),
+            )
+            .await?;
+
+        // Use pip-compile
+        let pip_compile = venv_path.join("bin/pip-compile");
+        let result = ctx
+            .execute(
+                &pip_compile.display().to_string(),
+                &[
+                    "--output-file",
+                    &lockfile_path.display().to_string(),
+                    "pyproject.toml",
+                ],
+                Some(&ctx.source_dir),
+            )
+            .await?;
+
+        if !result.success {
+            return Err(BuildError::CompilationFailed {
+                message: format!("Failed to generate lockfile: {}", result.stderr),
+            }
+            .into());
+        }
+
+        Ok(lockfile_path.to_path_buf())
     }
 
     /// Extract entry points from wheel
@@ -605,18 +618,21 @@ impl BuildSystem for PythonBuildSystem {
     }
 
     async fn build(&self, ctx: &BuildSystemContext, _args: &[String]) -> Result<(), Error> {
-        // Check if uv is available
-        let use_uv = self.check_uv_available(ctx).await?;
-
-        // Build wheel
-        let wheel_path = if use_uv {
-            self.build_wheel_uv(ctx).await?
+        // Try uv first if available, with graceful fallback to PEP 517
+        let wheel_path = if self.check_uv_available(ctx).await? {
+            match self.build_wheel_uv(ctx).await {
+                Ok(path) => path,
+                Err(_) => {
+                    // If uv build failed, fall back to PEP 517
+                    self.build_wheel_pep517(ctx).await?
+                }
+            }
         } else {
             self.build_wheel_pep517(ctx).await?
         };
 
-        // Generate lockfile
-        let lockfile_path = self.generate_lockfile(ctx, use_uv).await?;
+        // Generate lockfile with graceful fallback
+        let lockfile_path = self.generate_lockfile_with_fallback(ctx).await?;
 
         // Extract entry points from wheel
         let entry_points = Self::extract_entry_points(&wheel_path)?;

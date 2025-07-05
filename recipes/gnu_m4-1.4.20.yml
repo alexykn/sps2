@@ -7,7 +7,6 @@ metadata:
 
 environment:
   defaults: true
-  isolation: none
 
 source:
   fetch:

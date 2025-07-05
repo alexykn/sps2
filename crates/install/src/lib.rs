@@ -60,7 +60,8 @@ pub use parallel::{ExecutionContext, ParallelExecutor};
 pub use pipeline::batch::{BatchResult, BatchStats};
 pub use pipeline::config::PipelineConfig;
 pub use pipeline::PipelineMaster;
-pub use python::{is_python_package, PythonVenvManager};
+// Note: Python package handling has been moved to builder-centric approach
+// The installer now treats Python packages like regular file packages
 pub use staging::{StagingDirectory, StagingGuard, StagingManager};
 pub use validation::{
     validate_sp_file, validate_tar_archive_content, PackageFormat, ValidationResult,

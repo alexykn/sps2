@@ -123,7 +123,7 @@ pub async fn heal_missing_venv(
 
     // Step 5: Create new venv using the PythonVenvManager
     let venvs_base = PathBuf::from("/opt/pm/venvs");
-    let venv_manager = sps2_install::PythonVenvManager::new(venvs_base);
+    let venv_manager = sps2_install::python::PythonVenvManager::new(venvs_base);
 
     let package_id = sps2_install::python::PackageId::new(
         package_name.to_string(),
