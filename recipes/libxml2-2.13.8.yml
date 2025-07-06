@@ -32,4 +32,4 @@ build:
 
 post:
   fix_permissions: true
-  patch_rpaths: absolute
+  patch_rpaths: default
