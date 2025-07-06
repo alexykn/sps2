@@ -20,6 +20,7 @@ pub enum ValidatorAction {
     HardcodedScanner(scanners::hardcoded::HardcodedScanner),
     MachOScanner(scanners::macho::MachOScanner),
     ArchiveScanner(scanners::archive::ArchiveScanner),
+    StagingScanner(scanners::staging::StagingScanner),
 }
 
 /// Enum for all patchers
@@ -42,6 +43,7 @@ impl ValidatorAction {
             Self::HardcodedScanner(_) => scanners::hardcoded::HardcodedScanner::NAME,
             Self::MachOScanner(_) => scanners::macho::MachOScanner::NAME,
             Self::ArchiveScanner(_) => scanners::archive::ArchiveScanner::NAME,
+            Self::StagingScanner(_) => scanners::staging::StagingScanner::NAME,
         }
     }
 
@@ -58,6 +60,9 @@ impl ValidatorAction {
             Self::MachOScanner(_) => scanners::macho::MachOScanner::run(ctx, env, findings).await,
             Self::ArchiveScanner(_) => {
                 scanners::archive::ArchiveScanner::run(ctx, env, findings).await
+            }
+            Self::StagingScanner(_) => {
+                scanners::staging::StagingScanner::run(ctx, env, findings).await
             }
         }
     }
@@ -131,19 +136,46 @@ impl PatcherAction {
 /// - Failed to apply patches during the patching phase
 /// - I/O errors occur during file analysis
 /// - The final validation phase fails (V2 phase)
-pub async fn run_quality_pipeline(ctx: &BuildContext, env: &BuildEnvironment) -> Result<(), Error> {
-    // Determine which pipeline to use based on build systems
+///
+/// # Panics
+///
+/// This function will panic if `qa_override` results in a profile selection that returns `None`
+/// from `determine_profile_with_override` but is not the `Skip` variant (this should not happen
+/// in normal operation).
+pub async fn run_quality_pipeline(
+    ctx: &BuildContext,
+    env: &BuildEnvironment,
+    qa_override: Option<sps2_types::QaPipelineOverride>,
+) -> Result<(), Error> {
+    // Determine which pipeline to use based on build systems and override
     let used_build_systems = env.used_build_systems();
-    let profile = router::determine_profile(used_build_systems);
+    let profile_opt = router::determine_profile_with_override(used_build_systems, qa_override);
+
+    // Check if QA is skipped entirely
+    if profile_opt.is_none() {
+        send_event(
+            ctx,
+            Event::DebugLog {
+                message: "Skipping artifact QA pipeline entirely due to qa_pipeline: skip override"
+                    .to_string(),
+                context: std::collections::HashMap::new(),
+            },
+        );
+        return Ok(());
+    }
+
+    let profile = profile_opt.unwrap();
 
     // Log which pipeline we're using
+    let override_info = qa_override.map_or("auto".to_string(), |o| format!("{o:?}").to_lowercase());
     send_event(
         ctx,
         Event::DebugLog {
             message: format!(
-                "Using {} for build systems: {:?}",
+                "Using {} for build systems: {:?} (override: {})",
                 router::get_pipeline_name(profile),
-                used_build_systems
+                used_build_systems,
+                override_info
             ),
             context: std::collections::HashMap::new(),
         },

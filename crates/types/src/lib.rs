@@ -25,14 +25,16 @@ pub use package::{
 };
 pub use recipe::{
     Build, BuildSystem, Checksum, ChecksumAlgorithm, Dependencies, Environment, FetchSource,
-    GitSource, Install, IsolationLevel, LocalSource, Metadata, ParsedStep, Post, PostOption,
-    Source, SourceMethod, YamlRecipe,
+    GitSource, Install, IsolationLevel, LocalSource, Metadata, NamedSource, ParsedStep, Post,
+    PostOption, Source, SourceMethod, YamlRecipe,
 };
 pub use reports::{BuildReport, InstallReport, PackageChange};
 pub use semver::Version;
 pub use state::{ChangeType, OpChange, StateId, StateInfo, StateTransition};
 pub use uuid::Uuid;
 pub use version::{VersionConstraint, VersionSpec};
+
+// QA pipeline override is defined below in this module
 
 use serde::{Deserialize, Serialize};
 
@@ -86,6 +88,56 @@ pub enum BuildSystemProfile {
     /// Script-based systems (Python, Node.js) - light validation
     /// Focus on permissions and text file patching only
     ScriptLight,
+}
+
+/// QA pipeline override for manual recipe control
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QaPipelineOverride {
+    /// Use automatic detection based on build systems used
+    Auto,
+    /// Force Rust minimal pipeline (skip binary patching)
+    Rust,
+    /// Force C/C++ full pipeline (comprehensive validation and patching)
+    C,
+    /// Force Go medium pipeline (limited patching)
+    Go,
+    /// Force Python/script light pipeline (text file patching only)
+    Python,
+    /// Skip artifact QA entirely (dangerous, use only for special cases)
+    Skip,
+}
+
+impl Default for QaPipelineOverride {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
+impl QaPipelineOverride {
+    /// Convert override to build system profile
+    #[must_use]
+    pub fn to_profile(self) -> Option<BuildSystemProfile> {
+        match self {
+            Self::Auto | Self::Skip => None, // Auto: use detection, Skip: skip QA entirely
+            Self::Rust => Some(BuildSystemProfile::RustMinimal),
+            Self::C => Some(BuildSystemProfile::NativeFull),
+            Self::Go => Some(BuildSystemProfile::GoMedium),
+            Self::Python => Some(BuildSystemProfile::ScriptLight),
+        }
+    }
+
+    /// Check if this override skips QA entirely
+    #[must_use]
+    pub fn skips_qa(self) -> bool {
+        matches!(self, Self::Skip)
+    }
+
+    /// Check if this is the default value (for serde `skip_serializing_if`)
+    #[must_use]
+    pub fn is_default(&self) -> bool {
+        matches!(self, Self::Auto)
+    }
 }
 
 impl BuildSystemProfile {

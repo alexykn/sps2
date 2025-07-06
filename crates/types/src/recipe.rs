@@ -199,13 +199,29 @@ impl Environment {
 /// Source acquisition stage
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Source {
-    /// Source method
+    /// Source method (single source for backward compatibility)
     #[serde(flatten)]
-    pub method: SourceMethod,
+    pub method: Option<SourceMethod>,
+
+    /// Multiple sources (new multi-source support)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sources: Vec<NamedSource>,
 
     /// Patches to apply after extraction
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub patches: Vec<String>,
+}
+
+/// Named source with optional extract location
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NamedSource {
+    /// Source method
+    #[serde(flatten)]
+    pub method: SourceMethod,
+
+    /// Where to extract relative to build directory (optional)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extract_to: Option<String>,
 }
 
 /// Source acquisition methods
@@ -231,6 +247,9 @@ pub struct FetchSource {
     pub url: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checksum: Option<Checksum>,
+    /// Where to extract relative to build directory (optional)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extract_to: Option<String>,
 }
 
 /// Checksum specification
@@ -311,6 +330,10 @@ pub struct Post {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fix_permissions: Option<PostOption>,
 
+    /// QA pipeline override (auto, rust, c, go, python, skip)
+    #[serde(default, skip_serializing_if = "crate::QaPipelineOverride::is_default")]
+    pub qa_pipeline: crate::QaPipelineOverride,
+
     /// Custom post-processing commands
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commands: Vec<String>,
@@ -320,7 +343,10 @@ impl Post {
     /// Check if post-processing is empty
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.patch_rpaths.is_none() && self.fix_permissions.is_none() && self.commands.is_empty()
+        self.patch_rpaths.is_none()
+            && self.fix_permissions.is_none()
+            && self.qa_pipeline == crate::QaPipelineOverride::Auto
+            && self.commands.is_empty()
     }
 }
 

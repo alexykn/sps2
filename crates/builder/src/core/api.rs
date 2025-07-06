@@ -114,8 +114,7 @@ impl BuilderApi {
         self.downloads
             .insert(url.to_string(), download_path.clone());
 
-        // Automatically extract the downloaded archive
-        self.extract_single_download(&download_path).await?;
+        // Note: Extraction is handled separately by extract_downloads_to() method
 
         Ok(download_path)
     }
@@ -771,7 +770,19 @@ impl BuilderApi {
     /// Returns an error if any archive extraction fails.
     pub async fn extract_downloads(&self) -> Result<(), Error> {
         for path in self.downloads.values() {
-            self.extract_single_download(path).await?;
+            self.extract_single_download(path, None).await?;
+        }
+        Ok(())
+    }
+
+    /// Extract downloaded archives to a specific subdirectory
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any archive extraction fails.
+    pub async fn extract_downloads_to(&self, extract_to: Option<&str>) -> Result<(), Error> {
+        for path in self.downloads.values() {
+            self.extract_single_download(path, extract_to).await?;
         }
         Ok(())
     }
@@ -781,23 +792,45 @@ impl BuilderApi {
     /// # Errors
     ///
     /// Returns an error if archive extraction fails.
-    async fn extract_single_download(&self, path: &Path) -> Result<(), Error> {
+    pub async fn extract_single_download(
+        &self,
+        path: &Path,
+        extract_to: Option<&str>,
+    ) -> Result<(), Error> {
         if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
             match ext {
                 "gz" | "tgz" => {
-                    self.extract_tar_gz(path).await?;
+                    self.extract_tar_gz(path, extract_to).await?;
                 }
                 "bz2" => {
-                    self.extract_tar_bz2(path).await?;
+                    self.extract_tar_bz2(path, extract_to).await?;
                 }
                 "xz" => {
-                    self.extract_tar_xz(path).await?;
+                    self.extract_tar_xz(path, extract_to).await?;
                 }
                 "zip" => {
-                    self.extract_zip(path).await?;
+                    self.extract_zip(path, extract_to).await?;
                 }
                 _ => {
                     // Unknown format, skip extraction
+                }
+            }
+        } else {
+            // For files without extensions (like GitHub API downloads), check magic numbers
+            let file_bytes = tokio::fs::read(path).await.unwrap_or_default();
+            if file_bytes.len() >= 4 {
+                let magic = &file_bytes[0..4];
+                // Check for gzip magic number (1f 8b)
+                if magic[0] == 0x1f && magic[1] == 0x8b {
+                    self.extract_tar_gz(path, extract_to).await?;
+                }
+                // Check for ZIP magic number (50 4b)
+                else if magic[0] == 0x50 && magic[1] == 0x4b {
+                    self.extract_zip(path, extract_to).await?;
+                }
+                // Check for bzip2 magic number (42 5a)
+                else if magic[0] == 0x42 && magic[1] == 0x5a {
+                    self.extract_tar_bz2(path, extract_to).await?;
                 }
             }
         }
@@ -809,8 +842,8 @@ impl BuilderApi {
     /// # Errors
     ///
     /// Returns an error if extraction fails.
-    async fn extract_tar_gz(&self, path: &Path) -> Result<(), Error> {
-        self.extract_compressed_tar(path, CompressionType::Gzip)
+    async fn extract_tar_gz(&self, path: &Path, extract_to: Option<&str>) -> Result<(), Error> {
+        self.extract_compressed_tar(path, CompressionType::Gzip, extract_to)
             .await
     }
 
@@ -819,8 +852,8 @@ impl BuilderApi {
     /// # Errors
     ///
     /// Returns an error if extraction fails.
-    async fn extract_tar_bz2(&self, path: &Path) -> Result<(), Error> {
-        self.extract_compressed_tar(path, CompressionType::Bzip2)
+    async fn extract_tar_bz2(&self, path: &Path, extract_to: Option<&str>) -> Result<(), Error> {
+        self.extract_compressed_tar(path, CompressionType::Bzip2, extract_to)
             .await
     }
 
@@ -829,8 +862,9 @@ impl BuilderApi {
     /// # Errors
     ///
     /// Returns an error if extraction fails.
-    async fn extract_tar_xz(&self, path: &Path) -> Result<(), Error> {
-        self.extract_compressed_tar(path, CompressionType::Xz).await
+    async fn extract_tar_xz(&self, path: &Path, extract_to: Option<&str>) -> Result<(), Error> {
+        self.extract_compressed_tar(path, CompressionType::Xz, extract_to)
+            .await
     }
 
     /// Extract zip archive
@@ -838,8 +872,17 @@ impl BuilderApi {
     /// # Errors
     ///
     /// Returns an error if extraction fails.
-    async fn extract_zip(&self, path: &Path) -> Result<(), Error> {
-        let working_dir = self.working_dir.clone();
+    async fn extract_zip(&self, path: &Path, extract_to: Option<&str>) -> Result<(), Error> {
+        let base_dir = if let Some(extract_to) = extract_to {
+            // For multi-source builds, extract_to should be relative to the parent of working_dir
+            if let Some(parent) = self.working_dir.parent() {
+                parent.join(extract_to)
+            } else {
+                self.working_dir.join(extract_to)
+            }
+        } else {
+            self.working_dir.clone()
+        };
         let path_buf = path.to_path_buf();
         tokio::task::spawn_blocking(move || {
             use std::fs::File;
@@ -868,10 +911,10 @@ impl BuilderApi {
                         // Strip components if needed
                         let components: Vec<_> = path.components().collect();
                         if strip_components > 0 && components.len() > strip_components {
-                            working_dir
+                            base_dir
                                 .join(components[strip_components..].iter().collect::<PathBuf>())
                         } else if strip_components == 0 {
-                            working_dir.join(path)
+                            base_dir.join(path)
                         } else {
                             continue; // Skip files at the stripped level
                         }
@@ -930,16 +973,16 @@ impl BuilderApi {
         &self,
         path: &Path,
         compression: CompressionType,
+        extract_to: Option<&str>,
     ) -> Result<(), Error> {
         use async_compression::tokio::bufread::{BzDecoder, GzipDecoder, XzDecoder};
         use tokio::io::{AsyncWriteExt, BufReader};
 
         // Create a temporary file to decompress to
-        let temp_file =
-            tempfile::NamedTempFile::new().map_err(|e| BuildError::ExtractionFailed {
-                message: format!("Failed to create temp file: {e}"),
-            })?;
-        let temp_path = temp_file.path().to_path_buf();
+        let temp_dir = tempfile::tempdir().map_err(|e| BuildError::ExtractionFailed {
+            message: format!("Failed to create temp directory: {e}"),
+        })?;
+        let temp_path = temp_dir.path().join("archive.tar");
 
         // Decompress the archive
         {
@@ -957,10 +1000,9 @@ impl BuilderApi {
                     .map_err(|e| BuildError::ExtractionFailed {
                         message: format!("Failed to create temp file: {e}"),
                     })?;
-
             let reader = BufReader::new(input_file);
 
-            // Use specific decoders instead of trait objects to avoid Send issues
+            // Use specific decoders based on compression type
             match compression {
                 CompressionType::Gzip => {
                     let mut decoder = GzipDecoder::new(reader);
@@ -996,9 +1038,33 @@ impl BuilderApi {
                 })?;
         }
 
-        // Extract the decompressed tar file
-        let working_dir = self.working_dir.clone();
-        let temp_path_for_task = temp_path.clone();
+        // Extract the decompressed tar file (keep temp_dir alive)
+        let result = self.extract_tar_from_temp(&temp_path, extract_to).await;
+
+        // temp_dir will be automatically cleaned up when it goes out of scope
+        drop(temp_dir);
+
+        result
+    }
+
+    /// Extract tar archive from temporary file
+    async fn extract_tar_from_temp(
+        &self,
+        temp_path: &Path,
+        extract_to: Option<&str>,
+    ) -> Result<(), Error> {
+        let base_dir = if let Some(extract_to) = extract_to {
+            // For multi-source builds, extract_to should be relative to the parent of working_dir
+            if let Some(parent) = self.working_dir.parent() {
+                parent.join(extract_to)
+            } else {
+                self.working_dir.join(extract_to)
+            }
+        } else {
+            self.working_dir.clone()
+        };
+
+        let temp_path_for_task = temp_path.to_path_buf();
         tokio::task::spawn_blocking(move || {
             use std::fs::File;
             use tar::Archive;
@@ -1022,7 +1088,7 @@ impl BuilderApi {
 
                 // Create new path without first component
                 let new_path = components[1..].iter().collect::<PathBuf>();
-                let dest_path = working_dir.join(&new_path);
+                let dest_path = base_dir.join(&new_path);
 
                 // Ensure parent directory exists
                 if let Some(parent) = dest_path.parent() {

@@ -303,12 +303,9 @@ impl EventHandler {
                     EventSeverity::Info,
                 );
             }
-            Event::BuildStepOutput {
-                package: _,
-                line: _,
-            } => {
-                // Build output is now printed directly to stdout/stderr
-                // This event is kept for compatibility but not displayed
+            Event::BuildStepOutput { package: _, line } => {
+                // Display build output directly
+                println!("{}", line);
             }
             Event::BuildStepCompleted { package, step } => {
                 self.show_operation_message(

@@ -194,7 +194,12 @@ impl SecurityContext {
         };
 
         // Normalize the path (resolve .., ., etc)
-        super::path_resolver::normalize_path(&absolute, &self.resolved_paths, &self.build_root)
+        super::path_resolver::normalize_path(
+            &absolute,
+            &self.resolved_paths,
+            &self.build_root,
+            &self.current_dir,
+        )
     }
 
     /// Apply command side effects to context
@@ -226,8 +231,12 @@ impl SecurityContext {
     /// Check if a path is within the build root
     pub(crate) fn is_within_build_root(&self, path: &Path) -> Result<bool, Error> {
         // Normalize both paths for comparison
-        let normalized_path =
-            super::path_resolver::normalize_path(path, &self.resolved_paths, &self.build_root)?;
+        let normalized_path = super::path_resolver::normalize_path(
+            path,
+            &self.resolved_paths,
+            &self.build_root,
+            &self.current_dir,
+        )?;
 
         // Check if path starts with build root
         Ok(normalized_path.starts_with(&self.build_root))
@@ -276,6 +285,11 @@ impl SecurityContext {
     #[allow(dead_code)]
     pub fn build_root(&self) -> &Path {
         &self.build_root
+    }
+
+    /// Update the current working directory
+    pub fn set_current_dir(&mut self, new_dir: PathBuf) {
+        self.current_dir = new_dir;
     }
 }
 

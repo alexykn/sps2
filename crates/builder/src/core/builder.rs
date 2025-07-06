@@ -95,12 +95,12 @@ impl Builder {
         let mut environment = self.setup_build_environment(&context).await?;
 
         // Execute recipe and setup dependencies
-        let (runtime_deps, recipe_metadata, install_requested) = self
+        let (runtime_deps, recipe_metadata, install_requested, qa_pipeline) = self
             .execute_recipe_and_setup_deps(&context, &mut environment)
             .await?;
 
         // Run quality checks
-        run_quality_pipeline(&context, &environment).await?;
+        run_quality_pipeline(&context, &environment, Some(qa_pipeline)).await?;
 
         // If fix_permissions was requested in the recipe, run it now as final step
         if let Some(paths) = &environment.fix_permissions_request {
@@ -220,7 +220,15 @@ impl Builder {
         &self,
         context: &BuildContext,
         environment: &mut BuildEnvironment,
-    ) -> Result<(Vec<String>, crate::yaml::RecipeMetadata, bool), Error> {
+    ) -> Result<
+        (
+            Vec<String>,
+            crate::yaml::RecipeMetadata,
+            bool,
+            sps2_types::QaPipelineOverride,
+        ),
+        Error,
+    > {
         // Parse YAML recipe for metadata
         let yaml_recipe = crate::recipe::parser::parse_yaml_recipe(&context.recipe_path).await?;
         let recipe_metadata = crate::yaml::RecipeMetadata {
@@ -266,13 +274,18 @@ impl Builder {
         let build_config = self.config.clone();
 
         // Now execute the recipe with build dependencies already set up
-        let (runtime_deps, _build_deps, _metadata, install_requested) =
+        let (runtime_deps, _build_deps, _metadata, install_requested, qa_pipeline) =
             execute_recipe(&build_config, context, environment).await?;
 
         // Note: YAML recipes using staged execution have isolation already applied
         // during the environment configuration stage in staged_executor.rs.
 
-        Ok((runtime_deps, recipe_metadata, install_requested))
+        Ok((
+            runtime_deps,
+            recipe_metadata,
+            install_requested,
+            qa_pipeline,
+        ))
     }
 
     /// Cleanup build environment and finalize

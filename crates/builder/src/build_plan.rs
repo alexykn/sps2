@@ -35,6 +35,9 @@ pub struct BuildPlan {
     /// Post-processing operations
     pub post_steps: Vec<PostStep>,
 
+    /// QA pipeline override
+    pub qa_pipeline: sps2_types::QaPipelineOverride,
+
     /// Whether to automatically install after build
     pub auto_install: bool,
 }
@@ -94,6 +97,7 @@ impl BuildPlan {
             source_steps: stage_steps.source,
             build_steps: stage_steps.build,
             post_steps: stage_steps.post,
+            qa_pipeline: recipe.post.qa_pipeline,
             auto_install: recipe.install.auto,
         })
     }
@@ -120,49 +124,19 @@ impl BuildPlan {
         recipe: &YamlRecipe,
         recipe_path: &Path,
     ) -> Result<Vec<SourceStep>, Error> {
-        use crate::recipe::model::{ChecksumAlgorithm, SourceMethod};
-
         let mut source_steps = Vec::new();
 
         // Source acquisition
-        match &recipe.source.method {
-            SourceMethod::Git { git } => {
-                source_steps.push(SourceStep::Git {
-                    url: git.url.clone(),
-                    ref_: git.git_ref.clone(),
-                });
-            }
-            SourceMethod::Fetch { fetch } => match &fetch.checksum {
-                Some(checksum) => match &checksum.algorithm {
-                    ChecksumAlgorithm::Blake3 { blake3 } => {
-                        source_steps.push(SourceStep::FetchBlake3 {
-                            url: fetch.url.clone(),
-                            blake3: blake3.clone(),
-                        });
-                    }
-                    ChecksumAlgorithm::Sha256 { sha256 } => {
-                        source_steps.push(SourceStep::FetchSha256 {
-                            url: fetch.url.clone(),
-                            sha256: sha256.clone(),
-                        });
-                    }
-                    ChecksumAlgorithm::Md5 { md5 } => {
-                        source_steps.push(SourceStep::FetchMd5 {
-                            url: fetch.url.clone(),
-                            md5: md5.clone(),
-                        });
-                    }
-                },
-                None => {
-                    source_steps.push(SourceStep::Fetch {
-                        url: fetch.url.clone(),
-                    });
-                }
-            },
-            SourceMethod::Local { local } => {
-                source_steps.push(SourceStep::Copy {
-                    src_path: Some(local.path.clone()),
-                });
+        if let Some(method) = &recipe.source.method {
+            Self::add_source_method_steps(&mut source_steps, method, None);
+        } else {
+            // Handle multi-source case
+            for named_source in &recipe.source.sources {
+                Self::add_source_method_steps(
+                    &mut source_steps,
+                    &named_source.method,
+                    named_source.extract_to.clone(),
+                );
             }
         }
 
@@ -180,6 +154,62 @@ impl BuildPlan {
         }
 
         Ok(source_steps)
+    }
+
+    /// Add source method steps to the steps vector
+    fn add_source_method_steps(
+        source_steps: &mut Vec<SourceStep>,
+        method: &crate::recipe::model::SourceMethod,
+        extract_to: Option<String>,
+    ) {
+        use crate::recipe::model::{ChecksumAlgorithm, SourceMethod};
+        match method {
+            SourceMethod::Git { git } => {
+                source_steps.push(SourceStep::Git {
+                    url: git.url.clone(),
+                    ref_: git.git_ref.clone(),
+                });
+            }
+            SourceMethod::Fetch { fetch } => {
+                let extract_to = extract_to.or_else(|| fetch.extract_to.clone());
+                match &fetch.checksum {
+                    Some(checksum) => match &checksum.algorithm {
+                        ChecksumAlgorithm::Blake3 { blake3 } => {
+                            source_steps.push(SourceStep::FetchBlake3 {
+                                url: fetch.url.clone(),
+                                blake3: blake3.clone(),
+                                extract_to,
+                            });
+                        }
+                        ChecksumAlgorithm::Sha256 { sha256 } => {
+                            source_steps.push(SourceStep::FetchSha256 {
+                                url: fetch.url.clone(),
+                                sha256: sha256.clone(),
+                                extract_to,
+                            });
+                        }
+                        ChecksumAlgorithm::Md5 { md5 } => {
+                            source_steps.push(SourceStep::FetchMd5 {
+                                url: fetch.url.clone(),
+                                md5: md5.clone(),
+                                extract_to,
+                            });
+                        }
+                    },
+                    None => {
+                        source_steps.push(SourceStep::Fetch {
+                            url: fetch.url.clone(),
+                            extract_to,
+                        });
+                    }
+                }
+            }
+            SourceMethod::Local { local } => {
+                source_steps.push(SourceStep::Copy {
+                    src_path: Some(local.path.clone()),
+                });
+            }
+        }
     }
 
     /// Extract build steps from recipe

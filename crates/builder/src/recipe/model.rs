@@ -99,13 +99,29 @@ impl Default for Environment {
 /// Source acquisition stage
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Source {
-    /// Git source
+    /// Source method (single source for backward compatibility)
     #[serde(flatten)]
-    pub method: SourceMethod,
+    pub method: Option<SourceMethod>,
+
+    /// Multiple sources (new multi-source support)
+    #[serde(default)]
+    pub sources: Vec<NamedSource>,
 
     /// Patches to apply after extraction
     #[serde(default)]
     pub patches: Vec<String>,
+}
+
+/// Named source with optional extract location
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NamedSource {
+    /// Source method
+    #[serde(flatten)]
+    pub method: SourceMethod,
+
+    /// Where to extract relative to build directory (optional)
+    #[serde(default)]
+    pub extract_to: Option<String>,
 }
 
 /// Source acquisition methods
@@ -131,6 +147,9 @@ pub struct FetchSource {
     pub url: String,
     #[serde(default)]
     pub checksum: Option<Checksum>,
+    /// Where to extract relative to build directory (optional)
+    #[serde(default)]
+    pub extract_to: Option<String>,
 }
 
 /// Checksum specification
@@ -210,6 +229,10 @@ pub struct Post {
     /// Fix executable permissions
     #[serde(default)]
     pub fix_permissions: PostOption,
+
+    /// QA pipeline override (auto, rust, c, go, python, skip)
+    #[serde(default)]
+    pub qa_pipeline: sps2_types::QaPipelineOverride,
 
     /// Custom post-processing commands
     #[serde(default)]

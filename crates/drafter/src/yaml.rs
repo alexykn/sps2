@@ -103,6 +103,7 @@ fn convert_source(source: &SourceLocation) -> Source {
             fetch: FetchSource {
                 url: url.clone(),
                 checksum: None, // TODO: Add checksum support
+                extract_to: None,
             },
         },
         SourceLocation::Local(path) | SourceLocation::Archive(path) => SourceMethod::Local {
@@ -113,7 +114,8 @@ fn convert_source(source: &SourceLocation) -> Source {
     };
 
     Source {
-        method,
+        method: Some(method),
+        sources: Vec::new(), // Empty for single source (backward compatibility)
         patches: Vec::new(), // TODO: Add patch support
     }
 }
@@ -193,6 +195,7 @@ fn convert_post(build_info: &BuildInfo) -> Post {
         } else {
             None
         },
-        commands: Vec::new(), // No custom post commands for now
+        qa_pipeline: sps2_types::QaPipelineOverride::Auto, // Use auto-detection
+        commands: Vec::new(),                              // No custom post commands for now
     }
 }

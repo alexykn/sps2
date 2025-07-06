@@ -391,6 +391,14 @@ post:
                           # absolute: convert to absolute paths (homebrew-style)
                           # skip: disable rpath patching entirely
   
+  # Override automatic QA pipeline selection (advanced users)
+  qa_pipeline: auto        # auto: automatic detection based on build system
+                          # rust: minimal validation for Rust binaries
+                          # c: full validation for C/C++ binaries  
+                          # go: medium validation for Go binaries
+                          # python: light validation for Python packages
+                          # skip: disable artifact QA entirely (dangerous!)
+  
   # Fix executable permissions (rarely needed)
   fix_permissions: true    # true/false to fix all executables
   # OR specify paths:
@@ -410,8 +418,18 @@ post:
   - `default` (or omit): Modern @rpath style - recommended for most packages
   - `absolute`: Use when binaries fail with "dylib not found" errors or tools don't understand @rpath
   - `skip`: Use for packages that manage their own rpaths or don't have dynamic libraries
+
+- **qa_pipeline**: Override automatic build system detection
+  - `auto` (or omit): Automatic detection based on build commands used
+  - `rust`: For Rust packages built with custom shell scripts instead of cargo
+  - `c`: Force full C/C++ validation pipeline for non-standard builds
+  - `go`: For Go packages built with custom commands
+  - `python`: For Python packages built with custom commands  
+  - `skip`: **Only for debugging** - disables all validation and patching
+
 - **fix_permissions**: Only needed when installed binaries lack execute permissions (some packages like GCC)
-- The default behavior (when `post:` is omitted) applies modern rpath patching automatically
+
+- The default behavior (when `post:` is omitted) applies modern rpath patching and automatic QA pipeline selection
 
 ## Installation Section
 
@@ -473,6 +491,37 @@ source:
 build:
   system: cargo
   args: ["--release"]
+```
+
+### Rust with Custom Build (requires qa_pipeline override)
+```yaml
+metadata:
+  name: rust
+  version: "1.88.0"
+  description: "Rust compiler and toolchain"
+  license: "MIT"
+
+source:
+  sources:
+    - fetch:
+        url: "https://static.rust-lang.org/dist/rustc-1.88.0-src.tar.gz"
+        extract_to: "src"
+    - fetch:
+        url: "https://static.rust-lang.org/dist/rust-1.87.0-aarch64-apple-darwin.tar.gz"
+        extract_to: "bootstrap"
+
+build:
+  steps:
+    - shell: |
+        cd ../bootstrap && ./install.sh --prefix=/tmp/rust-bootstrap
+        cd ../src && echo '[build]' > config.toml
+        echo 'rustc = "/tmp/rust-bootstrap/bin/rustc"' >> config.toml
+        python3 x.py build --config config.toml
+        python3 x.py install --config config.toml
+
+post:
+  qa_pipeline: rust    # Override: shell commands look like C/C++, but this is Rust
+  patch_rpaths: skip   # Rust manages its own library paths
 ```
 
 ### Python Package
@@ -608,6 +657,13 @@ post:
 
 **Permission denied when running installed programs**
 - Add `post.fix_permissions: [bin/]`
+
+**Rust/Go binaries panic or behave strangely after building**
+- Add `post.qa_pipeline: rust` (or `go`) if you used shell commands instead of the proper build system
+- The automatic detection may have applied C/C++ binary patching that breaks language-specific runtimes
+
+**Want to see which QA pipeline is being used**
+- Run with `sps2 build --debug` and look for "Using [pipeline] for build systems" messages
 
 **Need to see what's happening**
 - Run with `RUST_LOG=debug sps2 build recipe.yaml`

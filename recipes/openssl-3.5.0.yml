@@ -21,4 +21,4 @@ build:
         - "shared"
         - "zlib-dynamic"
     - make: []
-    - make: ["install"]
+    - make: ["install", "DESTDIR=${DESTDIR}"]

@@ -6,6 +6,37 @@ use crate::utils::events::send_event;
 use crate::{BuildCommandResult, BuildContext, BuildEnvironment, BuilderApi};
 use sps2_errors::Error;
 use sps2_events::Event;
+use std::path::Path;
+
+/// Check if a file is an archive that should be extracted
+fn is_archive(path: &Path) -> bool {
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        matches!(ext, "gz" | "tgz" | "bz2" | "xz" | "zip")
+    } else {
+        // For files without extensions (like GitHub API downloads), check the file content
+        use std::fs::File;
+        use std::io::Read;
+
+        if let Ok(mut file) = File::open(path) {
+            let mut magic = [0u8; 4];
+            if file.read_exact(&mut magic).is_ok() {
+                // Check for gzip magic number (1f 8b)
+                if magic[0] == 0x1f && magic[1] == 0x8b {
+                    return true;
+                }
+                // Check for ZIP magic number (50 4b)
+                if magic[0] == 0x50 && magic[1] == 0x4b {
+                    return true;
+                }
+                // Check for bzip2 magic number (42 5a)
+                if magic[0] == 0x42 && magic[1] == 0x5a {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+}
 
 /// Execute a source step
 pub async fn execute_source_step(
@@ -17,20 +48,52 @@ pub async fn execute_source_step(
         SourceStep::Cleanup => {
             cleanup_directories(api, environment).await?;
         }
-        SourceStep::Fetch { url } => {
-            api.fetch(url).await?;
+        SourceStep::Fetch { url, extract_to } => {
+            let download_path = api.fetch(url).await?;
+            // Extract immediately after download
+            if is_archive(&download_path) {
+                api.extract_single_download(&download_path, extract_to.as_deref())
+                    .await?;
+            }
         }
-        SourceStep::FetchMd5 { url, md5 } => {
-            api.fetch_md5(url, md5).await?;
+        SourceStep::FetchMd5 {
+            url,
+            md5,
+            extract_to,
+        } => {
+            let download_path = api.fetch_md5(url, md5).await?;
+            // Extract immediately after download and verification
+            if is_archive(&download_path) {
+                api.extract_single_download(&download_path, extract_to.as_deref())
+                    .await?;
+            }
         }
-        SourceStep::FetchSha256 { url, sha256 } => {
-            api.fetch_sha256(url, sha256).await?;
+        SourceStep::FetchSha256 {
+            url,
+            sha256,
+            extract_to,
+        } => {
+            let download_path = api.fetch_sha256(url, sha256).await?;
+            // Extract immediately after download and verification
+            if is_archive(&download_path) {
+                api.extract_single_download(&download_path, extract_to.as_deref())
+                    .await?;
+            }
         }
-        SourceStep::FetchBlake3 { url, blake3 } => {
-            api.fetch_blake3(url, blake3).await?;
+        SourceStep::FetchBlake3 {
+            url,
+            blake3,
+            extract_to,
+        } => {
+            let download_path = api.fetch_blake3(url, blake3).await?;
+            // Extract immediately after download and verification
+            if is_archive(&download_path) {
+                api.extract_single_download(&download_path, extract_to.as_deref())
+                    .await?;
+            }
         }
-        SourceStep::Extract => {
-            api.extract_downloads().await?;
+        SourceStep::Extract { extract_to } => {
+            api.extract_downloads_to(extract_to.as_deref()).await?;
         }
         SourceStep::Git { url, ref_ } => {
             api.git(url, ref_).await?;

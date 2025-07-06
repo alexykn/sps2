@@ -9,16 +9,24 @@ pub fn normalize_path(
     path: &Path,
     cache: &HashMap<PathBuf, PathBuf>,
     build_root: &Path,
+    current_dir: &Path,
 ) -> Result<PathBuf, Error> {
     // Check cache first
     if let Some(cached) = cache.get(path) {
         return Ok(cached.clone());
     }
 
+    // If the path is relative, join it with the current directory
+    let absolute_path = if path.is_relative() {
+        current_dir.join(path)
+    } else {
+        path.to_path_buf()
+    };
+
     let mut normalized = PathBuf::new();
     let mut depth = 0;
 
-    for component in path.components() {
+    for component in absolute_path.components() {
         match component {
             Component::Prefix(_) | Component::RootDir => {
                 normalized.push(component);
@@ -31,10 +39,7 @@ pub fn normalize_path(
                 if depth > 0 {
                     normalized.pop();
                     depth -= 1;
-                } else if normalized.as_os_str().is_empty() {
-                    // Relative path going up from current dir
-                    normalized.push("..");
-                } else {
+                } else if !normalized.as_os_str().is_empty() {
                     // Trying to go above root
                     return Err(BuildError::PathTraversalAttempt {
                         path: path.display().to_string(),
@@ -191,14 +196,25 @@ mod tests {
     fn test_normalize_simple_paths() {
         let cache = HashMap::new();
         let build_root = Path::new("/opt/pm/build/test");
+        let current_dir = Path::new("/opt/pm/build/test/src");
 
         // Simple absolute path
-        let result = normalize_path(Path::new("/opt/pm/build/test/src"), &cache, build_root);
+        let result = normalize_path(
+            Path::new("/opt/pm/build/test/src"),
+            &cache,
+            build_root,
+            current_dir,
+        );
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), PathBuf::from("/opt/pm/build/test/src"));
 
         // Path with .
-        let result = normalize_path(Path::new("/opt/pm/build/test/./src"), &cache, build_root);
+        let result = normalize_path(
+            Path::new("/opt/pm/build/test/./src"),
+            &cache,
+            build_root,
+            current_dir,
+        );
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), PathBuf::from("/opt/pm/build/test/src"));
 
@@ -207,6 +223,7 @@ mod tests {
             Path::new("/opt/pm/build/test/src/../lib"),
             &cache,
             build_root,
+            current_dir,
         );
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), PathBuf::from("/opt/pm/build/test/lib"));
@@ -216,9 +233,15 @@ mod tests {
     fn test_path_traversal_detection() {
         let cache = HashMap::new();
         let build_root = Path::new("/opt/pm/build/test");
+        let current_dir = Path::new("/opt/pm/build/test/src");
 
         // Relative path with too many .. components
-        let result = normalize_path(Path::new("../../../../etc/passwd"), &cache, build_root);
+        let result = normalize_path(
+            Path::new("../../../../etc/passwd"),
+            &cache,
+            build_root,
+            current_dir,
+        );
         assert!(result.is_err());
     }
 

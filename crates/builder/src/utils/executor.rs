@@ -26,6 +26,7 @@ pub async fn execute_staged_build(
         Vec<sps2_types::package::PackageSpec>,
         RecipeMetadata,
         bool,
+        sps2_types::QaPipelineOverride,
     ),
     Error,
 > {
@@ -102,6 +103,7 @@ pub async fn execute_staged_build(
         build_deps,
         build_plan.metadata,
         build_plan.auto_install,
+        build_plan.qa_pipeline,
     ))
 }
 
@@ -281,6 +283,9 @@ async fn execute_build_stage_with_security(
     // Get working directory
     let working_dir = environment.build_prefix().join("src");
 
+    // Update security context to reflect the actual working directory
+    security_context.set_current_dir(working_dir.clone());
+
     // Create builder API
     let mut api = BuilderApi::new(working_dir)?;
     // Use network setting from YAML recipe's environment config
@@ -338,6 +343,9 @@ async fn execute_post_stage_with_security(
 
     // Get working directory
     let working_dir = environment.build_prefix().join("src");
+
+    // Update security context to reflect the actual working directory
+    security_context.set_current_dir(working_dir.clone());
 
     // Create builder API
     let mut api = BuilderApi::new(working_dir)?;

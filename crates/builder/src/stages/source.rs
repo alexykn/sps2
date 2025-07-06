@@ -9,19 +9,34 @@ pub enum SourceStep {
     Cleanup,
 
     /// Fetch file from URL
-    Fetch { url: String },
+    Fetch {
+        url: String,
+        extract_to: Option<String>,
+    },
 
     /// Fetch with MD5 verification
-    FetchMd5 { url: String, md5: String },
+    FetchMd5 {
+        url: String,
+        md5: String,
+        extract_to: Option<String>,
+    },
 
     /// Fetch with SHA256 verification
-    FetchSha256 { url: String, sha256: String },
+    FetchSha256 {
+        url: String,
+        sha256: String,
+        extract_to: Option<String>,
+    },
 
     /// Fetch with BLAKE3 verification
-    FetchBlake3 { url: String, blake3: String },
+    FetchBlake3 {
+        url: String,
+        blake3: String,
+        extract_to: Option<String>,
+    },
 
     /// Extract downloaded archives
-    Extract,
+    Extract { extract_to: Option<String> },
 
     /// Clone from git
     Git { url: String, ref_: String },

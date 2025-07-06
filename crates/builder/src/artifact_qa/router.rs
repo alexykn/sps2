@@ -12,10 +12,30 @@ use crate::artifact_qa::patchers::{
 };
 use crate::artifact_qa::scanners::{
     archive::ArchiveScanner, hardcoded::HardcodedScanner, macho::MachOScanner,
+    staging::StagingScanner,
 };
 use sps2_types::{BuildSystemProfile, RpathStyle};
 use std::collections::HashSet;
 use std::hash::BuildHasher;
+
+/// Determine the build system profile with optional manual override
+pub fn determine_profile_with_override<S: BuildHasher>(
+    used_build_systems: &HashSet<String, S>,
+    qa_override: Option<sps2_types::QaPipelineOverride>,
+) -> Option<BuildSystemProfile> {
+    // Check for manual override first
+    if let Some(override_val) = qa_override {
+        if override_val.skips_qa() {
+            return None; // Skip QA entirely
+        }
+        if let Some(profile) = override_val.to_profile() {
+            return Some(profile); // Use manual override
+        }
+    }
+
+    // Fall back to automatic detection
+    Some(determine_profile(used_build_systems))
+}
 
 /// Determine the build system profile based on used build systems
 pub fn determine_profile<S: BuildHasher>(
@@ -56,6 +76,7 @@ pub fn get_validators_for_profile(profile: BuildSystemProfile) -> Vec<ValidatorA
         BuildSystemProfile::NativeFull => {
             // Full validation for C/C++ projects
             vec![
+                ValidatorAction::StagingScanner(StagingScanner),
                 ValidatorAction::HardcodedScanner(HardcodedScanner),
                 ValidatorAction::MachOScanner(MachOScanner),
                 ValidatorAction::ArchiveScanner(ArchiveScanner),
@@ -64,6 +85,7 @@ pub fn get_validators_for_profile(profile: BuildSystemProfile) -> Vec<ValidatorA
         BuildSystemProfile::RustMinimal => {
             // Minimal validation for Rust to avoid breaking panic unwinding
             vec![
+                ValidatorAction::StagingScanner(StagingScanner),
                 // Skip HardcodedScanner - Rust binaries often have debug paths
                 // Skip MachOScanner - Rust manages its own dylib paths
                 // Skip ArchiveScanner for Rust
@@ -72,6 +94,7 @@ pub fn get_validators_for_profile(profile: BuildSystemProfile) -> Vec<ValidatorA
         BuildSystemProfile::GoMedium => {
             // Medium validation for Go
             vec![
+                ValidatorAction::StagingScanner(StagingScanner),
                 ValidatorAction::HardcodedScanner(HardcodedScanner),
                 ValidatorAction::MachOScanner(MachOScanner),
                 // Skip ArchiveScanner for Go
@@ -80,6 +103,7 @@ pub fn get_validators_for_profile(profile: BuildSystemProfile) -> Vec<ValidatorA
         BuildSystemProfile::ScriptLight => {
             // Light validation for scripting languages
             vec![
+                ValidatorAction::StagingScanner(StagingScanner),
                 ValidatorAction::HardcodedScanner(HardcodedScanner),
                 // Skip binary scanners for script-based packages
             ]
