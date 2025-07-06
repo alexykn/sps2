@@ -1,0 +1,85 @@
+metadata:
+  name: llvm
+  version: "20.1.7"
+  description: "The LLVM Compiler Infrastructure - a collection of modular and reusable compiler and toolchain technologies"
+  homepage: "https://llvm.org"
+  license: "Apache-2.0 WITH LLVM-exception"
+  dependencies:
+    runtime:
+      - zlib
+      - zstd
+      - libxml2
+    build:
+      - cmake
+      - ninja
+      - python
+      - zlib
+      - zstd
+      - libxml2
+
+facts:
+  # Apple Silicon specific configuration
+  target_triple: "aarch64-apple-darwin24"
+  sdk_path: "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+  # LLVM projects to build - core LLVM + Clang + essential tools
+  llvm_projects: "clang;clang-tools-extra;lld;lldb"
+  # Targets to build - focus on ARM64 and x86_64 for cross-compilation
+  llvm_targets: "AArch64;X86;WebAssembly"
+
+environment:
+  defaults: true
+  variables:
+    # Optimize for Apple Silicon
+    CMAKE_OSX_ARCHITECTURES: "arm64"
+    # Use system SDK
+    CMAKE_OSX_SYSROOT: "${sdk_path}"
+    # Ensure proper linking on macOS
+    LDFLAGS: "-L${PREFIX}/lib -Wl,-rpath,${PREFIX}/lib"
+    CPPFLAGS: "-I${PREFIX}/include"
+    # Memory optimization for build process
+    LLVM_PARALLEL_LINK_JOBS: "2"
+
+source:
+  fetch:
+    url: "https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.7/llvm-project-20.1.7.src.tar.xz"
+
+build:
+  steps:
+    - shell: |
+        cd llvm
+        mkdir -p build
+        cd build
+        cmake .. \
+          -GNinja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX=${PREFIX} \
+          -DLLVM_DEFAULT_TARGET_TRIPLE=${target_triple} \
+          -DLLVM_TARGETS_TO_BUILD="${llvm_targets}" \
+          -DLLVM_HOST_TRIPLE=${target_triple} \
+          -DLLVM_ENABLE_PROJECTS="${llvm_projects}" \
+          -DLLDB_USE_SYSTEM_DEBUGSERVER=ON \
+          -DLLVM_ENABLE_ASSERTIONS=OFF \
+          -DLLVM_ENABLE_EXPENSIVE_CHECKS=OFF \
+          -DLLVM_OPTIMIZED_TABLEGEN=ON \
+          -DBUILD_SHARED_LIBS=OFF \
+          -DLLVM_BUILD_LLVM_DYLIB=ON \
+          -DLLVM_LINK_LLVM_DYLIB=ON \
+          -DLLVM_ENABLE_ZLIB=ON \
+          -DLLVM_ENABLE_ZSTD=ON \
+          -DLLVM_ENABLE_LIBXML2=ON \
+          -DLLVM_ENABLE_CURL=OFF \
+          -DLLVM_INCLUDE_EXAMPLES=OFF \
+          -DLLVM_INCLUDE_TESTS=OFF \
+          -DLLVM_INCLUDE_BENCHMARKS=OFF \
+          -DLLVM_INCLUDE_DOCS=OFF \
+          -DLLVM_CREATE_XCODE_TOOLCHAIN=OFF \
+          -DLLVM_EXTERNALIZE_DEBUGINFO=OFF \
+          -DLLVM_PARALLEL_COMPILE_JOBS=4 \
+          -DLLVM_PARALLEL_LINK_JOBS=2 \
+          -DLLVM_PARALLEL_TABLEGEN_JOBS=2
+        ninja
+        ninja install
+
+post:
+  fix_permissions: true
+  patch_rpaths: default

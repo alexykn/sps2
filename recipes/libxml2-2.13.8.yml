@@ -1,0 +1,35 @@
+metadata:
+  name: libxml2
+  version: "2.13.8"
+  description: "XML parsing library with support for reading, modifying and writing XML and HTML files"
+  homepage: "https://gitlab.gnome.org/GNOME/libxml2"
+  license: "MIT"
+  dependencies:
+    runtime:
+      - zlib
+      - xz
+    build:
+      - pkgconf
+
+environment:
+  defaults: true
+
+source:
+  fetch:
+    url: "https://download.gnome.org/sources/libxml2/2.13/libxml2-2.13.8.tar.xz"
+
+build:
+  steps:
+    - shell: |
+        ./configure --prefix=${PREFIX} \
+          --with-zlib=${PREFIX} \
+          --with-lzma=${PREFIX} \
+          --without-python \
+          --disable-static \
+          --enable-shared
+        make -j$(nproc)
+        make install
+
+post:
+  fix_permissions: true
+  patch_rpaths: absolute
