@@ -15,6 +15,30 @@ use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 use uuid;
 
+/// Check if a file path represents a Python runtime file that gets modified during execution
+fn is_python_runtime_file(file_path: &str) -> bool {
+    // Python symlinks that get created/modified during runtime
+    if file_path == "bin/idle3"
+        || file_path == "bin/pydoc3"
+        || file_path == "bin/python3"
+        || file_path == "bin/python3-config"
+    {
+        return true;
+    }
+
+    // Python pkgconfig files that get modified during runtime
+    if file_path == "lib/pkgconfig/python3-embed.pc" || file_path == "lib/pkgconfig/python3.pc" {
+        return true;
+    }
+
+    // Python man page symlinks that get created/modified during runtime
+    if file_path == "share/man/man1/python3.1" {
+        return true;
+    }
+
+    false
+}
+
 /// Result of verifying a single package
 #[derive(Debug)]
 struct SinglePackageResult {
@@ -109,6 +133,16 @@ async fn verify_single_package_with_data(
             // Skip hash verification for directories and symlinks
             let metadata = tokio::fs::symlink_metadata(&full_path).await?;
             if metadata.is_dir() || metadata.is_symlink() {
+                continue;
+            }
+
+            // Skip Python bytecode files and cache directories from hash verification
+            if file_path.ends_with(".pyc") || file_path.contains("__pycache__") {
+                continue;
+            }
+
+            // Skip Python runtime-generated files that get modified during execution
+            if is_python_runtime_file(file_path) {
                 continue;
             }
 
