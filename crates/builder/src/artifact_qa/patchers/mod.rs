@@ -8,6 +8,7 @@ pub mod object_cleaner;
 pub mod permissions;
 pub mod pkgconfig;
 pub mod placeholder;
+pub mod python_isolation;
 pub mod rpath;
 
 // Re-export the concrete types so callers can use
@@ -20,4 +21,5 @@ pub use object_cleaner::ObjectFileCleaner;
 pub use permissions::PermissionsFixer;
 pub use pkgconfig::PkgConfigPatcher;
 pub use placeholder::PlaceholderPatcher;
+pub use python_isolation::PythonIsolationPatcher;
 pub use rpath::RPathPatcher;

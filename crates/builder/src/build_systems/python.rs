@@ -135,11 +135,16 @@ impl PythonBuildSystem {
             args.push(ctx.source_dir.join("vendor").display().to_string());
         }
 
-        // Add prefix for installation - use LIVE_PREFIX within staging
+        // Add prefix for installation - use clean python/[package] structure
         args.push("--prefix".to_string());
         let staging_dir = ctx.env.staging_dir();
-        let prefix_in_staging = staging_dir.join(ctx.env.get_live_prefix().trim_start_matches('/'));
-        args.push(prefix_in_staging.display().to_string());
+        let live_prefix = ctx.env.get_live_prefix().trim_start_matches('/');
+        let package_name = ctx.env.package_name();
+        let package_specific_prefix = staging_dir
+            .join(live_prefix)
+            .join("python")
+            .join(package_name);
+        args.push(package_specific_prefix.display().to_string());
 
         // Install with dependencies for self-contained packages
 
@@ -777,15 +782,21 @@ impl BuildSystem for PythonBuildSystem {
 
         // Fix shebangs to point to the correct packaged Python version
         let staging_dir = ctx.env.staging_dir();
-        let prefix_in_staging = staging_dir.join(ctx.env.get_live_prefix().trim_start_matches('/'));
-        let scripts_dir = prefix_in_staging.join("bin");
+        let live_prefix = ctx.env.get_live_prefix().trim_start_matches('/');
+        let package_name = ctx.env.package_name();
+        let package_specific_prefix = staging_dir
+            .join(live_prefix)
+            .join("python")
+            .join(package_name);
+        let scripts_dir = package_specific_prefix.join("bin");
         if scripts_dir.exists() {
-            self.fix_shebangs(&scripts_dir, &prefix_in_staging, ctx)
+            self.fix_shebangs(&scripts_dir, &package_specific_prefix, ctx)
                 .await?;
         }
 
         // Remove direct_url.json files which contain hardcoded paths
-        self.remove_direct_url_files(&prefix_in_staging).await?;
+        self.remove_direct_url_files(&package_specific_prefix)
+            .await?;
 
         Ok(())
     }
