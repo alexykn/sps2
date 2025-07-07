@@ -7,7 +7,8 @@ members = [
     "crates/config",
     "crates/drafter",
     "crates/errors",
-    "crates/events", "crates/guard",
+    "crates/events",
+    "crates/guard",
     "crates/hash",
     "crates/index",
     "crates/install",
@@ -23,7 +24,7 @@ members = [
 
 [workspace.package]
 edition = "2021"
-rust-version = "1.86.0"
+rust-version = "1.88.0"
 authors = ["sps2 Contributors"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/org/sps2"
