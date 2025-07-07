@@ -215,7 +215,7 @@ impl EventHandler {
             // Package events
             Event::PackageInstalling { name, version } => {
                 self.show_operation_message(
-                    &format!("Installing {} {}", name, version),
+                    &format!("Installing {name} {version}"),
                     "install",
                     EventSeverity::Info,
                 );
@@ -226,21 +226,21 @@ impl EventHandler {
                 path: _,
             } => {
                 self.show_operation_message(
-                    &format!("Installed {} {}", name, version),
+                    &format!("Installed {name} {version}"),
                     "install",
                     EventSeverity::Success,
                 );
             }
             Event::PackageDownloaded { name, version } => {
                 self.show_operation_message(
-                    &format!("Downloaded {} {}", name, version),
+                    &format!("Downloaded {name} {version}"),
                     "download",
                     EventSeverity::Success,
                 );
             }
             Event::PackageBuilding { name, version } => {
                 self.show_operation_message(
-                    &format!("Building {} {}", name, version),
+                    &format!("Building {name} {version}"),
                     "build",
                     EventSeverity::Info,
                 );
@@ -249,7 +249,7 @@ impl EventHandler {
             // State events
             Event::StateCreating { state_id } => {
                 self.show_operation_message(
-                    &format!("Creating state {}", state_id),
+                    &format!("Creating state {state_id}"),
                     "state",
                     EventSeverity::Info,
                 );
@@ -260,7 +260,7 @@ impl EventHandler {
                 operation: _,
             } => {
                 self.show_operation_message(
-                    &format!("State transition {} -> {}", from, to),
+                    &format!("State transition {from} -> {to}"),
                     "state",
                     EventSeverity::Info,
                 );
@@ -269,7 +269,7 @@ impl EventHandler {
             // Build events
             Event::BuildStarting { package, version } => {
                 self.show_operation_message(
-                    &format!("Starting build of {} {}", package, version),
+                    &format!("Starting build of {package} {version}"),
                     "build",
                     EventSeverity::Info,
                 );
@@ -291,39 +291,39 @@ impl EventHandler {
                 error,
             } => {
                 self.show_operation_message(
-                    &format!("Build failed for {} {}: {}", package, version, error),
+                    &format!("Build failed for {package} {version}: {error}"),
                     "build",
                     EventSeverity::Error,
                 );
             }
             Event::BuildStepStarted { package, step } => {
                 self.show_operation_message(
-                    &format!("{} > {}", package, step),
+                    &format!("{package} > {step}"),
                     "build",
                     EventSeverity::Info,
                 );
             }
             Event::BuildStepOutput { package: _, line } => {
                 // Display build output directly
-                println!("{}", line);
+                println!("{line}");
             }
             Event::BuildStepCompleted { package, step } => {
                 self.show_operation_message(
-                    &format!("{} > {} completed", package, step),
+                    &format!("{package} > {step} completed"),
                     "build",
                     EventSeverity::Success,
                 );
             }
             Event::BuildCommand { package, command } => {
                 self.show_operation_message(
-                    &format!("{} > {}", package, command),
+                    &format!("{package} > {command}"),
                     "build",
                     EventSeverity::Info,
                 );
             }
             Event::BuildCleaned { package } => {
                 self.show_operation_message(
-                    &format!("Cleaned build for {}", package),
+                    &format!("Cleaned build for {package}"),
                     "clean",
                     EventSeverity::Success,
                 );
@@ -333,13 +333,13 @@ impl EventHandler {
             Event::DependencyResolving { package, count } => {
                 if count == 1 {
                     self.show_operation_message(
-                        &format!("Resolving dependencies for {}", package),
+                        &format!("Resolving dependencies for {package}"),
                         "resolve",
                         EventSeverity::Info,
                     );
                 } else {
                     self.show_operation_message(
-                        &format!("Resolving dependencies for {} packages", count),
+                        &format!("Resolving dependencies for {count} packages"),
                         "resolve",
                         EventSeverity::Info,
                     );
@@ -352,13 +352,13 @@ impl EventHandler {
             } => {
                 if count == 1 {
                     self.show_operation_message(
-                        &format!("Resolved dependencies for {}", package),
+                        &format!("Resolved dependencies for {package}"),
                         "resolve",
                         EventSeverity::Success,
                     );
                 } else {
                     self.show_operation_message(
-                        &format!("Resolved {} dependencies", count),
+                        &format!("Resolved {count} dependencies"),
                         "resolve",
                         EventSeverity::Success,
                     );
@@ -453,7 +453,7 @@ impl EventHandler {
             Event::UpdateCompleted { packages, state_id } => {
                 if packages.is_empty() {
                     self.show_operation_message(
-                        &format!("No updates available (state: {})", state_id),
+                        &format!("No updates available (state: {state_id})"),
                         "update",
                         EventSeverity::Info,
                     );
@@ -495,7 +495,7 @@ impl EventHandler {
             Event::UpgradeCompleted { packages, state_id } => {
                 if packages.is_empty() {
                     self.show_operation_message(
-                        &format!("No upgrades available (state: {})", state_id),
+                        &format!("No upgrades available (state: {state_id})"),
                         "upgrade",
                         EventSeverity::Info,
                     );
@@ -528,13 +528,13 @@ impl EventHandler {
             } => {
                 if packages_updated == 0 {
                     self.show_operation_message(
-                        &format!("Repository index up to date ({}ms)", duration_ms),
+                        &format!("Repository index up to date ({duration_ms}ms)"),
                         "sync",
                         EventSeverity::Success,
                     );
                 } else {
                     self.show_operation_message(
-                        &format!("Updated {} packages ({}ms)", packages_updated, duration_ms),
+                        &format!("Updated {packages_updated} packages ({duration_ms}ms)"),
                         "sync",
                         EventSeverity::Success,
                     );
@@ -544,14 +544,14 @@ impl EventHandler {
             // Search events
             Event::SearchStarting { query } => {
                 self.show_operation_message(
-                    &format!("Searching for '{}'", query),
+                    &format!("Searching for '{query}'"),
                     "search",
                     EventSeverity::Info,
                 );
             }
             Event::SearchCompleted { query: _, count } => {
                 self.show_operation_message(
-                    &format!("Found {} packages", count),
+                    &format!("Found {count} packages"),
                     "search",
                     EventSeverity::Success,
                 );
@@ -567,7 +567,7 @@ impl EventHandler {
             }
             Event::ListCompleted { count } => {
                 self.show_operation_message(
-                    &format!("Found {} installed packages", count),
+                    &format!("Found {count} installed packages"),
                     "list",
                     EventSeverity::Success,
                 );
@@ -584,8 +584,7 @@ impl EventHandler {
             } => {
                 self.show_operation_message(
                     &format!(
-                        "Cleaned {} states and {} packages ({}ms)",
-                        states_removed, packages_removed, duration_ms
+                        "Cleaned {states_removed} states and {packages_removed} packages ({duration_ms}ms)"
                     ),
                     "clean",
                     EventSeverity::Success,
@@ -595,7 +594,7 @@ impl EventHandler {
             // Rollback events
             Event::RollbackStarting { target_state } => {
                 self.show_operation_message(
-                    &format!("Rolling back to state {}", target_state),
+                    &format!("Rolling back to state {target_state}"),
                     "rollback",
                     EventSeverity::Info,
                 );
@@ -605,7 +604,7 @@ impl EventHandler {
                 duration_ms,
             } => {
                 self.show_operation_message(
-                    &format!("Rolled back to {} ({}ms)", target_state, duration_ms),
+                    &format!("Rolled back to {target_state} ({duration_ms}ms)"),
                     "rollback",
                     EventSeverity::Success,
                 );
@@ -651,7 +650,7 @@ impl EventHandler {
             }
             Event::OperationFailed { operation, error } => {
                 self.show_operation_message(
-                    &format!("{} failed: {}", operation, error),
+                    &format!("{operation} failed: {error}"),
                     &operation.to_lowercase(),
                     EventSeverity::Error,
                 );
@@ -660,7 +659,7 @@ impl EventHandler {
             // Index events
             Event::IndexUpdateStarting { url } => {
                 self.show_operation_message(
-                    &format!("Updating index from {}", url),
+                    &format!("Updating index from {url}"),
                     "sync",
                     EventSeverity::Info,
                 );
@@ -670,10 +669,7 @@ impl EventHandler {
                 packages_updated,
             } => {
                 self.show_operation_message(
-                    &format!(
-                        "Index updated: {} added, {} updated",
-                        packages_added, packages_updated
-                    ),
+                    &format!("Index updated: {packages_added} added, {packages_updated} updated"),
                     "sync",
                     EventSeverity::Success,
                 );
@@ -682,7 +678,7 @@ impl EventHandler {
             // State rollback event
             Event::StateRollback { from, to } => {
                 self.show_operation_message(
-                    &format!("Rolled back from {} to {}", from, to),
+                    &format!("Rolled back from {from} to {to}"),
                     "rollback",
                     EventSeverity::Success,
                 );
@@ -691,7 +687,7 @@ impl EventHandler {
             // Warning events
             Event::Warning { message, context } => {
                 if let Some(context) = context {
-                    self.show_warning(&format!("{}: {}", message, context));
+                    self.show_warning(&format!("{message}: {context}"));
                 } else {
                     self.show_warning(&message);
                 }
@@ -700,7 +696,7 @@ impl EventHandler {
             // Error events
             Event::Error { message, details } => {
                 if let Some(details) = details {
-                    self.show_message(&format!("{}: {}", message, details), EventSeverity::Error);
+                    self.show_message(&format!("{message}: {details}"), EventSeverity::Error);
                 } else {
                     self.show_message(&message, EventSeverity::Error);
                 }
@@ -724,7 +720,7 @@ impl EventHandler {
                 check_name,
             } => {
                 self.show_operation_message(
-                    &format!("Starting {} check: {}", check_type, check_name),
+                    &format!("Starting {check_type} check: {check_name}"),
                     "qa",
                     EventSeverity::Info,
                 );
@@ -737,15 +733,14 @@ impl EventHandler {
             } => {
                 if findings_count == 0 {
                     self.show_operation_message(
-                        &format!("{} check passed: {}", check_type, check_name),
+                        &format!("{check_type} check passed: {check_name}"),
                         "qa",
                         EventSeverity::Success,
                     );
                 } else {
                     self.show_operation_message(
                         &format!(
-                            "{} check completed: {} ({} findings)",
-                            check_type, check_name, findings_count
+                            "{check_type} check completed: {check_name} ({findings_count} findings)"
                         ),
                         "qa",
                         EventSeverity::Warning,
@@ -758,7 +753,7 @@ impl EventHandler {
                 error,
             } => {
                 self.show_operation_message(
-                    &format!("{} check failed: {} - {}", check_type, check_name, error),
+                    &format!("{check_type} check failed: {check_name} - {error}"),
                     "qa",
                     EventSeverity::Error,
                 );
@@ -769,10 +764,7 @@ impl EventHandler {
                 qa_level,
             } => {
                 self.show_operation_message(
-                    &format!(
-                        "Starting QA pipeline for {} {} (level: {})",
-                        package, version, qa_level
-                    ),
+                    &format!("Starting QA pipeline for {package} {version} (level: {qa_level})"),
                     "qa",
                     EventSeverity::Info,
                 );
@@ -788,8 +780,7 @@ impl EventHandler {
                 if failed == 0 {
                     self.show_operation_message(
                         &format!(
-                            "QA pipeline completed for {} {}: {}/{} checks passed ({}s)",
-                            package, version, passed, total_checks, duration_seconds
+                            "QA pipeline completed for {package} {version}: {passed}/{total_checks} checks passed ({duration_seconds}s)"
                         ),
                         "qa",
                         EventSeverity::Success,
@@ -797,8 +788,7 @@ impl EventHandler {
                 } else {
                     self.show_operation_message(
                         &format!(
-                            "QA pipeline completed for {} {}: {}/{} passed, {} failed ({}s)",
-                            package, version, passed, total_checks, failed, duration_seconds
+                            "QA pipeline completed for {package} {version}: {passed}/{total_checks} passed, {failed} failed ({duration_seconds}s)"
                         ),
                         "qa",
                         EventSeverity::Warning,
@@ -813,8 +803,8 @@ impl EventHandler {
                 line,
             } => {
                 let location = match (file_path, line) {
-                    (Some(path), Some(line)) => format!(" ({}:{})", path, line),
-                    (Some(path), None) => format!(" ({})", path),
+                    (Some(path), Some(line)) => format!(" ({path}:{line})"),
+                    (Some(path), None) => format!(" ({path})"),
                     _ => String::new(),
                 };
                 let event_severity = match severity.to_lowercase().as_str() {
@@ -838,13 +828,13 @@ impl EventHandler {
             Event::QaReportGenerated { format, path } => {
                 if let Some(path) = path {
                     self.show_operation_message(
-                        &format!("QA report generated: {} ({})", path, format),
+                        &format!("QA report generated: {path} ({format})"),
                         "qa",
                         EventSeverity::Success,
                     );
                 } else {
                     self.show_operation_message(
-                        &format!("QA report generated ({})", format),
+                        &format!("QA report generated ({format})"),
                         "qa",
                         EventSeverity::Success,
                     );
@@ -859,11 +849,11 @@ impl EventHandler {
                     } else {
                         let context_str = context
                             .iter()
-                            .map(|(k, v)| format!("{}={}", k, v))
+                            .map(|(k, v)| format!("{k}={v}"))
                             .collect::<Vec<_>>()
                             .join(", ");
                         self.show_message(
-                            &format!("{} ({})", message, context_str),
+                            &format!("{message} ({context_str})"),
                             EventSeverity::Debug,
                         );
                     }
@@ -879,14 +869,13 @@ impl EventHandler {
                 files_count,
             } => {
                 let files_info = if let Some(files) = files_count {
-                    format!(" ({} files)", files)
+                    format!(" ({files} files)")
                 } else {
                     String::new()
                 };
                 self.show_operation_message(
                     &format!(
-                        "Starting {} verification: {} ({} packages{})",
-                        level, scope, packages_count, files_info
+                        "Starting {level} verification: {scope} ({packages_count} packages{files_info})"
                     ),
                     "verify",
                     EventSeverity::Info,
@@ -902,7 +891,7 @@ impl EventHandler {
                 ..
             } => {
                 let package_info = if let Some(pkg) = current_package {
-                    format!(" ({})", pkg)
+                    format!(" ({pkg})")
                 } else {
                     String::new()
                 };
@@ -913,8 +902,7 @@ impl EventHandler {
                 };
                 self.show_operation_message(
                     &format!(
-                        "Verified {}/{} packages{}{}",
-                        verified_packages, total_packages, package_info, cache_info
+                        "Verified {verified_packages}/{total_packages} packages{package_info}{cache_info}"
                     ),
                     "verify",
                     EventSeverity::Info,
@@ -941,7 +929,7 @@ impl EventHandler {
                 };
 
                 let package_info = if let Some(pkg) = package {
-                    format!(" [{}]", pkg)
+                    format!(" [{pkg}]")
                 } else {
                     String::new()
                 };
@@ -970,7 +958,7 @@ impl EventHandler {
 
                 // Show file path in debug mode
                 if self.debug_enabled && !file_path.is_empty() {
-                    self.show_message(&format!("  File: {}", file_path), EventSeverity::Debug);
+                    self.show_message(&format!("  File: {file_path}"), EventSeverity::Debug);
                 }
             }
 
@@ -999,13 +987,12 @@ impl EventHandler {
                 } else {
                     let severity_breakdown = by_severity
                         .iter()
-                        .map(|(sev, count)| format!("{}: {}", sev, count))
+                        .map(|(sev, count)| format!("{sev}: {count}"))
                         .collect::<Vec<_>>()
                         .join(", ");
                     self.show_operation_message(
                         &format!(
-                            "Verification completed: {} discrepancies found ({}) ({}ms)",
-                            total_discrepancies, severity_breakdown, duration_ms
+                            "Verification completed: {total_discrepancies} discrepancies found ({severity_breakdown}) ({duration_ms}ms)"
                         ),
                         "verify",
                         EventSeverity::Warning,
@@ -1022,8 +1009,7 @@ impl EventHandler {
             } => {
                 self.show_operation_message(
                     &format!(
-                        "Verification failed after verifying {} packages, {} files ({}ms): {}",
-                        packages_verified, files_verified, duration_ms, error
+                        "Verification failed after verifying {packages_verified} packages, {files_verified} files ({duration_ms}ms): {error}"
                     ),
                     "verify",
                     EventSeverity::Error,
@@ -1049,13 +1035,13 @@ impl EventHandler {
                 };
 
                 self.show_message(
-                    &format!("Guard Summary: {}", user_friendly_summary),
+                    &format!("Guard Summary: {user_friendly_summary}"),
                     severity_level,
                 );
 
                 if !recommended_actions.is_empty() {
                     for action in recommended_actions {
-                        self.show_message(&format!("  → {}", action), EventSeverity::Info);
+                        self.show_message(&format!("  → {action}"), EventSeverity::Info);
                     }
                 }
             }
@@ -1069,8 +1055,7 @@ impl EventHandler {
             } => {
                 self.show_operation_message(
                     &format!(
-                        "Starting healing: {} discrepancies ({} auto, {} require confirmation)",
-                        discrepancies_count, auto_heal_count, confirmation_required_count
+                        "Starting healing: {discrepancies_count} discrepancies ({auto_heal_count} auto, {confirmation_required_count} require confirmation)"
                     ),
                     "heal",
                     EventSeverity::Info,
@@ -1085,15 +1070,12 @@ impl EventHandler {
                 current_file,
             } => {
                 let file_info = if let Some(file) = current_file {
-                    format!(" ({})", file)
+                    format!(" ({file})")
                 } else {
                     String::new()
                 };
                 self.show_operation_message(
-                    &format!(
-                        "Healing {}/{}: {}{}",
-                        completed, total, current_operation, file_info
-                    ),
+                    &format!("Healing {completed}/{total}: {current_operation}{file_info}"),
                     "heal",
                     EventSeverity::Info,
                 );
@@ -1109,14 +1091,14 @@ impl EventHandler {
             } => {
                 if success {
                     self.show_operation_message(
-                        &format!("Healed {}: {}", file_path, healing_action),
+                        &format!("Healed {file_path}: {healing_action}"),
                         "heal",
                         EventSeverity::Success,
                     );
                 } else {
                     let error_msg = error.as_deref().unwrap_or("unknown error");
                     self.show_operation_message(
-                        &format!("Failed to heal {}: {}", file_path, error_msg),
+                        &format!("Failed to heal {file_path}: {error_msg}"),
                         "heal",
                         EventSeverity::Error,
                     );
@@ -1134,8 +1116,7 @@ impl EventHandler {
                 if failed_count == 0 {
                     self.show_operation_message(
                         &format!(
-                            "Healing completed: {}/{} healed ({} skipped, {}ms)",
-                            healed_count, total, skipped_count, duration_ms
+                            "Healing completed: {healed_count}/{total} healed ({skipped_count} skipped, {duration_ms}ms)"
                         ),
                         "heal",
                         EventSeverity::Success,
@@ -1143,8 +1124,7 @@ impl EventHandler {
                 } else {
                     self.show_operation_message(
                         &format!(
-                            "Healing completed: {} healed, {} failed, {} skipped ({}ms)",
-                            healed_count, failed_count, skipped_count, duration_ms
+                            "Healing completed: {healed_count} healed, {failed_count} failed, {skipped_count} skipped ({duration_ms}ms)"
                         ),
                         "heal",
                         EventSeverity::Warning,
@@ -1161,8 +1141,7 @@ impl EventHandler {
             } => {
                 self.show_operation_message(
                     &format!(
-                        "Healing operation failed: {} ({} completed, {} failed, {}ms)",
-                        error, completed_healing, failed_healing, duration_ms
+                        "Healing operation failed: {error} ({completed_healing} completed, {failed_healing} failed, {duration_ms}ms)"
                     ),
                     "heal",
                     EventSeverity::Error,
@@ -1177,8 +1156,7 @@ impl EventHandler {
                 if self.debug_enabled {
                     self.show_operation_message(
                         &format!(
-                            "Warming cache for {}: loading {} entries",
-                            operation_type, cache_entries_loading
+                            "Warming cache for {operation_type}: loading {cache_entries_loading} entries"
                         ),
                         "cache",
                         EventSeverity::Debug,
@@ -1215,16 +1193,12 @@ impl EventHandler {
             } => {
                 if self.debug_enabled {
                     self.show_message(
-                        &format!("Guard configuration validated: {} approach, enabled={}, level={}, auto_heal={}",
-                            approach, enabled, verification_level, auto_heal),
+                        &format!("Guard configuration validated: {approach} approach, enabled={enabled}, level={verification_level}, auto_heal={auto_heal}"),
                         EventSeverity::Debug,
                     );
 
                     for warning in validation_warnings {
-                        self.show_message(
-                            &format!("  Warning: {}", warning),
-                            EventSeverity::Warning,
-                        );
+                        self.show_message(&format!("  Warning: {warning}"), EventSeverity::Warning);
                     }
                 }
             }
@@ -1238,14 +1212,13 @@ impl EventHandler {
                 if let Some(fix) = suggested_fix {
                     self.show_message(
                         &format!(
-                            "Configuration error in '{}': {} (suggested fix: {})",
-                            field, error, fix
+                            "Configuration error in '{field}': {error} (suggested fix: {fix})"
                         ),
                         EventSeverity::Error,
                     );
                 } else {
                     self.show_message(
-                        &format!("Configuration error in '{}': {}", field, error),
+                        &format!("Configuration error in '{field}': {error}"),
                         EventSeverity::Error,
                     );
                 }
@@ -1261,8 +1234,7 @@ impl EventHandler {
                 if self.debug_enabled {
                     self.show_message(
                         &format!(
-                            "Recovery attempt {}/{} for {} error: {}",
-                            attempt_number, max_attempts, error_category, recovery_strategy
+                            "Recovery attempt {attempt_number}/{max_attempts} for {error_category} error: {recovery_strategy}"
                         ),
                         EventSeverity::Debug,
                     );
@@ -1278,8 +1250,7 @@ impl EventHandler {
             } => {
                 self.show_message(
                     &format!(
-                        "Recovery successful for {} error: {} (attempt {}, {}ms)",
-                        error_category, recovery_strategy, attempt_number, recovery_duration_ms
+                        "Recovery successful for {error_category} error: {recovery_strategy} (attempt {attempt_number}, {recovery_duration_ms}ms)"
                     ),
                     EventSeverity::Success,
                 );
@@ -1294,8 +1265,7 @@ impl EventHandler {
             } => {
                 self.show_message(
                     &format!(
-                        "Recovery failed for {} error after {} attempts using {}: {}",
-                        error_category, attempts_made, recovery_strategy, final_error
+                        "Recovery failed for {error_category} error after {attempts_made} attempts using {recovery_strategy}: {final_error}"
                     ),
                     EventSeverity::Error,
                 );
@@ -1306,10 +1276,7 @@ impl EventHandler {
                 // These events are not displayed in the CLI
                 // but could be logged if debug mode is enabled
                 if self.debug_enabled {
-                    self.show_message(
-                        &format!("Unhandled event: {:?}", event),
-                        EventSeverity::Debug,
-                    );
+                    self.show_message(&format!("Unhandled event: {event:?}"), EventSeverity::Debug);
                 }
             }
         }
@@ -1325,7 +1292,7 @@ impl EventHandler {
         };
 
         self.show_operation_message(
-            &format!("Downloading {}{}", filename, size_info),
+            &format!("Downloading {filename}{size_info}"),
             "download",
             EventSeverity::Info,
         );
@@ -1340,7 +1307,7 @@ impl EventHandler {
     fn handle_download_completed(&mut self, url: &str) {
         let filename = url.split('/').next_back().unwrap_or(url);
         self.show_operation_message(
-            &format!("Downloaded {}", filename),
+            &format!("Downloaded {filename}"),
             "download",
             EventSeverity::Success,
         );
@@ -1349,13 +1316,13 @@ impl EventHandler {
     /// Handle download failed event
     fn handle_download_failed(&mut self, url: &str, error: &str) {
         let filename = url.split('/').next_back().unwrap_or(url);
-        self.show_error(&format!("Failed to download {}: {}", filename, error));
+        self.show_error(&format!("Failed to download {filename}: {error}"));
     }
 
     /// Handle installation started event
     fn handle_install_started(&mut self, package_name: &str) {
         self.show_operation_message(
-            &format!("Installing {}", package_name),
+            &format!("Installing {package_name}"),
             "install",
             EventSeverity::Info,
         );
@@ -1364,7 +1331,7 @@ impl EventHandler {
     /// Handle installation completed event
     fn handle_install_completed(&mut self, package_name: &str, state_id: &impl std::fmt::Display) {
         self.show_operation_message(
-            &format!("Installed {} (state: {})", package_name, state_id),
+            &format!("Installed {package_name} (state: {state_id})"),
             "install",
             EventSeverity::Success,
         );
@@ -1374,8 +1341,8 @@ impl EventHandler {
     fn show_message(&self, message: &str, severity: EventSeverity) {
         let prefix = self.ui_style.get_prefix(severity);
         let styled_message = self.ui_style.style_message(message, severity);
-        let formatted = format!("{} {}", prefix, styled_message);
-        println!("{}", formatted);
+        let formatted = format!("{prefix} {styled_message}");
+        println!("{formatted}");
     }
 
     /// Show operation message with appropriate icon and styling
@@ -1384,8 +1351,8 @@ impl EventHandler {
         let styled_message = self
             .ui_style
             .style_operation_message(message, operation, severity);
-        let formatted = format!("{} {}", icon, styled_message);
-        println!("{}", formatted);
+        let formatted = format!("{icon} {styled_message}");
+        println!("{formatted}");
     }
 
     /// Show warning message

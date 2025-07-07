@@ -322,8 +322,7 @@ impl Commands {
                                 }
                             } else {
                                 Err(format!(
-                                    "Invalid compression level '{}'. Valid options: fast, balanced, maximum, or 1-22",
-                                    level
+                                    "Invalid compression level '{level}'. Valid options: fast, balanced, maximum, or 1-22"
                                 ))
                             }
                         }

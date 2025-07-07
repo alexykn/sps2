@@ -129,7 +129,7 @@ impl GuardErrorContext {
             self.event_sender.emit(Event::guard_discrepancy_found(
                 sps2_events::GuardDiscrepancyParams {
                     operation_id: self.operation_id.clone(),
-                    discrepancy_type: format!("{:?}", error),
+                    discrepancy_type: format!("{error:?}"),
                     severity: format!("{:?}", error.severity()),
                     file_path: String::new(), // No specific file path for general errors
                     package: None,

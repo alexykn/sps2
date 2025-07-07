@@ -135,7 +135,7 @@ async fn load_file_mappings(
         let package_name: String = row.get("package_name");
         let package_version: String = row.get("package_version");
 
-        let entry = format!("{} ({}:{})", relative_path, package_name, package_version);
+        let entry = format!("{relative_path} ({package_name}:{package_version})");
 
         map.entry(file_hash).or_insert_with(Vec::new).push(entry);
     }
@@ -173,7 +173,7 @@ async fn list_store(
             if use_color {
                 println!("{}/", dir.blue());
             } else {
-                println!("{}/", dir);
+                println!("{dir}/");
             }
         }
     }
@@ -209,7 +209,7 @@ async fn list_recursive(
             if use_color {
                 println!("{}{}/", indent, name.blue());
             } else {
-                println!("{}{}/", indent, name);
+                println!("{indent}{name}/");
             }
 
             // Recursive listing handled at top level
@@ -232,7 +232,7 @@ async fn list_recursive(
 
                     if hash_only {
                         // Just show the full hash
-                        println!("{}{}", indent, hash_without_prefix);
+                        println!("{indent}{hash_without_prefix}");
                     } else if long_format {
                         let size = format_size(metadata.len(), BINARY);
                         let perms = format_permissions(&metadata);
@@ -335,14 +335,14 @@ async fn list_specific(
                 let name = entry.file_name().to_string_lossy().to_string();
                 if name.starts_with(rest) {
                     found = true;
-                    let full_hash = format!("{}{}", prefix, name);
+                    let full_hash = format!("{prefix}{name}");
                     let metadata = entry.metadata().await?;
                     // For database lookup, use the hash without prefix
                     let hash_without_prefix = &full_hash[2..];
 
                     if hash_only {
                         // Just show the full hash
-                        println!("{}", hash_without_prefix);
+                        println!("{hash_without_prefix}");
                     } else if long_format {
                         let size = format_size(metadata.len(), BINARY);
                         let perms = format_permissions(&metadata);
@@ -410,13 +410,13 @@ async fn list_specific(
             }
 
             if !found {
-                eprintln!("No objects found with prefix '{}'", path_or_hash);
+                eprintln!("No objects found with prefix '{path_or_hash}'");
             }
         } else {
-            eprintln!("No objects found with prefix '{}'", prefix);
+            eprintln!("No objects found with prefix '{prefix}'");
         }
     } else {
-        eprintln!("Invalid hash prefix: {}", path_or_hash);
+        eprintln!("Invalid hash prefix: {path_or_hash}");
     }
 
     Ok(())
@@ -451,7 +451,7 @@ fn format_permissions(metadata: &std::fs::Metadata) -> String {
             if mode & 0o001 != 0 { 'x' } else { '-' }
         );
 
-        format!("{}{}{}{}", file_type, user, group, other)
+        format!("{file_type}{user}{group}{other}")
     }
     #[cfg(not(unix))]
     {
@@ -746,7 +746,7 @@ async fn list_specific_package(
     }
 
     if !found {
-        eprintln!("No packages found with prefix '{}'", hash_prefix);
+        eprintln!("No packages found with prefix '{hash_prefix}'");
     }
 
     Ok(())

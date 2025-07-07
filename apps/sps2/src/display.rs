@@ -82,7 +82,7 @@ impl OutputRenderer {
                 result.discrepancies.len()
             );
             for discrepancy in &result.discrepancies {
-                println!("  - {:?}", discrepancy);
+                println!("  - {discrepancy:?}");
             }
         }
 
@@ -660,7 +660,7 @@ impl OutputRenderer {
                             );
 
                             if let Some(score) = vuln.cvss_score {
-                                println!("      CVSS Score: {:.1}", score);
+                                println!("      CVSS Score: {score:.1}");
                             }
 
                             if !vuln.fixed_versions.is_empty() {

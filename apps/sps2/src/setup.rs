@@ -108,7 +108,7 @@ impl SystemSetup {
                 debug!("Creating directory: {}", dir);
                 tokio::fs::create_dir_all(path)
                     .await
-                    .map_err(|e| CliError::Setup(format!("Failed to create {}: {}", dir, e)))?;
+                    .map_err(|e| CliError::Setup(format!("Failed to create {dir}: {e}")))?;
             }
         }
 
@@ -125,11 +125,11 @@ impl SystemSetup {
         for path in &paths_to_check {
             let metadata = tokio::fs::metadata(path)
                 .await
-                .map_err(|e| CliError::Setup(format!("Cannot access {}: {}", path, e)))?;
+                .map_err(|e| CliError::Setup(format!("Cannot access {path}: {e}")))?;
 
             // Check if we can write to the directory
             if metadata.permissions().readonly() {
-                return Err(CliError::Setup(format!("No write permission for {}", path)));
+                return Err(CliError::Setup(format!("No write permission for {path}")));
             }
         }
 
@@ -152,7 +152,7 @@ impl SystemSetup {
         let state_path = Path::new("/opt/pm");
         let state = StateManager::new(state_path)
             .await
-            .map_err(|e| CliError::Setup(format!("Failed to initialize state: {}", e)))?;
+            .map_err(|e| CliError::Setup(format!("Failed to initialize state: {e}")))?;
 
         self.state = Some(state);
         Ok(())
@@ -175,11 +175,11 @@ impl SystemSetup {
                 let empty_index = sps2_index::Index::new();
                 let json = empty_index
                     .to_json()
-                    .map_err(|e| CliError::Setup(format!("Failed to create empty index: {}", e)))?;
+                    .map_err(|e| CliError::Setup(format!("Failed to create empty index: {e}")))?;
                 index
                     .load(Some(&json))
                     .await
-                    .map_err(|e| CliError::Setup(format!("Failed to load empty index: {}", e)))?;
+                    .map_err(|e| CliError::Setup(format!("Failed to load empty index: {e}")))?;
             }
         }
 
@@ -203,7 +203,7 @@ impl SystemSetup {
         };
 
         let net = sps2_net::NetClient::new(net_config)
-            .map_err(|e| CliError::Setup(format!("Failed to create network client: {}", e)))?;
+            .map_err(|e| CliError::Setup(format!("Failed to create network client: {e}")))?;
 
         self.net = Some(net);
         Ok(())
@@ -242,13 +242,13 @@ impl SystemSetup {
             let cleaned_states = state
                 .cleanup_old_states(10)
                 .await
-                .map_err(|e| CliError::Setup(format!("Startup GC failed: {}", e)))?;
+                .map_err(|e| CliError::Setup(format!("Startup GC failed: {e}")))?;
 
             // Clean up orphaned packages
             let store = self.store.as_ref().unwrap();
             let cleaned_packages = store
                 .garbage_collect()
-                .map_err(|e| CliError::Setup(format!("Startup GC failed: {}", e)))?;
+                .map_err(|e| CliError::Setup(format!("Startup GC failed: {e}")))?;
 
             if !cleaned_states.is_empty() || cleaned_packages > 0 {
                 info!(
@@ -298,13 +298,13 @@ impl SystemSetup {
 
         let mut entries = tokio::fs::read_dir(states_dir)
             .await
-            .map_err(|e| CliError::Setup(format!("Failed to read states directory: {}", e)))?;
+            .map_err(|e| CliError::Setup(format!("Failed to read states directory: {e}")))?;
 
         let mut cleaned = 0;
         while let Some(entry) = entries
             .next_entry()
             .await
-            .map_err(|e| CliError::Setup(format!("Failed to read directory entry: {}", e)))?
+            .map_err(|e| CliError::Setup(format!("Failed to read directory entry: {e}")))?
         {
             let file_name = entry.file_name();
             if let Some(name) = file_name.to_str() {
@@ -334,12 +334,12 @@ impl SystemSetup {
         let timestamp_path = self.gc_timestamp_path();
         let content = tokio::fs::read_to_string(&timestamp_path)
             .await
-            .map_err(|e| CliError::Setup(format!("Failed to read GC timestamp: {}", e)))?;
+            .map_err(|e| CliError::Setup(format!("Failed to read GC timestamp: {e}")))?;
 
         content
             .trim()
             .parse::<u64>()
-            .map_err(|e| CliError::Setup(format!("Invalid GC timestamp format: {}", e)))
+            .map_err(|e| CliError::Setup(format!("Invalid GC timestamp format: {e}")))
     }
 
     /// Write the current timestamp as the last GC time
@@ -352,7 +352,7 @@ impl SystemSetup {
 
         tokio::fs::write(&timestamp_path, now.to_string())
             .await
-            .map_err(|e| CliError::Setup(format!("Failed to write GC timestamp: {}", e)))?;
+            .map_err(|e| CliError::Setup(format!("Failed to write GC timestamp: {e}")))?;
 
         debug!("Updated GC timestamp: {}", now);
         Ok(())

@@ -187,10 +187,9 @@ impl Discrepancy {
                     DiscrepancySeverity::High,
                     RecommendedAction::AutoHeal,
                     format!(
-                        "Missing file '{}' from package '{}' v{}. This may cause the application to malfunction.",
-                        file_path, package_name, package_version
+                        "Missing file '{file_path}' from package '{package_name}' v{package_version}. This may cause the application to malfunction."
                     ),
-                    format!("Expected file {} from {}:{} not found in filesystem", file_path, package_name, package_version),
+                    format!("Expected file {file_path} from {package_name}:{package_version} not found in filesystem"),
                 )
                 .with_manual_steps(vec![
                     format!("Reinstall package: sps2 install {}:{}", package_name, package_version),
@@ -211,10 +210,9 @@ impl Discrepancy {
                     DiscrepancySeverity::High,
                     RecommendedAction::UserConfirmation,
                     format!(
-                        "Type mismatch for '{}' from package '{}' v{}: expected {} but found {}. This will prevent proper operation.",
-                        file_path, package_name, package_version, expected_type, actual_type
+                        "Type mismatch for '{file_path}' from package '{package_name}' v{package_version}: expected {expected_type} but found {actual_type}. This will prevent proper operation."
                     ),
-                    format!("Path {} should be {} but is {}", file_path, expected_type, actual_type),
+                    format!("Path {file_path} should be {expected_type} but is {actual_type}"),
                 )
                 .with_manual_steps(vec![
                     format!("Remove conflicting {}: rm -rf '{}'", actual_type, file_path),
@@ -232,12 +230,10 @@ impl Discrepancy {
                     DiscrepancySeverity::Critical,
                     RecommendedAction::UserConfirmation,
                     format!(
-                        "File '{}' from package '{}' v{} has been modified or corrupted. This could indicate tampering, disk errors, or manual modifications.",
-                        file_path, package_name, package_version
+                        "File '{file_path}' from package '{package_name}' v{package_version} has been modified or corrupted. This could indicate tampering, disk errors, or manual modifications."
                     ),
                     format!(
-                        "Hash mismatch for {}: expected {} but got {}",
-                        file_path, expected_hash, actual_hash
+                        "Hash mismatch for {file_path}: expected {expected_hash} but got {actual_hash}"
                     ),
                 )
                 .with_manual_steps(vec![
@@ -259,27 +255,27 @@ impl Discrepancy {
                     OrphanedFileCategory::Leftover => (
                         DiscrepancySeverity::Medium,
                         RecommendedAction::AutoHeal,
-                        format!("Leftover file '{}' from a previous package version. Safe to remove.", file_path)
+                        format!("Leftover file '{file_path}' from a previous package version. Safe to remove.")
                     ),
                     OrphanedFileCategory::UserCreated => (
                         DiscrepancySeverity::Low,
                         RecommendedAction::Ignore,
-                        format!("User-created file '{}' found in package directory. Consider moving to appropriate location.", file_path)
+                        format!("User-created file '{file_path}' found in package directory. Consider moving to appropriate location.")
                     ),
                     OrphanedFileCategory::Temporary => (
                         DiscrepancySeverity::Low,
                         RecommendedAction::AutoHeal,
-                        format!("Temporary file '{}' should be cleaned up.", file_path)
+                        format!("Temporary file '{file_path}' should be cleaned up.")
                     ),
                     OrphanedFileCategory::System => (
                         DiscrepancySeverity::Low,
                         RecommendedAction::Ignore,
-                        format!("System file '{}' detected in package directory. Preserving.", file_path)
+                        format!("System file '{file_path}' detected in package directory. Preserving.")
                     ),
                     OrphanedFileCategory::Unknown => (
                         DiscrepancySeverity::Medium,
                         RecommendedAction::UserConfirmation,
-                        format!("Unknown file '{}' found in package directory. Manual review recommended.", file_path)
+                        format!("Unknown file '{file_path}' found in package directory. Manual review recommended.")
                     ),
                 };
 
@@ -287,7 +283,7 @@ impl Discrepancy {
                     severity,
                     action,
                     message,
-                    format!("Orphaned file: {} (category: {:?})", file_path, category),
+                    format!("Orphaned file: {file_path} (category: {category:?})"),
                 );
 
                 match category {
@@ -326,10 +322,9 @@ impl Discrepancy {
                     DiscrepancySeverity::High,
                     RecommendedAction::AutoHeal,
                     format!(
-                        "Python virtual environment missing for package '{}' v{} at '{}'. Python packages may not function correctly.",
-                        package_name, package_version, venv_path
+                        "Python virtual environment missing for package '{package_name}' v{package_version} at '{venv_path}'. Python packages may not function correctly."
                     ),
-                    format!("Expected virtual environment {} for {}:{} not found", venv_path, package_name, package_version),
+                    format!("Expected virtual environment {venv_path} for {package_name}:{package_version} not found"),
                 )
                 .with_manual_steps(vec![
                     format!("Recreate virtual environment: python -m venv '{}'", venv_path),
@@ -348,10 +343,9 @@ impl Discrepancy {
                     DiscrepancySeverity::Critical,
                     RecommendedAction::UserConfirmation,
                     format!(
-                        "Package content missing from store for '{}' v{}. Package files cannot be verified.",
-                        package_name, package_version
+                        "Package content missing from store for '{package_name}' v{package_version}. Package files cannot be verified."
                     ),
-                    format!("Package {}:{} store content is missing", package_name, package_version),
+                    format!("Package {package_name}:{package_version} store content is missing"),
                 )
                 .with_manual_steps(vec![
                     format!("Reinstall package: sps2 install {}:{}", package_name, package_version),
@@ -397,7 +391,7 @@ impl Discrepancy {
     #[must_use]
     pub fn short_description(&self) -> String {
         match self {
-            Self::MissingFile { file_path, .. } => format!("Missing file: {}", file_path),
+            Self::MissingFile { file_path, .. } => format!("Missing file: {file_path}"),
             Self::TypeMismatch {
                 file_path,
                 expected_directory,
@@ -408,24 +402,21 @@ impl Discrepancy {
                 } else {
                     "file"
                 };
-                format!("Wrong type for {}: expected {}", file_path, expected)
+                format!("Wrong type for {file_path}: expected {expected}")
             }
-            Self::CorruptedFile { file_path, .. } => format!("Corrupted file: {}", file_path),
+            Self::CorruptedFile { file_path, .. } => format!("Corrupted file: {file_path}"),
             Self::OrphanedFile {
                 file_path,
                 category,
-            } => format!("Orphaned {:?}: {}", category, file_path),
+            } => format!("Orphaned {category:?}: {file_path}"),
             Self::MissingVenv { venv_path, .. } => {
-                format!("Missing virtual environment: {}", venv_path)
+                format!("Missing virtual environment: {venv_path}")
             }
             Self::MissingPackageContent {
                 package_name,
                 package_version,
             } => {
-                format!(
-                    "Missing package content: {}:{}",
-                    package_name, package_version
-                )
+                format!("Missing package content: {package_name}:{package_version}")
             }
         }
     }

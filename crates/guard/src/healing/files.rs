@@ -24,8 +24,7 @@ pub async fn restore_missing_file(
     file_path: &str,
 ) -> Result<(), Error> {
     eprintln!(
-        "DEBUG: restore_missing_file starting for {}/{} - {}",
-        package_name, package_version, file_path
+        "DEBUG: restore_missing_file starting for {package_name}/{package_version} - {file_path}"
     );
 
     let result = restore_missing_file_impl(ctx, package_name, package_version, file_path).await;

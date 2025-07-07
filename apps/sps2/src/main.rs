@@ -37,7 +37,7 @@ async fn main() {
     if let Err(e) = run(cli).await {
         error!("Application error: {}", e);
         if !json_mode {
-            eprintln!("Error: {}", e);
+            eprintln!("Error: {e}");
         }
         process::exit(1);
     }
@@ -68,7 +68,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
     if let Err(e) = recover_if_needed(setup.state()).await {
         error!("CRITICAL ERROR: A previous operation was interrupted and could not be automatically recovered: {}", e);
         if !cli.global.json {
-            eprintln!("CRITICAL ERROR: A previous operation was interrupted and could not be automatically recovered: {}", e);
+            eprintln!("CRITICAL ERROR: A previous operation was interrupted and could not be automatically recovered: {e}");
             eprintln!("The package manager is in a potentially inconsistent state. Please report this issue.");
         }
         return Err(e);
@@ -258,8 +258,7 @@ async fn execute_command(
                 Some("low") | None => sps2_ops::Severity::Low,
                 Some(s) => {
                     return Err(CliError::InvalidArguments(format!(
-                        "Invalid severity '{}': must be one of: low, medium, high, critical",
-                        s
+                        "Invalid severity '{s}': must be one of: low, medium, high, critical"
                     )))
                 }
             };
@@ -362,7 +361,7 @@ fn init_tracing(json_mode: bool) {
         // Debug mode: structured JSON logs to file
         let log_dir = std::path::Path::new("/opt/pm/logs");
         if let Err(e) = std::fs::create_dir_all(log_dir) {
-            eprintln!("Warning: Failed to create log directory: {}", e);
+            eprintln!("Warning: Failed to create log directory: {e}");
         }
 
         let log_file = log_dir.join(format!(
@@ -381,7 +380,7 @@ fn init_tracing(json_mode: bool) {
                 eprintln!("Debug logging enabled: {}", log_file.display());
             }
             Err(e) => {
-                eprintln!("Warning: Failed to create log file: {}", e);
+                eprintln!("Warning: Failed to create log file: {e}");
                 // Fallback to stderr
                 tracing_subscriber::fmt()
                     .with_env_filter("sps2=info,sps2=info")

@@ -22,12 +22,12 @@ pub enum CliError {
 impl fmt::Display for CliError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            CliError::Config(e) => write!(f, "Configuration error: {}", e),
-            CliError::Ops(e) => write!(f, "{}", e),
-            CliError::Setup(msg) => write!(f, "System setup error: {}", msg),
+            CliError::Config(e) => write!(f, "Configuration error: {e}"),
+            CliError::Ops(e) => write!(f, "{e}"),
+            CliError::Setup(msg) => write!(f, "System setup error: {msg}"),
             CliError::EventChannelClosed => write!(f, "Internal communication error"),
-            CliError::InvalidArguments(msg) => write!(f, "Invalid arguments: {}", msg),
-            CliError::Io(e) => write!(f, "I/O error: {}", e),
+            CliError::InvalidArguments(msg) => write!(f, "Invalid arguments: {msg}"),
+            CliError::Io(e) => write!(f, "I/O error: {e}"),
         }
     }
 }

@@ -371,8 +371,7 @@ impl StateVerificationGuard {
         // Emit verification started event
         let _ = self.tx.send(Event::DebugLog {
             message: format!(
-                "Starting scoped state verification for state {state_id} (scope: {:?})",
-                scope
+                "Starting scoped state verification for state {state_id} (scope: {scope:?})"
             ),
             context: HashMap::default(),
         });
@@ -958,8 +957,7 @@ impl StateVerificationGuard {
                     u64::try_from(start_time.elapsed().as_millis()).unwrap_or(u64::MAX);
                 let _ = self.tx.send(Event::DebugLog {
                     message: format!(
-                        "Progressive verification completed with Full level in {}ms",
-                        duration_ms
+                        "Progressive verification completed with Full level in {duration_ms}ms"
                     ),
                     context: HashMap::default(),
                 });
@@ -1127,8 +1125,7 @@ impl StateVerificationGuard {
 
                     let _ = self.tx.send(Event::DebugLog {
                         message: format!(
-                            "Successfully verified package {}-{} ({} files)",
-                            package_name, package_version, files_count
+                            "Successfully verified package {package_name}-{package_version} ({files_count} files)"
                         ),
                         context: HashMap::default(),
                     });
@@ -1136,13 +1133,13 @@ impl StateVerificationGuard {
                 Ok(Err(e)) => {
                     // Even if verification fails, we should have tracked files to avoid false orphans
                     let _ = self.tx.send(Event::DebugLog {
-                        message: format!("Package verification error: {}", e),
+                        message: format!("Package verification error: {e}"),
                         context: HashMap::default(),
                     });
                 }
                 Err(e) => {
                     let _ = self.tx.send(Event::DebugLog {
-                        message: format!("Verification task panicked: {}", e),
+                        message: format!("Verification task panicked: {e}"),
                         context: HashMap::default(),
                     });
                 }
