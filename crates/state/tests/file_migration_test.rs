@@ -180,7 +180,7 @@ async fn test_storage_stats() {
     for i in 0..3 {
         let file_ref = FileReference {
             package_id,
-            relative_path: format!("lib/shared{}.so", i),
+            relative_path: format!("lib/shared{i}.so"),
             hash: shared_hash.clone(),
             metadata: shared_metadata.clone(),
         };
