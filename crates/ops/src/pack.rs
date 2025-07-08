@@ -11,6 +11,7 @@ use sps2_builder::{
 };
 use sps2_errors::{Error, OpsError};
 use sps2_events::Event;
+use sps2_manifest::Manifest;
 use sps2_types::{BuildReport, Version};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -55,6 +56,98 @@ pub async fn pack_from_recipe_no_post(
     output_dir: Option<&Path>,
 ) -> Result<BuildReport, Error> {
     pack_from_recipe_impl(ctx, recipe_path, output_dir, false).await
+}
+
+/// Pack a directory directly, skipping all post-processing
+///
+/// This is a power-user feature that packages a directory as-is.
+/// It requires a manifest file and optionally accepts an SBOM.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Directory to package does not exist or is empty
+/// - Manifest file does not exist or is invalid
+/// - SBOM file (if provided) does not exist
+/// - Packaging process fails
+pub async fn pack_from_directory(
+    ctx: &OpsCtx,
+    directory: &Path,
+    manifest_path: &Path,
+    sbom_path: Option<&Path>,
+    output_dir: Option<&Path>,
+) -> Result<BuildReport, Error> {
+    let start = Instant::now();
+
+    ctx.tx
+        .send(Event::OperationStarted {
+            operation: "Packing from directory".to_string(),
+        })
+        .map_err(|_| OpsError::EventChannelClosed)?;
+
+    // Validate the directory to be packaged
+    validate_staging_directory(directory, "directory", &Version::new(0, 0, 0))?;
+
+    // Load the manifest to get package metadata
+    let manifest = Manifest::from_file(manifest_path).await?;
+    let package_name = manifest.package.name.clone();
+    let package_version = manifest.version()?;
+
+    // Create a minimal build context
+    let output_path = determine_output_path(output_dir, &package_name, &package_version);
+    let build_context = BuildContext::new(
+        package_name.clone(),
+        package_version.clone(),
+        manifest_path.to_path_buf(), // Use manifest path as a stand-in for recipe
+        output_path.parent().unwrap_or(directory).to_path_buf(),
+    )
+    .with_revision(manifest.package.revision)
+    .with_event_sender(ctx.tx.clone());
+
+    // Create a minimal build environment pointing to the specified directory
+    let mut environment = BuildEnvironment::new(build_context.clone(), directory)?;
+    environment.set_staging_dir(directory.to_path_buf());
+
+    // Create a minimal build config
+    let build_config = BuildConfig::default();
+
+    // Prepare SBOM files if provided
+    let sbom_files = if let Some(path) = sbom_path {
+        sps2_builder::SbomFiles {
+            spdx_path: Some(path.to_path_buf()),
+            cyclonedx_path: None,
+            ..Default::default()
+        }
+    } else {
+        sps2_builder::SbomFiles::default()
+    };
+
+    // Create and sign the package
+    let package_path = create_and_sign_package(
+        &build_config,
+        &build_context,
+        &environment,
+        manifest,
+        sbom_files,
+    )
+    .await?;
+
+    let duration = start.elapsed();
+
+    ctx.tx
+        .send(Event::OperationCompleted {
+            operation: format!("Packed {package_name} v{package_version} from directory"),
+            success: true,
+        })
+        .map_err(|_| OpsError::EventChannelClosed)?;
+
+    Ok(BuildReport {
+        package: package_name,
+        version: package_version,
+        output_path: package_path,
+        duration_ms: u64::try_from(duration.as_millis()).unwrap_or(u64::MAX),
+        sbom_generated: sbom_path.is_some(),
+    })
 }
 
 /// Internal implementation for recipe-based packaging

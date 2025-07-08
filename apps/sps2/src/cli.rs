@@ -131,13 +131,30 @@ pub enum Commands {
 
     /// Package from staging directory without rebuilding
     #[command(alias = "p")]
+    #[command(group(
+        clap::ArgGroup::new("pack_source")
+            .required(true)
+            .args(&["recipe", "directory"]),
+    ))]
     Pack {
         /// Path to recipe file (.yaml or .yml)
         #[arg(short = 'r', long = "recipe")]
-        recipe: PathBuf,
+        recipe: Option<PathBuf>,
 
-        /// Skip post-processing steps and QA pipeline
-        #[arg(short = 'n', long = "no-post")]
+        /// Path to a directory to package directly (skips post-processing)
+        #[arg(short = 'd', long = "directory")]
+        directory: Option<PathBuf>,
+
+        /// Path to a manifest.toml file (required with --directory)
+        #[arg(short = 'm', long, requires = "directory")]
+        manifest: Option<PathBuf>,
+
+        /// Path to an SBOM file (optional, requires --directory)
+        #[arg(short = 's', long, requires = "directory")]
+        sbom: Option<PathBuf>,
+
+        /// Skip post-processing steps and QA pipeline (only with --recipe)
+        #[arg(short = 'n', long = "no-post", requires = "recipe")]
         no_post: bool,
 
         /// Output directory for .sp file
@@ -349,13 +366,17 @@ impl Commands {
                 }
             }
             Commands::Pack { recipe, .. } => {
-                if !recipe.exists() {
-                    Err(format!("Recipe file not found: {}", recipe.display()))
-                } else if !recipe
-                    .extension()
-                    .is_some_and(|ext| ext == "yaml" || ext == "yml")
-                {
-                    Err("Recipe file must have .yaml or .yml extension".to_string())
+                if let Some(recipe) = recipe {
+                    if !recipe.exists() {
+                        Err(format!("Recipe file not found: {}", recipe.display()))
+                    } else if !recipe
+                        .extension()
+                        .is_some_and(|ext| ext == "yaml" || ext == "yml")
+                    {
+                        Err("Recipe file must have .yaml or .yml extension".to_string())
+                    } else {
+                        Ok(())
+                    }
                 } else {
                     Ok(())
                 }

@@ -235,14 +235,35 @@ async fn execute_command(
 
         Commands::Pack {
             recipe,
+            directory,
+            manifest,
+            sbom,
             no_post,
             output_dir,
         } => {
             let output_path = output_dir.as_deref();
-            let report = if no_post {
-                sps2_ops::pack_from_recipe_no_post(&ctx, &recipe, output_path).await?
+            let report = if let Some(dir) = directory {
+                // The manifest is required with --directory, so we can unwrap it.
+                let manifest_path = manifest.unwrap();
+                sps2_ops::pack_from_directory(
+                    &ctx,
+                    &dir,
+                    &manifest_path,
+                    sbom.as_deref(),
+                    output_path,
+                )
+                .await?
+            } else if let Some(rec) = recipe {
+                if no_post {
+                    sps2_ops::pack_from_recipe_no_post(&ctx, &rec, output_path).await?
+                } else {
+                    sps2_ops::pack_from_recipe(&ctx, &rec, output_path).await?
+                }
             } else {
-                sps2_ops::pack_from_recipe(&ctx, &recipe, output_path).await?
+                // This case should be prevented by clap's arg group
+                return Err(CliError::InvalidArguments(
+                    "Either --recipe or --directory must be specified".to_string(),
+                ));
             };
             Ok(OperationResult::BuildReport(report))
         }

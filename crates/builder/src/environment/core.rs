@@ -110,6 +110,11 @@ impl BuildEnvironment {
         &self.staging_dir
     }
 
+    /// Set staging directory
+    pub fn set_staging_dir(&mut self, path: PathBuf) {
+        self.staging_dir = path;
+    }
+
     /// Get build context
     #[must_use]
     pub fn context(&self) -> &BuildContext {
