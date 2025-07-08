@@ -370,6 +370,7 @@ impl OutputRenderer {
         table.set_header(vec![
             Cell::new("State ID").add_attribute(Attribute::Bold),
             Cell::new("Current").add_attribute(Attribute::Bold),
+            Cell::new("Type").add_attribute(Attribute::Bold),
             Cell::new("Operation").add_attribute(Attribute::Bold),
             Cell::new("Created").add_attribute(Attribute::Bold),
             Cell::new("Packages").add_attribute(Attribute::Bold),
@@ -384,9 +385,22 @@ impl OutputRenderer {
                 Cell::new("")
             };
 
+            // Check if state directory exists to determine type
+            let state_dir = std::path::Path::new("/opt/pm/states").join(state.id.to_string());
+            let (type_text, type_color) = if state.current {
+                ("live", Color::Green)
+            } else if state_dir.exists() {
+                ("alive", Color::Blue)
+            } else {
+                ("ghost", Color::Yellow)
+            };
+
+            let type_cell = Cell::new(type_text).fg(type_color);
+
             table.add_row(vec![
                 Cell::new(state.id.to_string()),
                 current_cell,
+                type_cell,
                 Cell::new(&state.operation),
                 Cell::new(state.timestamp.format("%Y-%m-%d %H:%M").to_string()),
                 Cell::new(state.package_count.to_string()),

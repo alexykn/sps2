@@ -67,9 +67,12 @@ impl StateTransition {
     /// # Errors
     ///
     /// Returns an error if directory removal fails.
-    pub async fn cleanup(&self) -> Result<(), sps2_errors::Error> {
+    pub async fn cleanup(&self, state_manager: &StateManager) -> Result<(), sps2_errors::Error> {
         if sps2_root::exists(&self.staging_path).await {
-            sps2_root::remove_dir_all(&self.staging_path).await?;
+            // Check if staging directory can be safely removed
+            if state_manager.can_remove_staging(&self.staging_id).await? {
+                sps2_root::remove_dir_all(&self.staging_path).await?;
+            }
         }
         Ok(())
     }

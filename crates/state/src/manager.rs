@@ -364,16 +364,15 @@ impl StateManager {
     pub async fn cleanup(
         &self,
         retention_count: usize,
-        retention_days: u32,
+        _retention_days: u32,
     ) -> Result<CleanupResult, Error> {
         self.tx.emit(Event::CleanupStarting);
 
         let mut tx = self.pool.begin().await?;
 
-        // Find states to remove
-        let cutoff_time = chrono::Utc::now().timestamp() - (i64::from(retention_days) * 86400);
+        // Find states to remove using strict retention (keep only N newest states)
         let states_to_remove =
-            queries::get_states_to_cleanup(&mut tx, retention_count, cutoff_time).await?;
+            queries::get_states_for_cleanup_strict(&mut tx, retention_count).await?;
 
         let mut space_freed = 0u64;
 
@@ -386,15 +385,23 @@ impl StateManager {
             }
         }
 
-        // Clean up orphaned staging directories
+        // Clean up orphaned staging directories (only if safe to remove)
         let mut entries = tokio::fs::read_dir(&self.state_path).await?;
         while let Some(entry) = entries.next_entry().await? {
             let name = entry.file_name();
             if let Some(name_str) = name.to_str() {
                 if name_str.starts_with("staging-") {
-                    let path = entry.path();
-                    space_freed += sps2_root::size(&path).await?;
-                    sps2_root::remove_dir_all(&path).await?;
+                    // Extract staging ID from directory name
+                    if let Some(id_str) = name_str.strip_prefix("staging-") {
+                        if let Ok(staging_id) = uuid::Uuid::parse_str(id_str) {
+                            // Only remove if it's safe to do so
+                            if self.can_remove_staging(&staging_id).await? {
+                                let path = entry.path();
+                                space_freed += sps2_root::size(&path).await?;
+                                sps2_root::remove_dir_all(&path).await?;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -722,8 +729,10 @@ impl StateManager {
         keep_count: usize,
     ) -> Result<Vec<sps2_types::StateId>, Error> {
         let mut tx = self.pool.begin().await?;
-        let cutoff_time = chrono::Utc::now().timestamp() - (30 * 24 * 60 * 60); // 30 days ago
-        let states = queries::get_states_for_cleanup(&mut tx, keep_count, cutoff_time).await?;
+
+        // Get states strictly by creation time, keeping only the N newest
+        // This replaces the old age+retention logic with pure retention by creation time
+        let states = queries::get_states_for_cleanup_strict(&mut tx, keep_count).await?;
         tx.commit().await?;
 
         // Convert strings to StateIds
@@ -1017,6 +1026,32 @@ impl StateManager {
             sps2_root::remove_file(&path).await?;
         }
         Ok(())
+    }
+
+    /// Check if a staging directory can be safely removed
+    ///
+    /// A staging directory can only be removed if:
+    /// 1. No journal file exists, OR
+    /// 2. The journal file exists but doesn't point to this staging directory
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if journal file read fails
+    pub async fn can_remove_staging(&self, staging_id: &uuid::Uuid) -> Result<bool, Error> {
+        if let Some(journal) = self.read_journal().await? {
+            // If journal exists and points to this staging directory, we cannot remove it
+            if journal
+                .staging_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(|name| name == format!("staging-{staging_id}"))
+                .unwrap_or(false)
+            {
+                return Ok(false);
+            }
+        }
+        // Either no journal exists or it doesn't point to this staging directory
+        Ok(true)
     }
 
     /// Phase 1 of 2PC: Prepare and commit database changes

@@ -461,6 +461,42 @@ pub async fn get_states_to_cleanup(
     get_states_for_cleanup(tx, keep_count, cutoff_time).await
 }
 
+/// Get states for cleanup with strict retention (keeps only N newest states)
+///
+/// This function keeps only the N newest states based on creation time,
+/// ignoring age cutoff. This fixes the issue where if all states are young,
+/// they would accumulate because age-based filtering fails.
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
+pub async fn get_states_for_cleanup_strict(
+    tx: &mut Transaction<'_, Sqlite>,
+    keep_count: usize,
+) -> Result<Vec<String>, Error> {
+    let rows = query(
+        r"
+        SELECT id FROM states
+        WHERE id NOT IN (
+            SELECT id FROM states ORDER BY created_at DESC LIMIT ?1
+        )
+        AND id NOT IN (
+            SELECT state_id FROM active_state WHERE id = 1
+        )
+        AND success = 1
+        ORDER BY created_at ASC
+        ",
+    )
+    .bind(
+        i64::try_from(keep_count)
+            .map_err(|e| Error::internal(format!("keep_count too large: {e}")))?,
+    )
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(rows.into_iter().map(|r| r.get("id")).collect())
+}
+
 /// Get unreferenced store items (alias)
 ///
 /// # Errors

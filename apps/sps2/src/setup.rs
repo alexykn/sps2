@@ -238,9 +238,9 @@ impl SystemSetup {
         if self.should_run_startup_gc(state).await? {
             info!("Running startup garbage collection");
 
-            // Clean up old states
+            // Clean up old states using configured retention count
             let cleaned_states = state
-                .cleanup_old_states(10)
+                .cleanup_old_states(self.config.state.retention_count)
                 .await
                 .map_err(|e| CliError::Setup(format!("Startup GC failed: {e}")))?;
 
@@ -289,7 +289,7 @@ impl SystemSetup {
         }
     }
 
-    /// Clean up orphaned staging directories
+    /// Clean up orphaned staging directories (only safe to remove)
     async fn clean_orphaned_staging(&self) -> Result<(), CliError> {
         let states_dir = Path::new("/opt/pm/states");
         if !states_dir.exists() {
@@ -301,6 +301,8 @@ impl SystemSetup {
             .map_err(|e| CliError::Setup(format!("Failed to read states directory: {e}")))?;
 
         let mut cleaned = 0;
+        let state_manager = self.state.as_ref().unwrap();
+
         while let Some(entry) = entries
             .next_entry()
             .await
@@ -309,14 +311,30 @@ impl SystemSetup {
             let file_name = entry.file_name();
             if let Some(name) = file_name.to_str() {
                 if name.starts_with("staging-") {
-                    debug!("Removing orphaned staging directory: {}", name);
-                    if let Err(e) = tokio::fs::remove_dir_all(entry.path()).await {
-                        warn!(
-                            "Failed to remove orphaned staging directory {}: {}",
-                            name, e
-                        );
-                    } else {
-                        cleaned += 1;
+                    // Extract staging ID from directory name
+                    if let Some(id_str) = name.strip_prefix("staging-") {
+                        if let Ok(staging_id) = uuid::Uuid::parse_str(id_str) {
+                            // Only remove if it's safe to do so
+                            match state_manager.can_remove_staging(&staging_id).await {
+                                Ok(true) => {
+                                    debug!("Removing orphaned staging directory: {}", name);
+                                    if let Err(e) = tokio::fs::remove_dir_all(entry.path()).await {
+                                        warn!(
+                                            "Failed to remove orphaned staging directory {}: {}",
+                                            name, e
+                                        );
+                                    } else {
+                                        cleaned += 1;
+                                    }
+                                }
+                                Ok(false) => {
+                                    debug!("Staging directory {} is still in use, skipping", name);
+                                }
+                                Err(e) => {
+                                    warn!("Failed to check if staging directory {} can be removed: {}", name, e);
+                                }
+                            }
+                        }
                     }
                 }
             }
