@@ -405,6 +405,40 @@ pub enum Event {
         state_id: uuid::Uuid,
     },
 
+    // Two-Phase Commit events
+    TwoPhaseCommitStarting {
+        state_id: uuid::Uuid,
+        parent_state_id: uuid::Uuid,
+        operation: String,
+    },
+    TwoPhaseCommitPhaseOneStarting {
+        state_id: uuid::Uuid,
+        operation: String,
+    },
+    TwoPhaseCommitPhaseOneCompleted {
+        state_id: uuid::Uuid,
+        operation: String,
+    },
+    TwoPhaseCommitPhaseTwoStarting {
+        state_id: uuid::Uuid,
+        operation: String,
+    },
+    TwoPhaseCommitPhaseTwoCompleted {
+        state_id: uuid::Uuid,
+        operation: String,
+    },
+    TwoPhaseCommitCompleted {
+        state_id: uuid::Uuid,
+        parent_state_id: uuid::Uuid,
+        operation: String,
+    },
+    TwoPhaseCommitFailed {
+        state_id: uuid::Uuid,
+        operation: String,
+        error: String,
+        phase: String,
+    },
+
     // Package download events
     PackageDownloadStarted {
         name: String,

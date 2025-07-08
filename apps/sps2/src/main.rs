@@ -481,6 +481,18 @@ async fn recover_if_needed(state_manager: &StateManager) -> Result<(), CliError>
                 // The DB is prepared, but the FS swap didn't happen.
                 // We must complete the swap and finalize the state.
                 info!("Recovery: Completing filesystem swap and finalizing state");
+
+                // Guard: Check if the staging directory exists
+                if !sps2_root::exists(&journal.staging_path).await {
+                    error!("CRITICAL RECOVERY ERROR: Journal indicates prepared transaction but staging directory is missing: {}", journal.staging_path.display());
+                    return Err(CliError::RecoveryError(format!(
+                        "Cannot recover prepared transaction: staging directory {} was prematurely deleted. \
+                        This indicates a bug in the 2PC cleanup logic. The database contains prepared changes \
+                        but the staging directory required for filesystem swap is missing.",
+                        journal.staging_path.display()
+                    )));
+                }
+
                 state_manager
                     .execute_filesystem_swap_and_finalize(journal)
                     .await?;

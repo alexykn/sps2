@@ -103,7 +103,7 @@ impl UiStyle {
         // Apply bold styling for important operations
         let should_bold = matches!(
             operation,
-            "install" | "uninstall" | "build" | "upgrade" | "rollback" | "health"
+            "install" | "uninstall" | "build" | "upgrade" | "rollback" | "health" | "2pc"
         );
 
         match severity {
@@ -142,6 +142,7 @@ impl UiStyle {
                 op if op.contains("verify") || op.contains("guard") => "✓",
                 op if op.contains("heal") => "+",
                 op if op.contains("qa") || op.contains("audit") => "?",
+                op if op.contains("2pc") => "•",
                 _ => "•",
             };
         }
@@ -161,6 +162,7 @@ impl UiStyle {
             op if op.contains("heal") => "•",
             op if op.contains("cache") => "•",
             op if op.contains("qa") || op.contains("audit") => "•",
+            op if op.contains("2pc") => "•",
             _ => "•",
         }
     }
@@ -681,6 +683,86 @@ impl EventHandler {
                     &format!("Rolled back from {from} to {to}"),
                     "rollback",
                     EventSeverity::Success,
+                );
+            }
+
+            // Two-Phase Commit events
+            Event::TwoPhaseCommitStarting {
+                state_id,
+                parent_state_id,
+                operation,
+            } => {
+                self.show_operation_message(
+                    &format!(
+                        "Starting 2PC transaction: {operation} ({parent_state_id} -> {state_id})"
+                    ),
+                    "2pc",
+                    EventSeverity::Info,
+                );
+            }
+            Event::TwoPhaseCommitPhaseOneStarting {
+                state_id,
+                operation,
+            } => {
+                self.show_operation_message(
+                    &format!("2PC Phase 1: Preparing database changes for {operation} (state: {state_id})"),
+                    "2pc",
+                    EventSeverity::Info,
+                );
+            }
+            Event::TwoPhaseCommitPhaseOneCompleted {
+                state_id,
+                operation,
+            } => {
+                self.show_operation_message(
+                    &format!("2PC Phase 1: Database prepared for {operation} (state: {state_id})"),
+                    "2pc",
+                    EventSeverity::Success,
+                );
+            }
+            Event::TwoPhaseCommitPhaseTwoStarting {
+                state_id,
+                operation,
+            } => {
+                self.show_operation_message(
+                    &format!("2PC Phase 2: Executing filesystem swap for {operation} (state: {state_id})"),
+                    "2pc",
+                    EventSeverity::Info,
+                );
+            }
+            Event::TwoPhaseCommitPhaseTwoCompleted {
+                state_id,
+                operation,
+            } => {
+                self.show_operation_message(
+                    &format!("2PC Phase 2: Filesystem swap completed for {operation} (state: {state_id})"),
+                    "2pc",
+                    EventSeverity::Success,
+                );
+            }
+            Event::TwoPhaseCommitCompleted {
+                state_id,
+                parent_state_id,
+                operation,
+            } => {
+                self.show_operation_message(
+                    &format!(
+                        "2PC transaction completed: {operation} ({parent_state_id} -> {state_id})"
+                    ),
+                    "2pc",
+                    EventSeverity::Success,
+                );
+            }
+            Event::TwoPhaseCommitFailed {
+                state_id,
+                operation,
+                error,
+                phase,
+            } => {
+                self.show_operation_message(
+                    &format!("2PC transaction failed during {phase}: {operation} (state: {state_id}) - {error}"),
+                    "2pc",
+                    EventSeverity::Error,
                 );
             }
 

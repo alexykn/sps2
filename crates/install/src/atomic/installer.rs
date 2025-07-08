@@ -155,33 +155,112 @@ impl AtomicInstaller {
 
         if context.dry_run {
             // Clean up staging and return result without committing
-            transition.cleanup().await?;
+            transition.cleanup(&self.state_manager).await?;
             return Ok(result);
         }
 
         // --- NEW 2PC COMMIT FLOW ---
+        let parent_id = transition.parent_id.unwrap_or_default();
+
+        // Emit 2PC start event
+        if let Some(sender) = &context.event_sender {
+            let _ = sender.send(Event::TwoPhaseCommitStarting {
+                state_id: transition.staging_id,
+                parent_state_id: parent_id,
+                operation: transition.operation.clone(),
+            });
+        }
+
         // Phase 1: Prepare and commit the database changes
+        if let Some(sender) = &context.event_sender {
+            let _ = sender.send(Event::TwoPhaseCommitPhaseOneStarting {
+                state_id: transition.staging_id,
+                operation: transition.operation.clone(),
+            });
+        }
+
         let transition_data = sps2_state::TransactionData {
             package_refs: &transition.package_refs,
             package_files: &transition.package_files,
             file_references: &transition.file_references,
             pending_file_hashes: &transition.pending_file_hashes,
         };
-        let journal = self
+
+        let journal = match self
             .state_manager
             .prepare_transaction(
                 &transition.staging_id,
-                &transition.parent_id.unwrap_or_default(),
+                &parent_id,
                 &transition.staging_path,
                 &transition.operation,
                 &transition_data,
             )
-            .await?;
+            .await
+        {
+            Ok(journal) => {
+                if let Some(sender) = &context.event_sender {
+                    let _ = sender.send(Event::TwoPhaseCommitPhaseOneCompleted {
+                        state_id: transition.staging_id,
+                        operation: transition.operation.clone(),
+                    });
+                }
+                journal
+            }
+            Err(e) => {
+                if let Some(sender) = &context.event_sender {
+                    let _ = sender.send(Event::TwoPhaseCommitFailed {
+                        state_id: transition.staging_id,
+                        operation: transition.operation.clone(),
+                        error: e.to_string(),
+                        phase: "phase_one".to_string(),
+                    });
+                }
+                return Err(e);
+            }
+        };
 
         // Phase 2: Execute filesystem swap and finalize
-        self.state_manager
+        if let Some(sender) = &context.event_sender {
+            let _ = sender.send(Event::TwoPhaseCommitPhaseTwoStarting {
+                state_id: transition.staging_id,
+                operation: transition.operation.clone(),
+            });
+        }
+
+        match self
+            .state_manager
             .execute_filesystem_swap_and_finalize(journal)
-            .await?;
+            .await
+        {
+            Ok(()) => {
+                if let Some(sender) = &context.event_sender {
+                    let _ = sender.send(Event::TwoPhaseCommitPhaseTwoCompleted {
+                        state_id: transition.staging_id,
+                        operation: transition.operation.clone(),
+                    });
+                }
+            }
+            Err(e) => {
+                if let Some(sender) = &context.event_sender {
+                    let _ = sender.send(Event::TwoPhaseCommitFailed {
+                        state_id: transition.staging_id,
+                        operation: transition.operation.clone(),
+                        error: e.to_string(),
+                        phase: "phase_two".to_string(),
+                    });
+                }
+                return Err(e);
+            }
+        }
+
+        // Emit 2PC completion event
+        if let Some(sender) = &context.event_sender {
+            let _ = sender.send(Event::TwoPhaseCommitCompleted {
+                state_id: transition.staging_id,
+                parent_state_id: parent_id,
+                operation: transition.operation.clone(),
+            });
+        }
 
         if let Some(sender) = &context.event_sender {
             let _ = sender.send(Event::StateTransition {
@@ -550,33 +629,112 @@ impl AtomicInstaller {
 
         if context.dry_run {
             // Clean up staging and return result without committing
-            transition.cleanup().await?;
+            transition.cleanup(&self.state_manager).await?;
             return Ok(result);
         }
 
         // --- NEW 2PC COMMIT FLOW ---
+        let parent_id = transition.parent_id.unwrap_or_default();
+
+        // Emit 2PC start event
+        if let Some(sender) = &context.event_sender {
+            let _ = sender.send(Event::TwoPhaseCommitStarting {
+                state_id: transition.staging_id,
+                parent_state_id: parent_id,
+                operation: transition.operation.clone(),
+            });
+        }
+
         // Phase 1: Prepare and commit the database changes
+        if let Some(sender) = &context.event_sender {
+            let _ = sender.send(Event::TwoPhaseCommitPhaseOneStarting {
+                state_id: transition.staging_id,
+                operation: transition.operation.clone(),
+            });
+        }
+
         let transition_data = sps2_state::TransactionData {
             package_refs: &transition.package_refs,
             package_files: &transition.package_files,
             file_references: &transition.file_references,
             pending_file_hashes: &transition.pending_file_hashes,
         };
-        let journal = self
+
+        let journal = match self
             .state_manager
             .prepare_transaction(
                 &transition.staging_id,
-                &transition.parent_id.unwrap_or_default(),
+                &parent_id,
                 &transition.staging_path,
                 &transition.operation,
                 &transition_data,
             )
-            .await?;
+            .await
+        {
+            Ok(journal) => {
+                if let Some(sender) = &context.event_sender {
+                    let _ = sender.send(Event::TwoPhaseCommitPhaseOneCompleted {
+                        state_id: transition.staging_id,
+                        operation: transition.operation.clone(),
+                    });
+                }
+                journal
+            }
+            Err(e) => {
+                if let Some(sender) = &context.event_sender {
+                    let _ = sender.send(Event::TwoPhaseCommitFailed {
+                        state_id: transition.staging_id,
+                        operation: transition.operation.clone(),
+                        error: e.to_string(),
+                        phase: "phase_one".to_string(),
+                    });
+                }
+                return Err(e);
+            }
+        };
 
         // Phase 2: Execute filesystem swap and finalize
-        self.state_manager
+        if let Some(sender) = &context.event_sender {
+            let _ = sender.send(Event::TwoPhaseCommitPhaseTwoStarting {
+                state_id: transition.staging_id,
+                operation: transition.operation.clone(),
+            });
+        }
+
+        match self
+            .state_manager
             .execute_filesystem_swap_and_finalize(journal)
-            .await?;
+            .await
+        {
+            Ok(()) => {
+                if let Some(sender) = &context.event_sender {
+                    let _ = sender.send(Event::TwoPhaseCommitPhaseTwoCompleted {
+                        state_id: transition.staging_id,
+                        operation: transition.operation.clone(),
+                    });
+                }
+            }
+            Err(e) => {
+                if let Some(sender) = &context.event_sender {
+                    let _ = sender.send(Event::TwoPhaseCommitFailed {
+                        state_id: transition.staging_id,
+                        operation: transition.operation.clone(),
+                        error: e.to_string(),
+                        phase: "phase_two".to_string(),
+                    });
+                }
+                return Err(e);
+            }
+        }
+
+        // Emit 2PC completion event
+        if let Some(sender) = &context.event_sender {
+            let _ = sender.send(Event::TwoPhaseCommitCompleted {
+                state_id: transition.staging_id,
+                parent_state_id: parent_id,
+                operation: transition.operation.clone(),
+            });
+        }
 
         if let Some(sender) = &context.event_sender {
             let _ = sender.send(Event::StateTransition {

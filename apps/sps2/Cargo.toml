@@ -24,6 +24,7 @@ sps2-state = { path = "../../crates/state" }
 sps2-store = { path = "../../crates/store" }
 sps2-index = { path = "../../crates/index" }
 sps2-builder = { path = "../../crates/builder" }
+sps2-root = { path = "../../crates/root" }
 
 clap = { version = "4.5.40", features = ["derive", "color"] }
 tokio = { workspace = true, features = ["full"] }
