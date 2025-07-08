@@ -29,6 +29,7 @@ pub struct SecurityContext {
 
 impl SecurityContext {
     /// Create a new security context for a build
+    #[must_use]
     pub fn new(build_root: PathBuf, initial_vars: HashMap<String, String>) -> Self {
         let mut environment = HashMap::new();
 
@@ -55,6 +56,13 @@ impl SecurityContext {
     }
 
     /// Execute a command with security validation
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Command parsing fails
+    /// - Path validation fails for command arguments
+    /// - Security constraints are violated
     pub fn execute_command(&mut self, command: &str) -> Result<ValidatedExecution, Error> {
         // Record in history
         self.command_history.push(command.to_string());
@@ -69,6 +77,14 @@ impl SecurityContext {
     }
 
     /// Validate a path access in the current context
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Path resolution fails
+    /// - Path escapes build root (for unauthorized access)
+    /// - Write access attempted outside build root
+    /// - Execute access attempted on unsafe executable
     pub fn validate_path_access(
         &self,
         path: &str,
@@ -127,6 +143,12 @@ impl SecurityContext {
     }
 
     /// Expand all variables in a string
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal `write!` macro fails when formatting variable references.
+    /// This should not happen in practice as we're writing to a `String`.
+    #[must_use]
     pub fn expand_variables(&self, input: &str) -> String {
         // Handle ${VAR} style - manually parse to avoid regex dependency
         let mut expanded = String::new();
@@ -184,6 +206,13 @@ impl SecurityContext {
     }
 
     /// Resolve a path to absolute form in current context
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Path normalization fails
+    /// - Symlink resolution fails
+    /// - Path contains invalid components
     pub fn resolve_path(&self, path: &str) -> Result<PathBuf, Error> {
         let path = Path::new(path);
 
@@ -277,12 +306,14 @@ impl SecurityContext {
 
     /// Get current directory
     #[allow(dead_code)]
+    #[must_use]
     pub fn current_dir(&self) -> &Path {
         &self.current_dir
     }
 
     /// Get build root
     #[allow(dead_code)]
+    #[must_use]
     pub fn build_root(&self) -> &Path {
         &self.build_root
     }

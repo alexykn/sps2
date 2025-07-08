@@ -22,6 +22,12 @@ use std::path::{Path, PathBuf};
 use tokio::fs;
 
 /// Create package archive and sign it
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Package creation fails
+/// - Package signing fails (when enabled)
 pub async fn create_and_sign_package(
     config: &BuildConfig,
     context: &BuildContext,
@@ -52,6 +58,13 @@ pub async fn create_and_sign_package(
 }
 
 /// Create the final package
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Python package structure creation fails (for Python packages)
+/// - Manifest serialization to TOML fails
+/// - SP package archive creation fails
 pub async fn create_package(
     config: &BuildConfig,
     context: &BuildContext,
@@ -87,6 +100,15 @@ pub async fn create_package(
 }
 
 /// Create a .sp package archive with manifest, SBOM files, and tar+zstd compression
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Directory creation fails
+/// - File I/O operations fail (writing manifest, copying SBOM files)
+/// - Tar archive creation fails or times out
+/// - Zstd compression fails
+/// - Cleanup operations fail
 pub async fn create_sp_package(
     config: &BuildConfig,
     context: &BuildContext,
@@ -206,6 +228,12 @@ pub async fn create_sp_package(
 }
 
 /// Sign the package if signing is enabled
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Package signing fails (when signing is enabled)
+/// - Cryptographic operations fail during signing
 pub async fn sign_package(
     config: &BuildConfig,
     context: &BuildContext,
@@ -256,6 +284,14 @@ pub async fn sign_package(
 }
 
 /// Create Python package structure and metadata
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Required Python environment variables are missing
+/// - Directory creation fails
+/// - File copying operations fail (wheel, lockfile)
+/// - Path operations fail
 async fn create_python_package_structure(
     environment: &BuildEnvironment,
     manifest: &Manifest,

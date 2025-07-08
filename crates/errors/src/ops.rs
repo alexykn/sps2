@@ -70,4 +70,13 @@ pub enum OpsError {
         discrepancies: usize,
         state_id: String,
     },
+
+    #[error("staging directory not found: {path} (for package {package})")]
+    StagingDirectoryNotFound { path: String, package: String },
+
+    #[error("invalid staging directory {path}: {reason}")]
+    InvalidStagingDirectory { path: String, reason: String },
+
+    #[error("event channel closed")]
+    EventChannelClosed,
 }

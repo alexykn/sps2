@@ -25,6 +25,7 @@ mod types;
 mod build;
 mod draft;
 mod install;
+mod pack;
 mod uninstall;
 mod update;
 mod upgrade;
@@ -50,6 +51,7 @@ pub use types::{
 pub use build::build;
 pub use draft::draft_recipe;
 pub use install::{install, install_with_verification};
+pub use pack::{pack_from_recipe, pack_from_recipe_no_post};
 pub use small_ops::{
     audit, check_health, cleanup, history, list_packages, package_info, reposync, rollback,
     search_packages, self_update, update_vulndb, vulndb_stats,

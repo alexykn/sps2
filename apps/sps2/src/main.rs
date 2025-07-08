@@ -233,6 +233,20 @@ async fn execute_command(
             Ok(OperationResult::BuildReport(report))
         }
 
+        Commands::Pack {
+            recipe,
+            no_post,
+            output_dir,
+        } => {
+            let output_path = output_dir.as_deref();
+            let report = if no_post {
+                sps2_ops::pack_from_recipe_no_post(&ctx, &recipe, output_path).await?
+            } else {
+                sps2_ops::pack_from_recipe(&ctx, &recipe, output_path).await?
+            };
+            Ok(OperationResult::BuildReport(report))
+        }
+
         Commands::VulnDb { command } => match command {
             VulnDbCommands::Update => {
                 let result = sps2_ops::update_vulndb(&ctx).await?;

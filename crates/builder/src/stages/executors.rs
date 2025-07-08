@@ -218,6 +218,14 @@ pub async fn execute_post_step(
 }
 
 /// Execute a post-processing step with security context
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Security validation fails for command execution
+/// - Command is disallowed by `sps2_config`
+/// - Post-processing operation fails (patch rpaths, fix permissions, etc.)
+/// - Command execution fails
 pub async fn execute_post_step_with_security(
     step: &PostStep,
     api: &mut BuilderApi,

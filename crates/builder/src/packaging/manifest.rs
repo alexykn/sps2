@@ -9,6 +9,13 @@ use sps2_manifest::Manifest;
 use tokio::fs;
 
 /// Generate SBOM and create package manifest
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - SBOM directory creation fails
+/// - SBOM generation fails
+/// - File system operations fail during SBOM creation
 pub async fn generate_sbom_and_manifest(
     config: &crate::BuildConfig,
     context: &BuildContext,
@@ -58,6 +65,13 @@ pub async fn generate_sbom_and_manifest(
 }
 
 /// Generate SBOM files
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - SBOM directory creation fails
+/// - SBOM generator fails to scan staging directory
+/// - File I/O operations fail during SBOM generation
 pub async fn generate_sbom(
     config: &crate::BuildConfig,
     environment: &BuildEnvironment,

@@ -129,6 +129,22 @@ pub enum Commands {
         legacy: bool,
     },
 
+    /// Package from staging directory without rebuilding
+    #[command(alias = "p")]
+    Pack {
+        /// Path to recipe file (.yaml or .yml)
+        #[arg(short = 'r', long = "recipe")]
+        recipe: PathBuf,
+
+        /// Skip post-processing steps and QA pipeline
+        #[arg(short = 'n', long = "no-post")]
+        no_post: bool,
+
+        /// Output directory for .sp file
+        #[arg(short, long)]
+        output_dir: Option<PathBuf>,
+    },
+
     /// List installed packages
     #[command(alias = "ls")]
     List,
@@ -274,6 +290,7 @@ impl Commands {
             Commands::Upgrade { .. } => "upgrade",
             Commands::Uninstall { .. } => "uninstall",
             Commands::Build { .. } => "build",
+            Commands::Pack { .. } => "pack",
             Commands::List => "list",
             Commands::Info { .. } => "info",
             Commands::Search { .. } => "search",
@@ -327,6 +344,18 @@ impl Commands {
                             }
                         }
                     }
+                } else {
+                    Ok(())
+                }
+            }
+            Commands::Pack { recipe, .. } => {
+                if !recipe.exists() {
+                    Err(format!("Recipe file not found: {}", recipe.display()))
+                } else if !recipe
+                    .extension()
+                    .is_some_and(|ext| ext == "yaml" || ext == "yml")
+                {
+                    Err("Recipe file must have .yaml or .yml extension".to_string())
                 } else {
                     Ok(())
                 }
