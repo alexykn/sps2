@@ -16,8 +16,11 @@ pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
 
     ctx.tx.send(Event::CleanupStarting).ok();
 
-    // Clean up old states (keep last 10, remove states older than 30 days)
-    let cleanup_result = ctx.state.cleanup(10, 30).await?;
+    // Clean up old states, respecting the configured retention count
+    let cleanup_result = ctx
+        .state
+        .cleanup(ctx.config.state.retention_count, 30)
+        .await?;
 
     // Run garbage collection on store
     let cleaned_packages = ctx.state.gc_store_with_removal(&ctx.store).await?;
