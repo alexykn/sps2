@@ -49,7 +49,6 @@ mod installer;
 mod operations;
 mod parallel;
 mod pipeline;
-pub mod python;
 mod staging;
 pub mod validation;
 

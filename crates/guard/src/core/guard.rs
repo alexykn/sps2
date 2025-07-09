@@ -587,37 +587,6 @@ impl StateVerificationGuard {
                         }
                     }
                 }
-                Discrepancy::MissingVenv {
-                    package_name,
-                    package_version,
-                    venv_path,
-                } => {
-                    match crate::healing::venv::heal_missing_venv(
-                        &self.state_manager,
-                        &self.store,
-                        &self.tx,
-                        package_name,
-                        package_version,
-                        venv_path,
-                    )
-                    .await
-                    {
-                        Ok(()) => {
-                            healed_count += 1;
-                            let _ = self.tx.send(Event::DebugLog {
-                                message: format!("Successfully healed missing venv: {venv_path} for {package_name}-{package_version}"),
-                                context: HashMap::default(),
-                            });
-                        }
-                        Err(e) => {
-                            failed_healings.push(discrepancy.clone());
-                            let _ = self.tx.send(Event::DebugLog {
-                                message: format!("Failed to heal missing venv {venv_path}: {e}"),
-                                context: HashMap::default(),
-                            });
-                        }
-                    }
-                }
                 // Handle other discrepancy types as needed
                 _ => {
                     failed_healings.push(discrepancy.clone());
@@ -815,37 +784,6 @@ impl StateVerificationGuard {
                                 message: format!(
                                     "Failed to restore corrupted file {file_path}: {e}"
                                 ),
-                                context: HashMap::default(),
-                            });
-                        }
-                    }
-                }
-                Discrepancy::MissingVenv {
-                    package_name,
-                    package_version,
-                    venv_path,
-                } => {
-                    match crate::healing::venv::heal_missing_venv(
-                        &self.state_manager,
-                        &self.store,
-                        &self.tx,
-                        package_name,
-                        package_version,
-                        venv_path,
-                    )
-                    .await
-                    {
-                        Ok(()) => {
-                            healed_count += 1;
-                            let _ = self.tx.send(Event::DebugLog {
-                                message: format!("Successfully healed missing venv: {venv_path} for {package_name}-{package_version}"),
-                                context: HashMap::default(),
-                            });
-                        }
-                        Err(e) => {
-                            failed_healings.push(discrepancy.clone());
-                            let _ = self.tx.send(Event::DebugLog {
-                                message: format!("Failed to heal missing venv {venv_path}: {e}"),
                                 context: HashMap::default(),
                             });
                         }
