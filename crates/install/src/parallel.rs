@@ -1,7 +1,7 @@
 //! Parallel package execution with dependency ordering
 
 // InstallContext import removed as it's not used in this module
-use crate::validate_sp_file;
+// validate_sp_file import removed - validation now handled by AtomicInstaller
 use crossbeam::queue::SegQueue;
 use dashmap::DashMap;
 use sps2_errors::{Error, InstallError};
@@ -233,17 +233,10 @@ impl ParallelExecutor {
         match node.action {
             NodeAction::Download => {
                 if let Some(url) = &node.url {
-                    // Download package with timeout
+                    // Download package with timeout and add to store (no validation)
                     let download_result = timeout(
                         timeout_duration,
-                        Self::download_package(
-                            url,
-                            &package_id,
-                            &net_client,
-                            &store,
-                            &state_manager,
-                            &context,
-                        ),
+                        Self::download_package_only(url, &package_id, &net_client, &store, &state_manager, &context),
                     )
                     .await;
 
@@ -272,34 +265,12 @@ impl ParallelExecutor {
                 }
             }
             NodeAction::Local => {
-                if let Some(path) = &node.path {
-                    // Validate local package before adding to store
-                    let validation_result =
-                        validate_sp_file(path, context.event_sender.as_ref()).await?;
-
-                    if !validation_result.is_valid {
-                        return Err(InstallError::InvalidPackageFile {
-                            path: path.display().to_string(),
-                            message: "package validation failed".to_string(),
-                        }
-                        .into());
-                    }
-
-                    // Send validation warnings as events
-                    for warning in &validation_result.warnings {
-                        context.send_event(Event::Warning {
-                            message: warning.clone(),
-                            context: Some(format!("validating {}", path.display())),
-                        });
-                    }
-
-                    // Add local package to store
-                    store.add_local_package(path).await?;
-
+                if let Some(_path) = &node.path {
+                    // For local packages, just emit event - AtomicInstaller will handle validation and store operations
                     context.send_event(Event::PackageInstalled {
                         name: package_id.name.clone(),
                         version: package_id.version.clone(),
-                        path: path.display().to_string(),
+                        path: _path.display().to_string(),
                     });
                 } else {
                     return Err(InstallError::MissingLocalPath {
@@ -313,8 +284,8 @@ impl ParallelExecutor {
         Ok(package_id)
     }
 
-    /// Download a package to the store
-    async fn download_package(
+    /// Download a package and add to store (no validation - AtomicInstaller handles that)
+    async fn download_package_only(
         url: &str,
         package_id: &PackageId,
         net_client: &NetClient,
@@ -339,27 +310,7 @@ impl ParallelExecutor {
             })
             .await?;
 
-        // Validate downloaded package before adding to store
-        let validation_result =
-            validate_sp_file(temp_file.path(), context.event_sender.as_ref()).await?;
-
-        if !validation_result.is_valid {
-            return Err(InstallError::InvalidPackageFile {
-                path: temp_file.path().display().to_string(),
-                message: format!("downloaded package validation failed from {url}"),
-            }
-            .into());
-        }
-
-        // Send validation warnings as events
-        for warning in &validation_result.warnings {
-            context.send_event(Event::Warning {
-                message: warning.clone(),
-                context: Some(format!("validating downloaded package from {url}")),
-            });
-        }
-
-        // Add to store
+        // Add to store without validation (AtomicInstaller will validate)
         let stored_package = store
             .add_package_from_file(temp_file.path(), &package_id.name, &package_id.version)
             .await?;
