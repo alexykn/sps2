@@ -89,17 +89,20 @@ impl InstallOperation {
                     "DEBUG: About to process {} resolved packages via ParallelExecutor",
                     resolution.nodes.len()
                 ),
-                context: std::collections::HashMap::from([
-                    ("packages".to_string(), 
-                     resolution.nodes.keys()
-                         .map(|id| format!("{}-{}", id.name, id.version))
-                         .collect::<Vec<_>>()
-                         .join(", "))
-                ]),
+                context: std::collections::HashMap::from([(
+                    "packages".to_string(),
+                    resolution
+                        .nodes
+                        .keys()
+                        .map(|id| format!("{}-{}", id.name, id.version))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                )]),
             },
         );
 
-        let prepared_packages = self.executor
+        let prepared_packages = self
+            .executor
             .execute_parallel(&resolution.execution_plan, &resolution.nodes, &exec_context)
             .await?;
 
@@ -112,13 +115,14 @@ impl InstallOperation {
                     "DEBUG: ParallelExecutor prepared {} packages",
                     prepared_packages.len()
                 ),
-                context: std::collections::HashMap::from([
-                    ("prepared_packages".to_string(), 
-                     prepared_packages.keys()
-                         .map(|id| format!("{}-{}", id.name, id.version))
-                         .collect::<Vec<_>>()
-                         .join(", "))
-                ]),
+                context: std::collections::HashMap::from([(
+                    "prepared_packages".to_string(),
+                    prepared_packages
+                        .keys()
+                        .map(|id| format!("{}-{}", id.name, id.version))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                )]),
             },
         );
 

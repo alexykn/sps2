@@ -2,9 +2,9 @@
 
 // InstallContext import removed as it's not used in this module
 // validate_sp_file import removed - validation now handled by AtomicInstaller
+use crate::PreparedPackage;
 use crossbeam::queue::SegQueue;
 use dashmap::DashMap;
-use crate::PreparedPackage;
 use sps2_errors::{Error, InstallError};
 use sps2_events::{Event, EventSender};
 use sps2_net::NetClient;
@@ -17,6 +17,17 @@ use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tokio::task::JoinHandle;
 use tokio::time::{timeout, Duration, Instant};
+
+struct ProcessPackageArgs {
+    package_id: PackageId,
+    node: ResolvedNode,
+    context: ExecutionContext,
+    net_client: NetClient,
+    store: PackageStore,
+    state_manager: StateManager,
+    timeout_duration: Duration,
+    prepared_packages: Arc<DashMap<PackageId, PreparedPackage>>,
+}
 
 /// Parallel executor for package operations
 pub struct ParallelExecutor {
@@ -85,13 +96,15 @@ impl ParallelExecutor {
                 "DEBUG: Execution plan has {} ready packages",
                 execution_plan.ready_packages().len()
             ),
-            context: std::collections::HashMap::from([
-                ("ready_packages".to_string(), 
-                 execution_plan.ready_packages().iter()
-                     .map(|id| format!("{}-{}", id.name, id.version))
-                     .collect::<Vec<_>>()
-                     .join(", "))
-            ]),
+            context: std::collections::HashMap::from([(
+                "ready_packages".to_string(),
+                execution_plan
+                    .ready_packages()
+                    .iter()
+                    .map(|id| format!("{}-{}", id.name, id.version))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            )]),
         });
 
         for package_id in execution_plan.ready_packages() {
@@ -259,13 +272,13 @@ impl ParallelExecutor {
         });
 
         // Convert DashMap to HashMap and return prepared packages
-        let prepared_packages = Arc::try_unwrap(prepared_packages)
-            .map_err(|_| InstallError::ConcurrencyError {
+        let prepared_packages =
+            Arc::try_unwrap(prepared_packages).map_err(|_| InstallError::ConcurrencyError {
                 message: "failed to unwrap prepared packages Arc".to_string(),
             })?;
-        
+
         let mut result = HashMap::new();
-        for entry in prepared_packages.into_iter() {
+        for entry in prepared_packages {
             result.insert(entry.0, entry.1);
         }
         Ok(result)
@@ -308,7 +321,7 @@ impl ParallelExecutor {
         let timeout_duration = self.download_timeout;
 
         tokio::spawn(async move {
-            Self::process_package(
+            Self::process_package(ProcessPackageArgs {
                 package_id,
                 node,
                 context,
@@ -317,22 +330,23 @@ impl ParallelExecutor {
                 state_manager,
                 timeout_duration,
                 prepared_packages,
-            )
+            })
             .await
         })
     }
 
     /// Process a single package (download/local)
-    async fn process_package(
-        package_id: PackageId,
-        node: ResolvedNode,
-        context: ExecutionContext,
-        net_client: NetClient,
-        store: PackageStore,
-        _state_manager: StateManager,
-        timeout_duration: Duration,
-        prepared_packages: Arc<DashMap<PackageId, PreparedPackage>>,
-    ) -> Result<PackageId, Error> {
+    async fn process_package(args: ProcessPackageArgs) -> Result<PackageId, Error> {
+        let ProcessPackageArgs {
+            package_id,
+            node,
+            context,
+            net_client,
+            store,
+            state_manager: _state_manager,
+            timeout_duration,
+            prepared_packages,
+        } = args;
         context.send_event(Event::DebugLog {
             message: format!(
                 "DEBUG: Processing package {}-{} with action {:?}",
@@ -374,7 +388,7 @@ impl ParallelExecutor {
                         Err(_) => {
                             return Err(InstallError::DownloadTimeout {
                                 package: package_id.name.clone(),
-                                url: url.clone(),
+                                url: url.to_string(),
                                 timeout_seconds: timeout_duration.as_secs(),
                             }
                             .into());
@@ -407,11 +421,11 @@ impl ParallelExecutor {
 
                     // For local packages, add to store and prepare data
                     let stored_package = store.add_package(path).await?;
-                    
+
                     if let Some(hash) = stored_package.hash() {
                         let size = stored_package.size().await?;
                         let store_path = stored_package.path().to_path_buf();
-                        
+
                         context.send_event(Event::DebugLog {
                             message: format!(
                                 "DEBUG: Local package stored with hash {} at {}",
@@ -420,16 +434,16 @@ impl ParallelExecutor {
                             ),
                             context: std::collections::HashMap::new(),
                         });
-                        
+
                         let prepared_package = PreparedPackage {
                             hash: hash.clone(),
                             size,
                             store_path,
                             is_local: true,
                         };
-                        
+
                         prepared_packages.insert(package_id.clone(), prepared_package);
-                        
+
                         context.send_event(Event::DebugLog {
                             message: format!(
                                 "DEBUG: Added prepared package for {}-{}",
@@ -437,7 +451,7 @@ impl ParallelExecutor {
                             ),
                             context: std::collections::HashMap::new(),
                         });
-                        
+
                         context.send_event(Event::PackageInstalled {
                             name: package_id.name.clone(),
                             version: package_id.version.clone(),
@@ -446,7 +460,8 @@ impl ParallelExecutor {
                     } else {
                         return Err(InstallError::AtomicOperationFailed {
                             message: "failed to get hash from local package".to_string(),
-                        }.into());
+                        }
+                        .into());
                     }
                 } else {
                     return Err(InstallError::MissingLocalPath {
@@ -495,14 +510,14 @@ impl ParallelExecutor {
         if let Some(hash) = stored_package.hash() {
             let size = stored_package.size().await?;
             let store_path = stored_package.path().to_path_buf();
-            
+
             let prepared_package = PreparedPackage {
                 hash: hash.clone(),
                 size,
                 store_path,
                 is_local: false,
             };
-            
+
             prepared_packages.insert(package_id.clone(), prepared_package);
 
             context.send_event(Event::DebugLog {

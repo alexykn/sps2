@@ -16,10 +16,6 @@ use uuid::Uuid;
 pub struct AtomicInstaller {
     /// State manager for atomic transitions
     state_manager: StateManager,
-    /// Package store
-    store: PackageStore,
-    /// Staging manager for secure extraction
-    staging_manager: StagingManager,
     /// Live prefix path
     live_path: PathBuf,
 }
@@ -33,13 +29,11 @@ impl AtomicInstaller {
     pub async fn new(state_manager: StateManager, store: PackageStore) -> Result<Self, Error> {
         // Derive staging base path from StateManager's state path for test isolation
         let staging_base_path = state_manager.state_path().join("staging");
-        let staging_manager = StagingManager::new(store.clone(), staging_base_path).await?;
+        let _staging_manager = StagingManager::new(store.clone(), staging_base_path).await?;
         let live_path = state_manager.live_path().to_path_buf();
 
         Ok(Self {
             state_manager,
-            store,
-            staging_manager,
             live_path,
         })
     }
@@ -298,7 +292,7 @@ impl AtomicInstaller {
                 let store_path = &prepared.store_path;
                 let size = prepared.size;
 
-                // Load package from the prepared store path  
+                // Load package from the prepared store path
                 let _stored_package = StoredPackage::load(store_path).await?;
 
                 // Ensure store_refs entry exists before adding to package_map
@@ -316,7 +310,7 @@ impl AtomicInstaller {
                     .await?;
 
                 // Link package files to staging
-                self.link_package_to_staging(transition, &store_path, package_id)
+                self.link_package_to_staging(transition, store_path, package_id)
                     .await?;
 
                 // Add the package reference
@@ -343,7 +337,7 @@ impl AtomicInstaller {
                 let store_path = &prepared.store_path;
                 let size = prepared.size;
 
-                // Load package from the prepared store path  
+                // Load package from the prepared store path
                 let _stored_package = StoredPackage::load(store_path).await?;
 
                 // Ensure store_refs entry exists before adding to package_map
@@ -376,92 +370,6 @@ impl AtomicInstaller {
         }
 
         result.add_installed(package_id.clone());
-        Ok(())
-    }
-
-    /// Install a local package using the staging system
-    async fn install_local_package_with_staging(
-        &self,
-        transition: &mut StateTransition,
-        local_path: &Path,
-        package_id: &PackageId,
-    ) -> Result<(), Error> {
-        // Extract to staging directory with validation
-        let staging_dir = self
-            .staging_manager
-            .extract_to_staging(local_path, package_id, transition.event_sender.as_ref())
-            .await?;
-
-        // Create staging guard for automatic cleanup on failure
-        let mut staging_guard = crate::StagingGuard::new(staging_dir);
-
-        // Get the validated staging directory
-        let _staging_dir =
-            staging_guard
-                .staging_dir()
-                .ok_or_else(|| InstallError::AtomicOperationFailed {
-                    message: "staging directory unavailable".to_string(),
-                })?;
-
-        // Add package to store from staging directory
-        let stored_package = self.store.add_package(local_path).await?;
-
-        // Get the hash from the stored package
-        let hash = stored_package
-            .hash()
-            .ok_or_else(|| InstallError::AtomicOperationFailed {
-                message: "failed to get package hash from store path".to_string(),
-            })?;
-
-        // Get package size for store ref
-        let size = stored_package.size().await?;
-
-        // Ensure store_refs entry exists before adding to package_map
-        self.state_manager
-            .ensure_store_ref(&hash.to_hex(), size as i64)
-            .await?;
-
-        // Add to package map for future lookups
-        self.state_manager
-            .add_package_map(
-                &package_id.name,
-                &package_id.version.to_string(),
-                &hash.to_hex(),
-            )
-            .await?;
-
-        // Get the store path where the package was stored
-        let store_path = stored_package.path();
-
-        // Debug log
-        if let Some(sender) = &transition.event_sender {
-            let _ = sender.send(Event::DebugLog {
-                message: format!(
-                    "Linking local package {} from store {} to staging",
-                    package_id.name,
-                    store_path.display()
-                ),
-                context: std::collections::HashMap::new(),
-            });
-        }
-
-        // Link package files from store to staging
-        self.link_package_to_staging(transition, store_path, package_id)
-            .await?;
-
-        // Add the package reference
-        let size = stored_package.size().await?;
-        let package_ref = PackageRef {
-            state_id: transition.staging_id,
-            package_id: package_id.clone(),
-            hash: hash.to_hex(),
-            size: size as i64,
-        };
-        transition.package_refs.push(package_ref);
-
-        // Successfully processed - prevent cleanup
-        let _staging_dir = staging_guard.take()?;
-
         Ok(())
     }
 
