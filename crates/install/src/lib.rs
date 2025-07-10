@@ -69,10 +69,13 @@ pub use validation::{
 // Removed unused imports: Error, EventSender, ResolutionResult, Version, HashMap
 // These will be imported where needed in future implementations
 use sps2_events::EventSender;
+use sps2_hash::Hash;
 use sps2_resolver::PackageId;
 use sps2_types::PackageSpec;
 use std::path::PathBuf;
 use uuid::Uuid;
+
+// PreparedPackage will be exported by the pub struct declaration below
 
 /// Installation context
 #[derive(Clone, Debug)]
@@ -319,4 +322,21 @@ impl Default for UpdateContext {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Prepared package data passed from ParallelExecutor to AtomicInstaller
+///
+/// This structure contains all the information needed by AtomicInstaller
+/// to install a package without having to look up package_map or perform
+/// additional database queries.
+#[derive(Clone, Debug)]
+pub struct PreparedPackage {
+    /// Package hash
+    pub hash: Hash,
+    /// Package size in bytes
+    pub size: u64,
+    /// Path to the package in the store
+    pub store_path: PathBuf,
+    /// Whether this package was downloaded or local
+    pub is_local: bool,
 }

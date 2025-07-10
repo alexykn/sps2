@@ -80,18 +80,56 @@ impl InstallOperation {
                 .unwrap_or_else(|| tokio::sync::mpsc::unbounded_channel().0),
         );
 
-        self.executor
+        // Debug: Check what packages we're trying to process
+        Self::send_event(
+            self,
+            &context,
+            Event::DebugLog {
+                message: format!(
+                    "DEBUG: About to process {} resolved packages via ParallelExecutor",
+                    resolution.nodes.len()
+                ),
+                context: std::collections::HashMap::from([
+                    ("packages".to_string(), 
+                     resolution.nodes.keys()
+                         .map(|id| format!("{}-{}", id.name, id.version))
+                         .collect::<Vec<_>>()
+                         .join(", "))
+                ]),
+            },
+        );
+
+        let prepared_packages = self.executor
             .execute_parallel(&resolution.execution_plan, &resolution.nodes, &exec_context)
             .await?;
 
-        // Downloads now populate package_map automatically via ParallelExecutor
+        // Debug: Check what packages were prepared
+        Self::send_event(
+            self,
+            &context,
+            Event::DebugLog {
+                message: format!(
+                    "DEBUG: ParallelExecutor prepared {} packages",
+                    prepared_packages.len()
+                ),
+                context: std::collections::HashMap::from([
+                    ("prepared_packages".to_string(), 
+                     prepared_packages.keys()
+                         .map(|id| format!("{}-{}", id.name, id.version))
+                         .collect::<Vec<_>>()
+                         .join(", "))
+                ]),
+            },
+        );
+
+        // ParallelExecutor now returns prepared package data instead of doing database operations
 
         // Perform atomic installation
         let mut atomic_installer =
             AtomicInstaller::new(self.state_manager.clone(), self.store.clone()).await?;
 
         let result = atomic_installer
-            .install(&context, &resolution.nodes, None)
+            .install(&context, &resolution.nodes, Some(&prepared_packages))
             .await?;
 
         Self::send_event(
