@@ -236,7 +236,14 @@ impl ParallelExecutor {
                     // Download package with timeout and add to store (no validation)
                     let download_result = timeout(
                         timeout_duration,
-                        Self::download_package_only(url, &package_id, &net_client, &store, &state_manager, &context),
+                        Self::download_package_only(
+                            url,
+                            &package_id,
+                            &net_client,
+                            &store,
+                            &state_manager,
+                            &context,
+                        ),
                     )
                     .await;
 
@@ -265,12 +272,12 @@ impl ParallelExecutor {
                 }
             }
             NodeAction::Local => {
-                if let Some(_path) = &node.path {
+                if let Some(path) = &node.path {
                     // For local packages, just emit event - AtomicInstaller will handle validation and store operations
                     context.send_event(Event::PackageInstalled {
                         name: package_id.name.clone(),
                         version: package_id.version.clone(),
-                        path: _path.display().to_string(),
+                        path: path.display().to_string(),
                     });
                 } else {
                     return Err(InstallError::MissingLocalPath {
@@ -310,14 +317,13 @@ impl ParallelExecutor {
             })
             .await?;
 
-        // Add to store without validation (AtomicInstaller will validate)
+        // Add to store and update package_map (AtomicInstaller expects this)
         let stored_package = store
             .add_package_from_file(temp_file.path(), &package_id.name, &package_id.version)
             .await?;
 
-        // Get the hash and update package_map for content-addressable lookups
+        // Update package_map for AtomicInstaller to find the package
         if let Some(hash) = stored_package.hash() {
-            // Update package_map for future lookups
             state_manager
                 .add_package_map(
                     &package_id.name,
@@ -328,7 +334,7 @@ impl ParallelExecutor {
 
             context.send_event(Event::DebugLog {
                 message: format!(
-                    "Package {}-{} stored with hash {} and added to package_map",
+                    "Package {}-{} downloaded, stored with hash {} and added to package_map",
                     package_id.name,
                     package_id.version,
                     hash.to_hex()

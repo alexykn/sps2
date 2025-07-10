@@ -373,7 +373,7 @@ impl AtomicInstaller {
         // Extract to staging directory with validation
         let staging_dir = self
             .staging_manager
-            .extract_to_staging(local_path, package_id, None)
+            .extract_to_staging(local_path, package_id, transition.event_sender.as_ref())
             .await?;
 
         // Create staging guard for automatic cleanup on failure

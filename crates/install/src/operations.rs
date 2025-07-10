@@ -1,8 +1,8 @@
 //! High-level installation operations
 
 use crate::{
-    validate_sp_file, AtomicInstaller, ExecutionContext, InstallContext, InstallResult,
-    ParallelExecutor, UninstallContext, UpdateContext,
+    AtomicInstaller, ExecutionContext, InstallContext, InstallResult, ParallelExecutor,
+    UninstallContext, UpdateContext,
 };
 use sps2_errors::{Error, InstallError};
 use sps2_events::Event;
@@ -63,8 +63,8 @@ impl InstallOperation {
             },
         );
 
-        // Validate local .sp files before processing
-        self.validate_local_packages(&context).await?;
+        // Check local .sp files exist (validation moved to AtomicInstaller)
+        self.check_local_packages_exist(&context)?;
 
         // Check for already installed packages
         self.check_already_installed(&context).await?;
@@ -174,8 +174,8 @@ impl InstallOperation {
         Ok(resolution)
     }
 
-    /// Validate local .sp package files
-    async fn validate_local_packages(&self, context: &InstallContext) -> Result<(), Error> {
+    /// Check local .sp package files exist (validation moved to AtomicInstaller)
+    fn check_local_packages_exist(&self, context: &InstallContext) -> Result<(), Error> {
         for local_file in &context.local_files {
             // Check if file exists
             if !local_file.exists() {
@@ -185,37 +185,16 @@ impl InstallOperation {
                 .into());
             }
 
-            // Validate the .sp file
-            let validation_result =
-                validate_sp_file(local_file, context.event_sender.as_ref()).await?;
-
-            if !validation_result.is_valid {
+            // Check file extension
+            if local_file.extension().is_none_or(|ext| ext != "sp") {
                 return Err(InstallError::InvalidPackageFile {
                     path: local_file.display().to_string(),
-                    message: "package validation failed".to_string(),
+                    message: "file must have .sp extension".to_string(),
                 }
                 .into());
             }
 
-            // Send warnings as events
-            if let Some(sender) = &context.event_sender {
-                for warning in &validation_result.warnings {
-                    let _ = sender.send(Event::Warning {
-                        message: warning.clone(),
-                        context: Some(format!("validating {}", local_file.display())),
-                    });
-                }
-            }
-
-            // Log validation success
-            Self::send_event(
-                self,
-                context,
-                Event::OperationCompleted {
-                    operation: format!("Validated package {}", local_file.display()),
-                    success: true,
-                },
-            );
+            // Validation moved to AtomicInstaller where it actually happens
         }
 
         Ok(())
@@ -257,37 +236,25 @@ impl InstallOperation {
             }
         }
 
-        // Check local .sp files by extracting their manifest to get name/version
+        // Check local .sp files for already installed packages
+        // Try to infer package info from filename first, fall back to manifest extraction if needed
         for local_file in &context.local_files {
-            // We need to peek at the manifest to get package info
-            // This is a bit expensive but necessary to prevent corruption
-            let validation_result =
-                validate_sp_file(local_file, context.event_sender.as_ref()).await?;
-
-            if let Some(manifest_toml) = validation_result.manifest {
-                // Parse the manifest TOML to get the actual manifest object
-                let manifest: sps2_manifest::Manifest =
-                    toml::from_str(&manifest_toml).map_err(|e| {
-                        InstallError::InvalidPackageFile {
-                            path: local_file.display().to_string(),
-                            message: format!("Failed to parse manifest: {}", e),
-                        }
-                    })?;
-
-                // Check if this exact version is already installed
-                if let Some(installed_pkg) = installed_packages
-                    .iter()
-                    .find(|pkg| pkg.name == manifest.package.name)
-                {
-                    if installed_pkg.version == manifest.package.version {
+            // Try to parse package info from filename (e.g., gmp-6.3.0-1.arm64.sp)
+            if let Some(filename) = local_file.file_stem().and_then(|s| s.to_str()) {
+                if let Some((name, version)) = Self::parse_package_filename(filename) {
+                    // Check if this package name/version is already installed
+                    if let Some(_installed_pkg) = installed_packages
+                        .iter()
+                        .find(|pkg| pkg.name == name && pkg.version == version)
+                    {
                         Self::send_event(
                             self,
                             context,
                             Event::Warning {
                                 message: format!(
                                     "Package {}-{} from {} is already installed",
-                                    manifest.package.name,
-                                    manifest.package.version,
+                                    name,
+                                    version,
                                     local_file.display()
                                 ),
                                 context: Some(
@@ -297,18 +264,33 @@ impl InstallOperation {
                         );
 
                         return Err(InstallError::PackageAlreadyInstalled {
-                            package: format!(
-                                "{}-{}",
-                                manifest.package.name, manifest.package.version
-                            ),
+                            package: format!("{}-{}", name, version),
                         }
                         .into());
                     }
                 }
+                // If filename parsing fails, we'll let AtomicInstaller handle the validation
+                // and duplicate detection during the actual installation process
             }
         }
 
         Ok(())
+    }
+
+    /// Parse package name and version from filename (e.g., "gmp-6.3.0-1.arm64" -> ("gmp", "6.3.0"))
+    fn parse_package_filename(filename: &str) -> Option<(String, String)> {
+        // Expected format: {name}-{version}-{build}.{arch}
+        // Example: gmp-6.3.0-1.arm64
+        let parts: Vec<&str> = filename.split('-').collect();
+        if parts.len() >= 3 {
+            let name = parts[0].to_string();
+            // Version is everything between first dash and last dash (before build number)
+            let version_parts: Vec<&str> = parts[1..parts.len() - 1].to_vec();
+            let version = version_parts.join("-");
+            Some((name, version))
+        } else {
+            None
+        }
     }
 
     /// Send event if context has event sender
