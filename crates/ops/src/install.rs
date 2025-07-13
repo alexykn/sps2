@@ -31,11 +31,7 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
         return Err(OpsError::NoPackagesSpecified.into());
     }
 
-    ctx.tx
-        .send(Event::InstallStarting {
-            packages: package_specs.iter().map(ToString::to_string).collect(),
-        })
-        .ok();
+    // Event emission moved to operations layer where actual work happens
 
     // Parse install requests and separate local files from remote packages
     let install_requests = parse_install_requests(package_specs)?;
@@ -171,16 +167,7 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
         duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
     };
 
-    ctx.tx
-        .send(Event::InstallCompleted {
-            packages: result
-                .installed_packages
-                .iter()
-                .map(|pkg| pkg.name.clone())
-                .collect(),
-            state_id: result.state_id,
-        })
-        .ok();
+    // Event emission moved to operations layer where actual work happens
 
     Ok(report)
 }

@@ -2,7 +2,7 @@
 
 use crate::atomic::{rollback, transition::StateTransition};
 // Removed Python venv handling - Python packages are now handled like regular packages
-use crate::{InstallContext, InstallResult, StagingManager};
+use crate::{InstallContext, InstallResult, PreparedPackage, StagingManager};
 use sps2_errors::{Error, InstallError};
 use sps2_events::Event;
 use sps2_hash::{Hash, XXHash};
@@ -17,10 +17,6 @@ use uuid::Uuid;
 pub struct AtomicInstaller {
     /// State manager for atomic transitions
     state_manager: StateManager,
-    /// Package store
-    store: PackageStore,
-    /// Staging manager for secure extraction
-    staging_manager: StagingManager,
     /// Live prefix path
     live_path: PathBuf,
 }
@@ -34,13 +30,11 @@ impl AtomicInstaller {
     pub async fn new(state_manager: StateManager, store: PackageStore) -> Result<Self, Error> {
         // Derive staging base path from StateManager's state path for test isolation
         let staging_base_path = state_manager.state_path().join("staging");
-        let staging_manager = StagingManager::new(store.clone(), staging_base_path).await?;
+        let _staging_manager = StagingManager::new(store.clone(), staging_base_path).await?;
         let live_path = state_manager.live_path().to_path_buf();
 
         Ok(Self {
             state_manager,
-            store,
-            staging_manager,
             live_path,
         })
     }
@@ -142,12 +136,12 @@ impl AtomicInstaller {
         let mut result = InstallResult::new(transition.staging_id);
 
         for (package_id, node) in resolved_packages {
-            let package_hash = package_hashes.and_then(|hashes| hashes.get(package_id));
+            let prepared_package = prepared_packages.and_then(|packages| packages.get(package_id));
             self.install_package_to_staging(
                 &mut transition,
                 package_id,
                 node,
-                package_hash,
+                prepared_package,
                 &mut result,
             )
             .await?;
@@ -279,48 +273,28 @@ impl AtomicInstaller {
         transition: &mut StateTransition,
         package_id: &PackageId,
         node: &ResolvedNode,
-        package_hash: Option<&XXHash>,
+        prepared_package: Option<&PreparedPackage>,
         result: &mut InstallResult,
     ) -> Result<(), Error> {
         // First, install the package files
         match &node.action {
             sps2_resolver::NodeAction::Download => {
-                // For downloaded packages, we need to find them in the store
-                // First, try to get the hash from package_map
-                let (hash, store_path) = if let Some(h) = package_hash {
-                    (h.clone(), self.store.package_path(h))
-                } else {
-                    // Try to look up from package_map first
-                    if let Ok(Some(hash_hex)) = self
-                        .state_manager
-                        .get_package_hash(&package_id.name, &package_id.version.to_string())
-                        .await
-                    {
-                        let hash = XXHash::from_hex(&hash_hex).map_err(|e| {
-                            InstallError::AtomicOperationFailed {
-                                message: format!("Invalid hash in package_map: {}", e),
-                            }
-                        })?;
-                        let store_path = self.store.package_path(&hash);
-                        (hash, store_path)
-                    } else {
-                        // Package not in package_map yet - this means it was just downloaded
-                        // We need to find it in the store and get its hash
-                        // For now, we'll require the hash to be provided
-                        return Err(InstallError::AtomicOperationFailed {
-                            message: format!(
-                                "Package {}-{} not found in package_map. This indicates a bug in the download process.",
-                                package_id.name, package_id.version
-                            ),
-                        }.into());
+                // For downloaded packages, use the prepared package data
+                let prepared = prepared_package.ok_or_else(|| {
+                    InstallError::AtomicOperationFailed {
+                        message: format!(
+                            "Missing prepared package data for {}-{}. This indicates a bug in ParallelExecutor.",
+                            package_id.name, package_id.version
+                        ),
                     }
-                };
+                })?;
 
-                // Load package for size calculation
-                let stored_package = StoredPackage::load(&store_path).await?;
+                let hash = &prepared.hash;
+                let store_path = &prepared.store_path;
+                let size = prepared.size;
 
-                // Get package size for store ref
-                let size = stored_package.size().await?;
+                // Load package from the prepared store path
+                let _stored_package = StoredPackage::load(store_path).await?;
 
                 // Ensure store_refs entry exists before adding to package_map
                 self.state_manager
@@ -337,7 +311,7 @@ impl AtomicInstaller {
                     .await?;
 
                 // Link package files to staging
-                self.link_package_to_staging(transition, &store_path, package_id)
+                self.link_package_to_staging(transition, store_path, package_id)
                     .await?;
 
                 // Add the package reference
@@ -350,102 +324,53 @@ impl AtomicInstaller {
                 transition.package_refs.push(package_ref);
             }
             sps2_resolver::NodeAction::Local => {
-                if let Some(local_path) = &node.path {
-                    // Use the new staging system for local packages
-                    // No hash verification needed - store handles content hashing
-                    self.install_local_package_with_staging(transition, local_path, package_id)
-                        .await?;
-                }
+                // For local packages, use the prepared package data (ParallelExecutor already processed them)
+                let prepared = prepared_package.ok_or_else(|| {
+                    InstallError::AtomicOperationFailed {
+                        message: format!(
+                            "Missing prepared package data for local package {}-{}. This indicates a bug in ParallelExecutor.",
+                            package_id.name, package_id.version
+                        ),
+                    }
+                })?;
+
+                let hash = &prepared.hash;
+                let store_path = &prepared.store_path;
+                let size = prepared.size;
+
+                // Load package from the prepared store path
+                let _stored_package = StoredPackage::load(store_path).await?;
+
+                // Ensure store_refs entry exists before adding to package_map
+                self.state_manager
+                    .ensure_store_ref(&hash.to_hex(), size as i64)
+                    .await?;
+
+                // Ensure package is in package_map for future lookups
+                self.state_manager
+                    .add_package_map(
+                        &package_id.name,
+                        &package_id.version.to_string(),
+                        &hash.to_hex(),
+                    )
+                    .await?;
+
+                // Link package files to staging
+                self.link_package_to_staging(transition, store_path, package_id)
+                    .await?;
+
+                // Add the package reference
+                let package_ref = PackageRef {
+                    state_id: transition.staging_id,
+                    package_id: package_id.clone(),
+                    hash: hash.to_hex(),
+                    size: size as i64,
+                };
+                transition.package_refs.push(package_ref);
             }
         }
 
         result.add_installed(package_id.clone());
-        Ok(())
-    }
-
-    /// Install a local package using the staging system
-    async fn install_local_package_with_staging(
-        &self,
-        transition: &mut StateTransition,
-        local_path: &Path,
-        package_id: &PackageId,
-    ) -> Result<(), Error> {
-        // Extract to staging directory with validation
-        let staging_dir = self
-            .staging_manager
-            .extract_to_staging(local_path, package_id, None)
-            .await?;
-
-        // Create staging guard for automatic cleanup on failure
-        let mut staging_guard = crate::StagingGuard::new(staging_dir);
-
-        // Get the validated staging directory
-        let _staging_dir =
-            staging_guard
-                .staging_dir()
-                .ok_or_else(|| InstallError::AtomicOperationFailed {
-                    message: "staging directory unavailable".to_string(),
-                })?;
-
-        // Add package to store from staging directory
-        let stored_package = self.store.add_package(local_path).await?;
-
-        // Get the hash from the stored package
-        let hash = stored_package
-            .hash()
-            .ok_or_else(|| InstallError::AtomicOperationFailed {
-                message: "failed to get package hash from store path".to_string(),
-            })?;
-
-        // Get package size for store ref
-        let size = stored_package.size().await?;
-
-        // Ensure store_refs entry exists before adding to package_map
-        self.state_manager
-            .ensure_store_ref(&hash.to_hex(), size as i64)
-            .await?;
-
-        // Add to package map for future lookups
-        self.state_manager
-            .add_package_map(
-                &package_id.name,
-                &package_id.version.to_string(),
-                &hash.to_hex(),
-            )
-            .await?;
-
-        // Get the store path where the package was stored
-        let store_path = stored_package.path();
-
-        // Debug log
-        if let Some(sender) = &transition.event_sender {
-            let _ = sender.send(Event::DebugLog {
-                message: format!(
-                    "Linking local package {} from store {} to staging",
-                    package_id.name,
-                    store_path.display()
-                ),
-                context: std::collections::HashMap::new(),
-            });
-        }
-
-        // Link package files from store to staging
-        self.link_package_to_staging(transition, store_path, package_id)
-            .await?;
-
-        // Add the package reference
-        let size = stored_package.size().await?;
-        let package_ref = PackageRef {
-            state_id: transition.staging_id,
-            package_id: package_id.clone(),
-            hash: hash.to_hex(),
-            size: size as i64,
-        };
-        transition.package_refs.push(package_ref);
-
-        // Successfully processed - prevent cleanup
-        let _staging_dir = staging_guard.take()?;
-
         Ok(())
     }
 

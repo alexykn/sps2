@@ -5,7 +5,7 @@
 
 use crate::{InstallReport, OpsCtx};
 use sps2_errors::{Error, OpsError};
-use sps2_events::Event;
+// Event emission moved to operations layer
 use sps2_guard::{OperationResult as GuardOperationResult, PackageChange as GuardPackageChange};
 use sps2_install::{InstallConfig, Installer, UninstallContext};
 use std::time::Instant;
@@ -25,11 +25,7 @@ pub async fn uninstall(ctx: &OpsCtx, package_names: &[String]) -> Result<Install
         return Err(OpsError::NoPackagesSpecified.into());
     }
 
-    ctx.tx
-        .send(Event::UninstallStarting {
-            packages: package_names.to_vec(),
-        })
-        .ok();
+    // Event emission moved to operations layer where actual work happens
 
     // Create installer
     let config = InstallConfig::default();
@@ -68,16 +64,7 @@ pub async fn uninstall(ctx: &OpsCtx, package_names: &[String]) -> Result<Install
         duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
     };
 
-    ctx.tx
-        .send(Event::UninstallCompleted {
-            packages: result
-                .removed_packages
-                .iter()
-                .map(|pkg| pkg.name.clone())
-                .collect(),
-            state_id: result.state_id,
-        })
-        .ok();
+    // Event emission moved to operations layer where actual work happens
 
     Ok(report)
 }
