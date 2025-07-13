@@ -5,7 +5,7 @@ use crate::atomic::{rollback, transition::StateTransition};
 use crate::{InstallContext, InstallResult, StagingManager};
 use sps2_errors::{Error, InstallError};
 use sps2_events::Event;
-use sps2_hash::Hash;
+use sps2_hash::{Hash, XXHash};
 use sps2_resolver::{PackageId, ResolvedNode};
 use sps2_state::{PackageRef, StateManager};
 use sps2_store::{PackageStore, StoredPackage};
@@ -55,7 +55,7 @@ impl AtomicInstaller {
         &mut self,
         context: &InstallContext,
         resolved_packages: &HashMap<PackageId, ResolvedNode>,
-        package_hashes: Option<&HashMap<PackageId, Hash>>,
+        package_hashes: Option<&HashMap<PackageId, XXHash>>,
     ) -> Result<InstallResult, Error> {
         // Create new state transition
         let mut transition =
@@ -279,7 +279,7 @@ impl AtomicInstaller {
         transition: &mut StateTransition,
         package_id: &PackageId,
         node: &ResolvedNode,
-        package_hash: Option<&Hash>,
+        package_hash: Option<&XXHash>,
         result: &mut InstallResult,
     ) -> Result<(), Error> {
         // First, install the package files
@@ -296,7 +296,7 @@ impl AtomicInstaller {
                         .get_package_hash(&package_id.name, &package_id.version.to_string())
                         .await
                     {
-                        let hash = Hash::from_hex(&hash_hex).map_err(|e| {
+                        let hash = XXHash::from_hex(&hash_hex).map_err(|e| {
                             InstallError::AtomicOperationFailed {
                                 message: format!("Invalid hash in package_map: {}", e),
                             }
