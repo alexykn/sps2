@@ -10,6 +10,7 @@ repository.workspace = true
 [dependencies]
 sps2-errors = { path = "../errors" }
 sps2-types = { path = "../types" }
+paste = "1.0"
 sps2-events = { path = "../events" }
 sps2-hash = { path = "../hash" }
 sps2-net = { path = "../net" }
@@ -33,6 +34,7 @@ async-compression = { version = "0.4.25", features = ["tokio", "zstd"] }
 tar = { workspace = true }
 futures = { workspace = true }
 blake3 = { workspace = true }
+
 
 [dev-dependencies]
 tempfile = { workspace = true }

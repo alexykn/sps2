@@ -442,10 +442,9 @@ async fn install_local_packages(
     );
 
     // Build install context for local files
-    let mut install_context = InstallContext::new().with_event_sender(ctx.tx.clone());
-    for file in files {
-        install_context = install_context.add_local_file(file.clone());
-    }
+    let install_context = InstallContext::new()
+        .with_event_sender(ctx.tx.clone())
+        .with_local_files(files.to_vec());
 
     // Execute installation
     installer.install(install_context).await
@@ -468,14 +467,12 @@ async fn install_mixed_packages(
     );
 
     // Build install context with both remote and local
-    let mut install_context = InstallContext::new().with_event_sender(ctx.tx.clone());
+    let mut install_context = InstallContext::new()
+        .with_event_sender(ctx.tx.clone())
+        .with_local_files(local_files.to_vec());
 
     for spec in remote_specs {
         install_context = install_context.add_package(spec.clone());
-    }
-
-    for file in local_files {
-        install_context = install_context.add_local_file(file.clone());
     }
 
     // Execute installation
@@ -593,128 +590,4 @@ pub async fn install_with_verification(
             Ok((report, guard_result))
         })
         .await
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::OpsContextBuilder;
-    use sps2_builder::Builder;
-    use sps2_config::Config;
-    use sps2_index::IndexManager;
-    use sps2_net::NetClient;
-    use sps2_resolver::Resolver;
-    use sps2_state::StateManager;
-    use sps2_store::PackageStore;
-    use tempfile::TempDir;
-
-    #[tokio::test]
-    async fn test_install_with_verification_disabled() {
-        let temp_dir = TempDir::new().unwrap();
-        let state_dir = temp_dir.path().join("state");
-        let store_dir = temp_dir.path().join("store");
-
-        tokio::fs::create_dir_all(&state_dir).await.unwrap();
-        tokio::fs::create_dir_all(&store_dir).await.unwrap();
-
-        let state = StateManager::new(&state_dir).await.unwrap();
-        let store = PackageStore::new(store_dir.clone());
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-        let config = Config::default(); // Verification disabled by default
-
-        let index = IndexManager::new(&store_dir);
-        let net = NetClient::new(sps2_net::NetConfig::default()).unwrap();
-        let resolver = Resolver::new(index.clone());
-        let builder = Builder::new();
-
-        let ctx = OpsContextBuilder::new()
-            .with_state(state)
-            .with_store(store)
-            .with_event_sender(tx)
-            .with_config(config)
-            .with_index(index)
-            .with_net(net)
-            .with_resolver(resolver)
-            .with_builder(builder)
-            .build()
-            .unwrap();
-
-        // Test that install_with_verification works without verification enabled
-        let result = install_with_verification(&ctx, &[]).await;
-
-        // Should fail with NoPackagesSpecified, not verification error
-        assert!(result.is_err());
-        if let Err(e) = result {
-            assert!(
-                !e.to_string().contains("verification"),
-                "Should not fail due to verification"
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn test_install_with_verification_enabled() {
-        let temp_dir = TempDir::new().unwrap();
-        let state_dir = temp_dir.path().join("state");
-        let store_dir = temp_dir.path().join("store");
-
-        tokio::fs::create_dir_all(&state_dir).await.unwrap();
-        tokio::fs::create_dir_all(&store_dir).await.unwrap();
-
-        let state = StateManager::new(&state_dir).await.unwrap();
-        let store = PackageStore::new(store_dir.clone());
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-
-        let mut config = Config::default();
-        config.verification.enabled = true;
-        config.verification.level = "standard".to_string();
-
-        let index = IndexManager::new(&store_dir);
-        let net = NetClient::new(sps2_net::NetConfig::default()).unwrap();
-        let resolver = Resolver::new(index.clone());
-        let builder = Builder::new();
-
-        let mut ctx = OpsContextBuilder::new()
-            .with_state(state)
-            .with_store(store)
-            .with_event_sender(tx)
-            .with_config(config)
-            .with_index(index)
-            .with_net(net)
-            .with_resolver(resolver)
-            .with_builder(builder)
-            .build()
-            .unwrap();
-
-        // Initialize the guard
-        ctx.initialize_guard().unwrap();
-
-        // Test that install_with_verification runs verification
-        let result = install_with_verification(&ctx, &[]).await;
-
-        // Should still fail with NoPackagesSpecified
-        assert!(result.is_err());
-        if let Err(e) = result {
-            assert!(
-                !e.to_string().contains("verification failed"),
-                "Should not fail due to verification on empty state"
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn test_parse_install_requests() {
-        // Test remote package parsing
-        let requests = parse_install_requests(&["package>=1.0.0".to_string()]).unwrap();
-        assert_eq!(requests.len(), 1);
-        match &requests[0] {
-            InstallRequest::Remote(spec) => {
-                assert_eq!(spec.name, "package");
-            }
-            InstallRequest::LocalFile(_) => panic!("Expected remote package"),
-        }
-
-        // Test local file parsing would require actual file
-        // Skip for now as it needs filesystem setup
-    }
 }

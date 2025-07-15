@@ -9,9 +9,9 @@ pub mod config;
 pub mod decompress;
 pub mod download;
 pub mod operation;
-pub mod resource;
 pub mod staging;
 
+use crate::common::resource::ResourceManager;
 use crate::staging::StagingManager;
 use batch::{BatchManager, BatchResult, BatchStats, RollbackInfo};
 pub use config::PipelineConfig;
@@ -19,9 +19,8 @@ use dashmap::DashMap;
 use decompress::DecompressPipeline;
 use download::DownloadPipeline;
 use operation::PipelineOperation;
-use resource::ResourceManager;
 use sps2_errors::Error;
-use sps2_events::{Event, EventSender, EventSenderExt, ProgressManager, ProgressPhase};
+use sps2_events::{Event, EventEmitter, ProgressManager, ProgressPhase};
 use sps2_net::{PackageDownloadConfig, PackageDownloader};
 use sps2_resolver::{ExecutionPlan, PackageId, ResolvedNode};
 use sps2_store::PackageStore;
@@ -69,18 +68,13 @@ impl PipelineMaster {
             ..PackageDownloadConfig::default()
         };
 
-        let downloader = PackageDownloader::new(download_config)?;
-        let staging_manager =
-            Arc::new(StagingManager::new(store.clone(), staging_base_path).await?);
-        let progress_manager = Arc::new(ProgressManager::new());
+        let resources = Arc::new(ResourceManager::new(config.clone().into()));
 
-        // Initialize resource management
-        let resources = Arc::new(ResourceManager::new(
-            config.max_downloads,
-            config.max_decompressions,
-            config.max_validations,
-            config.memory_limit,
-        ));
+        let downloader = PackageDownloader::new(download_config)?;
+        let staging_manager = Arc::new(
+            StagingManager::new(store.clone(), staging_base_path, resources.clone()).await?,
+        );
+        let progress_manager = Arc::new(ProgressManager::new());
 
         // Initialize pipeline stages
         let download_pipeline = DownloadPipeline::new(
@@ -122,11 +116,11 @@ impl PipelineMaster {
     /// # Panics
     ///
     /// Panics if hardcoded version parsing fails (should never happen).
-    pub async fn execute_batch(
+    pub async fn execute_batch<T: EventEmitter>(
         &self,
         execution_plan: &ExecutionPlan,
         resolved_packages: &HashMap<PackageId, ResolvedNode>,
-        tx: &EventSender,
+        context: &T,
     ) -> Result<BatchResult, Error> {
         let batch_id = Uuid::new_v4().to_string();
         let started_at = Instant::now();
@@ -146,7 +140,7 @@ impl PipelineMaster {
             });
         }
 
-        tx.emit(Event::OperationStarted {
+        context.emit_event(Event::OperationStarted {
             operation: format!(
                 "Batch pipeline execution: {} packages",
                 resolved_packages.len()
@@ -167,7 +161,7 @@ impl PipelineMaster {
             "batch_pipeline",
             Some(resolved_packages.len() as u64),
             phases,
-            tx.clone(),
+            context.event_sender().cloned().unwrap(),
         );
 
         // Execute the batch pipeline
@@ -177,19 +171,16 @@ impl PipelineMaster {
                 execution_plan,
                 resolved_packages,
                 &progress_id,
-                tx,
+                context,
             )
             .await
         {
             Ok(result) => result,
             Err(e) => {
                 // Attempt rollback on failure
-                tx.emit(Event::Warning {
-                    message: format!("Batch pipeline failed, attempting rollback: {e}"),
-                    context: Some(batch_id.clone()),
-                });
+                context.emit_warning(format!("Batch pipeline failed, attempting rollback: {e}"));
 
-                let rollback_result = self.rollback_batch(&batch_id, tx).await;
+                let rollback_result = self.rollback_batch(&batch_id, context).await;
 
                 let mut stats = BatchStats {
                     total_downloaded: 0,
@@ -217,10 +208,7 @@ impl PipelineMaster {
                         e,
                     )],
                     duration: started_at.elapsed(),
-                    peak_memory_usage: self
-                        .resources
-                        .memory_usage
-                        .load(std::sync::atomic::Ordering::Relaxed),
+                    peak_memory_usage: self.resources.limits.memory_usage.unwrap_or(0),
                     rollback_performed: rollback_result.is_ok(),
                     stats,
                 }
@@ -228,9 +216,10 @@ impl PipelineMaster {
         };
 
         // Complete progress tracking
-        self.progress_manager.complete_operation(&progress_id, tx);
+        self.progress_manager
+            .complete_operation(&progress_id, &context.event_sender().cloned().unwrap());
 
-        tx.emit(Event::OperationCompleted {
+        context.emit_event(Event::OperationCompleted {
             operation: format!(
                 "Batch pipeline execution completed: {}",
                 batch_result.batch_id
@@ -242,13 +231,13 @@ impl PipelineMaster {
     }
 
     /// Execute the core batch pipeline logic
-    async fn execute_batch_pipeline(
+    async fn execute_batch_pipeline<T: EventEmitter>(
         &self,
         batch_id: &str,
         execution_plan: &ExecutionPlan,
         resolved_packages: &HashMap<PackageId, ResolvedNode>,
         progress_id: &str,
-        tx: &EventSender,
+        context: &T,
     ) -> Result<BatchResult, Error> {
         let started_at = Instant::now();
         let mut successful_packages = Vec::new();
@@ -258,50 +247,69 @@ impl PipelineMaster {
 
         // Phase 1: Parallel Downloads with Dependency Ordering
         let download_start = Instant::now();
-        self.progress_manager.change_phase(progress_id, 0, tx);
+        self.progress_manager.change_phase(
+            progress_id,
+            0,
+            &context.event_sender().cloned().unwrap(),
+        );
 
         let download_results = self
             .download_pipeline
-            .execute_parallel_downloads(execution_plan, resolved_packages, progress_id, tx)
+            .execute_parallel_downloads(
+                execution_plan,
+                resolved_packages,
+                progress_id,
+                &context.event_sender().cloned().unwrap(),
+            )
             .await?;
 
         stage_timings.insert("download".to_string(), download_start.elapsed());
 
         // Phase 2: Streaming Decompress + Validation Pipeline
         let decompress_start = Instant::now();
-        self.progress_manager.change_phase(progress_id, 1, tx);
+        self.progress_manager.change_phase(
+            progress_id,
+            1,
+            &context.event_sender().cloned().unwrap(),
+        );
 
         let decompress_results = self
             .decompress_pipeline
-            .execute_streaming_decompress_validate(&download_results, progress_id, tx)
+            .execute_streaming_decompress_validate(
+                &download_results,
+                progress_id,
+                &context.event_sender().cloned().unwrap(),
+            )
             .await?;
 
         stage_timings.insert("decompress".to_string(), decompress_start.elapsed());
 
         // Phase 3: Staging and Installation
         let install_start = Instant::now();
-        self.progress_manager.change_phase(progress_id, 3, tx);
+        self.progress_manager.change_phase(
+            progress_id,
+            3,
+            &context.event_sender().cloned().unwrap(),
+        );
 
-        tx.emit(Event::DebugLog {
-            message: format!(
-                "DEBUG: Starting staging/installation phase with {} packages",
-                decompress_results.len()
-            ),
-            context: std::collections::HashMap::new(),
-        });
+        context.emit_debug(format!(
+            "DEBUG: Starting staging/installation phase with {} packages",
+            decompress_results.len()
+        ));
 
         let install_results = self
             .staging_pipeline
-            .execute_parallel_staging_install(&decompress_results, progress_id, tx)
+            .execute_parallel_staging_install(
+                &decompress_results,
+                progress_id,
+                &context.event_sender().cloned().unwrap(),
+            )
             .await?;
 
-        tx.emit(Event::DebugLog {
-            message: format!(
-                "DEBUG: Staging/installation completed with {} results",
-                install_results.len()
-            ),
-            context: std::collections::HashMap::new(),
-        });
+        context.emit_debug(format!(
+            "DEBUG: Staging/installation completed with {} results",
+            install_results.len()
+        ));
 
         stage_timings.insert("install".to_string(), install_start.elapsed());
 
@@ -353,18 +361,19 @@ impl PipelineMaster {
             package_hashes,
             failed_packages,
             duration: total_duration,
-            peak_memory_usage: self
-                .resources
-                .memory_usage
-                .load(std::sync::atomic::Ordering::Relaxed),
+            peak_memory_usage: self.resources.limits.memory_usage.unwrap_or(0),
             rollback_performed: false,
             stats,
         })
     }
 
     /// Perform rollback for failed batch operation
-    async fn rollback_batch(&self, batch_id: &str, tx: &EventSender) -> Result<(), Error> {
-        tx.emit(Event::OperationStarted {
+    async fn rollback_batch<T: EventEmitter>(
+        &self,
+        batch_id: &str,
+        context: &T,
+    ) -> Result<(), Error> {
+        context.emit_event(Event::OperationStarted {
             operation: format!("Rolling back batch: {batch_id}"),
         });
 
@@ -378,13 +387,10 @@ impl PipelineMaster {
             }
 
             // TODO: Implement actual state rollback using state management
-            tx.emit(Event::Warning {
-                message: "State rollback not yet implemented".to_string(),
-                context: Some(batch_id.to_string()),
-            });
+            context.emit_warning("State rollback not yet implemented".to_string());
         }
 
-        tx.emit(Event::OperationCompleted {
+        context.emit_event(Event::OperationCompleted {
             operation: format!("Rollback completed: {batch_id}"),
             success: true,
         });
@@ -402,15 +408,15 @@ impl PipelineMaster {
     /// # Errors
     ///
     /// Returns an error if cleanup operations fail
-    pub async fn cleanup(&self) -> Result<(), Error> {
+    pub fn cleanup(&self) -> Result<(), Error> {
         // Clean up temporary files with timeout
         let cleanup_timeout = self.config.cleanup_timeout;
 
-        match tokio::time::timeout(cleanup_timeout, self.resources.cleanup_temp_files()).await {
+        match self.resources.cleanup() {
             Ok(()) => {}
-            Err(_) => {
+            Err(_e) => {
                 return Err(Error::internal(format!(
-                    "Cleanup operation timed out after {cleanup_timeout:?}"
+                    "Cleanup operation failed after {cleanup_timeout:?}"
                 )));
             }
         }

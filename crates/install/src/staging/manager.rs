@@ -3,12 +3,14 @@
 //! This module provides the main StagingManager struct that coordinates
 //! staging directory creation, validation, and cleanup operations.
 
+use crate::common::resource::ResourceManager;
 use crate::{validate_sp_file, ValidationResult};
 use sps2_errors::{Error, InstallError};
-use sps2_events::{Event, EventSender};
+use sps2_events::{Event, EventEmitter};
 use sps2_resolver::PackageId;
 use sps2_store::{extract_package_with_events, PackageStore};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tokio::fs;
 use uuid::Uuid;
 
@@ -21,9 +23,6 @@ use super::{
     },
 };
 
-/// Maximum number of staging directories to allow simultaneously
-const MAX_STAGING_DIRS: usize = 100;
-
 /// Staging directory manager for secure package extraction
 pub struct StagingManager {
     /// Base path for staging directories
@@ -31,6 +30,8 @@ pub struct StagingManager {
     /// Package store for extraction operations
     #[allow(dead_code)]
     store: PackageStore,
+    /// Resource manager for concurrency control
+    resources: Arc<ResourceManager>,
 }
 
 impl StagingManager {
@@ -39,7 +40,11 @@ impl StagingManager {
     /// # Errors
     ///
     /// Returns an error if the staging base directory cannot be created
-    pub async fn new(store: PackageStore, base_staging_path: PathBuf) -> Result<Self, Error> {
+    pub async fn new(
+        store: PackageStore,
+        base_staging_path: PathBuf,
+        resources: Arc<ResourceManager>,
+    ) -> Result<Self, Error> {
         let base_path = base_staging_path;
 
         // Create staging base directory if it doesn't exist
@@ -51,7 +56,11 @@ impl StagingManager {
                 message: e.to_string(),
             })?;
 
-        Ok(Self { base_path, store })
+        Ok(Self {
+            base_path,
+            store,
+            resources,
+        })
     }
 
     /// Create a new staging directory for a package
@@ -66,8 +75,7 @@ impl StagingManager {
         &self,
         package_id: &PackageId,
     ) -> Result<StagingDirectory, Error> {
-        // Check staging directory count limit
-        self.check_staging_limit().await?;
+        let _permit = self.resources.acquire_installation_permit().await?;
 
         // Generate unique staging directory name
         let staging_id = Uuid::new_v4();
@@ -112,13 +120,13 @@ impl StagingManager {
     /// - Package validation fails
     /// - Extraction fails
     /// - Post-extraction validation fails
-    pub async fn extract_to_staging(
+    pub async fn extract_to_staging<T: EventEmitter>(
         &self,
         sp_file: &Path,
         package_id: &PackageId,
-        event_sender: Option<&EventSender>,
+        context: &T,
     ) -> Result<StagingDirectory, Error> {
-        self.extract_to_staging_internal(sp_file, package_id, event_sender, true)
+        self.extract_to_staging_internal(sp_file, package_id, context, true)
             .await
     }
 
@@ -130,34 +138,31 @@ impl StagingManager {
     /// Returns an error if:
     /// - Extraction fails
     /// - Post-extraction validation fails
-    pub async fn extract_validated_tar_to_staging(
+    pub async fn extract_validated_tar_to_staging<T: EventEmitter>(
         &self,
         tar_file: &Path,
         package_id: &PackageId,
-        event_sender: Option<&EventSender>,
+        context: &T,
     ) -> Result<StagingDirectory, Error> {
-        self.extract_to_staging_internal(tar_file, package_id, event_sender, false)
+        self.extract_to_staging_internal(tar_file, package_id, context, false)
             .await
     }
 
     /// Internal method for extraction with optional validation
-    async fn extract_to_staging_internal(
+    async fn extract_to_staging_internal<T: EventEmitter>(
         &self,
         file_path: &Path,
         package_id: &PackageId,
-        event_sender: Option<&EventSender>,
+        context: &T,
         validate_as_sp: bool,
     ) -> Result<StagingDirectory, Error> {
-        // Send staging started event
-        if let Some(sender) = event_sender {
-            let _ = sender.send(Event::OperationStarted {
-                operation: format!("Creating staging directory for {}", package_id.name),
-            });
-        }
+        context.emit_event(Event::OperationStarted {
+            operation: format!("Creating staging directory for {}", package_id.name),
+        });
 
         // Validate the file if required (only for .sp files, not pre-validated tar files)
         let validation_result = if validate_as_sp {
-            let result = validate_sp_file(file_path, event_sender).await?;
+            let result = validate_sp_file(file_path, context.event_sender()).await?;
             if !result.is_valid {
                 return Err(InstallError::InvalidPackageFile {
                     path: file_path.display().to_string(),
@@ -178,45 +183,33 @@ impl StagingManager {
         // Create staging directory
         let mut staging_dir = self.create_staging_dir(package_id).await?;
 
-        // Send extraction started event
-        if let Some(sender) = event_sender {
-            let _ = sender.send(Event::OperationStarted {
-                operation: format!(
-                    "Extracting package to staging: {}",
-                    staging_dir.path.display()
-                ),
-            });
-        }
+        context.emit_event(Event::OperationStarted {
+            operation: format!(
+                "Extracting package to staging: {}",
+                staging_dir.path.display()
+            ),
+        });
 
         // Extract package to staging directory
-        extract_package_with_events(file_path, &staging_dir.path, event_sender)
+        extract_package_with_events(file_path, &staging_dir.path, context.event_sender())
             .await
             .map_err(|e| InstallError::ExtractionFailed {
                 message: format!("failed to extract to staging: {e}"),
             })?;
 
-        // Debug: List what was actually extracted
-        if let Some(sender) = event_sender {
-            let _ = sender.send(Event::DebugLog {
-                message: format!(
-                    "DEBUG: Extraction completed, listing directory: {}",
-                    staging_dir.path.display()
-                ),
-                context: std::collections::HashMap::new(),
-            });
-            if let Ok(mut entries) = tokio::fs::read_dir(&staging_dir.path).await {
-                while let Ok(Some(entry)) = entries.next_entry().await {
-                    let file_name = entry.file_name().to_string_lossy().to_string();
-                    let file_type = if entry.file_type().await.is_ok_and(|ft| ft.is_dir()) {
-                        "directory"
-                    } else {
-                        "file"
-                    };
-                    let _ = sender.send(Event::DebugLog {
-                        message: format!("DEBUG: Extracted {file_type}: {file_name}"),
-                        context: std::collections::HashMap::new(),
-                    });
-                }
+        context.emit_debug(format!(
+            "DEBUG: Extraction completed, listing directory: {}",
+            staging_dir.path.display()
+        ));
+        if let Ok(mut entries) = tokio::fs::read_dir(&staging_dir.path).await {
+            while let Ok(Some(entry)) = entries.next_entry().await {
+                let file_name = entry.file_name().to_string_lossy().to_string();
+                let file_type = if entry.file_type().await.is_ok_and(|ft| ft.is_dir()) {
+                    "directory"
+                } else {
+                    "file"
+                };
+                context.emit_debug(format!("DEBUG: Extracted {file_type}: {file_name}"));
             }
         }
 
@@ -227,116 +220,52 @@ impl StagingManager {
             adjusted_validation_result.file_count = count_files(&staging_dir.path).await?;
         }
 
-        self.validate_extracted_content(
-            &mut staging_dir,
-            &adjusted_validation_result,
-            event_sender,
-        )
-        .await?;
+        self.validate_extracted_content(&mut staging_dir, &adjusted_validation_result, context)
+            .await?;
 
-        // Send staging completed event
-        if let Some(sender) = event_sender {
-            let _ = sender.send(Event::OperationCompleted {
-                operation: format!("Package staged successfully: {}", package_id.name),
-                success: true,
-            });
-        }
+        context.emit_event(Event::OperationCompleted {
+            operation: format!("Package staged successfully: {}", package_id.name),
+            success: true,
+        });
 
         Ok(staging_dir)
     }
 
     /// Validate extracted content in staging directory
-    async fn validate_extracted_content(
+    async fn validate_extracted_content<T: EventEmitter>(
         &self,
         staging_dir: &mut StagingDirectory,
         validation_result: &ValidationResult,
-        event_sender: Option<&EventSender>,
+        context: &T,
     ) -> Result<(), Error> {
-        if let Some(sender) = event_sender {
-            let _ = sender.send(Event::OperationStarted {
-                operation: "Validating extracted content".to_string(),
-            });
-            let _ = sender.send(Event::DebugLog {
-                message: format!(
-                    "DEBUG: Starting post-extraction validation for: {}",
-                    staging_dir.path.display()
-                ),
-                context: std::collections::HashMap::new(),
-            });
-        }
+        context.emit_event(Event::OperationStarted {
+            operation: "Validating extracted content".to_string(),
+        });
+        context.emit_debug(format!(
+            "DEBUG: Starting post-extraction validation for: {}",
+            staging_dir.path.display()
+        ));
 
         // Step 1: Verify manifest exists and is valid
-        let manifest = verify_and_parse_manifest(staging_dir, event_sender).await?;
+        let manifest = verify_and_parse_manifest(staging_dir, context.event_sender()).await?;
 
         // Step 2: Verify package identity matches expected
-        verify_package_identity(staging_dir, &manifest, event_sender)?;
+        verify_package_identity(staging_dir, &manifest, context.event_sender())?;
 
         // Step 3: Verify file count consistency
-        verify_file_count(staging_dir, validation_result, event_sender).await?;
+        verify_file_count(staging_dir, validation_result, context.event_sender()).await?;
 
         // Step 4: Verify directory structure is safe
-        verify_directory_structure(staging_dir, event_sender).await?;
+        verify_directory_structure(staging_dir, context.event_sender()).await?;
 
         // Mark as validated
         staging_dir.mark_validated();
 
-        if let Some(sender) = event_sender {
-            let _ = sender.send(Event::DebugLog {
-                message: "DEBUG: Marked staging directory as validated".to_string(),
-                context: std::collections::HashMap::new(),
-            });
-            let _ = sender.send(Event::OperationCompleted {
-                operation: "Content validation completed".to_string(),
-                success: true,
-            });
-        }
-
-        Ok(())
-    }
-
-    /// Check if too many staging directories exist
-    async fn check_staging_limit(&self) -> Result<(), Error> {
-        let mut count = 0;
-        let mut entries =
-            fs::read_dir(&self.base_path)
-                .await
-                .map_err(|e| InstallError::FilesystemError {
-                    operation: "read_staging_base".to_string(),
-                    path: self.base_path.display().to_string(),
-                    message: e.to_string(),
-                })?;
-
-        while let Some(entry) =
-            entries
-                .next_entry()
-                .await
-                .map_err(|e| InstallError::FilesystemError {
-                    operation: "count_staging_dirs".to_string(),
-                    path: self.base_path.display().to_string(),
-                    message: e.to_string(),
-                })?
-        {
-            if entry
-                .file_type()
-                .await
-                .map_err(|e| InstallError::FilesystemError {
-                    operation: "check_staging_file_type".to_string(),
-                    path: entry.path().display().to_string(),
-                    message: e.to_string(),
-                })?
-                .is_dir()
-            {
-                count += 1;
-                if count > MAX_STAGING_DIRS {
-                    return Err(InstallError::ConcurrencyError {
-                        message: format!(
-                            "too many staging directories: {count} (max: {MAX_STAGING_DIRS})"
-                        ),
-                    }
-                    .into());
-                }
-            }
-        }
+        context.emit_debug("DEBUG: Marked staging directory as validated".to_string());
+        context.emit_event(Event::OperationCompleted {
+            operation: "Content validation completed".to_string(),
+            success: true,
+        });
 
         Ok(())
     }

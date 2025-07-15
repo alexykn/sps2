@@ -6,11 +6,20 @@ use crate::{
 };
 use sps2_errors::{Error, InstallError};
 use sps2_events::Event;
+use sps2_events::EventEmitter;
+
 use sps2_resolver::{ResolutionContext, Resolver};
 use sps2_state::StateManager;
 use sps2_store::PackageStore;
 use sps2_types::PackageSpec;
+use std::sync::Arc;
 // HashMap import removed as it's not used in this module
+
+impl EventEmitter for UpdateContext {
+    fn event_sender(&self) -> Option<&sps2_events::EventSender> {
+        self.event_sender.as_ref()
+    }
+}
 
 /// Install operation
 pub struct InstallOperation {
@@ -35,7 +44,9 @@ impl InstallOperation {
         state_manager: StateManager,
         store: PackageStore,
     ) -> Result<Self, Error> {
-        let executor = ParallelExecutor::new(store.clone(), state_manager.clone())?;
+        // Create a default ResourceManager for the ParallelExecutor
+        let resources = Arc::new(crate::common::resource::ResourceManager::default());
+        let executor = ParallelExecutor::new(store.clone(), state_manager.clone(), resources)?;
 
         Ok(Self {
             resolver,
@@ -51,17 +62,9 @@ impl InstallOperation {
     ///
     /// Returns an error if dependency resolution fails, package download fails, or installation fails.
     pub async fn execute(&mut self, context: InstallContext) -> Result<InstallResult, Error> {
-        Self::send_event(
-            self,
-            &context,
-            Event::InstallStarting {
-                packages: context
-                    .packages
-                    .iter()
-                    .map(|spec| spec.name.clone())
-                    .collect(),
-            },
-        );
+        context.emit_event(Event::InstallStarting {
+            packages: context.packages.iter().map(|p| p.name.clone()).collect(),
+        });
 
         // Check local .sp files exist (validation moved to AtomicInstaller)
         self.check_local_packages_exist(&context)?;
@@ -81,25 +84,21 @@ impl InstallOperation {
         );
 
         // Debug: Check what packages we're trying to process
-        Self::send_event(
-            self,
-            &context,
-            Event::DebugLog {
-                message: format!(
-                    "DEBUG: About to process {} resolved packages via ParallelExecutor",
-                    resolution.nodes.len()
-                ),
-                context: std::collections::HashMap::from([(
-                    "packages".to_string(),
-                    resolution
-                        .nodes
-                        .keys()
-                        .map(|id| format!("{}-{}", id.name, id.version))
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                )]),
-            },
-        );
+        context.emit_event(Event::DebugLog {
+            message: format!(
+                "DEBUG: About to process {} resolved packages via ParallelExecutor",
+                resolution.nodes.len()
+            ),
+            context: std::collections::HashMap::from([(
+                "packages".to_string(),
+                resolution
+                    .nodes
+                    .keys()
+                    .map(|id| format!("{}-{}", id.name, id.version))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            )]),
+        });
 
         let prepared_packages = self
             .executor
@@ -107,24 +106,20 @@ impl InstallOperation {
             .await?;
 
         // Debug: Check what packages were prepared
-        Self::send_event(
-            self,
-            &context,
-            Event::DebugLog {
-                message: format!(
-                    "DEBUG: ParallelExecutor prepared {} packages",
-                    prepared_packages.len()
-                ),
-                context: std::collections::HashMap::from([(
-                    "prepared_packages".to_string(),
-                    prepared_packages
-                        .keys()
-                        .map(|id| format!("{}-{}", id.name, id.version))
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                )]),
-            },
-        );
+        context.emit_event(Event::DebugLog {
+            message: format!(
+                "DEBUG: ParallelExecutor prepared {} packages",
+                prepared_packages.len()
+            ),
+            context: std::collections::HashMap::from([(
+                "prepared_packages".to_string(),
+                prepared_packages
+                    .keys()
+                    .map(|id| format!("{}-{}", id.name, id.version))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            )]),
+        });
 
         // ParallelExecutor now returns prepared package data instead of doing database operations
 
@@ -136,18 +131,14 @@ impl InstallOperation {
             .install(&context, &resolution.nodes, Some(&prepared_packages))
             .await?;
 
-        Self::send_event(
-            self,
-            &context,
-            Event::InstallCompleted {
-                packages: result
-                    .installed_packages
-                    .iter()
-                    .map(|id| id.name.clone())
-                    .collect(),
-                state_id: result.state_id,
-            },
-        );
+        context.emit_event(Event::InstallCompleted {
+            packages: result
+                .installed_packages
+                .iter()
+                .map(|id| id.name.clone())
+                .collect(),
+            state_id: result.state_id,
+        });
 
         Ok(result)
     }
@@ -169,49 +160,37 @@ impl InstallOperation {
             resolution_context = resolution_context.add_local_file(path.clone());
         }
 
-        Self::send_event(
-            self,
-            context,
-            Event::DependencyResolving {
-                package: "multiple".to_string(),
-                count: context.packages.len() + context.local_files.len(),
-            },
-        );
+        context.emit_event(Event::DependencyResolving {
+            package: "multiple".to_string(),
+            count: context.packages.len() + context.local_files.len(),
+        });
 
         let resolution = match self.resolver.resolve_with_sat(resolution_context).await {
             Ok(result) => result,
             Err(e) => {
                 // Emit helpful error event for resolution failures
-                Self::send_event(
-                    self,
-                    context,
-                    Event::Error {
-                        message: "Package resolution failed".to_string(),
-                        details: Some(format!(
-                            "Error: {e}. \n\nPossible reasons:\n\
-                            • Package name or version typo.\n\
-                            • Package not available in the current repositories.\n\
-                            • Version constraints are unsatisfiable.\n\
-                            \nSuggested solutions:\n\
-                            • Double-check package name and version specs.\n\
-                            • Run 'sps2 search <package_name>' to find available packages.\n\
-                            • Run 'sps2 reposync' to update your package index."
-                        )),
-                    },
-                );
+                context.emit_event(Event::Error {
+                    message: "Package resolution failed".to_string(),
+                    details: Some(format!(
+                        "Error: {e}. \n\nPossible reasons:\n\
+                        • Package name or version typo.\n\
+                        • Package not available in the current repositories.\n\
+                        • Version constraints are unsatisfiable.\n\
+                        \nSuggested solutions:\n\
+                        • Double-check package name and version specs.\n\
+                        • Run 'sps2 search <package_name>' to find available packages.\n\
+                        • Run 'sps2 reposync' to update your package index."
+                    )),
+                });
                 return Err(e);
             }
         };
 
-        Self::send_event(
-            self,
-            context,
-            Event::DependencyResolved {
-                package: "multiple".to_string(),
-                version: sps2_types::Version::new(1, 0, 0), // Placeholder version
-                count: resolution.nodes.len(),
-            },
-        );
+        context.emit_event(Event::DependencyResolved {
+            package: "multiple".to_string(),
+            version: sps2_types::Version::new(1, 0, 0), // Placeholder version
+            count: resolution.nodes.len(),
+        });
 
         Ok(resolution)
     }
@@ -254,19 +233,15 @@ impl InstallOperation {
             {
                 if spec.version_spec.matches(&installed_pkg.version()) {
                     // Send informative event
-                    Self::send_event(
-                        self,
-                        context,
-                        Event::Warning {
-                            message: format!(
-                                "Package {}-{} is already installed",
-                                installed_pkg.name, installed_pkg.version
-                            ),
-                            context: Some(
-                                "Skipping installation to avoid state corruption".to_string(),
-                            ),
-                        },
-                    );
+                    context.emit_event(Event::Warning {
+                        message: format!(
+                            "Package {}-{} is already installed",
+                            installed_pkg.name, installed_pkg.version
+                        ),
+                        context: Some(
+                            "Skipping installation to avoid state corruption".to_string(),
+                        ),
+                    });
 
                     // For now, we'll return an error to prevent state corruption
                     // In the future, we might want to handle this more gracefully
@@ -289,21 +264,17 @@ impl InstallOperation {
                         .iter()
                         .find(|pkg| pkg.name == name && pkg.version == version)
                     {
-                        Self::send_event(
-                            self,
-                            context,
-                            Event::Warning {
-                                message: format!(
-                                    "Package {}-{} from {} is already installed",
-                                    name,
-                                    version,
-                                    local_file.display()
-                                ),
-                                context: Some(
-                                    "Skipping installation to avoid state corruption".to_string(),
-                                ),
-                            },
-                        );
+                        context.emit_event(Event::Warning {
+                            message: format!(
+                                "Package {}-{} from {} is already installed",
+                                name,
+                                version,
+                                local_file.display()
+                            ),
+                            context: Some(
+                                "Skipping installation to avoid state corruption".to_string(),
+                            ),
+                        });
 
                         return Err(InstallError::PackageAlreadyInstalled {
                             package: format!("{}-{}", name, version),
@@ -334,13 +305,6 @@ impl InstallOperation {
             None
         }
     }
-
-    /// Send event if context has event sender
-    fn send_event(_self: &Self, context: &InstallContext, event: Event) {
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(event);
-        }
-    }
 }
 
 /// Uninstall operation
@@ -367,13 +331,9 @@ impl UninstallOperation {
     ///
     /// Returns an error if package removal fails or dependency checks fail.
     pub async fn execute(&mut self, context: UninstallContext) -> Result<InstallResult, Error> {
-        Self::send_event(
-            self,
-            &context,
-            Event::UninstallStarting {
-                packages: context.packages.clone(),
-            },
-        );
+        context.emit_event(Event::UninstallStarting {
+            packages: context.packages.clone(),
+        });
 
         // Get currently installed packages
         let current_packages = self.state_manager.get_installed_packages().await?;
@@ -433,27 +393,16 @@ impl UninstallOperation {
             AtomicInstaller::new(self.state_manager.clone(), self.store.clone()).await?;
         let result = atomic_installer.uninstall(&package_ids, &context).await?;
 
-        Self::send_event(
-            self,
-            &context,
-            Event::UninstallCompleted {
-                packages: result
-                    .removed_packages
-                    .iter()
-                    .map(|id| id.name.clone())
-                    .collect(),
-                state_id: result.state_id,
-            },
-        );
+        context.emit_event(Event::UninstallCompleted {
+            packages: result
+                .removed_packages
+                .iter()
+                .map(|id| id.name.clone())
+                .collect(),
+            state_id: result.state_id,
+        });
 
         Ok(result)
-    }
-
-    /// Send event if context has event sender
-    fn send_event(_self: &Self, context: &UninstallContext, event: Event) {
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(event);
-        }
     }
 }
 
@@ -490,17 +439,13 @@ impl UpdateOperation {
     ///
     /// Returns an error if package resolution fails, update conflicts occur, or installation fails.
     pub async fn execute(&mut self, context: UpdateContext) -> Result<InstallResult, Error> {
-        Self::send_event(
-            self,
-            &context,
-            Event::UpdateStarting {
-                packages: if context.packages.is_empty() {
-                    vec!["all".to_string()]
-                } else {
-                    context.packages.clone()
-                },
+        context.emit_event(Event::UpdateStarting {
+            packages: if context.packages.is_empty() {
+                vec!["all".to_string()]
+            } else {
+                context.packages.clone()
             },
-        );
+        });
 
         // Get currently installed packages
         let current_packages = self.state_manager.get_installed_packages().await?;
@@ -543,26 +488,15 @@ impl UpdateOperation {
         // Execute installation (which handles updates)
         let result = self.install_operation.execute(install_context).await?;
 
-        Self::send_event(
-            self,
-            &context,
-            Event::UpdateCompleted {
-                packages: result
-                    .updated_packages
-                    .iter()
-                    .map(|id| id.name.clone())
-                    .collect(),
-                state_id: result.state_id,
-            },
-        );
+        context.emit_event(Event::UpdateCompleted {
+            packages: result
+                .updated_packages
+                .iter()
+                .map(|id| id.name.clone())
+                .collect(),
+            state_id: result.state_id,
+        });
 
         Ok(result)
-    }
-
-    /// Send event if context has event sender
-    fn send_event(_self: &Self, context: &UpdateContext, event: Event) {
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(event);
-        }
     }
 }
