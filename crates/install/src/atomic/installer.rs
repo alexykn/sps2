@@ -4,13 +4,30 @@ use crate::atomic::{rollback, transition::StateTransition};
 // Removed Python venv handling - Python packages are now handled like regular packages
 use crate::{InstallContext, InstallResult, PreparedPackage, StagingManager};
 use sps2_errors::{Error, InstallError};
-use sps2_events::Event;
+use sps2_events::{Event, EventSender};
 use sps2_resolver::{PackageId, ResolvedNode};
 use sps2_state::{PackageRef, StateManager};
 use sps2_store::{PackageStore, StoredPackage};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
+
+/// Trait for contexts that have event senders
+trait EventContext {
+    fn event_sender(&self) -> Option<&EventSender>;
+}
+
+impl EventContext for InstallContext {
+    fn event_sender(&self) -> Option<&EventSender> {
+        self.event_sender.as_ref()
+    }
+}
+
+impl EventContext for crate::UninstallContext {
+    fn event_sender(&self) -> Option<&EventSender> {
+        self.event_sender.as_ref()
+    }
+}
 
 /// Atomic installer using APFS optimizations
 pub struct AtomicInstaller {
@@ -21,156 +38,39 @@ pub struct AtomicInstaller {
 }
 
 impl AtomicInstaller {
-    /// Create new atomic installer
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if staging manager initialization fails
-    pub async fn new(state_manager: StateManager, store: PackageStore) -> Result<Self, Error> {
-        // Derive staging base path from StateManager's state path for test isolation
-        let staging_base_path = state_manager.state_path().join("staging");
-        let _staging_manager = StagingManager::new(store.clone(), staging_base_path).await?;
-        let live_path = state_manager.live_path().to_path_buf();
-
-        Ok(Self {
-            state_manager,
-            live_path,
-        })
+    /// Emit an event if sender is available
+    fn emit_event(&self, sender: Option<&EventSender>, event: Event) {
+        if let Some(sender) = sender {
+            let _ = sender.send(event);
+        }
     }
 
-    /// Perform atomic installation
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if state transition fails, package installation fails,
-    /// or filesystem operations fail.
-    pub async fn install(
-        &mut self,
-        context: &InstallContext,
-        resolved_packages: &HashMap<PackageId, ResolvedNode>,
-        prepared_packages: Option<&HashMap<PackageId, PreparedPackage>>,
-    ) -> Result<InstallResult, Error> {
-        // Create new state transition
-        let mut transition =
-            StateTransition::new(&self.state_manager, "install".to_string()).await?;
-
-        // Set event sender on transition
-        transition.event_sender.clone_from(&context.event_sender);
-
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::StateCreating {
-                state_id: transition.staging_id,
-            });
-        }
-
-        // Clone current state to staging directory
-        sps2_root::create_staging_directory(&self.live_path, &transition.staging_path).await?;
-
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::DebugLog {
-                message: format!(
-                    "Created staging directory at: {}",
-                    transition.staging_path.display()
-                ),
-                context: std::collections::HashMap::new(),
-            });
-        }
-
-        // APFS clonefile already copies all existing packages, so we don't need to re-link them.
-        // We only need to carry forward the package references and file information in the database.
-        if let Some(parent_id) = transition.parent_id {
-            let parent_packages = self
-                .state_manager
-                .get_installed_packages_in_state(&parent_id)
-                .await?;
-
-            for pkg in parent_packages {
-                // Skip if this package is being replaced/updated
-                let is_being_replaced = resolved_packages.iter().any(|(pkg_id, _)| {
-                    pkg_id.name == pkg.name && pkg_id.version.to_string() == pkg.version
-                });
-
-                if !is_being_replaced {
-                    // Just add the package reference - no need to re-link files
-                    let package_id = sps2_resolver::PackageId::new(pkg.name.clone(), pkg.version());
-
-                    // Add package reference (Python packages are now treated like regular packages)
-                    let package_ref = PackageRef {
-                        state_id: transition.staging_id,
-                        package_id: package_id.clone(),
-                        hash: pkg.hash.clone(),
-                        size: pkg.size,
-                    };
-                    transition.package_refs.push(package_ref);
-
-                    // Carry forward package file information from parent state
-                    // This is needed so the new state knows which files belong to this package
-                    let mut tx = self.state_manager.begin_transaction().await?;
-                    let file_paths = sps2_state::queries::get_package_files(
-                        &mut tx,
-                        &parent_id,
-                        &pkg.name,
-                        &pkg.version,
-                    )
-                    .await?;
-                    tx.commit().await?;
-
-                    // Add file paths to transition (we'll need to enhance this to include is_directory info)
-                    // For now, we'll check if the path exists and is a directory
-                    for file_path in file_paths {
-                        let staging_file = transition.staging_path.join(&file_path);
-                        let is_directory = staging_file.is_dir();
-                        transition.package_files.push((
-                            pkg.name.clone(),
-                            pkg.version.clone(),
-                            file_path,
-                            is_directory,
-                        ));
-                    }
-                }
-            }
-        }
-
-        // Apply package changes to staging
-        let mut result = InstallResult::new(transition.staging_id);
-
-        for (package_id, node) in resolved_packages {
-            let prepared_package = prepared_packages.and_then(|packages| packages.get(package_id));
-            self.install_package_to_staging(
-                &mut transition,
-                package_id,
-                node,
-                prepared_package,
-                &mut result,
-            )
-            .await?;
-        }
-
-        if context.dry_run {
-            // Clean up staging and return result without committing
-            transition.cleanup(&self.state_manager).await?;
-            return Ok(result);
-        }
-
-        // --- NEW 2PC COMMIT FLOW ---
+    /// Execute two-phase commit flow for a transition
+    async fn execute_two_phase_commit(
+        &self,
+        transition: &StateTransition,
+        context: &dyn EventContext,
+    ) -> Result<(), Error> {
         let parent_id = transition.parent_id.unwrap_or_default();
 
         // Emit 2PC start event
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::TwoPhaseCommitStarting {
+        self.emit_event(
+            context.event_sender(),
+            Event::TwoPhaseCommitStarting {
                 state_id: transition.staging_id,
                 parent_state_id: parent_id,
                 operation: transition.operation.clone(),
-            });
-        }
+            },
+        );
 
         // Phase 1: Prepare and commit the database changes
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::TwoPhaseCommitPhaseOneStarting {
+        self.emit_event(
+            context.event_sender(),
+            Event::TwoPhaseCommitPhaseOneStarting {
                 state_id: transition.staging_id,
                 operation: transition.operation.clone(),
-            });
-        }
+            },
+        );
 
         let transition_data = sps2_state::TransactionData {
             package_refs: &transition.package_refs,
@@ -191,34 +91,37 @@ impl AtomicInstaller {
             .await
         {
             Ok(journal) => {
-                if let Some(sender) = &context.event_sender {
-                    let _ = sender.send(Event::TwoPhaseCommitPhaseOneCompleted {
+                self.emit_event(
+                    context.event_sender(),
+                    Event::TwoPhaseCommitPhaseOneCompleted {
                         state_id: transition.staging_id,
                         operation: transition.operation.clone(),
-                    });
-                }
+                    },
+                );
                 journal
             }
             Err(e) => {
-                if let Some(sender) = &context.event_sender {
-                    let _ = sender.send(Event::TwoPhaseCommitFailed {
+                self.emit_event(
+                    context.event_sender(),
+                    Event::TwoPhaseCommitFailed {
                         state_id: transition.staging_id,
                         operation: transition.operation.clone(),
                         error: e.to_string(),
                         phase: "phase_one".to_string(),
-                    });
-                }
+                    },
+                );
                 return Err(e);
             }
         };
 
         // Phase 2: Execute filesystem swap and finalize
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::TwoPhaseCommitPhaseTwoStarting {
+        self.emit_event(
+            context.event_sender(),
+            Event::TwoPhaseCommitPhaseTwoStarting {
                 state_id: transition.staging_id,
                 operation: transition.operation.clone(),
-            });
-        }
+            },
+        );
 
         match self
             .state_manager
@@ -226,266 +129,47 @@ impl AtomicInstaller {
             .await
         {
             Ok(()) => {
-                if let Some(sender) = &context.event_sender {
-                    let _ = sender.send(Event::TwoPhaseCommitPhaseTwoCompleted {
+                self.emit_event(
+                    context.event_sender(),
+                    Event::TwoPhaseCommitPhaseTwoCompleted {
                         state_id: transition.staging_id,
                         operation: transition.operation.clone(),
-                    });
-                }
+                    },
+                );
             }
             Err(e) => {
-                if let Some(sender) = &context.event_sender {
-                    let _ = sender.send(Event::TwoPhaseCommitFailed {
+                self.emit_event(
+                    context.event_sender(),
+                    Event::TwoPhaseCommitFailed {
                         state_id: transition.staging_id,
                         operation: transition.operation.clone(),
                         error: e.to_string(),
                         phase: "phase_two".to_string(),
-                    });
-                }
+                    },
+                );
                 return Err(e);
             }
         }
 
         // Emit 2PC completion event
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::TwoPhaseCommitCompleted {
+        self.emit_event(
+            context.event_sender(),
+            Event::TwoPhaseCommitCompleted {
                 state_id: transition.staging_id,
                 parent_state_id: parent_id,
                 operation: transition.operation.clone(),
-            });
-        }
-
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::StateTransition {
-                from: transition.parent_id.unwrap_or_default(),
-                to: transition.staging_id,
-                operation: "install".to_string(),
-            });
-        }
-
-        Ok(result)
-    }
-
-    /// Install a single package to staging directory
-    async fn install_package_to_staging(
-        &self,
-        transition: &mut StateTransition,
-        package_id: &PackageId,
-        node: &ResolvedNode,
-        prepared_package: Option<&PreparedPackage>,
-        result: &mut InstallResult,
-    ) -> Result<(), Error> {
-        // First, install the package files
-        match &node.action {
-            sps2_resolver::NodeAction::Download => {
-                // For downloaded packages, use the prepared package data
-                let prepared = prepared_package.ok_or_else(|| {
-                    InstallError::AtomicOperationFailed {
-                        message: format!(
-                            "Missing prepared package data for {}-{}. This indicates a bug in ParallelExecutor.",
-                            package_id.name, package_id.version
-                        ),
-                    }
-                })?;
-
-                let hash = &prepared.hash;
-                let store_path = &prepared.store_path;
-                let size = prepared.size;
-
-                // Load package from the prepared store path
-                let _stored_package = StoredPackage::load(store_path).await?;
-
-                // Ensure store_refs entry exists before adding to package_map
-                self.state_manager
-                    .ensure_store_ref(&hash.to_hex(), size as i64)
-                    .await?;
-
-                // Ensure package is in package_map for future lookups
-                self.state_manager
-                    .add_package_map(
-                        &package_id.name,
-                        &package_id.version.to_string(),
-                        &hash.to_hex(),
-                    )
-                    .await?;
-
-                // Link package files to staging
-                self.link_package_to_staging(transition, store_path, package_id)
-                    .await?;
-
-                // Add the package reference
-                let package_ref = PackageRef {
-                    state_id: transition.staging_id,
-                    package_id: package_id.clone(),
-                    hash: hash.to_hex(),
-                    size: size as i64,
-                };
-                transition.package_refs.push(package_ref);
-            }
-            sps2_resolver::NodeAction::Local => {
-                // For local packages, use the prepared package data (ParallelExecutor already processed them)
-                let prepared = prepared_package.ok_or_else(|| {
-                    InstallError::AtomicOperationFailed {
-                        message: format!(
-                            "Missing prepared package data for local package {}-{}. This indicates a bug in ParallelExecutor.",
-                            package_id.name, package_id.version
-                        ),
-                    }
-                })?;
-
-                let hash = &prepared.hash;
-                let store_path = &prepared.store_path;
-                let size = prepared.size;
-
-                // Load package from the prepared store path
-                let _stored_package = StoredPackage::load(store_path).await?;
-
-                // Ensure store_refs entry exists before adding to package_map
-                self.state_manager
-                    .ensure_store_ref(&hash.to_hex(), size as i64)
-                    .await?;
-
-                // Ensure package is in package_map for future lookups
-                self.state_manager
-                    .add_package_map(
-                        &package_id.name,
-                        &package_id.version.to_string(),
-                        &hash.to_hex(),
-                    )
-                    .await?;
-
-                // Link package files to staging
-                self.link_package_to_staging(transition, store_path, package_id)
-                    .await?;
-
-                // Add the package reference
-                let package_ref = PackageRef {
-                    state_id: transition.staging_id,
-                    package_id: package_id.clone(),
-                    hash: hash.to_hex(),
-                    size: size as i64,
-                };
-                transition.package_refs.push(package_ref);
-            }
-        }
-
-        result.add_installed(package_id.clone());
-        Ok(())
-    }
-
-    /// Link package from store to staging directory
-    async fn link_package_to_staging(
-        &self,
-        transition: &mut StateTransition,
-        store_path: &Path,
-        package_id: &PackageId,
-    ) -> Result<(), Error> {
-        let staging_prefix = &transition.staging_path;
-        let mut file_paths = Vec::new();
-
-        // Load the stored package
-        let stored_package = StoredPackage::load(store_path).await?;
-
-        // Link files from store to staging
-        if let Some(sender) = &transition.event_sender {
-            let _ = sender.send(Event::DebugLog {
-                message: format!("Linking package {} to staging", package_id.name),
-                context: std::collections::HashMap::new(),
-            });
-        }
-
-        stored_package.link_to(staging_prefix).await?;
-
-        // Collect file paths for database tracking AND store file hash info
-        if let Some(file_hashes) = stored_package.file_hashes() {
-            // Store the file hash information for later use when we have package IDs
-            transition
-                .pending_file_hashes
-                .push((package_id.clone(), file_hashes.to_vec()));
-
-            for file_hash in file_hashes {
-                // Skip manifest.toml and sbom files - they should not be tracked in package_files
-                if !file_hash.is_directory
-                    && (file_hash.relative_path == "manifest.toml"
-                        || file_hash.relative_path == "sbom.spdx.json"
-                        || file_hash.relative_path == "sbom.cdx.json")
-                {
-                    continue;
-                }
-
-                file_paths.push((file_hash.relative_path.clone(), file_hash.is_directory));
-            }
-        }
-
-        // Debug what was linked
-        if let Some(sender) = &transition.event_sender {
-            let _ = sender.send(Event::DebugLog {
-                message: format!(
-                    "Linked {} files/directories for package {}",
-                    file_paths.len(),
-                    package_id.name
-                ),
-                context: std::collections::HashMap::new(),
-            });
-        }
-
-        // Store file information to be added during commit
-        // Paths are already relative to staging root
-        for (file_path, is_directory) in file_paths {
-            transition.package_files.push((
-                package_id.name.clone(),
-                package_id.version.to_string(),
-                file_path,
-                is_directory,
-            ));
-        }
+            },
+        );
 
         Ok(())
     }
 
-    // Removed install_python_package - Python packages are now handled like regular packages
-
-    /// Perform atomic uninstallation
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if state transition fails, package removal fails,
-    /// or filesystem operations fail.
-    pub async fn uninstall(
-        &mut self,
-        packages_to_remove: &[PackageId],
-        context: &crate::UninstallContext,
-    ) -> Result<InstallResult, Error> {
-        // Create new state transition
-        let mut transition =
-            StateTransition::new(&self.state_manager, "uninstall".to_string()).await?;
-
-        // Set event sender on transition
-        transition.event_sender.clone_from(&context.event_sender);
-
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::StateCreating {
-                state_id: transition.staging_id,
-            });
-        }
-
-        // Clone current state to staging directory
-        sps2_root::create_staging_directory(&self.live_path, &transition.staging_path).await?;
-
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::DebugLog {
-                message: format!(
-                    "Created staging directory at: {}",
-                    transition.staging_path.display()
-                ),
-                context: std::collections::HashMap::new(),
-            });
-        }
-
-        // APFS clonefile already copies all existing packages, so we don't need to re-link them.
-        // We only need to remove the packages being uninstalled and carry forward other package references.
-        let mut result = InstallResult::new(transition.staging_id);
-
+    /// Carry forward packages from parent state, excluding specified packages
+    async fn carry_forward_packages(
+        &self,
+        transition: &mut StateTransition,
+        exclude_packages: &[PackageId],
+    ) -> Result<(), Error> {
         if let Some(parent_id) = transition.parent_id {
             let parent_packages = self
                 .state_manager
@@ -493,29 +177,13 @@ impl AtomicInstaller {
                 .await?;
 
             for pkg in parent_packages {
-                // Check if this package should be removed
-                let should_remove = packages_to_remove
-                    .iter()
-                    .any(|remove_pkg| remove_pkg.name == pkg.name);
+                // Check if this package should be excluded
+                let should_exclude = exclude_packages.iter().any(|exclude_pkg| {
+                    exclude_pkg.name == pkg.name && exclude_pkg.version.to_string() == pkg.version
+                });
 
-                if should_remove {
-                    // Remove package files from staging
-                    result.add_removed(PackageId::new(pkg.name.clone(), pkg.version()));
-
-                    // No special cleanup needed - all packages are handled the same way
-
-                    // Remove package files from staging
-                    self.remove_package_from_staging(&mut transition, &pkg)
-                        .await?;
-
-                    if let Some(sender) = &context.event_sender {
-                        let _ = sender.send(Event::DebugLog {
-                            message: format!("Removed package {} from staging", pkg.name),
-                            context: std::collections::HashMap::new(),
-                        });
-                    }
-                } else {
-                    // Keep this package - just add the reference, no need to re-link files
+                if !should_exclude {
+                    // Just add the package reference - no need to re-link files
                     let package_id = PackageId::new(pkg.name.clone(), pkg.version());
                     let package_ref = PackageRef {
                         state_id: transition.staging_id,
@@ -550,6 +218,98 @@ impl AtomicInstaller {
                 }
             }
         }
+        Ok(())
+    }
+
+    /// Setup state transition and staging directory
+    async fn setup_state_transition(
+        &self,
+        operation: &str,
+        context: &dyn EventContext,
+    ) -> Result<StateTransition, Error> {
+        // Create new state transition
+        let mut transition =
+            StateTransition::new(&self.state_manager, operation.to_string()).await?;
+
+        // Set event sender on transition
+        transition.event_sender = context.event_sender().cloned();
+
+        self.emit_event(
+            context.event_sender(),
+            Event::StateCreating {
+                state_id: transition.staging_id,
+            },
+        );
+
+        // Clone current state to staging directory
+        sps2_root::create_staging_directory(&self.live_path, &transition.staging_path).await?;
+
+        self.emit_event(
+            context.event_sender(),
+            Event::DebugLog {
+                message: format!(
+                    "Created staging directory at: {}",
+                    transition.staging_path.display()
+                ),
+                context: std::collections::HashMap::new(),
+            },
+        );
+
+        Ok(transition)
+    }
+
+    /// Create new atomic installer
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if staging manager initialization fails
+    pub async fn new(state_manager: StateManager, store: PackageStore) -> Result<Self, Error> {
+        // Derive staging base path from StateManager's state path for test isolation
+        let staging_base_path = state_manager.state_path().join("staging");
+        let _staging_manager = StagingManager::new(store.clone(), staging_base_path).await?;
+        let live_path = state_manager.live_path().to_path_buf();
+
+        Ok(Self {
+            state_manager,
+            live_path,
+        })
+    }
+
+    /// Perform atomic installation
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if state transition fails, package installation fails,
+    /// or filesystem operations fail.
+    pub async fn install(
+        &mut self,
+        context: &InstallContext,
+        resolved_packages: &HashMap<PackageId, ResolvedNode>,
+        prepared_packages: Option<&HashMap<PackageId, PreparedPackage>>,
+    ) -> Result<InstallResult, Error> {
+        // Setup state transition and staging directory
+        let mut transition = self.setup_state_transition("install", context).await?;
+
+        // APFS clonefile already copies all existing packages, so we don't need to re-link them.
+        // We only need to carry forward the package references and file information in the database.
+        let exclude_packages: Vec<PackageId> = resolved_packages.keys().cloned().collect();
+        self.carry_forward_packages(&mut transition, &exclude_packages)
+            .await?;
+
+        // Apply package changes to staging
+        let mut result = InstallResult::new(transition.staging_id);
+
+        for (package_id, node) in resolved_packages {
+            let prepared_package = prepared_packages.and_then(|packages| packages.get(package_id));
+            self.install_package_to_staging(
+                &mut transition,
+                package_id,
+                node,
+                prepared_package,
+                &mut result,
+            )
+            .await?;
+        }
 
         if context.dry_run {
             // Clean up staging and return result without committing
@@ -557,116 +317,228 @@ impl AtomicInstaller {
             return Ok(result);
         }
 
-        // --- NEW 2PC COMMIT FLOW ---
-        let parent_id = transition.parent_id.unwrap_or_default();
+        // Execute two-phase commit
+        self.execute_two_phase_commit(&transition, context).await?;
 
-        // Emit 2PC start event
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::TwoPhaseCommitStarting {
-                state_id: transition.staging_id,
-                parent_state_id: parent_id,
-                operation: transition.operation.clone(),
-            });
-        }
+        self.emit_event(
+            context.event_sender.as_ref(),
+            Event::StateTransition {
+                from: transition.parent_id.unwrap_or_default(),
+                to: transition.staging_id,
+                operation: "install".to_string(),
+            },
+        );
 
-        // Phase 1: Prepare and commit the database changes
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::TwoPhaseCommitPhaseOneStarting {
-                state_id: transition.staging_id,
-                operation: transition.operation.clone(),
-            });
-        }
+        Ok(result)
+    }
 
-        let transition_data = sps2_state::TransactionData {
-            package_refs: &transition.package_refs,
-            package_files: &transition.package_files,
-            file_references: &transition.file_references,
-            pending_file_hashes: &transition.pending_file_hashes,
+    /// Install a single package to staging directory
+    async fn install_package_to_staging(
+        &self,
+        transition: &mut StateTransition,
+        package_id: &PackageId,
+        node: &ResolvedNode,
+        prepared_package: Option<&PreparedPackage>,
+        result: &mut InstallResult,
+    ) -> Result<(), Error> {
+        // Install the package files (both Download and Local actions are handled identically)
+        let action_name = match &node.action {
+            sps2_resolver::NodeAction::Download => "downloaded",
+            sps2_resolver::NodeAction::Local => "local",
         };
 
-        let journal = match self
-            .state_manager
-            .prepare_transaction(
-                &transition.staging_id,
-                &parent_id,
-                &transition.staging_path,
-                &transition.operation,
-                &transition_data,
+        let prepared = prepared_package.ok_or_else(|| {
+            InstallError::AtomicOperationFailed {
+                message: format!(
+                    "Missing prepared package data for {} package {}-{}. This indicates a bug in ParallelExecutor.",
+                    action_name, package_id.name, package_id.version
+                ),
+            }
+        })?;
+
+        let hash = &prepared.hash;
+        let store_path = &prepared.store_path;
+        let size = prepared.size;
+
+        // Load package from the prepared store path
+        let _stored_package = StoredPackage::load(store_path).await?;
+
+        // Ensure store_refs entry exists before adding to package_map
+        self.state_manager
+            .ensure_store_ref(&hash.to_hex(), size as i64)
+            .await?;
+
+        // Ensure package is in package_map for future lookups
+        self.state_manager
+            .add_package_map(
+                &package_id.name,
+                &package_id.version.to_string(),
+                &hash.to_hex(),
             )
-            .await
-        {
-            Ok(journal) => {
-                if let Some(sender) = &context.event_sender {
-                    let _ = sender.send(Event::TwoPhaseCommitPhaseOneCompleted {
-                        state_id: transition.staging_id,
-                        operation: transition.operation.clone(),
-                    });
-                }
-                journal
-            }
-            Err(e) => {
-                if let Some(sender) = &context.event_sender {
-                    let _ = sender.send(Event::TwoPhaseCommitFailed {
-                        state_id: transition.staging_id,
-                        operation: transition.operation.clone(),
-                        error: e.to_string(),
-                        phase: "phase_one".to_string(),
-                    });
-                }
-                return Err(e);
-            }
+            .await?;
+
+        // Link package files to staging
+        self.link_package_to_staging(transition, store_path, package_id)
+            .await?;
+
+        // Add the package reference
+        let package_ref = PackageRef {
+            state_id: transition.staging_id,
+            package_id: package_id.clone(),
+            hash: hash.to_hex(),
+            size: size as i64,
         };
+        transition.package_refs.push(package_ref);
 
-        // Phase 2: Execute filesystem swap and finalize
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::TwoPhaseCommitPhaseTwoStarting {
-                state_id: transition.staging_id,
-                operation: transition.operation.clone(),
-            });
+        result.add_installed(package_id.clone());
+        Ok(())
+    }
+
+    /// Link package from store to staging directory
+    async fn link_package_to_staging(
+        &self,
+        transition: &mut StateTransition,
+        store_path: &Path,
+        package_id: &PackageId,
+    ) -> Result<(), Error> {
+        let staging_prefix = &transition.staging_path;
+        let mut file_paths = Vec::new();
+
+        // Load the stored package
+        let stored_package = StoredPackage::load(store_path).await?;
+
+        // Link files from store to staging
+        self.emit_event(
+            transition.event_sender.as_ref(),
+            Event::DebugLog {
+                message: format!("Linking package {} to staging", package_id.name),
+                context: std::collections::HashMap::new(),
+            },
+        );
+
+        stored_package.link_to(staging_prefix).await?;
+
+        // Collect file paths for database tracking AND store file hash info
+        if let Some(file_hashes) = stored_package.file_hashes() {
+            // Store the file hash information for later use when we have package IDs
+            transition
+                .pending_file_hashes
+                .push((package_id.clone(), file_hashes.to_vec()));
+
+            for file_hash in file_hashes {
+                // Skip manifest.toml and sbom files - they should not be tracked in package_files
+                if !file_hash.is_directory
+                    && (file_hash.relative_path == "manifest.toml"
+                        || file_hash.relative_path == "sbom.spdx.json"
+                        || file_hash.relative_path == "sbom.cdx.json")
+                {
+                    continue;
+                }
+
+                file_paths.push((file_hash.relative_path.clone(), file_hash.is_directory));
+            }
         }
 
-        match self
-            .state_manager
-            .execute_filesystem_swap_and_finalize(journal)
-            .await
-        {
-            Ok(()) => {
-                if let Some(sender) = &context.event_sender {
-                    let _ = sender.send(Event::TwoPhaseCommitPhaseTwoCompleted {
-                        state_id: transition.staging_id,
-                        operation: transition.operation.clone(),
-                    });
+        // Debug what was linked
+        self.emit_event(
+            transition.event_sender.as_ref(),
+            Event::DebugLog {
+                message: format!(
+                    "Linked {} files/directories for package {}",
+                    file_paths.len(),
+                    package_id.name
+                ),
+                context: std::collections::HashMap::new(),
+            },
+        );
+
+        // Store file information to be added during commit
+        // Paths are already relative to staging root
+        for (file_path, is_directory) in file_paths {
+            transition.package_files.push((
+                package_id.name.clone(),
+                package_id.version.to_string(),
+                file_path,
+                is_directory,
+            ));
+        }
+
+        Ok(())
+    }
+
+    // Removed install_python_package - Python packages are now handled like regular packages
+
+    /// Perform atomic uninstallation
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if state transition fails, package removal fails,
+    /// or filesystem operations fail.
+    pub async fn uninstall(
+        &mut self,
+        packages_to_remove: &[PackageId],
+        context: &crate::UninstallContext,
+    ) -> Result<InstallResult, Error> {
+        // Setup state transition and staging directory
+        let mut transition = self.setup_state_transition("uninstall", context).await?;
+
+        // APFS clonefile already copies all existing packages, so we don't need to re-link them.
+        // We only need to remove the packages being uninstalled and carry forward other package references.
+        let mut result = InstallResult::new(transition.staging_id);
+
+        // Remove packages from staging and track them in result
+        if let Some(parent_id) = transition.parent_id {
+            let parent_packages = self
+                .state_manager
+                .get_installed_packages_in_state(&parent_id)
+                .await?;
+
+            for pkg in parent_packages {
+                // Check if this package should be removed
+                let should_remove = packages_to_remove
+                    .iter()
+                    .any(|remove_pkg| remove_pkg.name == pkg.name);
+
+                if should_remove {
+                    // Remove package files from staging
+                    result.add_removed(PackageId::new(pkg.name.clone(), pkg.version()));
+
+                    // Remove package files from staging
+                    self.remove_package_from_staging(&mut transition, &pkg)
+                        .await?;
+
+                    self.emit_event(
+                        context.event_sender.as_ref(),
+                        Event::DebugLog {
+                            message: format!("Removed package {} from staging", pkg.name),
+                            context: std::collections::HashMap::new(),
+                        },
+                    );
                 }
             }
-            Err(e) => {
-                if let Some(sender) = &context.event_sender {
-                    let _ = sender.send(Event::TwoPhaseCommitFailed {
-                        state_id: transition.staging_id,
-                        operation: transition.operation.clone(),
-                        error: e.to_string(),
-                        phase: "phase_two".to_string(),
-                    });
-                }
-                return Err(e);
-            }
         }
 
-        // Emit 2PC completion event
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::TwoPhaseCommitCompleted {
-                state_id: transition.staging_id,
-                parent_state_id: parent_id,
-                operation: transition.operation.clone(),
-            });
+        // Carry forward packages that are not being removed
+        self.carry_forward_packages(&mut transition, packages_to_remove)
+            .await?;
+
+        if context.dry_run {
+            // Clean up staging and return result without committing
+            transition.cleanup(&self.state_manager).await?;
+            return Ok(result);
         }
 
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::StateTransition {
+        // Execute two-phase commit
+        self.execute_two_phase_commit(&transition, context).await?;
+
+        self.emit_event(
+            context.event_sender.as_ref(),
+            Event::StateTransition {
                 from: transition.parent_id.unwrap_or_default(),
                 to: transition.staging_id,
                 operation: "uninstall".to_string(),
-            });
-        }
+            },
+        );
 
         Ok(result)
     }
