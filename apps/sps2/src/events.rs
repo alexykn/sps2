@@ -1404,7 +1404,7 @@ impl EventHandler {
     /// Handle installation started event
     fn handle_install_started(&mut self, package_name: &str) {
         self.show_operation_message(
-            &format!("Installing {package_name}"),
+            &format!("Processing {package_name}"),
             "install",
             EventSeverity::Info,
         );

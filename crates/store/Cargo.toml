@@ -20,6 +20,7 @@ tar = "0.4.44"
 async-compression = { version = "0.4.25", features = ["tokio", "zstd"] }
 tokio-util = { version = "0.7.15", features = ["compat", "io", "io-util"] }
 tempfile = { workspace = true }
+uuid = { version = "1.10.0", features = ["v4"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
