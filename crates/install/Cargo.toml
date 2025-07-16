@@ -30,7 +30,7 @@ chrono = { workspace = true }
 tempfile = { workspace = true }
 libc = "0.2.174"
 toml = { workspace = true }
-async-compression = { version = "0.4.25", features = ["tokio", "zstd"] }
+async-compression = { version = "0.4.27", features = ["tokio", "zstd"] }
 tar = { workspace = true }
 futures = { workspace = true }
 blake3 = { workspace = true }
