@@ -15,7 +15,7 @@ A modern, atomic package manager for macOS ARM64 with rollback capabilities and 
 ## Features
 
 - 🔄 **Atomic Updates** - All package operations are atomic with instant rollback
-- 📦 **Content-Addressed Storage** - Deduplication via BLAKE3 hashing
+- 📦 **Content-Addressed Storage** - Deduplication via dual-hash system (BLAKE3 + xxHash)
 - 🏗️ **Hermetic Builds** - Reproducible builds in isolated environments
 - 🔐 **Security First** - Minisign signatures, SBOM generation, CVE scanning
 - 🚀 **Fast & Parallel** - Concurrent downloads and installations
