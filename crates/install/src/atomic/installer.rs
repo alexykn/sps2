@@ -5,7 +5,7 @@ use crate::atomic::{rollback, transition::StateTransition};
 use crate::{InstallContext, InstallResult, PreparedPackage, StagingManager};
 use sps2_errors::{Error, InstallError};
 use sps2_events::Event;
-use sps2_hash::{Hash, XXHash};
+// Hash import removed as it's not used in this file
 use sps2_resolver::{PackageId, ResolvedNode};
 use sps2_state::{PackageRef, StateManager};
 use sps2_store::{PackageStore, StoredPackage};
@@ -49,7 +49,7 @@ impl AtomicInstaller {
         &mut self,
         context: &InstallContext,
         resolved_packages: &HashMap<PackageId, ResolvedNode>,
-        package_hashes: Option<&HashMap<PackageId, XXHash>>,
+        prepared_packages: Option<&HashMap<PackageId, PreparedPackage>>,
     ) -> Result<InstallResult, Error> {
         // Create new state transition
         let mut transition =

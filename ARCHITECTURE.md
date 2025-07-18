@@ -7,12 +7,14 @@ This document was written before I started building, before the first line of co
 ## Installation
 
 ### Prerequisites
+
 - macOS with Apple Silicon (M1/M2/M3)
 - Rust 1.86.0 or later
 - SQLite 3.x
 - sudo access for /opt/pm directory
 
 ### Setup
+
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/sps2.git
@@ -33,7 +35,9 @@ sps2 --version
 ```
 
 ### SQLx Setup (for development)
+
 The state crate uses SQLx compile-time checked queries. For development:
+
 ```bash
 # Install sqlx-cli
 cargo install sqlx-cli --no-default-features --features sqlite
@@ -49,12 +53,14 @@ cargo sqlx prepare
 ## General Development Rules
 
 ### Rust Standards
+
 - **Edition**: Rust 2021
 - **Resolver**: Version 3 (set in workspace Cargo.toml)
 - **MSRV**: 1.87.0 (latest stable)
 - **Target**: `aarch64-apple-darwin` only
 
 ### Code Quality Requirements
+
 1. **All code must pass `cargo fmt`** - No exceptions
 2. **All code must pass `cargo clippy`** - With pedantic lints enabled
 3. **No warnings allowed** - Use `#![deny(warnings)]` in lib.rs or enforce via CI with `cargo clippy -- -D warnings`
@@ -62,6 +68,7 @@ cargo sqlx prepare
 5. **Unsafe code requires justification** - If needed, use `#[allow(unsafe_code)]` with detailed safety comment
 
 ### Best Practices
+
 - Prefer `&str` over `String` for function parameters
 - Use `Arc<str>` instead of `String` for shared immutable strings
 - Return `Result<T, Error>` for all fallible operations
@@ -71,29 +78,29 @@ cargo sqlx prepare
 - Leverage RAII - resources should clean themselves up
 - Version constraints should be parsed into structured types, not passed as strings internally
 
-
 ## Cross-Cutting Conventions
 
-| Aspect | Decision | Justification |
-|--------|----------|---------------|
-| **Async runtime** | `tokio` everywhere | Shared reactor, zero thread explosion |
-| **Database** | `sqlx` for SQLite | Async-first, compile-time checked queries |
-| **HTTP client** | `reqwest` with tokio | Async HTTP with connection pooling |
-| **Error model** | `thiserror` per crate + fine-grained types in `errors` crate | Type-safe error handling, Clone when possible |
-| **Version specs** | Python-style constraints (`==`, `>=`, `~=`, etc.) | Flexible and familiar syntax for developers |
-| **Version parsing** | `semver` crate with custom constraint parser | Battle-tested semver implementation |
-| **Logging** | Events only - NO `info!`, `warn!`, `error!` | All output via event channel; JSON logs from subscriber |
-| **Progress** | Broadcast `Event` enum via channels | Decouples core from UI details |
-| **SBOM** | SPDX 3.0 JSON (primary), CycloneDX 1.6 (optional) | Built into every package via Syft |
-| **Crypto** | Minisign signatures; BLAKE3 for content hashing | Small trust root + fast hashing |
-| **Linting** | `#![deny(clippy::pedantic, unsafe_code)]` | Forces deliberate unsafe usage |
-| **CI** | `cargo deny` plus `cargo audit` | Catches transitive vulnerabilities |
+| Aspect              | Decision                                                                 | Justification                                           |
+| ------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------- |
+| **Async runtime**   | `tokio` everywhere                                                       | Shared reactor, zero thread explosion                   |
+| **Database**        | `sqlx` for SQLite                                                        | Async-first, compile-time checked queries               |
+| **HTTP client**     | `reqwest` with tokio                                                     | Async HTTP with connection pooling                      |
+| **Error model**     | `thiserror` per crate + fine-grained types in `errors` crate             | Type-safe error handling, Clone when possible           |
+| **Version specs**   | Python-style constraints (`==`, `>=`, `~=`, etc.)                        | Flexible and familiar syntax for developers             |
+| **Version parsing** | `semver` crate with custom constraint parser                             | Battle-tested semver implementation                     |
+| **Logging**         | Events only - NO `info!`, `warn!`, `error!`                              | All output via event channel; JSON logs from subscriber |
+| **Progress**        | Broadcast `Event` enum via channels                                      | Decouples core from UI details                          |
+| **SBOM**            | SPDX 3.0 JSON (primary), CycloneDX 1.6 (optional)                        | Built into every package via Syft                       |
+| **Crypto**          | Minisign signatures; BLAKE3 for downloads, xxHash for local verification | Small trust root + optimized performance                |
+| **Linting**         | `#![deny(clippy::pedantic, unsafe_code)]`                                | Forces deliberate unsafe usage                          |
+| **CI**              | `cargo deny` plus `cargo audit`                                          | Catches transitive vulnerabilities                      |
 
 **Note**: We avoid `sys-info` due to GPL-2.0 license. Load average detection uses `num_cpus` only.
 
 ## Architecture Overview
 
 ### Crate Dependencies
+
 - **Foundation layer**: `errors` and `types` depend on nothing except std/serde/thiserror
 - **Base services**: `events`, `config`, `hash` depend only on foundation crates
 - **Core services**: Can depend on foundation + base + other core services as needed
@@ -105,15 +112,18 @@ cargo sqlx prepare
 ### Dependency Structure
 
 **Foundation Layer (no dependencies):**
+
 - `errors` - Error type definitions
 - `types` - Core data structures, version parsing
 
 **Base Services (depend on foundation):**
+
 - `events` - Event definitions (depends on: errors, types)
 - `config` - Configuration structures (depends on: errors, types)
-- `hash` - BLAKE3 hashing (depends on: errors, types)
+- `hash` - Dual hashing: BLAKE3 + xxHash (depends on: errors, types)
 
 **Core Services:**
+
 - `net` - Network operations (depends on: errors, types, events)
 - `manifest` - Package manifests (depends on: errors, types, config, hash)
 - `package` - Starlark package definitions (depends on: errors, types, hash)
@@ -122,24 +132,29 @@ cargo sqlx prepare
 - `store` - Content-addressed storage (depends on: errors, types, hash, root)
 
 **Higher Services:**
+
 - `resolver` - Dependency resolution (depends on: errors, types, index, manifest)
 - `builder` - Package building (depends on: errors, types, events, package, manifest, hash, resolver)
 - `state` - State management (depends on: errors, types, events, store, root)
 - `audit` - Future CVE scanning (depends on: errors, types, manifest)
 
 **Integration Layer:**
+
 - `install` - Binary package installation (depends on: errors, types, events, net, resolver, state, store, audit + external: dashmap, crossbeam)
 
 **Orchestration Layer:**
+
 - `ops` - Command orchestration (depends on: all service crates)
 - `sps2` - CLI application (depends on: ops, events)
 
 **Key principles:**
+
 - Acyclic dependencies - no circular imports allowed
 - `ops` can depend on everything, but nothing depends on `ops`
 - All crates can use `errors` and `types` as they're the foundation
 
 **Example crate dependencies:**
+
 - `install` needs: `state` (transitions), `store` (storage), `resolver` (deps), `net` (downloads)
 - `builder` needs: `package` (Starlark), `manifest` (metadata), `hash` (checksums), `resolver` (build deps), SBOM generation
 - `state` needs: `store` (linking), `root` (filesystem ops)
@@ -147,6 +162,7 @@ cargo sqlx prepare
 
 **Version Resolution:**
 The resolver uses Python-style version specifiers for maximum flexibility:
+
 - Uses `semver` crate for version parsing and comparison
 - Finds the highest version that satisfies all constraints
 - Supports complex version ranges with multiple constraints
@@ -155,6 +171,7 @@ The resolver uses Python-style version specifiers for maximum flexibility:
 - Provides parallel execution plan for maximum performance
 
 **Dependency resolution behavior:**
+
 - **During `sps2 install`**: Downloads and installs binary packages with runtime dependencies
 - **During `sps2 build`**: Resolves and installs build dependencies to temporary environment
 - Build dependencies are installed to a temporary build environment
@@ -168,9 +185,11 @@ The resolver uses Python-style version specifiers for maximum flexibility:
 The resolver uses a **state-of-the-art SAT solver** implementing DPLL with Conflict-Driven Clause Learning (CDCL) for deterministic, optimal dependency resolution:
 
 #### SAT Solver Implementation
+
 The resolver translates dependency resolution into a Boolean Satisfiability Problem and solves it using advanced algorithms:
 
 **Core SAT Components:**
+
 - **DPLL Algorithm**: Davis-Putnam-Logemann-Loveland with modern optimizations
 - **CDCL**: Conflict-Driven Clause Learning for improved performance
 - **Two-Watched Literals**: Efficient unit propagation scheme
@@ -178,12 +197,14 @@ The resolver translates dependency resolution into a Boolean Satisfiability Prob
 - **First UIP Analysis**: Unique Implication Point cut for optimal learned clauses
 
 **SAT Problem Construction:**
+
 1. Each package version becomes a boolean variable
 2. Dependencies become implication clauses (A → B₁ ∨ B₂ ∨ ...)
 3. Version constraints become CNF clauses
 4. At-most-one constraints ensure single version selection
 
 **Key Features:**
+
 - **Version Preference**: Biases toward newer versions via VSIDS initialization
 - **Conflict Learning**: Learns from conflicts to prune search space
 - **Non-chronological Backtracking**: Jumps to relevant decision levels
@@ -191,6 +212,7 @@ The resolver translates dependency resolution into a Boolean Satisfiability Prob
 - **Human-readable Explanations**: Generates clear conflict messages
 
 #### Core Types
+
 ```rust
 #[derive(Clone, Debug)]
 pub enum DepKind { Build, Runtime }
@@ -211,6 +233,7 @@ pub struct ResolvedNode {
 ```
 
 #### Resolution Algorithm
+
 1. **Translate to SAT**: Convert dependency problem to boolean satisfiability
 2. **DPLL Search**: Use unit propagation and intelligent branching
 3. **Conflict Analysis**: Learn clauses from conflicts using first UIP
@@ -218,6 +241,7 @@ pub struct ResolvedNode {
 5. **Topological Sort**: Order packages respecting dependencies
 
 #### Parallel Execution
+
 ```rust
 // Concurrent download/install with dependency ordering
 struct NodeMeta {
@@ -245,6 +269,7 @@ let semaphore: Arc<Semaphore>;                            // Concurrency limit (
 #### Install vs Build Behavior
 
 **During `sps2 install`**:
+
 - Resolves runtime dependencies only
 - Downloads binary packages in parallel
 - Installs to main system state (`/opt/pm/live/`)
@@ -252,6 +277,7 @@ let semaphore: Arc<Semaphore>;                            // Concurrency limit (
 - User must ensure `/opt/pm/live/bin` is in PATH
 
 **During `sps2 build`**:
+
 - Resolves build dependencies from recipe
 - Downloads and installs build deps to `/opt/pm/build/<pkg>/deps/`
 - Sets up isolated environment (PATH, PKG_CONFIG_PATH, etc.)
@@ -260,6 +286,7 @@ let semaphore: Arc<Semaphore>;                            // Concurrency limit (
 - Only runtime deps are recorded in output .sp manifest
 
 #### Performance Characteristics
+
 - **Parallelism**: Limited by graph width (number of packages with no pending deps)
 - **Deduplication**: Shared dependencies downloaded/installed only once
 - **Early start**: Packages begin installing the moment their deps are ready
@@ -267,6 +294,7 @@ let semaphore: Arc<Semaphore>;                            // Concurrency limit (
 - **Typical speedup**: 3-5x over serial installation on fast networks
 
 #### Example Resolution
+
 ```
 Installing: jq (depends on oniguruma)
             curl (depends on openssl, zlib)
@@ -296,12 +324,14 @@ src/...
 ```
 
 Each error type:
+
 - Implements `Clone` where possible (avoid storing non-clonable types)
 - Uses `#[derive(thiserror::Error)]` for automatic Display/Error impl
 - Provides context via `#[error("...")]` attributes
 - Can be converted to a generic error for cross-crate boundaries
 
 Example:
+
 ```rust
 // In errors/src/network.rs
 #[derive(Debug, Clone, thiserror::Error)]
@@ -342,6 +372,7 @@ impl VersionSpec {
 ```
 
 **Common types for events and operations:**
+
 ```rust
 // types/src/lib.rs
 #[derive(Debug, Clone)]
@@ -365,6 +396,7 @@ pub struct SearchResult {
 ### Event System and Async Architecture
 
 #### Async Runtime
+
 - Full async/await from the ground up
 - Use `tokio` runtime with multi-threaded scheduler
 - All I/O operations must be async (`tokio::fs`, `sqlx`, etc.)
@@ -372,6 +404,7 @@ pub struct SearchResult {
 - Channels for cross-crate communication (via `events` crate)
 
 **Important**: Use modern async crates when tokio doesn't provide the functionality:
+
 - **Database**: Use `sqlx` for SQLite operations (NOT `rusqlite` or blocking alternatives)
 - **HTTP**: Use `reqwest` with tokio runtime (NOT blocking HTTP crates)
 - **Process spawning**: Use `tokio::process` (NOT `std::process`)
@@ -379,6 +412,7 @@ pub struct SearchResult {
 - Only use sync/blocking crates when absolutely no async alternative exists
 
 #### Event Communication
+
 - **Use `tokio::sync::mpsc`** for all async channels
 - Prefer `UnboundedSender/UnboundedReceiver` for event passing
 - The `events` crate should export type aliases:
@@ -394,6 +428,7 @@ pub struct SearchResult {
 - All output goes through events - the CLI decides how to display
 
 **Core Event enum variants:**
+
 ```rust
 use crate::types::{PackageInfo, SearchResult, Version};
 
@@ -441,6 +476,7 @@ pub enum Event {
 ```
 
 **Crates that emit events** (take EventSender):
+
 - `net` - Download progress, connection status
 - `install` - Installation steps, file operations
 - `state` - State transitions, rollback operations
@@ -452,7 +488,9 @@ pub enum Event {
 ## Execution Flow
 
 ### Entry Point
+
 The `sps2` CLI application is the sole entry point and manages all user interaction:
+
 - Parses command-line arguments
 - Initializes the tokio runtime
 - Creates event channels for async communication
@@ -462,6 +500,7 @@ The `sps2` CLI application is the sole entry point and manages all user interact
 ### Command Flow Architecture
 
 **Flow sequence:**
+
 1. User invokes command
 2. sps2 CLI parses arguments
 3. CLI creates event channel
@@ -472,6 +511,7 @@ The `sps2` CLI application is the sole entry point and manages all user interact
 8. CLI displays output to user
 
 **Communication pattern:**
+
 - One-way event flow: crates → EventSender → EventReceiver → CLI
 - No direct output from crates (no println/logging)
 - All user feedback goes through event channel
@@ -479,12 +519,14 @@ The `sps2` CLI application is the sole entry point and manages all user interact
 ### Operations Hierarchy
 
 The `ops` crate serves as the orchestration layer with a key architectural distinction:
+
 - **Small operations** (list, info, search, etc.): Implementation logic lives IN the `ops` crate
 - **Large operations** (install, build, etc.): `ops` just delegates to specialized crates
 
 This keeps complex workflows isolated in their dedicated crates while simple operations don't need entire crates.
 
 #### Operations Context
+
 ```rust
 pub struct OpsCtx<'a> {
     pub store: &'a Store,
@@ -500,26 +542,28 @@ pub struct OpsCtx<'a> {
 #### Command Implementations
 
 **Important Architecture Rule**:
+
 - **Small operations**: Logic lives in `ops` crate, which calls into service crates for specific functionality
 - **Large operations**: `ops` merely delegates to specialized crates that contain the full implementation
 
-| Command | Type | Implementation | Calls into crates |
-|---------|------|----------------|-------------------|
-| **`reposync`** | Small | Logic in `ops` | `net` (download), `index` (update) |
-| **`list`** | Small | Logic in `ops` | `state` (query packages) |
-| **`info`** | Small | Logic in `ops` | `index` (details), `state` (status) |
-| **`search`** | Small | Logic in `ops` | `index` (search) |
-| **`cleanup`** | Small | Logic in `ops` | `state` (find orphans), `store` (GC) |
-| **`install`** | Large | Delegates to `install` crate | `resolver` (runtime deps), `net` (downloads) |
-| **`update`** | Large | Delegates to `install` crate | `resolver` (constraints), `net` (downloads) |
-| **`upgrade`** | Large | Delegates to `install` crate | `resolver` (latest versions), `net` (downloads) |
-| **`uninstall`** | Large | Delegates to `install` crate | `state` (removes package and orphaned deps) |
-| **`build`** | Large | Delegates to `builder` crate | `resolver` (build deps), `install` (dep setup) |
-| **`rollback`** | Small | Logic in `ops` | `state` (restore previous state) |
-| **`history`** | Small | Logic in `ops` | `state` (list all states) |
-| **`check-health`** | Small | Logic in `ops` | `state` (verify integrity), `store` (check refs) |
+| Command            | Type  | Implementation               | Calls into crates                                |
+| ------------------ | ----- | ---------------------------- | ------------------------------------------------ |
+| **`reposync`**     | Small | Logic in `ops`               | `net` (download), `index` (update)               |
+| **`list`**         | Small | Logic in `ops`               | `state` (query packages)                         |
+| **`info`**         | Small | Logic in `ops`               | `index` (details), `state` (status)              |
+| **`search`**       | Small | Logic in `ops`               | `index` (search)                                 |
+| **`cleanup`**      | Small | Logic in `ops`               | `state` (find orphans), `store` (GC)             |
+| **`install`**      | Large | Delegates to `install` crate | `resolver` (runtime deps), `net` (downloads)     |
+| **`update`**       | Large | Delegates to `install` crate | `resolver` (constraints), `net` (downloads)      |
+| **`upgrade`**      | Large | Delegates to `install` crate | `resolver` (latest versions), `net` (downloads)  |
+| **`uninstall`**    | Large | Delegates to `install` crate | `state` (removes package and orphaned deps)      |
+| **`build`**        | Large | Delegates to `builder` crate | `resolver` (build deps), `install` (dep setup)   |
+| **`rollback`**     | Small | Logic in `ops`               | `state` (restore previous state)                 |
+| **`history`**      | Small | Logic in `ops`               | `state` (list all states)                        |
+| **`check-health`** | Small | Logic in `ops`               | `state` (verify integrity), `store` (check refs) |
 
 **`check-health` command specification:**
+
 - **Input**: No arguments required
 - **Operation**: Verifies system integrity by checking:
   - Database consistency (all referenced packages exist in store)
@@ -530,6 +574,7 @@ pub struct OpsCtx<'a> {
 - **Exit code**: 0 if healthy, 1 if issues found
 
 **Example of small operation (in `ops`):**
+
 ```rust
 // ops/src/list.rs
 use crate::types::PackageInfo;
@@ -546,6 +591,7 @@ pub async fn list(ctx: &OpsCtx) -> Result<Vec<PackageInfo>> {
 ```
 
 **Example of large operation (in `ops`):**
+
 ```rust
 // ops/src/install.rs
 pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<OpReport> {
@@ -575,6 +621,7 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<OpReport>
 ```
 
 #### Update vs Upgrade Distinction
+
 - **`update`**: Only bumps compatible versions (respects `~=` semantics)
   - Package with `foo~=1.2.0` can update to 1.2.9 but not 1.3.0
   - Package with `foo>=1.0,<2.0` stays within those bounds
@@ -584,6 +631,7 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<OpReport>
 - Both return an `OpReport` that can be rendered as table, JSON, or plain text
 
 ### Event Flow Pattern
+
 1. User invokes command:
    - `sps2 install package` - Install from repository
    - `sps2 install "package>=1.2.0,<2.0.0"` - Install with version constraints
@@ -608,6 +656,7 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<OpReport>
 **Note**: Install is for binary packages only. To build from source, use `sps2 build recipe.star` which produces a .sp file.
 
 ### CLI Display Responsibilities
+
 - Progress bars for downloads
 - Status messages for operations
 - Error formatting with helpful context
@@ -618,6 +667,7 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<OpReport>
 - **PATH reminder**: Show hint to add `/opt/pm/live/bin` to PATH after first install
 
 **CLI usage examples:**
+
 - `sps2 install jq` - Install latest binary package from repository
 - `sps2 install "jq==1.7"` - Install exact version from repository
 - `sps2 install "jq>=1.6,<2.0"` - Install with constraints from repository
@@ -634,12 +684,14 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<OpReport>
 **Note**: Ensure `/opt/pm/live/bin` is in your PATH after installation.
 
 **Global CLI flags:**
+
 - `--json` - Output in JSON format (for all commands)
 - `--debug` - Enable debug logging to `/opt/pm/logs/`
 - `--color <auto|always|never>` - Override color output
 - `--config <path>` - Use alternate config file
 
 **Command-specific flags:**
+
 - `sps2 build --network` - Allow network access during build
 - `sps2 build --jobs <n>` - Override parallel build jobs (0=auto)
 - `sps2 rollback` - Revert to previous state
@@ -648,6 +700,7 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<OpReport>
 - `sps2 check-health` - Verify system integrity
 
 ### Operation Lifecycle
+
 1. **Validation Phase** - Check permissions, validate arguments
 2. **Planning Phase** - Resolve dependencies, check conflicts
 3. **Execution Phase** - Perform actual operations
@@ -661,12 +714,14 @@ Each phase emits appropriate events for CLI feedback.
 ### Configuration Management
 
 #### Configuration File
+
 - **Location**: `~/.config/sps2/config.toml` (follows XDG Base Directory spec)
 - **Format**: TOML for consistency with Rust ecosystem
 - **Precedence**: CLI flags > Environment variables > Config file > Defaults
 - **Defaults location**: Hard-coded in `config` crate via `impl Default`
 
 **Default values (in code):**
+
 ```rust
 impl Default for Config {
     fn default() -> Self {
@@ -696,6 +751,7 @@ impl Default for Config {
 ```
 
 **Example config.toml:**
+
 ```toml
 [general]
 default_output = "tty"  # Options: plain, tty, json
@@ -723,6 +779,7 @@ retention_days = 30     # Keep states newer than N days
 ```
 
 #### Environment Variables
+
 - `SPS2_OUTPUT` - Override output format
 - `SPS2_COLOR` - Override color setting
 - `SPS2_DEBUG` - Enable debug logging
@@ -730,6 +787,7 @@ retention_days = 30     # Keep states newer than N days
 ### Atomic Update System
 
 #### Filesystem Layout
+
 ```
 /opt/pm/:
 store/:                 # (A) Package Store - content-addressed storage
@@ -756,19 +814,23 @@ logs/sps2-<timestamp>.jsonl  # Structured JSON logs
 #### State Management Architecture
 
 **Components:**
+
 1. **Package Store (A)**
+
    - Content-addressed storage using BLAKE3 hashes
    - Immutable files - never modified after creation
    - Hard-linked into state directories
    - Garbage collected based on reference counting
 
 2. **State Directories (B, C, D)**
+
    - Each state is a complete root filesystem
    - Contains hard links to package store
    - Archived states kept for rollback
    - Staging state is APFS clone of current state
 
 3. **SQLite State Database (F)**
+
    - Path: `/opt/pm/state.sqlite` (not in user's $HOME)
    - WAL mode for consistency
    - Tracks package references
@@ -786,6 +848,7 @@ logs/sps2-<timestamp>.jsonl  # Structured JSON logs
 #### Atomic Update Process
 
 **Installation Flow:**
+
 ```rust
 // 1. Create staging directory as APFS clone
 let staging_id = Uuid::new_v4();
@@ -829,6 +892,7 @@ rename(&old_live_path, &format!("/opt/pm/states/{}", old_state_id))?;
 ```
 
 **Rollback Process:**
+
 ```rust
 // 1. Find target state
 let target_state = sqlx::query_as::<_, (String,)>(
@@ -847,18 +911,21 @@ sqlx::query("UPDATE active_state SET id = ?")
 ```
 
 #### Key Safety Properties
+
 1. **Atomicity**: All updates use `renameat2` with `RENAME_SWAP` flag
 2. **Consistency**: WAL-mode SQLite ensures database consistency
 3. **Isolation**: Staging directory invisible until swap
 4. **Durability**: Previous states preserved for rollback
 
 #### APFS-Specific Optimizations
+
 - Use `clonefile()` for instant, space-efficient copies
 - Hard links for deduplication within states
 - Set compression flags on `/opt/pm/store/`
 - Leverage APFS snapshots for system-wide backups
 
 #### Garbage Collection
+
 - Reference counting in SQLite for store objects
 - Configurable retention policy for old states
 - **Default retention**: Keep last 10 states AND states from last 30 days (whichever is more)
@@ -880,40 +947,47 @@ The builder crate provides a **production-ready, enterprise-grade build system**
 The builder supports **7 major build systems** with full feature parity:
 
 1. **Autotools** - `ctx.autotools()`
+
    - Configure/make/make install workflow
    - Cross-compilation support
    - Out-of-source builds
    - VPATH builds
 
 2. **CMake** - `ctx.cmake()`
+
    - CMake 3.x with Ninja/Make generators
    - Toolchain file generation
    - CTest integration
    - Cache variable management
 
 3. **Meson** - `ctx.meson()`
+
    - Full Meson/Ninja workflow
    - Cross file generation
    - Subproject support
    - Wrap dependency management
 
 4. **Cargo** - `ctx.cargo()`
+
    - Release/debug builds
    - Feature flag management
    - Vendored dependencies
    - sccache integration
 
 5. **Make** - `ctx.make()`
+
    - Parallel builds with -j
    - Custom targets
    - Environment variable control
 
 6. **Go** - Implemented but not yet exposed in Starlark API
+
    - Go modules support
    - Vendoring for offline builds
    - Cross-compilation with GOOS/GOARCH
 
 7. **Python** - Implemented but not yet exposed in Starlark API
+
    - PEP 517/518 compliance
    - Multiple backends (setuptools, poetry, flit, hatch, pdm, maturin)
    - Virtual environment isolation
@@ -926,6 +1000,7 @@ The builder supports **7 major build systems** with full feature parity:
 #### Production Features
 
 **Environment Isolation & Hermetic Builds:**
+
 - Complete environment variable whitelisting
 - Private /tmp directory per build
 - Network isolation via proxy settings
@@ -934,12 +1009,14 @@ The builder supports **7 major build systems** with full feature parity:
 - macOS sandbox-exec integration
 
 **Quality Assurance System:**
+
 - **Linters**: clippy, clang-tidy, ESLint, pylint, shellcheck
 - **Security Scanners**: cargo-audit, npm audit, Trivy
 - **Policy Enforcement**: License compliance, size limits, permissions
 - **Configurable severity levels** with CI/CD integration
 
 **Advanced Features:**
+
 - **SBOM Generation**: SPDX and CycloneDX formats via Syft
 - **Cross-compilation**: Full toolchain management and sysroot support
 - **Build Caching**: ccache/sccache integration, incremental builds
@@ -949,6 +1026,7 @@ The builder supports **7 major build systems** with full feature parity:
 #### Build Architecture
 
 **Build pipeline flow:**
+
 1. `sps2 build recipe.star` command invoked
 2. Sandboxed Starlark VM loads and validates recipe
 3. Recipe calls Builder API methods (fetch, cmake, etc.)
@@ -962,6 +1040,7 @@ The builder supports **7 major build systems** with full feature parity:
 **Important**: `sps2 build` only produces packages, it does NOT install them. This follows Unix package manager conventions where building and installing are separate operations.
 
 #### Starlark Recipe Format
+
 Build recipes are written in Starlark (Python-like) with a sandboxed, deterministic API:
 
 ```python
@@ -982,7 +1061,7 @@ def build(ctx):
     """Build curl using autotools."""
     # Fetch source archive
     fetch(ctx, "https://curl.se/download/curl-8.5.0.tar.gz")
-    
+
     # Configure with autotools
     configure(ctx, [
         "--prefix=" + ctx.PREFIX,
@@ -992,13 +1071,13 @@ def build(ctx):
         "--enable-ftp",
         "--disable-ldap"
     ])
-    
+
     # Build with parallel jobs
     make(ctx, ["-j" + str(ctx.JOBS)])
-    
+
     # Run tests
     make(ctx, ["test"])
-    
+
     # Install to staging
     make(ctx, ["install", "DESTDIR=stage"])
 
@@ -1017,7 +1096,7 @@ def metadata():
 def build(ctx):
     """Build fmt library using CMake."""
     fetch(ctx, "https://github.com/fmtlib/fmt/archive/10.2.1.tar.gz")
-    
+
     # Configure with CMake
     cmake(ctx, [
         "-DCMAKE_BUILD_TYPE=Release",
@@ -1026,7 +1105,7 @@ def build(ctx):
         "-DBUILD_SHARED_LIBS=ON",
         "-G", "Ninja"
     ])
-    
+
     # Build and test
     command(ctx, "ninja -j" + str(ctx.JOBS))
     command(ctx, "ninja test")
@@ -1047,17 +1126,17 @@ def metadata():
 def build(ctx):
     """Build ripgrep using cargo."""
     fetch(ctx, "https://github.com/BurntSushi/ripgrep/archive/14.1.0.tar.gz")
-    
+
     # Build with cargo in release mode
     cargo(ctx, ["build", "--release", "--locked"])
-    
+
     # Run tests
     cargo(ctx, ["test", "--release"])
-    
+
     # Install manually since cargo install rebuilds
     command(ctx, "mkdir -p stage" + ctx.PREFIX + "/bin")
     command(ctx, "cp target/release/rg stage" + ctx.PREFIX + "/bin/")
-    
+
     # Install completions
     command(ctx, "mkdir -p stage" + ctx.PREFIX + "/share/bash-completion/completions")
     command(ctx, "cp complete/rg.bash stage" + ctx.PREFIX + "/share/bash-completion/completions/rg")
@@ -1077,19 +1156,20 @@ def metadata():
 def build(ctx):
     """Build black using Python build system."""
     fetch(ctx, "https://github.com/psf/black/archive/24.1.0.tar.gz")
-    
+
     # For now, use command until python build system is exposed
     command(ctx, "python3 -m venv venv")
     command(ctx, "source venv/bin/activate && pip install --upgrade pip wheel")
     command(ctx, "source venv/bin/activate && pip install .")
     command(ctx, "source venv/bin/activate && python -m pytest tests/")
-    
+
     # Install to staging
     command(ctx, "mkdir -p stage" + ctx.PREFIX)
     command(ctx, "source venv/bin/activate && pip install --prefix=stage" + ctx.PREFIX + " .")
 ```
 
 **Version specifiers (Python-style):**
+
 - `==1.2.3` - Exact version match
 - `>=1.2.0` - Minimum version (inclusive)
 - `<=2.0.0` - Maximum version (inclusive)
@@ -1101,11 +1181,13 @@ def build(ctx):
 - `>=1.2,<2.0,!=1.5.0` - Multiple constraints (comma-separated)
 
 **Compatible release (`~=`) explanation:**
+
 - `~=1.2.3` means `>=1.2.3, <1.3.0` (patch updates only)
 - `~=1.2` means `>=1.2.0, <2.0.0` (minor updates allowed)
 - `~=1` means `>=1.0.0, <2.0.0` (major version pinned)
 
 **Dependency handling:**
+
 - `depends_on()`: Runtime dependencies that must be installed with the package
 - `build_depends_on()`: Build-time only dependencies, available in build environment
 - Build deps are automatically set up in PATH/PKG_CONFIG_PATH during build
@@ -1114,6 +1196,7 @@ def build(ctx):
 - Dependencies are specified as strings with optional version constraints
 
 **Sandboxing controls:**
+
 - Max operations: 50,000,000 (prevent infinite loops)
 - Max memory: 64 MiB
 - No filesystem access except through Builder API
@@ -1123,6 +1206,7 @@ def build(ctx):
 #### Complete Starlark API Reference
 
 **Context Attributes:**
+
 - `ctx.NAME` - Package name from metadata (read-only)
 - `ctx.VERSION` - Package version from metadata (read-only)
 - `ctx.PREFIX` - Installation prefix, e.g. `/opt/pm/live` (read-only)
@@ -1159,6 +1243,7 @@ def build(ctx):
 | `parallel_steps(ctx, fn)` | Parallel execution | `parallel_steps(ctx, lambda: [make(ctx, ["docs"]), make(ctx, ["tests"])])` |
 
 **Build environment setup:**
+
 - Build dependencies are automatically installed before `build()` runs
 - Build deps are downloaded as binary packages from the repository
 - `PATH` includes all build deps' bin directories
@@ -1167,6 +1252,7 @@ def build(ctx):
 - Build deps are NOT included in final package
 
 #### Build Isolation
+
 - Build prefix: `/opt/pm/build/<pkg>/<ver>/`
 - Build deps prefix: `/opt/pm/build/<pkg>/<ver>/deps/`
 - Staging directory: `/opt/pm/build/<pkg>/<ver>/stage/`
@@ -1185,6 +1271,7 @@ def build(ctx):
 - Build deps are cleared after successful build (not included in package)
 
 #### Integration with Atomic Updates
+
 1. **Build Phase**: Package built in isolated `/opt/pm/build/` prefix with build deps, produces .sp file
 2. **Distribution**: .sp file uploaded to CDN/GitHub Releases
 3. **Install Phase**: User downloads .sp file (or provides local path)
@@ -1198,16 +1285,17 @@ def build(ctx):
 
 #### .sp File Structure
 
-| Component | Format | Purpose |
-|-----------|--------|---------|
-| **Payload** | `tar --deterministic \| zstd -19` | Reproducible compression |
-| **manifest.toml** | TOML in archive root | Name, version, deps, hashes |
-| **sbom.spdx.json** | SPDX 3.0 JSON | Primary SBOM format |
-| **sbom.cdx.json** | CycloneDX 1.6 JSON (optional) | Secondary SBOM for compatibility |
-| **Signature** | Detached `.minisig` | Minisign signature over all files |
-| **Filename** | `<n>-<ver>-<rev>.<arch>.sp` | Unique identification |
+| Component          | Format                            | Purpose                           |
+| ------------------ | --------------------------------- | --------------------------------- |
+| **Payload**        | `tar --deterministic \| zstd -19` | Reproducible compression          |
+| **manifest.toml**  | TOML in archive root              | Name, version, deps, hashes       |
+| **sbom.spdx.json** | SPDX 3.0 JSON                     | Primary SBOM format               |
+| **sbom.cdx.json**  | CycloneDX 1.6 JSON (optional)     | Secondary SBOM for compatibility  |
+| **Signature**      | Detached `.minisig`               | Minisign signature over all files |
+| **Filename**       | `<n>-<ver>-<rev>.<arch>.sp`       | Unique identification             |
 
 **manifest.toml structure:**
+
 ```toml
 [package]
 name = "jq"
@@ -1235,6 +1323,7 @@ cyclonedx = "blake3:31d2..."  # optional
 ```
 
 #### SBOM Generation (Built from Day 1)
+
 - **Generator**: Syft ≥ 1.4 (deterministic, supports both formats)
 - **When**: After `install()` completes, before packaging
 - **Verification**: Re-run to ensure deterministic output
@@ -1243,12 +1332,14 @@ cyclonedx = "blake3:31d2..."  # optional
 - **Dependency tracking**: SBOMs include both runtime and build dependencies with clear labeling
 
 **Builder API addition:**
+
 ```rust
 ctx.auto_sbom(true)  // Enable SBOM generation (default: true)
 ctx.sbom_excludes(["*.pdb", "*.dSYM", "*.a", "*.la"])  // Exclude patterns (static libs added)
 ```
 
 #### Repository Index Format
+
 ```json
 {
   "version": 1,
@@ -1285,18 +1376,21 @@ ctx.sbom_excludes(["*.pdb", "*.dSYM", "*.a", "*.la"])  // Exclude patterns (stat
 ```
 
 **Index version policy:**
+
 - If `index.version > client_supported_version`: Hard fail with clear error message
 - Users must upgrade sps2 to use newer index formats
 - If `client_version < minimum_client`: Warn but continue (soft deprecation)
 - Cache last known good index locally for offline use
 
 **Dependency types:**
+
 - **runtime**: Required for the package to function after installation
 - **build**: Only needed during package compilation (not installed with package)
 - Build deps are automatically available in build environment but not linked to final package
 - Both runtime and build deps are satisfied by binary packages from the repository
 
 ### Security Model
+
 - **Minisign** for package signatures (small attack surface)
 - **BLAKE3** for content verification and hashing
 - **SBOM** for supply chain transparency
@@ -1304,6 +1398,7 @@ ctx.sbom_excludes(["*.pdb", "*.dSYM", "*.a", "*.la"])  // Exclude patterns (stat
 - **Deterministic builds** for reproducibility
 
 #### Key Distribution & Trust Root
+
 - **Bootstrap key**: Embedded in CLI binary at compile time
 - **Key storage**: `/opt/pm/keys/` directory with trusted public keys
 - **Key format**: Minisign public key files (`.pub`)
@@ -1321,12 +1416,14 @@ ctx.sbom_excludes(["*.pdb", "*.dSYM", "*.a", "*.la"])  // Exclude patterns (stat
       "pubkey": "untrusted comment: ...\nRWRzQJ6...",
       "valid_from": "2025-01-01T00:00:00Z"
     },
-    "rotations": [{
-      "new_key": "RWRnew...",
-      "signature": "minisign signature of new key by old key",
-      "valid_from": "2025-06-01T00:00:00Z",
-      "old_key_expires": "2025-07-01T00:00:00Z"
-    }]
+    "rotations": [
+      {
+        "new_key": "RWRnew...",
+        "signature": "minisign signature of new key by old key",
+        "valid_from": "2025-06-01T00:00:00Z",
+        "old_key_expires": "2025-07-01T00:00:00Z"
+      }
+    ]
   }
   ```
 - **Index protection**:
@@ -1338,17 +1435,18 @@ ctx.sbom_excludes(["*.pdb", "*.dSYM", "*.a", "*.la"])  // Exclude patterns (stat
 
 ### CI/CD Pipeline
 
-| Step | Implementation | Purpose |
-|------|----------------|---------|
-| Source cache | GitHub Actions cache by URL+SHA | Avoid re-downloading |
-| Build matrix | `arch=[arm64]` `macos=[14]` | Platform coverage (15 when available) |
-| Codesigning | `codesign --options=runtime --entitlements entitlements.plist` | Hardened runtime for notarization |
-| Upload | GitHub Releases + CDN | Redundant distribution |
-| Index | Static `index.json` with ETag | Efficient updates |
-| MSRV check | See below | Ensure minimum Rust version |
-| Warnings | `cargo clippy -- -D warnings` | Enforce zero warnings |
+| Step         | Implementation                                                 | Purpose                               |
+| ------------ | -------------------------------------------------------------- | ------------------------------------- |
+| Source cache | GitHub Actions cache by URL+SHA                                | Avoid re-downloading                  |
+| Build matrix | `arch=[arm64]` `macos=[14]`                                    | Platform coverage (15 when available) |
+| Codesigning  | `codesign --options=runtime --entitlements entitlements.plist` | Hardened runtime for notarization     |
+| Upload       | GitHub Releases + CDN                                          | Redundant distribution                |
+| Index        | Static `index.json` with ETag                                  | Efficient updates                     |
+| MSRV check   | See below                                                      | Ensure minimum Rust version           |
+| Warnings     | `cargo clippy -- -D warnings`                                  | Enforce zero warnings                 |
 
 **MSRV Enforcement CI Job:**
+
 ```yaml
 msrv:
   runs-on: macos-14
@@ -1365,6 +1463,7 @@ msrv:
 ```
 
 **Code-signing entitlements (`entitlements.plist`):**
+
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -1379,12 +1478,14 @@ msrv:
 ```
 
 **Entitlements justification:**
+
 - `allow-unsigned-executable-memory`: Future-proofing for WASM/JIT plugins (Starlark uses bytecode interpreter)
 - `disable-library-validation`: Needed to load packages that contain dylibs from `/opt/pm/live/lib`
 - These are standard for package managers and development tools
 - Alternative would break core functionality (no future JIT support, no dynamic libraries)
 
 ### Package Repository Strategy
+
 - Start with essential developer tools (git, curl, openssl, etc.)
 - Use AI-assisted recipe generation from source URLs
 - Recipes must specify both runtime and build dependencies with appropriate version constraints
@@ -1399,6 +1500,7 @@ msrv:
 ## Release & Distribution
 
 ### Versioning Strategy
+
 - **CLI version**: Semantic versioning (e.g., 0.1.0, 0.2.0, 1.0.0)
 - **Index format version**: Integer increment (currently: 1)
 - **Compatibility**: CLI checks index version and minimum_client field
@@ -1407,6 +1509,7 @@ msrv:
   - `testing`: Pre-release testing (opt-in via config)
 
 ### Bootstrap Installation
+
 ```bash
 #!/bin/bash
 # Bootstrap installer for sps2
@@ -1433,6 +1536,7 @@ echo "sps2 installed! Restart your shell or run: export PATH=\"/opt/pm/live/bin:
 ```
 
 ### PATH Policy
+
 - **No symlinks**: We don't create any symlinks in `/usr/local/bin` or elsewhere
 - **Single prefix**: All binaries live in `/opt/pm/live/bin/`
 - **User responsibility**: Users must add `/opt/pm/live/bin` to their PATH
@@ -1440,6 +1544,7 @@ echo "sps2 installed! Restart your shell or run: export PATH=\"/opt/pm/live/bin:
 - **Documentation**: README prominently shows PATH setup instructions
 
 ### Update Mechanism
+
 - `sps2 self-update`: Updates sps2 itself
 - Downloads new version to temporary location
 - Verifies signature before replacing
@@ -1449,6 +1554,7 @@ echo "sps2 installed! Restart your shell or run: export PATH=\"/opt/pm/live/bin:
 ### Performance Considerations
 
 #### Async I/O
+
 - Use `tokio::fs` for all file operations
 - Use `sqlx` for all database operations (no blocking DB calls)
 - Use `reqwest` for HTTP requests with connection pooling
@@ -1457,12 +1563,14 @@ echo "sps2 installed! Restart your shell or run: export PATH=\"/opt/pm/live/bin:
 - Batch database operations where possible
 
 #### APFS Optimizations
+
 - `clonefile()` for instant staging directory creation
 - Hard links to avoid data duplication
 - Compression flags on `/opt/pm/store/`
 - Avoid unnecessary stat() calls
 
 #### Caching Strategy
+
 - Repository index cached with ETag validation
 - Package store is the cache (content-addressed)
 - Build artifacts cached by source hash
@@ -1471,12 +1579,14 @@ echo "sps2 installed! Restart your shell or run: export PATH=\"/opt/pm/live/bin:
 - Starlark recipes parsed and cached
 
 #### Concurrency Limits
+
 - Download pool: 4 concurrent connections (configurable)
 - Hash verification: num_cpus threads
 - Build jobs: Algorithm below
 - Database connections: SQLx pool with 5 max connections (1 writer, 4 readers)
 
 **Build concurrency algorithm:**
+
 ```rust
 fn calculate_build_jobs(config_value: usize) -> usize {
     if config_value > 0 {
@@ -1493,6 +1603,7 @@ fn calculate_build_jobs(config_value: usize) -> usize {
 ```
 
 **Event channel notes:**
+
 - Using unbounded channels for simplicity
 - In practice, memory usage limited by operation scope
 - Long builds with verbose output may buffer significant events
@@ -1505,6 +1616,7 @@ fn calculate_build_jobs(config_value: usize) -> usize {
 **Note**: This functionality will be implemented after the core package manager is complete and stable.
 
 ### Architecture Overview
+
 The `audit` crate will provide offline CVE scanning using embedded SBOMs:
 
 ```
@@ -1516,12 +1628,14 @@ sps2 audit [--all|--package <name>] [--fail-on critical]
 ```
 
 ### Vulnerability Database Design
+
 - **Format**: SQLite databases for offline queries (accessed via `sqlx`)
 - **Sources**: NVD, OSV, GitHub Security Advisories
 - **Updates**: Daily sync via `sps2 vulndb update`
 - **Storage**: `/opt/pm/vulndb/` with versioned schemas
 
 ### Audit Workflow
+
 1. Parse SBOM (SPDX/CycloneDX) from installed packages
 2. Extract component identifiers (PURL, CPE)
 3. Query local SQLite databases for matches
@@ -1529,6 +1643,7 @@ sps2 audit [--all|--package <name>] [--fail-on critical]
 5. Present results with remediation advice
 
 ### Implementation Plan (Future)
+
 1. `vulndb` crate for database management
 2. SBOM parser integration (reuse from builder)
 3. CVE matching logic with semver awareness
@@ -1537,6 +1652,7 @@ sps2 audit [--all|--package <name>] [--fail-on critical]
 6. Database update mechanism and CDN distribution
 
 ### Why This Design
+
 - **Offline-first**: No privacy concerns from phoning home
 - **Fast**: Local SQLite queries < 50ms per package
 - **Accurate**: SBOM-based matching reduces false positives
