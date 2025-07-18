@@ -12,15 +12,15 @@ walkdir = "2.5.0"
 regex = "1.11.1"
 
 # Parsing metadata files
-toml = "0.8.23"
+toml = "0.9.2"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 
 # Archive extraction
 tar = "0.4.44"
 flate2 = "1.1.2"
-zip = "4.2.0"
-async-compression = { version = "0.4.25", features = ["tokio", "gzip", "bzip2", "xz"] }
+zip = "4.3.0"
+async-compression = { version = "0.4.27", features = ["tokio", "gzip", "bzip2", "xz"] }
 
 # Git operations
 git2 = "0.20.2"

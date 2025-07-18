@@ -10,6 +10,7 @@ use sps2_root::hard_link;
 use sps2_root::{create_dir_all, exists, remove_file};
 use std::path::{Path, PathBuf};
 use tokio::fs;
+use uuid::Uuid;
 
 /// File store for content-addressed file storage
 #[derive(Clone, Debug)]
@@ -73,35 +74,61 @@ impl FileStore {
     pub async fn store_file(&self, source_path: &Path, hash: &Hash) -> Result<bool, Error> {
         let dest_path = self.file_path(hash);
 
-        // Check if already exists
-        if exists(&dest_path).await {
+        if dest_path.exists() {
             return Ok(false);
         }
 
         // Ensure parent directory exists
-        if let Some(parent) = dest_path.parent() {
-            create_dir_all(parent).await?;
+        let parent_dir = dest_path.parent().ok_or_else(|| StorageError::IoError {
+            message: "failed to get parent directory".to_string(),
+        })?;
+        create_dir_all(parent_dir).await?;
+
+        // Create a unique temporary file path
+        let temp_file_name = format!("{}.tmp", Uuid::new_v4());
+        let temp_path = parent_dir.join(temp_file_name);
+
+        // Copy to temporary file
+        if let Err(e) = fs::copy(source_path, &temp_path).await {
+            // Clean up temp file on failure
+            let _ = remove_file(&temp_path).await;
+            return Err(StorageError::IoError {
+                message: format!("failed to copy file to temp: {e}"),
+            }
+            .into());
         }
 
-        // Copy file to store
-        fs::copy(source_path, &dest_path)
-            .await
-            .map_err(|e| StorageError::IoError {
-                message: format!("failed to copy file to store: {e}"),
-            })?;
+        // Attempt to atomically rename (move) the file
+        match fs::rename(&temp_path, &dest_path).await {
+            Ok(()) => {
+                // Make file read-only after successful move
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let metadata = fs::metadata(&dest_path).await?;
+                    let mut perms = metadata.permissions();
+                    let mode = perms.mode() & 0o555; // Remove write permissions
+                    perms.set_mode(mode);
+                    fs::set_permissions(&dest_path, perms).await?;
+                }
+                Ok(true)
+            }
+            Err(e) => {
+                // Clean up the temporary file
+                let _ = remove_file(&temp_path).await;
 
-        // Make file read-only
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let metadata = fs::metadata(&dest_path).await?;
-            let mut perms = metadata.permissions();
-            let mode = perms.mode() & 0o555; // Remove write permissions
-            perms.set_mode(mode);
-            fs::set_permissions(&dest_path, perms).await?;
+                // If the error is because the file exists, another process/thread beat us to it.
+                // This is not an error condition for us.
+                if e.kind() == std::io::ErrorKind::AlreadyExists {
+                    Ok(false)
+                } else {
+                    Err(StorageError::IoError {
+                        message: format!("failed to move temp file to store: {e}"),
+                    }
+                    .into())
+                }
+            }
         }
-
-        Ok(true)
     }
 
     /// Store a file and compute its hash

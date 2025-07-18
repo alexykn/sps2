@@ -3,11 +3,21 @@
 use crate::pipeline::decompress::DecompressResult;
 use crate::staging::StagingManager;
 use sps2_errors::Error;
-use sps2_events::{Event, EventSender, EventSenderExt};
+use sps2_events::{Event, EventEmitter, EventSender, EventSenderExt};
 use sps2_resolver::PackageId;
 use sps2_store::PackageStore;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
+
+struct StagingContext {
+    event_sender: Option<EventSender>,
+}
+
+impl EventEmitter for StagingContext {
+    fn event_sender(&self) -> Option<&EventSender> {
+        self.event_sender.as_ref()
+    }
+}
 
 /// Staging pipeline stage coordinator
 pub struct StagingPipeline {
@@ -105,11 +115,15 @@ impl StagingPipeline {
             context: std::collections::HashMap::new(),
         });
 
+        let staging_context = StagingContext {
+            event_sender: Some(tx.clone()),
+        };
+
         let staging_dir = staging_manager
             .extract_validated_tar_to_staging(
                 &decompress_result.decompressed_path,
                 &decompress_result.package_id,
-                Some(tx),
+                &staging_context,
             )
             .await?;
 

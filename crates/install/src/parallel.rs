@@ -2,11 +2,12 @@
 
 // InstallContext import removed as it's not used in this module
 // validate_sp_file import removed - validation now handled by AtomicInstaller
+use crate::common::resource::ResourceManager;
 use crate::PreparedPackage;
 use crossbeam::queue::SegQueue;
 use dashmap::DashMap;
 use sps2_errors::{Error, InstallError};
-use sps2_events::{Event, EventSender};
+use sps2_events::{Event, EventEmitter, EventSender};
 use sps2_net::NetClient;
 use sps2_resolver::{ExecutionPlan, NodeAction, PackageId, ResolvedNode};
 use sps2_state::StateManager;
@@ -14,7 +15,6 @@ use sps2_store::PackageStore;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
-use tokio::sync::Semaphore;
 use tokio::task::JoinHandle;
 use tokio::time::{timeout, Duration, Instant};
 
@@ -37,8 +37,8 @@ pub struct ParallelExecutor {
     store: PackageStore,
     /// State manager for package_map updates
     state_manager: StateManager,
-    /// Maximum concurrent operations
-    max_concurrency: usize,
+    /// Resource manager for concurrency control
+    resources: Arc<ResourceManager>,
     /// Download timeout
     download_timeout: Duration,
 }
@@ -49,21 +49,18 @@ impl ParallelExecutor {
     /// # Errors
     ///
     /// Returns an error if network client initialization fails.
-    pub fn new(store: PackageStore, state_manager: StateManager) -> Result<Self, Error> {
+    pub fn new(
+        store: PackageStore,
+        state_manager: StateManager,
+        resources: Arc<ResourceManager>,
+    ) -> Result<Self, Error> {
         Ok(Self {
             net_client: NetClient::with_defaults()?,
             store,
             state_manager,
-            max_concurrency: 4,                         // Default from spec
+            resources,
             download_timeout: Duration::from_secs(300), // 5 minutes
         })
-    }
-
-    /// Set maximum concurrency
-    #[must_use]
-    pub fn with_concurrency(mut self, max_concurrency: usize) -> Self {
-        self.max_concurrency = max_concurrency;
-        self
     }
 
     /// Set download timeout
@@ -84,14 +81,13 @@ impl ParallelExecutor {
         resolved_packages: &HashMap<PackageId, ResolvedNode>,
         context: &ExecutionContext,
     ) -> Result<HashMap<PackageId, PreparedPackage>, Error> {
-        let semaphore = Arc::new(Semaphore::new(self.max_concurrency));
         let ready_queue = Arc::new(SegQueue::new());
         let inflight = Arc::new(DashMap::new());
         let prepared_packages = Arc::new(DashMap::new());
         let graph = Self::build_execution_graph(self, execution_plan, resolved_packages);
 
         // Initialize ready queue with packages that have no dependencies
-        context.send_event(Event::DebugLog {
+        context.emit_event(Event::DebugLog {
             message: format!(
                 "DEBUG: Execution plan has {} ready packages",
                 execution_plan.ready_packages().len()
@@ -108,7 +104,7 @@ impl ParallelExecutor {
         });
 
         for package_id in execution_plan.ready_packages() {
-            context.send_event(Event::DebugLog {
+            context.emit_event(Event::DebugLog {
                 message: format!(
                     "DEBUG: Processing ready package {}-{}",
                     package_id.name, package_id.version
@@ -119,7 +115,7 @@ impl ParallelExecutor {
             // Only add packages with in_degree 0 from our graph
             if let Some(node) = graph.get(&package_id) {
                 let in_degree = node.in_degree.load(std::sync::atomic::Ordering::Relaxed);
-                context.send_event(Event::DebugLog {
+                context.emit_event(Event::DebugLog {
                     message: format!(
                         "DEBUG: Package {}-{} has in_degree {}",
                         package_id.name, package_id.version, in_degree
@@ -129,7 +125,7 @@ impl ParallelExecutor {
 
                 if in_degree == 0 {
                     ready_queue.push(package_id.clone());
-                    context.send_event(Event::DebugLog {
+                    context.emit_event(Event::DebugLog {
                         message: format!(
                             "DEBUG: Added package {}-{} to ready queue",
                             package_id.name, package_id.version
@@ -139,7 +135,7 @@ impl ParallelExecutor {
                 }
             } else {
                 ready_queue.push(package_id.clone());
-                context.send_event(Event::DebugLog {
+                context.emit_event(Event::DebugLog {
                     message: format!(
                         "DEBUG: Added package {}-{} to ready queue (not in graph)",
                         package_id.name, package_id.version
@@ -155,7 +151,7 @@ impl ParallelExecutor {
         let mut no_progress_iterations = 0;
         let mut last_completed_count = 0;
 
-        context.send_event(Event::DebugLog {
+        context.emit_event(Event::DebugLog {
             message: format!(
                 "DEBUG: Starting main processing loop. execution_plan.is_complete()={}, inflight.is_empty()={}",
                 execution_plan.is_complete(), inflight.is_empty()
@@ -165,7 +161,7 @@ impl ParallelExecutor {
 
         // Process packages until completion - ensure we process ready packages even if execution_plan reports complete
         while (!execution_plan.is_complete() || !inflight.is_empty()) || !ready_queue.is_empty() {
-            context.send_event(Event::DebugLog {
+            context.emit_event(Event::DebugLog {
                 message: format!(
                     "DEBUG: Loop iteration. execution_plan.is_complete()={}, inflight.is_empty()={}",
                     execution_plan.is_complete(), inflight.is_empty()
@@ -198,7 +194,7 @@ impl ParallelExecutor {
             }
             // Try to start new tasks from ready queue
             while let Some(package_id) = ready_queue.pop() {
-                context.send_event(Event::DebugLog {
+                context.emit_event(Event::DebugLog {
                     message: format!(
                         "DEBUG: Popped package {}-{} from ready queue",
                         package_id.name, package_id.version
@@ -207,7 +203,7 @@ impl ParallelExecutor {
                 });
 
                 if inflight.contains_key(&package_id) {
-                    context.send_event(Event::DebugLog {
+                    context.emit_event(Event::DebugLog {
                         message: format!(
                             "DEBUG: Package {}-{} already in flight, skipping",
                             package_id.name, package_id.version
@@ -217,11 +213,7 @@ impl ParallelExecutor {
                     continue; // Already in flight
                 }
 
-                let permit = semaphore.clone().acquire_owned().await.map_err(|_| {
-                    InstallError::ConcurrencyError {
-                        message: "failed to acquire semaphore".to_string(),
-                    }
-                })?;
+                let permit = self.resources.acquire_download_permit().await?;
 
                 let node = resolved_packages.get(&package_id).ok_or_else(|| {
                     InstallError::PackageNotFound {
@@ -229,7 +221,7 @@ impl ParallelExecutor {
                     }
                 })?;
 
-                context.send_event(Event::DebugLog {
+                context.emit_event(Event::DebugLog {
                     message: format!(
                         "DEBUG: Starting task for package {}-{} with action {:?}",
                         package_id.name, package_id.version, node.action
@@ -263,7 +255,7 @@ impl ParallelExecutor {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
 
-        context.send_event(Event::DebugLog {
+        context.emit_event(Event::DebugLog {
             message: format!(
                 "DEBUG: Exited main processing loop. execution_plan.is_complete()={}, inflight.is_empty()={}, prepared_packages.len()={}",
                 execution_plan.is_complete(), inflight.is_empty(), prepared_packages.len()
@@ -347,7 +339,7 @@ impl ParallelExecutor {
             timeout_duration,
             prepared_packages,
         } = args;
-        context.send_event(Event::DebugLog {
+        context.emit_event(Event::DebugLog {
             message: format!(
                 "DEBUG: Processing package {}-{} with action {:?}",
                 package_id.name, package_id.version, node.action
@@ -355,7 +347,7 @@ impl ParallelExecutor {
             context: std::collections::HashMap::new(),
         });
 
-        context.send_event(Event::PackageInstalling {
+        context.emit_event(Event::PackageInstalling {
             name: package_id.name.clone(),
             version: package_id.version.clone(),
         });
@@ -379,7 +371,7 @@ impl ParallelExecutor {
 
                     match download_result {
                         Ok(Ok(())) => {
-                            context.send_event(Event::PackageDownloaded {
+                            context.emit_event(Event::PackageDownloaded {
                                 name: package_id.name.clone(),
                                 version: package_id.version.clone(),
                             });
@@ -402,7 +394,7 @@ impl ParallelExecutor {
                 }
             }
             NodeAction::Local => {
-                context.send_event(Event::DebugLog {
+                context.emit_event(Event::DebugLog {
                     message: format!(
                         "DEBUG: Processing local package {}-{}, path: {:?}",
                         package_id.name, package_id.version, node.path
@@ -411,7 +403,7 @@ impl ParallelExecutor {
                 });
 
                 if let Some(path) = &node.path {
-                    context.send_event(Event::DebugLog {
+                    context.emit_event(Event::DebugLog {
                         message: format!(
                             "DEBUG: Adding local package to store: {}",
                             path.display()
@@ -426,7 +418,7 @@ impl ParallelExecutor {
                         let size = stored_package.size().await?;
                         let store_path = stored_package.path().to_path_buf();
 
-                        context.send_event(Event::DebugLog {
+                        context.emit_event(Event::DebugLog {
                             message: format!(
                                 "DEBUG: Local package stored with hash {} at {}",
                                 hash.to_hex(),
@@ -444,7 +436,7 @@ impl ParallelExecutor {
 
                         prepared_packages.insert(package_id.clone(), prepared_package);
 
-                        context.send_event(Event::DebugLog {
+                        context.emit_event(Event::DebugLog {
                             message: format!(
                                 "DEBUG: Added prepared package for {}-{}",
                                 package_id.name, package_id.version
@@ -452,7 +444,7 @@ impl ParallelExecutor {
                             context: std::collections::HashMap::new(),
                         });
 
-                        context.send_event(Event::PackageInstalled {
+                        context.emit_event(Event::PackageInstalled {
                             name: package_id.name.clone(),
                             version: package_id.version.clone(),
                             path: path.display().to_string(),
@@ -493,7 +485,7 @@ impl ParallelExecutor {
         // Download with progress reporting
         net_client
             .download_file_with_progress(url, temp_file.path(), |progress| {
-                context.send_event(Event::DownloadProgress {
+                context.emit_event(Event::DownloadProgress {
                     url: url.to_string(),
                     bytes_downloaded: progress.downloaded,
                     total_bytes: progress.total,
@@ -520,7 +512,7 @@ impl ParallelExecutor {
 
             prepared_packages.insert(package_id.clone(), prepared_package);
 
-            context.send_event(Event::DebugLog {
+            context.emit_event(Event::DebugLog {
                 message: format!(
                     "Package {}-{} downloaded and stored with hash {} (prepared for installation)",
                     package_id.name,
@@ -605,12 +597,11 @@ impl ExecutionContext {
         self.event_sender = Some(event_sender);
         self
     }
+}
 
-    /// Send event if sender is available
-    pub fn send_event(&self, event: Event) {
-        if let Some(sender) = &self.event_sender {
-            let _ = sender.send(event);
-        }
+impl EventEmitter for ExecutionContext {
+    fn event_sender(&self) -> Option<&EventSender> {
+        self.event_sender.as_ref()
     }
 }
 

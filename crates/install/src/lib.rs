@@ -45,6 +45,7 @@
 //! state transitions, rollback capabilities, and parallel execution.
 
 mod atomic;
+mod common;
 mod installer;
 mod operations;
 mod parallel;
@@ -68,12 +69,14 @@ pub use validation::{
 
 // Removed unused imports: Error, EventSender, ResolutionResult, Version, HashMap
 // These will be imported where needed in future implementations
-use sps2_events::EventSender;
 use sps2_hash::Hash;
 use sps2_resolver::PackageId;
 use sps2_types::PackageSpec;
 use std::path::PathBuf;
 use uuid::Uuid;
+
+// Re-export EventSender for use by macros
+pub use sps2_events::EventSender;
 
 // PreparedPackage will be exported by the pub struct declaration below
 
@@ -92,60 +95,15 @@ pub struct InstallContext {
     pub event_sender: Option<EventSender>,
 }
 
-impl InstallContext {
-    /// Create new install context
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            packages: Vec::new(),
-            local_files: Vec::new(),
-            force: false,
-            dry_run: false,
-            event_sender: None,
-        }
-    }
-
-    /// Add package to install
-    #[must_use]
-    pub fn add_package(mut self, spec: PackageSpec) -> Self {
-        self.packages.push(spec);
-        self
-    }
-
-    /// Add local file to install
-    #[must_use]
-    pub fn add_local_file(mut self, path: PathBuf) -> Self {
-        self.local_files.push(path);
-        self
-    }
-
-    /// Set force reinstallation
-    #[must_use]
-    pub fn with_force(mut self, force: bool) -> Self {
-        self.force = force;
-        self
-    }
-
-    /// Set dry run mode
-    #[must_use]
-    pub fn with_dry_run(mut self, dry_run: bool) -> Self {
-        self.dry_run = dry_run;
-        self
-    }
-
-    /// Set event sender
-    #[must_use]
-    pub fn with_event_sender(mut self, event_sender: EventSender) -> Self {
-        self.event_sender = Some(event_sender);
-        self
+context_builder! {
+    InstallContext {
+        packages: Vec<PackageSpec>,
+        local_files: Vec<PathBuf>,
+        force: bool,
+        dry_run: bool
     }
 }
-
-impl Default for InstallContext {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+context_add_package_method!(InstallContext, PackageSpec);
 
 /// Installation result
 #[derive(Debug)]
@@ -209,60 +167,15 @@ pub struct UninstallContext {
     pub event_sender: Option<EventSender>,
 }
 
-impl UninstallContext {
-    /// Create new uninstall context
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            packages: Vec::new(),
-            autoremove: false,
-            force: false,
-            dry_run: false,
-            event_sender: None,
-        }
-    }
-
-    /// Add package to uninstall
-    #[must_use]
-    pub fn add_package(mut self, name: String) -> Self {
-        self.packages.push(name);
-        self
-    }
-
-    /// Set autoremove
-    #[must_use]
-    pub fn with_autoremove(mut self, autoremove: bool) -> Self {
-        self.autoremove = autoremove;
-        self
-    }
-
-    /// Set force removal
-    #[must_use]
-    pub fn with_force(mut self, force: bool) -> Self {
-        self.force = force;
-        self
-    }
-
-    /// Set dry run mode
-    #[must_use]
-    pub fn with_dry_run(mut self, dry_run: bool) -> Self {
-        self.dry_run = dry_run;
-        self
-    }
-
-    /// Set event sender
-    #[must_use]
-    pub fn with_event_sender(mut self, event_sender: EventSender) -> Self {
-        self.event_sender = Some(event_sender);
-        self
+context_builder! {
+    UninstallContext {
+        packages: Vec<String>,
+        autoremove: bool,
+        force: bool,
+        dry_run: bool
     }
 }
-
-impl Default for UninstallContext {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+context_add_package_method!(UninstallContext, String);
 
 /// Update context
 #[derive(Clone, Debug)]
@@ -277,52 +190,14 @@ pub struct UpdateContext {
     pub event_sender: Option<EventSender>,
 }
 
-impl UpdateContext {
-    /// Create new update context
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            packages: Vec::new(),
-            upgrade: false,
-            dry_run: false,
-            event_sender: None,
-        }
-    }
-
-    /// Add package to update
-    #[must_use]
-    pub fn add_package(mut self, name: String) -> Self {
-        self.packages.push(name);
-        self
-    }
-
-    /// Set upgrade mode
-    #[must_use]
-    pub fn with_upgrade(mut self, upgrade: bool) -> Self {
-        self.upgrade = upgrade;
-        self
-    }
-
-    /// Set dry run mode
-    #[must_use]
-    pub fn with_dry_run(mut self, dry_run: bool) -> Self {
-        self.dry_run = dry_run;
-        self
-    }
-
-    /// Set event sender
-    #[must_use]
-    pub fn with_event_sender(mut self, event_sender: EventSender) -> Self {
-        self.event_sender = Some(event_sender);
-        self
+context_builder! {
+    UpdateContext {
+        packages: Vec<String>,
+        upgrade: bool,
+        dry_run: bool
     }
 }
-
-impl Default for UpdateContext {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+context_add_package_method!(UpdateContext, String);
 
 /// Prepared package data passed from ParallelExecutor to AtomicInstaller
 ///

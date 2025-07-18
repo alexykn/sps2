@@ -27,6 +27,9 @@ use std::time::Duration;
 /// Type alias for event sender
 pub type EventSender = tokio::sync::mpsc::UnboundedSender<Event>;
 
+// Import for the EventEmitter implementation
+use tokio::sync::mpsc::UnboundedSender;
+
 /// Type alias for event receiver
 pub type EventReceiver = tokio::sync::mpsc::UnboundedReceiver<Event>;
 
@@ -890,11 +893,179 @@ impl Event {
 pub trait EventSenderExt {
     /// Send an event, ignoring send errors (receiver dropped)
     fn emit(&self, event: Event);
+
+    /// Send a debug log event
+    fn emit_debug(&self, message: impl Into<String>) {
+        self.emit(Event::debug(message));
+    }
+
+    /// Send a warning event
+    fn emit_warning(&self, message: impl Into<String>) {
+        self.emit(Event::warning(message));
+    }
+
+    /// Send an error event
+    fn emit_error(&self, message: impl Into<String>) {
+        self.emit(Event::error(message));
+    }
+
+    /// Send an operation started event
+    fn emit_operation_started(&self, operation: impl Into<String>) {
+        self.emit(Event::OperationStarted {
+            operation: operation.into(),
+        });
+    }
+
+    /// Send an operation completed event
+    fn emit_operation_completed(&self, operation: impl Into<String>, success: bool) {
+        self.emit(Event::OperationCompleted {
+            operation: operation.into(),
+            success,
+        });
+    }
+
+    /// Send an operation failed event
+    fn emit_operation_failed(&self, operation: impl Into<String>, error: impl Into<String>) {
+        self.emit(Event::OperationFailed {
+            operation: operation.into(),
+            error: error.into(),
+        });
+    }
 }
 
 impl EventSenderExt for EventSender {
     fn emit(&self, event: Event) {
         // Ignore send errors - if receiver is dropped, we just continue
         let _ = self.send(event);
+    }
+}
+
+/// Global event emitter for convenient access across crates
+pub struct GlobalEventEmitter {
+    sender: Option<EventSender>,
+}
+
+impl Default for GlobalEventEmitter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl GlobalEventEmitter {
+    /// Create a new global event emitter with no sender (events will be ignored)
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { sender: None }
+    }
+
+    /// Initialize the global event emitter with a sender
+    pub fn init(&mut self, sender: EventSender) {
+        self.sender = Some(sender);
+    }
+
+    /// Check if the global event emitter is initialized
+    #[must_use]
+    pub fn is_initialized(&self) -> bool {
+        self.sender.is_some()
+    }
+
+    /// Get the current event sender, if available
+    #[must_use]
+    pub fn sender(&self) -> Option<&EventSender> {
+        self.sender.as_ref()
+    }
+}
+
+impl EventSenderExt for GlobalEventEmitter {
+    fn emit(&self, event: Event) {
+        if let Some(sender) = &self.sender {
+            sender.emit(event);
+        }
+    }
+}
+
+/// Global event emitter instance
+static GLOBAL_EVENT_EMITTER: std::sync::RwLock<GlobalEventEmitter> =
+    std::sync::RwLock::new(GlobalEventEmitter::new());
+
+/// Initialize the global event emitter
+pub fn init_global_event_emitter(sender: EventSender) {
+    if let Ok(mut emitter) = GLOBAL_EVENT_EMITTER.write() {
+        emitter.init(sender);
+    }
+}
+
+/// Get access to the global event emitter
+#[must_use]
+pub fn global_event_emitter() -> impl EventSenderExt {
+    struct GlobalEmitter;
+
+    impl EventSenderExt for GlobalEmitter {
+        fn emit(&self, event: Event) {
+            if let Ok(emitter) = GLOBAL_EVENT_EMITTER.read() {
+                emitter.emit(event);
+            }
+        }
+    }
+
+    GlobalEmitter
+}
+
+/// Trait for types that can emit events
+pub trait EventEmitter {
+    /// Get the event sender for this emitter
+    fn event_sender(&self) -> Option<&EventSender>;
+
+    /// Emit an event through this emitter
+    fn emit_event(&self, event: Event) {
+        if let Some(sender) = self.event_sender() {
+            sender.emit(event);
+        }
+    }
+
+    /// Emit a debug log event
+    fn emit_debug(&self, message: impl Into<String>) {
+        self.emit_event(Event::debug(message));
+    }
+
+    /// Emit a warning event
+    fn emit_warning(&self, message: impl Into<String>) {
+        self.emit_event(Event::warning(message));
+    }
+
+    /// Emit an error event
+    fn emit_error(&self, message: impl Into<String>) {
+        self.emit_event(Event::error(message));
+    }
+
+    /// Emit an operation started event
+    fn emit_operation_started(&self, operation: impl Into<String>) {
+        self.emit_event(Event::OperationStarted {
+            operation: operation.into(),
+        });
+    }
+
+    /// Emit an operation completed event
+    fn emit_operation_completed(&self, operation: impl Into<String>, success: bool) {
+        self.emit_event(Event::OperationCompleted {
+            operation: operation.into(),
+            success,
+        });
+    }
+
+    /// Emit an operation failed event
+    fn emit_operation_failed(&self, operation: impl Into<String>, error: impl Into<String>) {
+        self.emit_event(Event::OperationFailed {
+            operation: operation.into(),
+            error: error.into(),
+        });
+    }
+}
+
+/// Implementation of `EventEmitter` for `UnboundedSender<Event>`
+/// This allows `UnboundedSender` to be used directly where `EventEmitter` is expected
+impl EventEmitter for UnboundedSender<Event> {
+    fn event_sender(&self) -> Option<&EventSender> {
+        Some(self)
     }
 }

@@ -1,17 +1,32 @@
 //! Atomic installer implementation using APFS optimizations
 
 use crate::atomic::{rollback, transition::StateTransition};
+use std::sync::Arc;
 // Removed Python venv handling - Python packages are now handled like regular packages
 use crate::{InstallContext, InstallResult, PreparedPackage, StagingManager};
 use sps2_errors::{Error, InstallError};
-use sps2_events::Event;
-// Hash import removed as it's not used in this file
+use sps2_events::{Event, EventEmitter, EventSender};
+
 use sps2_resolver::{PackageId, ResolvedNode};
 use sps2_state::{PackageRef, StateManager};
 use sps2_store::{PackageStore, StoredPackage};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
+
+/// Implement EventEmitter for InstallContext
+impl EventEmitter for InstallContext {
+    fn event_sender(&self) -> Option<&EventSender> {
+        self.event_sender.as_ref()
+    }
+}
+
+/// Implement EventEmitter for UninstallContext
+impl EventEmitter for crate::UninstallContext {
+    fn event_sender(&self) -> Option<&EventSender> {
+        self.event_sender.as_ref()
+    }
+}
 
 /// Atomic installer using APFS optimizations
 pub struct AtomicInstaller {
@@ -22,6 +37,186 @@ pub struct AtomicInstaller {
 }
 
 impl AtomicInstaller {
+    /// Execute two-phase commit flow for a transition
+    async fn execute_two_phase_commit<T: EventEmitter>(
+        &self,
+        transition: &StateTransition,
+        context: &T,
+    ) -> Result<(), Error> {
+        let parent_id = transition.parent_id.unwrap_or_default();
+
+        // Emit 2PC start event
+        context.emit_event(Event::TwoPhaseCommitStarting {
+            state_id: transition.staging_id,
+            parent_state_id: parent_id,
+            operation: transition.operation.clone(),
+        });
+
+        // Phase 1: Prepare and commit the database changes
+        context.emit_event(Event::TwoPhaseCommitPhaseOneStarting {
+            state_id: transition.staging_id,
+            operation: transition.operation.clone(),
+        });
+
+        let transition_data = sps2_state::TransactionData {
+            package_refs: &transition.package_refs,
+            package_files: &transition.package_files,
+            file_references: &transition.file_references,
+            pending_file_hashes: &transition.pending_file_hashes,
+        };
+
+        let journal = match self
+            .state_manager
+            .prepare_transaction(
+                &transition.staging_id,
+                &parent_id,
+                &transition.staging_path,
+                &transition.operation,
+                &transition_data,
+            )
+            .await
+        {
+            Ok(journal) => {
+                context.emit_event(Event::TwoPhaseCommitPhaseOneCompleted {
+                    state_id: transition.staging_id,
+                    operation: transition.operation.clone(),
+                });
+                journal
+            }
+            Err(e) => {
+                context.emit_event(Event::TwoPhaseCommitFailed {
+                    state_id: transition.staging_id,
+                    operation: transition.operation.clone(),
+                    error: e.to_string(),
+                    phase: "phase_one".to_string(),
+                });
+                return Err(e);
+            }
+        };
+
+        // Phase 2: Execute filesystem swap and finalize
+        context.emit_event(Event::TwoPhaseCommitPhaseTwoStarting {
+            state_id: transition.staging_id,
+            operation: transition.operation.clone(),
+        });
+
+        match self
+            .state_manager
+            .execute_filesystem_swap_and_finalize(journal)
+            .await
+        {
+            Ok(()) => {
+                context.emit_event(Event::TwoPhaseCommitPhaseTwoCompleted {
+                    state_id: transition.staging_id,
+                    operation: transition.operation.clone(),
+                });
+            }
+            Err(e) => {
+                context.emit_event(Event::TwoPhaseCommitFailed {
+                    state_id: transition.staging_id,
+                    operation: transition.operation.clone(),
+                    error: e.to_string(),
+                    phase: "phase_two".to_string(),
+                });
+                return Err(e);
+            }
+        }
+
+        // Emit 2PC completion event
+        context.emit_event(Event::TwoPhaseCommitCompleted {
+            state_id: transition.staging_id,
+            parent_state_id: parent_id,
+            operation: transition.operation.clone(),
+        });
+
+        Ok(())
+    }
+
+    /// Carry forward packages from parent state, excluding specified packages
+    async fn carry_forward_packages(
+        &self,
+        transition: &mut StateTransition,
+        exclude_packages: &[PackageId],
+    ) -> Result<(), Error> {
+        if let Some(parent_id) = transition.parent_id {
+            let parent_packages = self
+                .state_manager
+                .get_installed_packages_in_state(&parent_id)
+                .await?;
+
+            for pkg in parent_packages {
+                // Check if this package should be excluded
+                let should_exclude = exclude_packages.iter().any(|exclude_pkg| {
+                    exclude_pkg.name == pkg.name && exclude_pkg.version.to_string() == pkg.version
+                });
+
+                if !should_exclude {
+                    // Just add the package reference - no need to re-link files
+                    let package_id = PackageId::new(pkg.name.clone(), pkg.version());
+                    let package_ref = PackageRef {
+                        state_id: transition.staging_id,
+                        package_id: package_id.clone(),
+                        hash: pkg.hash.clone(),
+                        size: pkg.size,
+                    };
+                    transition.package_refs.push(package_ref);
+
+                    // Carry forward package file information from parent state
+                    let mut tx = self.state_manager.begin_transaction().await?;
+                    let file_paths = sps2_state::queries::get_package_files(
+                        &mut tx,
+                        &parent_id,
+                        &pkg.name,
+                        &pkg.version,
+                    )
+                    .await?;
+                    tx.commit().await?;
+
+                    // Add file paths to transition
+                    for file_path in file_paths {
+                        let staging_file = transition.staging_path.join(&file_path);
+                        let is_directory = staging_file.is_dir();
+                        transition.package_files.push((
+                            pkg.name.clone(),
+                            pkg.version.clone(),
+                            file_path,
+                            is_directory,
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Setup state transition and staging directory
+    async fn setup_state_transition<T: EventEmitter>(
+        &self,
+        operation: &str,
+        context: &T,
+    ) -> Result<StateTransition, Error> {
+        // Create new state transition
+        let mut transition =
+            StateTransition::new(&self.state_manager, operation.to_string()).await?;
+
+        // Set event sender on transition
+        transition.event_sender = context.event_sender().cloned();
+
+        context.emit_event(Event::StateCreating {
+            state_id: transition.staging_id,
+        });
+
+        // Clone current state to staging directory
+        sps2_root::create_staging_directory(&self.live_path, &transition.staging_path).await?;
+
+        context.emit_debug(format!(
+            "Created staging directory at: {}",
+            transition.staging_path.display()
+        ));
+
+        Ok(transition)
+    }
+
     /// Create new atomic installer
     ///
     /// # Errors
@@ -30,7 +225,9 @@ impl AtomicInstaller {
     pub async fn new(state_manager: StateManager, store: PackageStore) -> Result<Self, Error> {
         // Derive staging base path from StateManager's state path for test isolation
         let staging_base_path = state_manager.state_path().join("staging");
-        let _staging_manager = StagingManager::new(store.clone(), staging_base_path).await?;
+        let resources = Arc::new(crate::common::resource::ResourceManager::default());
+        let _staging_manager =
+            StagingManager::new(store.clone(), staging_base_path, resources).await?;
         let live_path = state_manager.live_path().to_path_buf();
 
         Ok(Self {
@@ -51,86 +248,14 @@ impl AtomicInstaller {
         resolved_packages: &HashMap<PackageId, ResolvedNode>,
         prepared_packages: Option<&HashMap<PackageId, PreparedPackage>>,
     ) -> Result<InstallResult, Error> {
-        // Create new state transition
-        let mut transition =
-            StateTransition::new(&self.state_manager, "install".to_string()).await?;
-
-        // Set event sender on transition
-        transition.event_sender.clone_from(&context.event_sender);
-
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::StateCreating {
-                state_id: transition.staging_id,
-            });
-        }
-
-        // Clone current state to staging directory
-        sps2_root::create_staging_directory(&self.live_path, &transition.staging_path).await?;
-
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::DebugLog {
-                message: format!(
-                    "Created staging directory at: {}",
-                    transition.staging_path.display()
-                ),
-                context: std::collections::HashMap::new(),
-            });
-        }
+        // Setup state transition and staging directory
+        let mut transition = self.setup_state_transition("install", context).await?;
 
         // APFS clonefile already copies all existing packages, so we don't need to re-link them.
         // We only need to carry forward the package references and file information in the database.
-        if let Some(parent_id) = transition.parent_id {
-            let parent_packages = self
-                .state_manager
-                .get_installed_packages_in_state(&parent_id)
-                .await?;
-
-            for pkg in parent_packages {
-                // Skip if this package is being replaced/updated
-                let is_being_replaced = resolved_packages.iter().any(|(pkg_id, _)| {
-                    pkg_id.name == pkg.name && pkg_id.version.to_string() == pkg.version
-                });
-
-                if !is_being_replaced {
-                    // Just add the package reference - no need to re-link files
-                    let package_id = sps2_resolver::PackageId::new(pkg.name.clone(), pkg.version());
-
-                    // Add package reference (Python packages are now treated like regular packages)
-                    let package_ref = PackageRef {
-                        state_id: transition.staging_id,
-                        package_id: package_id.clone(),
-                        hash: pkg.hash.clone(),
-                        size: pkg.size,
-                    };
-                    transition.package_refs.push(package_ref);
-
-                    // Carry forward package file information from parent state
-                    // This is needed so the new state knows which files belong to this package
-                    let mut tx = self.state_manager.begin_transaction().await?;
-                    let file_paths = sps2_state::queries::get_package_files(
-                        &mut tx,
-                        &parent_id,
-                        &pkg.name,
-                        &pkg.version,
-                    )
-                    .await?;
-                    tx.commit().await?;
-
-                    // Add file paths to transition (we'll need to enhance this to include is_directory info)
-                    // For now, we'll check if the path exists and is a directory
-                    for file_path in file_paths {
-                        let staging_file = transition.staging_path.join(&file_path);
-                        let is_directory = staging_file.is_dir();
-                        transition.package_files.push((
-                            pkg.name.clone(),
-                            pkg.version.clone(),
-                            file_path,
-                            is_directory,
-                        ));
-                    }
-                }
-            }
-        }
+        let exclude_packages: Vec<PackageId> = resolved_packages.keys().cloned().collect();
+        self.carry_forward_packages(&mut transition, &exclude_packages)
+            .await?;
 
         // Apply package changes to staging
         let mut result = InstallResult::new(transition.staging_id);
@@ -153,116 +278,14 @@ impl AtomicInstaller {
             return Ok(result);
         }
 
-        // --- NEW 2PC COMMIT FLOW ---
-        let parent_id = transition.parent_id.unwrap_or_default();
+        // Execute two-phase commit
+        self.execute_two_phase_commit(&transition, context).await?;
 
-        // Emit 2PC start event
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::TwoPhaseCommitStarting {
-                state_id: transition.staging_id,
-                parent_state_id: parent_id,
-                operation: transition.operation.clone(),
-            });
-        }
-
-        // Phase 1: Prepare and commit the database changes
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::TwoPhaseCommitPhaseOneStarting {
-                state_id: transition.staging_id,
-                operation: transition.operation.clone(),
-            });
-        }
-
-        let transition_data = sps2_state::TransactionData {
-            package_refs: &transition.package_refs,
-            package_files: &transition.package_files,
-            file_references: &transition.file_references,
-            pending_file_hashes: &transition.pending_file_hashes,
-        };
-
-        let journal = match self
-            .state_manager
-            .prepare_transaction(
-                &transition.staging_id,
-                &parent_id,
-                &transition.staging_path,
-                &transition.operation,
-                &transition_data,
-            )
-            .await
-        {
-            Ok(journal) => {
-                if let Some(sender) = &context.event_sender {
-                    let _ = sender.send(Event::TwoPhaseCommitPhaseOneCompleted {
-                        state_id: transition.staging_id,
-                        operation: transition.operation.clone(),
-                    });
-                }
-                journal
-            }
-            Err(e) => {
-                if let Some(sender) = &context.event_sender {
-                    let _ = sender.send(Event::TwoPhaseCommitFailed {
-                        state_id: transition.staging_id,
-                        operation: transition.operation.clone(),
-                        error: e.to_string(),
-                        phase: "phase_one".to_string(),
-                    });
-                }
-                return Err(e);
-            }
-        };
-
-        // Phase 2: Execute filesystem swap and finalize
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::TwoPhaseCommitPhaseTwoStarting {
-                state_id: transition.staging_id,
-                operation: transition.operation.clone(),
-            });
-        }
-
-        match self
-            .state_manager
-            .execute_filesystem_swap_and_finalize(journal)
-            .await
-        {
-            Ok(()) => {
-                if let Some(sender) = &context.event_sender {
-                    let _ = sender.send(Event::TwoPhaseCommitPhaseTwoCompleted {
-                        state_id: transition.staging_id,
-                        operation: transition.operation.clone(),
-                    });
-                }
-            }
-            Err(e) => {
-                if let Some(sender) = &context.event_sender {
-                    let _ = sender.send(Event::TwoPhaseCommitFailed {
-                        state_id: transition.staging_id,
-                        operation: transition.operation.clone(),
-                        error: e.to_string(),
-                        phase: "phase_two".to_string(),
-                    });
-                }
-                return Err(e);
-            }
-        }
-
-        // Emit 2PC completion event
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::TwoPhaseCommitCompleted {
-                state_id: transition.staging_id,
-                parent_state_id: parent_id,
-                operation: transition.operation.clone(),
-            });
-        }
-
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::StateTransition {
-                from: transition.parent_id.unwrap_or_default(),
-                to: transition.staging_id,
-                operation: "install".to_string(),
-            });
-        }
+        context.emit_event(Event::StateTransition {
+            from: transition.parent_id.unwrap_or_default(),
+            to: transition.staging_id,
+            operation: "install".to_string(),
+        });
 
         Ok(result)
     }
@@ -276,99 +299,54 @@ impl AtomicInstaller {
         prepared_package: Option<&PreparedPackage>,
         result: &mut InstallResult,
     ) -> Result<(), Error> {
-        // First, install the package files
-        match &node.action {
-            sps2_resolver::NodeAction::Download => {
-                // For downloaded packages, use the prepared package data
-                let prepared = prepared_package.ok_or_else(|| {
-                    InstallError::AtomicOperationFailed {
-                        message: format!(
-                            "Missing prepared package data for {}-{}. This indicates a bug in ParallelExecutor.",
-                            package_id.name, package_id.version
-                        ),
-                    }
-                })?;
+        // Install the package files (both Download and Local actions are handled identically)
+        let action_name = match &node.action {
+            sps2_resolver::NodeAction::Download => "downloaded",
+            sps2_resolver::NodeAction::Local => "local",
+        };
 
-                let hash = &prepared.hash;
-                let store_path = &prepared.store_path;
-                let size = prepared.size;
-
-                // Load package from the prepared store path
-                let _stored_package = StoredPackage::load(store_path).await?;
-
-                // Ensure store_refs entry exists before adding to package_map
-                self.state_manager
-                    .ensure_store_ref(&hash.to_hex(), size as i64)
-                    .await?;
-
-                // Ensure package is in package_map for future lookups
-                self.state_manager
-                    .add_package_map(
-                        &package_id.name,
-                        &package_id.version.to_string(),
-                        &hash.to_hex(),
-                    )
-                    .await?;
-
-                // Link package files to staging
-                self.link_package_to_staging(transition, store_path, package_id)
-                    .await?;
-
-                // Add the package reference
-                let package_ref = PackageRef {
-                    state_id: transition.staging_id,
-                    package_id: package_id.clone(),
-                    hash: hash.to_hex(),
-                    size: size as i64,
-                };
-                transition.package_refs.push(package_ref);
+        let prepared = prepared_package.ok_or_else(|| {
+            InstallError::AtomicOperationFailed {
+                message: format!(
+                    "Missing prepared package data for {} package {}-{}. This indicates a bug in ParallelExecutor.",
+                    action_name, package_id.name, package_id.version
+                ),
             }
-            sps2_resolver::NodeAction::Local => {
-                // For local packages, use the prepared package data (ParallelExecutor already processed them)
-                let prepared = prepared_package.ok_or_else(|| {
-                    InstallError::AtomicOperationFailed {
-                        message: format!(
-                            "Missing prepared package data for local package {}-{}. This indicates a bug in ParallelExecutor.",
-                            package_id.name, package_id.version
-                        ),
-                    }
-                })?;
+        })?;
 
-                let hash = &prepared.hash;
-                let store_path = &prepared.store_path;
-                let size = prepared.size;
+        let hash = &prepared.hash;
+        let store_path = &prepared.store_path;
+        let size = prepared.size;
 
-                // Load package from the prepared store path
-                let _stored_package = StoredPackage::load(store_path).await?;
+        // Load package from the prepared store path
+        let _stored_package = StoredPackage::load(store_path).await?;
 
-                // Ensure store_refs entry exists before adding to package_map
-                self.state_manager
-                    .ensure_store_ref(&hash.to_hex(), size as i64)
-                    .await?;
+        // Ensure store_refs entry exists before adding to package_map
+        self.state_manager
+            .ensure_store_ref(&hash.to_hex(), size as i64)
+            .await?;
 
-                // Ensure package is in package_map for future lookups
-                self.state_manager
-                    .add_package_map(
-                        &package_id.name,
-                        &package_id.version.to_string(),
-                        &hash.to_hex(),
-                    )
-                    .await?;
+        // Ensure package is in package_map for future lookups
+        self.state_manager
+            .add_package_map(
+                &package_id.name,
+                &package_id.version.to_string(),
+                &hash.to_hex(),
+            )
+            .await?;
 
-                // Link package files to staging
-                self.link_package_to_staging(transition, store_path, package_id)
-                    .await?;
+        // Link package files to staging
+        self.link_package_to_staging(transition, store_path, package_id)
+            .await?;
 
-                // Add the package reference
-                let package_ref = PackageRef {
-                    state_id: transition.staging_id,
-                    package_id: package_id.clone(),
-                    hash: hash.to_hex(),
-                    size: size as i64,
-                };
-                transition.package_refs.push(package_ref);
-            }
-        }
+        // Add the package reference
+        let package_ref = PackageRef {
+            state_id: transition.staging_id,
+            package_id: package_id.clone(),
+            hash: hash.to_hex(),
+            size: size as i64,
+        };
+        transition.package_refs.push(package_ref);
 
         result.add_installed(package_id.clone());
         Ok(())
@@ -457,36 +435,14 @@ impl AtomicInstaller {
         packages_to_remove: &[PackageId],
         context: &crate::UninstallContext,
     ) -> Result<InstallResult, Error> {
-        // Create new state transition
-        let mut transition =
-            StateTransition::new(&self.state_manager, "uninstall".to_string()).await?;
-
-        // Set event sender on transition
-        transition.event_sender.clone_from(&context.event_sender);
-
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::StateCreating {
-                state_id: transition.staging_id,
-            });
-        }
-
-        // Clone current state to staging directory
-        sps2_root::create_staging_directory(&self.live_path, &transition.staging_path).await?;
-
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::DebugLog {
-                message: format!(
-                    "Created staging directory at: {}",
-                    transition.staging_path.display()
-                ),
-                context: std::collections::HashMap::new(),
-            });
-        }
+        // Setup state transition and staging directory
+        let mut transition = self.setup_state_transition("uninstall", context).await?;
 
         // APFS clonefile already copies all existing packages, so we don't need to re-link them.
         // We only need to remove the packages being uninstalled and carry forward other package references.
         let mut result = InstallResult::new(transition.staging_id);
 
+        // Remove packages from staging and track them in result
         if let Some(parent_id) = transition.parent_id {
             let parent_packages = self
                 .state_manager
@@ -503,54 +459,18 @@ impl AtomicInstaller {
                     // Remove package files from staging
                     result.add_removed(PackageId::new(pkg.name.clone(), pkg.version()));
 
-                    // No special cleanup needed - all packages are handled the same way
-
                     // Remove package files from staging
                     self.remove_package_from_staging(&mut transition, &pkg)
                         .await?;
 
-                    if let Some(sender) = &context.event_sender {
-                        let _ = sender.send(Event::DebugLog {
-                            message: format!("Removed package {} from staging", pkg.name),
-                            context: std::collections::HashMap::new(),
-                        });
-                    }
-                } else {
-                    // Keep this package - just add the reference, no need to re-link files
-                    let package_id = PackageId::new(pkg.name.clone(), pkg.version());
-                    let package_ref = PackageRef {
-                        state_id: transition.staging_id,
-                        package_id: package_id.clone(),
-                        hash: pkg.hash.clone(),
-                        size: pkg.size,
-                    };
-                    transition.package_refs.push(package_ref);
-
-                    // Carry forward package file information from parent state
-                    let mut tx = self.state_manager.begin_transaction().await?;
-                    let file_paths = sps2_state::queries::get_package_files(
-                        &mut tx,
-                        &parent_id,
-                        &pkg.name,
-                        &pkg.version,
-                    )
-                    .await?;
-                    tx.commit().await?;
-
-                    // Add file paths to transition
-                    for file_path in file_paths {
-                        let staging_file = transition.staging_path.join(&file_path);
-                        let is_directory = staging_file.is_dir();
-                        transition.package_files.push((
-                            pkg.name.clone(),
-                            pkg.version.clone(),
-                            file_path,
-                            is_directory,
-                        ));
-                    }
+                    context.emit_debug(format!("Removed package {} from staging", pkg.name));
                 }
             }
         }
+
+        // Carry forward packages that are not being removed
+        self.carry_forward_packages(&mut transition, packages_to_remove)
+            .await?;
 
         if context.dry_run {
             // Clean up staging and return result without committing
@@ -558,116 +478,14 @@ impl AtomicInstaller {
             return Ok(result);
         }
 
-        // --- NEW 2PC COMMIT FLOW ---
-        let parent_id = transition.parent_id.unwrap_or_default();
+        // Execute two-phase commit
+        self.execute_two_phase_commit(&transition, context).await?;
 
-        // Emit 2PC start event
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::TwoPhaseCommitStarting {
-                state_id: transition.staging_id,
-                parent_state_id: parent_id,
-                operation: transition.operation.clone(),
-            });
-        }
-
-        // Phase 1: Prepare and commit the database changes
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::TwoPhaseCommitPhaseOneStarting {
-                state_id: transition.staging_id,
-                operation: transition.operation.clone(),
-            });
-        }
-
-        let transition_data = sps2_state::TransactionData {
-            package_refs: &transition.package_refs,
-            package_files: &transition.package_files,
-            file_references: &transition.file_references,
-            pending_file_hashes: &transition.pending_file_hashes,
-        };
-
-        let journal = match self
-            .state_manager
-            .prepare_transaction(
-                &transition.staging_id,
-                &parent_id,
-                &transition.staging_path,
-                &transition.operation,
-                &transition_data,
-            )
-            .await
-        {
-            Ok(journal) => {
-                if let Some(sender) = &context.event_sender {
-                    let _ = sender.send(Event::TwoPhaseCommitPhaseOneCompleted {
-                        state_id: transition.staging_id,
-                        operation: transition.operation.clone(),
-                    });
-                }
-                journal
-            }
-            Err(e) => {
-                if let Some(sender) = &context.event_sender {
-                    let _ = sender.send(Event::TwoPhaseCommitFailed {
-                        state_id: transition.staging_id,
-                        operation: transition.operation.clone(),
-                        error: e.to_string(),
-                        phase: "phase_one".to_string(),
-                    });
-                }
-                return Err(e);
-            }
-        };
-
-        // Phase 2: Execute filesystem swap and finalize
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::TwoPhaseCommitPhaseTwoStarting {
-                state_id: transition.staging_id,
-                operation: transition.operation.clone(),
-            });
-        }
-
-        match self
-            .state_manager
-            .execute_filesystem_swap_and_finalize(journal)
-            .await
-        {
-            Ok(()) => {
-                if let Some(sender) = &context.event_sender {
-                    let _ = sender.send(Event::TwoPhaseCommitPhaseTwoCompleted {
-                        state_id: transition.staging_id,
-                        operation: transition.operation.clone(),
-                    });
-                }
-            }
-            Err(e) => {
-                if let Some(sender) = &context.event_sender {
-                    let _ = sender.send(Event::TwoPhaseCommitFailed {
-                        state_id: transition.staging_id,
-                        operation: transition.operation.clone(),
-                        error: e.to_string(),
-                        phase: "phase_two".to_string(),
-                    });
-                }
-                return Err(e);
-            }
-        }
-
-        // Emit 2PC completion event
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::TwoPhaseCommitCompleted {
-                state_id: transition.staging_id,
-                parent_state_id: parent_id,
-                operation: transition.operation.clone(),
-            });
-        }
-
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(Event::StateTransition {
-                from: transition.parent_id.unwrap_or_default(),
-                to: transition.staging_id,
-                operation: "uninstall".to_string(),
-            });
-        }
+        context.emit_event(Event::StateTransition {
+            from: transition.parent_id.unwrap_or_default(),
+            to: transition.staging_id,
+            operation: "uninstall".to_string(),
+        });
 
         Ok(result)
     }

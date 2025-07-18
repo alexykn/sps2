@@ -1,6 +1,7 @@
 //! Decompression and validation pipeline stage
 
-use crate::pipeline::{download::DownloadResult, resource::ResourceManager};
+use crate::common::resource::ResourceManager;
+use crate::pipeline::download::DownloadResult;
 use crate::{validate_sp_file, ValidationResult};
 use async_compression::tokio::bufread::ZstdDecoder;
 use sps2_errors::{Error, InstallError};
@@ -146,32 +147,30 @@ impl DecompressPipeline {
         download_result: DownloadResult,
         tx: EventSender,
     ) -> JoinHandle<Result<DecompressResult, Error>> {
-        let decompress_semaphore = self.resources.decompress_semaphore.clone();
-        let validation_semaphore = self.resources.validation_semaphore.clone();
-        let memory_usage = self.resources.memory_usage.clone();
+        let resources = self.resources.clone();
         let buffer_size = self.buffer_size;
 
         tokio::spawn(async move {
-            let _decompress_permit = decompress_semaphore.acquire().await.map_err(|_| {
-                InstallError::ConcurrencyError {
-                    message: "failed to acquire decompress semaphore".to_string(),
-                }
-            })?;
+            let _decompress_permit = resources.acquire_decompression_permit().await?;
 
             // Track memory usage for decompression
             let decompress_memory = buffer_size as u64 * 4; // Estimate 4x buffer for decompression
-            memory_usage.fetch_add(decompress_memory, Ordering::Relaxed);
+            resources
+                .memory_usage
+                .fetch_add(decompress_memory, Ordering::Relaxed);
 
             // Create streaming decompression pipeline
             let result = Self::streaming_decompress_validate(
                 &download_result,
                 buffer_size,
-                &validation_semaphore,
+                &resources.installation_semaphore,
                 &tx,
             )
             .await;
 
-            memory_usage.fetch_sub(decompress_memory, Ordering::Relaxed);
+            resources
+                .memory_usage
+                .fetch_sub(decompress_memory, Ordering::Relaxed);
 
             result
         })

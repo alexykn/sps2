@@ -1,6 +1,6 @@
 //! Download pipeline stage implementation
 
-use crate::pipeline::resource::ResourceManager;
+use crate::common::resource::ResourceManager;
 use crossbeam::queue::SegQueue;
 use dashmap::DashMap;
 use sps2_errors::{Error, InstallError};
@@ -126,22 +126,18 @@ impl DownloadPipeline {
         tx: EventSender,
     ) -> JoinHandle<Result<DownloadResult, Error>> {
         let downloader = self.downloader.clone();
-        let semaphore = self.resources.download_semaphore.clone();
-        let memory_usage = self.resources.memory_usage.clone();
+        let resources = self.resources.clone();
         let timeout = self.operation_timeout;
 
         tokio::spawn(async move {
-            let _permit =
-                semaphore
-                    .acquire()
-                    .await
-                    .map_err(|_| InstallError::ConcurrencyError {
-                        message: "failed to acquire download semaphore".to_string(),
-                    })?;
+            let _permit = resources.acquire_download_permit().await?;
 
-            // Track memory usage
             let estimated_size = 50 * 1024 * 1024; // Estimate 50MB per download
-            memory_usage.fetch_add(estimated_size, Ordering::Relaxed);
+            if resources.limits.memory_usage.is_some() {
+                resources
+                    .memory_usage
+                    .fetch_add(estimated_size, Ordering::Relaxed);
+            }
 
             let result = tokio::time::timeout(
                 timeout,
@@ -149,8 +145,11 @@ impl DownloadPipeline {
             )
             .await;
 
-            // Release memory
-            memory_usage.fetch_sub(estimated_size, Ordering::Relaxed);
+            if resources.limits.memory_usage.is_some() {
+                resources
+                    .memory_usage
+                    .fetch_sub(estimated_size, Ordering::Relaxed);
+            }
 
             match result {
                 Ok(Ok(download_result)) => Ok(download_result),
