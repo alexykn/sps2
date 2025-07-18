@@ -172,8 +172,8 @@ async fn test_performance_difference() {
     let blake3_duration = start.elapsed();
 
     // xxHash should be faster (though this test might be flaky on slow systems)
-    println!("xxHash duration: {:?}", xxhash_duration);
-    println!("BLAKE3 duration: {:?}", blake3_duration);
+    println!("xxHash duration: {xxhash_duration:?}");
+    println!("BLAKE3 duration: {blake3_duration:?}");
 
     // Just verify both complete successfully - actual performance will vary by system
     assert!(xxhash_duration.as_millis() < 1000); // Should complete within 1 second

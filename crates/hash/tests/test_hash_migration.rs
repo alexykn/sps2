@@ -74,12 +74,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::thread::sleep(std::time::Duration::from_millis(3));
     let xxhash_time = start.elapsed();
 
-    println!("BLAKE3 time:   {:?} (download verification)", blake3_time);
-    println!("xxHash time:   {:?} (local verification)", xxhash_time);
+    println!("BLAKE3 time:   {blake3_time:?} (download verification)");
+    println!("xxHash time:   {xxhash_time:?} (local verification)");
 
     if blake3_time > xxhash_time {
         let speedup = blake3_time.as_millis() as f64 / xxhash_time.as_millis() as f64;
-        println!("📈 xxHash is {:.1}x faster (simulated)", speedup);
+        println!("📈 xxHash is {speedup:.1}x faster (simulated)");
     }
 
     // Test 4: Use case demonstration
@@ -87,13 +87,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("--------------------");
 
     println!("🌐 Download verification (BLAKE3):");
-    println!("   curl https://example.com/package.tar.gz");
-    println!("   Expected: {}", blake3_example);
+    println!("   Expected: {blake3_example}");
     println!("   ✅ Cryptographically secure for untrusted sources");
 
     println!("\n💾 Local file verification (xxHash):");
-    println!("   /opt/pm/live/bin/bat");
-    println!("   Expected: {}", xxhash_example);
+    println!("   Expected: {xxhash_example}");
     println!("   ⚡ Fast integrity checking for trusted local files");
 
     // Test 5: Migration status

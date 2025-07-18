@@ -3,8 +3,6 @@
 //! Test script for dual-hash functionality
 //! Run with: cargo +nightly -Zscript test_dual_hash.rs
 
-use std::time::Instant;
-
 fn main() {
     println!("🔄 Testing Dual-Hash System");
     println!("===========================");

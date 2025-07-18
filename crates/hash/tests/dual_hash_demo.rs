@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         blake3_hash.as_bytes().len(),
         blake3_hash.to_hex().len()
     );
-    println!("  - Time: {:?}", blake3_time);
+    println!("  - Time: {blake3_time:?}");
     println!("  - Use case: Download verification, security-critical operations");
 
     // xxHash 128-bit (for local verification)
@@ -51,16 +51,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         xxhash.as_bytes().len(),
         xxhash.to_hex().len()
     );
-    println!("  - Time: {:?}", xxhash_time);
+    println!("  - Time: {xxhash_time:?}");
     println!("  - Use case: Local file verification, content-addressed storage");
 
     // Performance comparison
     if blake3_time > xxhash_time {
         let speedup = blake3_time.as_nanos() as f64 / xxhash_time.as_nanos() as f64;
-        println!(
-            "\n⚡ Performance: xxHash is {:.1}x faster than BLAKE3",
-            speedup
-        );
+        println!("⚡ Performance: xxHash is {speedup:.1}x faster than BLAKE3");
     }
 
     // Demonstrate backward compatibility
