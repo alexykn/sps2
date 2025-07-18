@@ -348,11 +348,13 @@ pub async fn heal_corrupted_file(
 
         // Verify the source file has the expected hash
         // Parse the expected hash to determine which algorithm to use
-        let expected_hash_obj = Hash::from_hex(expected_hash).map_err(|e| OpsError::OperationFailed {
-            message: format!("Invalid expected hash: {e}"),
-        })?;
-        
-        let source_hash = Hash::hash_file_with_algorithm(&source_file, expected_hash_obj.algorithm()).await?;
+        let expected_hash_obj =
+            Hash::from_hex(expected_hash).map_err(|e| OpsError::OperationFailed {
+                message: format!("Invalid expected hash: {e}"),
+            })?;
+
+        let source_hash =
+            Hash::hash_file_with_algorithm(&source_file, expected_hash_obj.algorithm()).await?;
         if source_hash.to_hex() != expected_hash {
             return Err(OpsError::OperationFailed {
                 message: format!(

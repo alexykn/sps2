@@ -14,7 +14,6 @@ mod tests;
 pub use file_hasher::{calculate_file_storage_path, FileHashResult, FileHasher, FileHasherConfig};
 
 use blake3::Hasher as Blake3Hasher;
-use xxhash_rust::xxh3::Xxh3;
 use serde::{Deserialize, Serialize};
 use sps2_errors::{Error, StorageError};
 use std::collections::BTreeMap;
@@ -22,6 +21,7 @@ use std::fmt;
 use std::path::Path;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use xxhash_rust::xxh3::Xxh3;
 
 /// Size of chunks for streaming hash computation
 const CHUNK_SIZE: usize = 64 * 1024; // 64KB
@@ -179,7 +179,10 @@ impl Hash {
     ///
     /// # Errors
     /// Returns an error if the file cannot be opened, read, or if any I/O operation fails.
-    pub async fn hash_file_with_algorithm(path: &Path, algorithm: HashAlgorithm) -> Result<Self, Error> {
+    pub async fn hash_file_with_algorithm(
+        path: &Path,
+        algorithm: HashAlgorithm,
+    ) -> Result<Self, Error> {
         let mut file = File::open(path)
             .await
             .map_err(|_| StorageError::PathNotFound {
@@ -271,7 +274,10 @@ impl Hash {
                 }
 
                 writer.flush().await?;
-                Ok((Self::from_blake3_bytes(*hasher.finalize().as_bytes()), total_bytes))
+                Ok((
+                    Self::from_blake3_bytes(*hasher.finalize().as_bytes()),
+                    total_bytes,
+                ))
             }
             HashAlgorithm::XxHash128 => {
                 let mut hasher = Xxh3::new();
@@ -289,7 +295,10 @@ impl Hash {
 
                 writer.flush().await?;
                 let hash_result = hasher.digest128();
-                Ok((Self::from_xxhash128_bytes(hash_result.to_le_bytes()), total_bytes))
+                Ok((
+                    Self::from_xxhash128_bytes(hash_result.to_le_bytes()),
+                    total_bytes,
+                ))
             }
         }
     }
@@ -311,7 +320,10 @@ impl Hash {
     ///
     /// # Errors
     /// Returns an error if directory traversal or file operations fail.
-    pub async fn hash_directory_with_algorithm(dir_path: &Path, algorithm: HashAlgorithm) -> Result<Self, Error> {
+    pub async fn hash_directory_with_algorithm(
+        dir_path: &Path,
+        algorithm: HashAlgorithm,
+    ) -> Result<Self, Error> {
         // Collect all files with their metadata
         let mut files = BTreeMap::new();
         collect_files(dir_path, dir_path, &mut files).await?;
@@ -337,7 +349,8 @@ impl Hash {
 
                     if metadata.is_file() {
                         // Hash file contents
-                        let file_hash = Self::hash_file_with_algorithm(&full_path, algorithm).await?;
+                        let file_hash =
+                            Self::hash_file_with_algorithm(&full_path, algorithm).await?;
                         dir_hasher.update(file_hash.as_bytes());
                     } else if metadata.is_symlink() {
                         // Hash symlink target
@@ -371,7 +384,8 @@ impl Hash {
 
                     if metadata.is_file() {
                         // Hash file contents
-                        let file_hash = Self::hash_file_with_algorithm(&full_path, algorithm).await?;
+                        let file_hash =
+                            Self::hash_file_with_algorithm(&full_path, algorithm).await?;
                         dir_hasher.update(file_hash.as_bytes());
                     } else if metadata.is_symlink() {
                         // Hash symlink target
