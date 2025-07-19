@@ -3477,6 +3477,7 @@ dependencies = [
  "sps2-manifest",
  "sps2-net",
  "sps2-resolver",
+ "sps2-resources",
  "sps2-root",
  "sps2-state",
  "sps2-store",
@@ -3572,6 +3573,15 @@ dependencies = [
  "tempfile",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "sps2-resources"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "sps2-errors",
+ "tokio",
 ]
 
 [[package]]

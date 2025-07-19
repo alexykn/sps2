@@ -52,4 +52,3 @@ macro_rules! context_builder {
         }
     };
 }
-pub mod resource;

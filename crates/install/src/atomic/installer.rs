@@ -224,7 +224,7 @@ impl AtomicInstaller {
     pub async fn new(state_manager: StateManager, store: PackageStore) -> Result<Self, Error> {
         // Derive staging base path from StateManager's state path for test isolation
         let staging_base_path = state_manager.state_path().join("staging");
-        let resources = Arc::new(crate::common::resource::ResourceManager::default());
+        let resources = Arc::new(sps2_resources::ResourceManager::default());
         let _staging_manager =
             StagingManager::new(store.clone(), staging_base_path, resources).await?;
         let live_path = state_manager.live_path().to_path_buf();

@@ -3,11 +3,11 @@
 //! This module provides the main StagingManager struct that coordinates
 //! staging directory creation, validation, and cleanup operations.
 
-use crate::common::resource::ResourceManager;
 use crate::{validate_sp_file, ValidationResult};
 use sps2_errors::{Error, InstallError};
 use sps2_events::{Event, EventEmitter};
 use sps2_resolver::PackageId;
+use sps2_resources::ResourceManager;
 use sps2_store::{extract_package_with_events, PackageStore};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

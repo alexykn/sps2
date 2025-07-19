@@ -1,6 +1,5 @@
 //! Download pipeline stage implementation
 
-use crate::common::resource::ResourceManager;
 use crossbeam::queue::SegQueue;
 use dashmap::DashMap;
 use sps2_errors::{Error, InstallError};
@@ -8,6 +7,7 @@ use sps2_events::{EventSender, ProgressManager};
 use sps2_hash::Hash;
 use sps2_net::PackageDownloader;
 use sps2_resolver::{ExecutionPlan, NodeAction, PackageId, ResolvedNode};
+use sps2_resources::ResourceManager;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;

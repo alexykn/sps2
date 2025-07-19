@@ -11,7 +11,6 @@ pub mod download;
 pub mod operation;
 pub mod staging;
 
-use crate::common::resource::ResourceManager;
 use crate::staging::StagingManager;
 use batch::{BatchManager, BatchResult, BatchStats, RollbackInfo};
 pub use config::PipelineConfig;
@@ -23,6 +22,7 @@ use sps2_errors::Error;
 use sps2_events::{Event, EventEmitter, ProgressManager, ProgressPhase};
 use sps2_net::{PackageDownloadConfig, PackageDownloader};
 use sps2_resolver::{ExecutionPlan, PackageId, ResolvedNode};
+use sps2_resources::{IntoResourceLimits, ResourceManager};
 use sps2_store::PackageStore;
 use staging::StagingPipeline;
 use std::collections::HashMap;
@@ -68,7 +68,7 @@ impl PipelineMaster {
             ..PackageDownloadConfig::default()
         };
 
-        let resources = Arc::new(ResourceManager::new(config.clone().into()));
+        let resources = Arc::new(ResourceManager::new(config.clone().into_resource_limits()));
 
         let downloader = PackageDownloader::new(download_config)?;
         let staging_manager = Arc::new(
