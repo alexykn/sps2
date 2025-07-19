@@ -1,8 +1,8 @@
-//! Build configuration for package building
-
 use crate::environment::IsolationLevel;
 use crate::{CompressionConfig, SbomConfig, SigningConfig};
+use sps2_resources::ResourceManager;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Package builder configuration
 #[derive(Clone, Debug)]
@@ -25,6 +25,8 @@ pub struct BuildConfig {
     pub isolation_level: IsolationLevel,
     /// sps2 system configuration (for command validation)
     pub sps2_config: Option<sps2_config::Config>,
+    /// Resource manager
+    pub resources: Arc<ResourceManager>,
 }
 
 impl Default for BuildConfig {
@@ -39,6 +41,7 @@ impl Default for BuildConfig {
             compression_config: CompressionConfig::default(),
             isolation_level: IsolationLevel::default(), // Standard by default
             sps2_config: None,
+            resources: Arc::new(ResourceManager::default()),
         }
     }
 }

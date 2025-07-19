@@ -308,7 +308,8 @@ async fn execute_post_steps(
     security_context.set_current_dir(working_dir.clone());
 
     // Create builder API
-    let mut api = BuilderApi::new(working_dir)?;
+    let resources = std::sync::Arc::new(sps2_resources::ResourceManager::default());
+    let mut api = BuilderApi::new(working_dir, resources)?;
 
     // Execute each post step
     for step in &build_plan.post_steps {

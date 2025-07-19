@@ -184,7 +184,7 @@ async fn apply_environment_config(
 
 /// Execute source acquisition stage
 async fn execute_source_stage(
-    _config: &BuildConfig,
+    config: &BuildConfig,
     context: &BuildContext,
     environment: &mut BuildEnvironment,
     build_plan: &BuildPlan,
@@ -205,7 +205,7 @@ async fn execute_source_stage(
     fs::create_dir_all(&working_dir).await?;
 
     // Create builder API
-    let mut api = BuilderApi::new(working_dir.clone())?;
+    let mut api = BuilderApi::new(working_dir.clone(), config.resources.clone())?;
     // Source stage always allows network for fetching
     let _result = api.allow_network(true);
 
@@ -287,7 +287,7 @@ async fn execute_build_stage_with_security(
     security_context.set_current_dir(working_dir.clone());
 
     // Create builder API
-    let mut api = BuilderApi::new(working_dir)?;
+    let mut api = BuilderApi::new(working_dir, config.resources.clone())?;
     // Use network setting from YAML recipe's environment config
     let _result = api.allow_network(build_plan.environment.network);
 
@@ -348,7 +348,7 @@ async fn execute_post_stage_with_security(
     security_context.set_current_dir(working_dir.clone());
 
     // Create builder API
-    let mut api = BuilderApi::new(working_dir)?;
+    let mut api = BuilderApi::new(working_dir, config.resources.clone())?;
 
     // Execute post-processing steps
     for step in &build_plan.post_steps {

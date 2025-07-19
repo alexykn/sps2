@@ -15,8 +15,12 @@ use sps2_resolver::Resolver;
 use sps2_store::PackageStore;
 use std::path::Path;
 
+use sps2_resources::ResourceManager;
+use std::sync::Arc;
+
 /// Package builder
 #[derive(Clone)]
+
 pub struct Builder {
     /// Build configuration
     config: BuildConfig,
@@ -26,6 +30,8 @@ pub struct Builder {
     store: Option<PackageStore>,
     /// Network client for downloads
     net: Option<NetClient>,
+    /// Resource manager
+    resources: Arc<ResourceManager>,
 }
 
 impl Builder {
@@ -37,6 +43,7 @@ impl Builder {
             resolver: None,
             store: None,
             net: None,
+            resources: Arc::new(ResourceManager::default()),
         }
     }
 
@@ -48,6 +55,7 @@ impl Builder {
             resolver: None,
             store: None,
             net: None,
+            resources: Arc::new(ResourceManager::default()),
         }
     }
 
@@ -112,7 +120,7 @@ impl Builder {
             );
 
             // Create a BuilderApi instance to call do_fix_permissions
-            let api = crate::core::api::BuilderApi::new(environment.staging_dir().to_path_buf())?;
+            let api = crate::core::api::BuilderApi::new(environment.staging_dir().to_path_buf(), self.resources.clone())?;
             let result = api.do_fix_permissions(paths, &environment)?;
 
             send_event(
