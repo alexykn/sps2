@@ -1,3 +1,5 @@
+#![deny(clippy::pedantic, unsafe_code)]
+
 //! Resource management utilities for sps2
 //!
 //! This crate provides centralized resource management for coordinating

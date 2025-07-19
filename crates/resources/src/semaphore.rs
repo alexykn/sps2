@@ -26,7 +26,7 @@ pub async fn acquire_semaphore_permit(
 ) -> Result<OwnedSemaphorePermit, Error> {
     semaphore.clone().acquire_owned().await.map_err(|_| {
         InstallError::ConcurrencyError {
-            message: format!("failed to acquire semaphore for {}", operation),
+            message: format!("failed to acquire semaphore for {operation}"),
         }
         .into()
     })
@@ -45,6 +45,10 @@ pub async fn acquire_semaphore_permit(
 ///
 /// Returns `Ok(Some(permit))` if successful, `Ok(None)` if would block,
 /// or an error if the semaphore is closed.
+///
+/// # Errors
+///
+/// Returns an error if the semaphore is closed.
 pub fn try_acquire_semaphore_permit(
     semaphore: &Arc<Semaphore>,
 ) -> Result<Option<OwnedSemaphorePermit>, Error> {
@@ -70,6 +74,7 @@ pub fn try_acquire_semaphore_permit(
 /// # Returns
 ///
 /// Returns an Arc-wrapped semaphore for shared ownership
+#[must_use]
 pub fn create_semaphore(permits: usize) -> Arc<Semaphore> {
     Arc::new(Semaphore::new(permits))
 }

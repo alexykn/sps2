@@ -1,6 +1,6 @@
 //! Resource manager for coordinating concurrent operations
 //!
-//! This module provides the main ResourceManager struct that coordinates
+//! This module provides the main `ResourceManager` struct that coordinates
 //! semaphores and resource limits for concurrent operations.
 
 use crate::limits::{ResourceAvailability, ResourceLimits};
@@ -30,6 +30,7 @@ pub struct ResourceManager {
 
 impl ResourceManager {
     /// Create a new resource manager with the given limits
+    #[must_use]
     pub fn new(limits: ResourceLimits) -> Self {
         Self {
             download_semaphore: create_semaphore(limits.concurrent_downloads),
@@ -40,47 +41,68 @@ impl ResourceManager {
         }
     }
 
-    /// Create a resource manager with default limits
-    pub fn default() -> Self {
-        Self::new(ResourceLimits::default())
-    }
-
     /// Create a resource manager with system-based limits
+    #[must_use]
     pub fn from_system() -> Self {
         Self::new(ResourceLimits::from_system())
     }
 
     /// Acquire a download permit
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the semaphore is closed or acquisition fails.
     pub async fn acquire_download_permit(&self) -> Result<OwnedSemaphorePermit, Error> {
         acquire_semaphore_permit(self.download_semaphore.clone(), "download").await
     }
 
     /// Acquire a decompression permit
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the semaphore is closed or acquisition fails.
     pub async fn acquire_decompression_permit(&self) -> Result<OwnedSemaphorePermit, Error> {
         acquire_semaphore_permit(self.decompression_semaphore.clone(), "decompression").await
     }
 
     /// Acquire an installation permit
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the semaphore is closed or acquisition fails.
     pub async fn acquire_installation_permit(&self) -> Result<OwnedSemaphorePermit, Error> {
         acquire_semaphore_permit(self.installation_semaphore.clone(), "installation").await
     }
 
     /// Try to acquire a download permit without blocking
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the semaphore is closed.
     pub fn try_acquire_download_permit(&self) -> Result<Option<OwnedSemaphorePermit>, Error> {
         try_acquire_semaphore_permit(&self.download_semaphore)
     }
 
     /// Try to acquire a decompression permit without blocking
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the semaphore is closed.
     pub fn try_acquire_decompression_permit(&self) -> Result<Option<OwnedSemaphorePermit>, Error> {
         try_acquire_semaphore_permit(&self.decompression_semaphore)
     }
 
     /// Try to acquire an installation permit without blocking
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the semaphore is closed.
     pub fn try_acquire_installation_permit(&self) -> Result<Option<OwnedSemaphorePermit>, Error> {
         try_acquire_semaphore_permit(&self.installation_semaphore)
     }
 
     /// Check if memory usage is within limits
+    #[must_use]
     pub fn is_memory_within_limits(&self, current_usage: u64) -> bool {
         match self.limits.memory_usage {
             Some(limit) => current_usage <= limit,
@@ -89,6 +111,7 @@ impl ResourceManager {
     }
 
     /// Get current resource availability
+    #[must_use]
     pub fn get_resource_availability(&self) -> ResourceAvailability {
         ResourceAvailability {
             download: self.download_semaphore.available_permits(),
@@ -98,6 +121,10 @@ impl ResourceManager {
     }
 
     /// Clean up resources
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if cleanup operations fail.
     pub fn cleanup(&self) -> Result<(), Error> {
         // Nothing to do here for now, but this can be used to clean up
         // any temporary files or other resources created by the resource manager.
@@ -107,6 +134,6 @@ impl ResourceManager {
 
 impl Default for ResourceManager {
     fn default() -> Self {
-        Self::default()
+        Self::new(ResourceLimits::default())
     }
 }

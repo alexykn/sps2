@@ -22,17 +22,8 @@ pub struct ResourceLimits {
 }
 
 impl ResourceLimits {
-    /// Create default resource limits
-    pub fn default() -> Self {
-        Self {
-            concurrent_downloads: 4,
-            concurrent_decompressions: 2,
-            concurrent_installations: 1,
-            memory_usage: None,
-        }
-    }
-
     /// Create resource limits for testing (lower limits)
+    #[must_use]
     pub fn for_testing() -> Self {
         Self {
             concurrent_downloads: 2,
@@ -43,6 +34,7 @@ impl ResourceLimits {
     }
 
     /// Create resource limits based on system capabilities
+    #[must_use]
     pub fn from_system() -> Self {
         let cpu_count = std::thread::available_parallelism()
             .map(std::num::NonZero::get)
@@ -59,16 +51,21 @@ impl ResourceLimits {
 
 impl Default for ResourceLimits {
     fn default() -> Self {
-        Self::default()
+        Self {
+            concurrent_downloads: 4,
+            concurrent_decompressions: 2,
+            concurrent_installations: 1,
+            memory_usage: None,
+        }
     }
 }
 
 /// Trait for converting pipeline configurations to resource limits
 ///
 /// This trait allows different pipeline configuration types to be converted
-/// into ResourceLimits for use with the ResourceManager.
+/// into `ResourceLimits` for use with the `ResourceManager`.
 pub trait IntoResourceLimits {
-    /// Convert this configuration into ResourceLimits
+    /// Convert this configuration into `ResourceLimits`
     fn into_resource_limits(self) -> ResourceLimits;
 }
 
@@ -85,11 +82,13 @@ pub struct ResourceAvailability {
 
 impl ResourceAvailability {
     /// Check if any resources are available
+    #[must_use]
     pub fn has_any_available(&self) -> bool {
         self.download > 0 || self.decompression > 0 || self.installation > 0
     }
 
     /// Check if all resources are fully available
+    #[must_use]
     pub fn all_available(&self, limits: &ResourceLimits) -> bool {
         self.download >= limits.concurrent_downloads
             && self.decompression >= limits.concurrent_decompressions
