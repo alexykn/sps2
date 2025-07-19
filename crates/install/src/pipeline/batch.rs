@@ -29,10 +29,10 @@ pub struct BatchState {
 #[derive(Debug)]
 pub struct RollbackInfo {
     /// Pre-operation state
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Reserved for rollback to previous state
     pub pre_state: String,
     /// Successfully completed operations that need rollback
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Reserved for tracking operations to rollback
     pub completed_operations: Vec<PackageId>,
     /// Staging directories to clean up
     pub staging_dirs: Vec<PathBuf>,

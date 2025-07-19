@@ -148,7 +148,7 @@ impl PackageFormatVersion {
         // Major version (4 bytes, little endian)
         bytes[4..8].copy_from_slice(&self.major.to_le_bytes());
         // Minor version (2 bytes, little endian) - panic if too large
-        #[allow(clippy::cast_possible_truncation)]
+        #[allow(clippy::cast_possible_truncation)] // Safe: bounds checked above
         let minor_u16 = if self.minor <= u16::MAX.into() {
             self.minor as u16
         } else {
@@ -159,7 +159,7 @@ impl PackageFormatVersion {
         };
         bytes[8..10].copy_from_slice(&minor_u16.to_le_bytes());
         // Patch version (2 bytes, little endian) - panic if too large
-        #[allow(clippy::cast_possible_truncation)]
+        #[allow(clippy::cast_possible_truncation)] // Safe: bounds checked above
         let patch_u16 = if self.patch <= u16::MAX.into() {
             self.patch as u16
         } else {

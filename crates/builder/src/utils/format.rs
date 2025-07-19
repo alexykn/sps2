@@ -54,16 +54,3 @@ pub async fn detect_compression_format(file_path: &Path) -> Result<CompressionFo
         compressed_size: file_size,
     })
 }
-
-/// Check if a file has the zstd magic number
-#[allow(dead_code)]
-pub async fn is_zstd_compressed(file_path: &Path) -> Result<bool, Error> {
-    let mut file = File::open(file_path).await?;
-    let mut magic_bytes = [0u8; 4];
-
-    match file.read_exact(&mut magic_bytes).await {
-        Ok(_) => Ok(magic_bytes == ZSTD_MAGIC),
-        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => Ok(false),
-        Err(e) => Err(e.into()),
-    }
-}

@@ -95,7 +95,7 @@ impl PackageStore {
     /// - Package format is incompatible
     pub async fn add_package(&self, sp_file: &Path) -> Result<StoredPackage, Error> {
         // Validate package format before processing
-        #[allow(unused_variables)]
+        #[allow(unused_variables)] // Used in debug_assertions block below
         let format_info = self
             .format_validator
             .validate_before_storage(sp_file)

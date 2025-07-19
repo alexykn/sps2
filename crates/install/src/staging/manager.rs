@@ -28,7 +28,7 @@ pub struct StagingManager {
     /// Base path for staging directories
     base_path: PathBuf,
     /// Package store for extraction operations
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Reserved for future staging-to-store operations
     store: PackageStore,
     /// Resource manager for concurrency control
     resources: Arc<ResourceManager>,

@@ -319,7 +319,7 @@ impl SbomGenerator {
     /// # Errors
     ///
     /// Returns an error if temp directory creation fails or SBOM generation is not deterministic.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Temporarily disabled due to syft non-determinism - see TODO above
     async fn verify_deterministic(
         &self,
         sbom_files: &SbomFiles,

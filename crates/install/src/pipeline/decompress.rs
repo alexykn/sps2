@@ -23,7 +23,7 @@ pub struct DecompressResult {
     pub decompressed_path: PathBuf,
     pub validation_result: ValidationResult,
     pub hash: Hash,
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Held for automatic cleanup on drop
     pub temp_file: Option<tempfile::NamedTempFile>,
 }
 

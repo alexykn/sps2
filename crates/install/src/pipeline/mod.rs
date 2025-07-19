@@ -44,7 +44,7 @@ pub struct PipelineMaster {
     decompress_pipeline: DecompressPipeline,
     staging_pipeline: StagingPipeline,
     /// Active operations tracking
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Reserved for future pipeline operation monitoring
     active_operations: Arc<DashMap<String, PipelineOperation>>,
     /// Batch operation management
     batch_manager: BatchManager,

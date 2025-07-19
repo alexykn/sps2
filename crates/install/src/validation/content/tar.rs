@@ -24,7 +24,7 @@ use crate::validation::types::{
 /// - Archive format is invalid or corrupted
 /// - Required manifest.toml is missing
 /// - Tar entries cannot be processed
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines)] // Complex tar validation with security checks and format handling
 pub async fn validate_tar_archive_content(
     file_path: &Path,
     result: &mut ValidationResult,

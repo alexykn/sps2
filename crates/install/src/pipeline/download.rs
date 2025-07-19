@@ -21,7 +21,7 @@ pub struct DownloadResult {
     pub package_id: PackageId,
     pub downloaded_path: PathBuf,
     pub hash: Hash,
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Held for automatic cleanup on drop - TODO: redesign ownership model
     pub temp_dir: Option<tempfile::TempDir>,
     pub node: ResolvedNode,
 }

@@ -59,7 +59,7 @@ impl PackageDownloader {
     ///
     /// Returns an error if the download fails, hash verification fails,
     /// or file I/O operations fail.
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)] // Core download function requires all parameters for operation
     pub async fn download_package(
         &self,
         package_name: &str,
@@ -202,7 +202,7 @@ impl PackageDownloader {
     ) -> Result<DownloadResult, Error> {
         let url = validate_url(url)?;
         let mut retry_count = 0;
-        #[allow(unused_assignments)]
+        #[allow(unused_assignments)] // Used after retry loop for error reporting
         let mut last_error: Option<Error> = None;
 
         loop {

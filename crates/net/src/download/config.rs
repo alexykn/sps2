@@ -68,16 +68,6 @@ impl Default for RetryConfig {
     }
 }
 
-/// Download progress tracking
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct DownloadProgress {
-    pub downloaded: u64,
-    pub total: Option<u64>,
-    pub speed_bps: u64,
-    pub eta_seconds: Option<u64>,
-}
-
 /// Request for downloading a package
 #[derive(Debug, Clone)]
 pub struct PackageDownloadRequest {

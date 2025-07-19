@@ -172,27 +172,6 @@ fn add_directory_to_tar_with_timestamp(
     Ok(())
 }
 
-/// Legacy deterministic method - redirects to timestamped version
-#[allow(dead_code)]
-fn add_directory_to_tar_deterministic(
-    tar_builder: &mut tar::Builder<std::fs::File>,
-    dir_path: &Path,
-    tar_path: &Path,
-) -> Result<(), Error> {
-    let deterministic_timestamp = get_deterministic_timestamp();
-    add_directory_to_tar_with_timestamp(tar_builder, dir_path, tar_path, deterministic_timestamp)
-}
-
-/// Legacy method for backward compatibility - redirects to deterministic version
-#[allow(dead_code)]
-fn add_directory_to_tar(
-    tar_builder: &mut tar::Builder<std::fs::File>,
-    dir_path: &Path,
-    tar_path: &Path,
-) -> Result<(), Error> {
-    add_directory_to_tar_deterministic(tar_builder, dir_path, tar_path)
-}
-
 /// Get deterministic timestamp for reproducible builds
 /// Uses `SOURCE_DATE_EPOCH` if set, otherwise uses epoch (0)
 #[must_use]

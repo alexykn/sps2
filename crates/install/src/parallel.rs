@@ -613,12 +613,12 @@ impl Default for ExecutionContext {
 
 /// Execution node for tracking dependencies
 struct ExecutionNode {
-    /// Action to perform (for future use)
+    /// Action to perform (stored for future use in execution graph)
     #[allow(dead_code)]
     action: NodeAction,
     /// Remaining dependencies
     in_degree: AtomicUsize,
-    /// Parent packages (for future dependency tracking)
+    /// Parent packages (for future dependency tracking, rollback, and error reporting)
     #[allow(dead_code)]
     parents: Vec<PackageId>,
 }

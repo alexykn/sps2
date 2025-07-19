@@ -5,7 +5,7 @@ use sps2_resolver::PackageId;
 use std::time::Instant;
 
 /// Individual pipeline operation
-#[allow(dead_code)]
+#[allow(dead_code)] // Reserved for future pipeline operation tracking
 pub struct PipelineOperation {
     /// Operation ID
     pub id: String,
@@ -25,7 +25,7 @@ pub struct PipelineOperation {
 
 /// Pipeline processing stages
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
+#[allow(dead_code)] // Reserved for future pipeline stage tracking
 pub enum PipelineStage {
     Queued,
     Downloading,

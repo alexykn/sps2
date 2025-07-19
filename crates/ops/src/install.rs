@@ -23,7 +23,7 @@ use std::time::Instant;
 /// - No packages are specified
 /// - Package specifications cannot be parsed
 /// - Installation fails
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines)] // Complex orchestration function coordinating multiple subsystems
 pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallReport, Error> {
     let start = Instant::now();
 
@@ -173,7 +173,7 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
 }
 
 /// Install remote packages using the high-performance parallel pipeline
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines)] // Complex parallel pipeline orchestration with error handling
 async fn install_remote_packages_parallel(
     ctx: &OpsCtx,
     specs: &[PackageSpec],
