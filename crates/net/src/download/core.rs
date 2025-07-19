@@ -18,7 +18,6 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use tokio::fs as tokio_fs;
 
-
 /// A streaming package downloader with resumable capabilities
 pub struct PackageDownloader {
     config: PackageDownloadConfig,
@@ -42,10 +41,7 @@ impl PackageDownloader {
 
         let client = NetClient::new(net_config)?;
 
-        Ok(Self {
-            config,
-            client,
-        })
+        Ok(Self { config, client })
     }
 
     /// Create with default configuration
@@ -162,7 +158,11 @@ impl PackageDownloader {
             let tx = tx.clone();
 
             let fut = async move {
-                let _permit = downloader.config.resources.acquire_download_permit().await?;
+                let _permit = downloader
+                    .config
+                    .resources
+                    .acquire_download_permit()
+                    .await?;
                 downloader
                     .download_package(
                         &request.name,

@@ -3570,6 +3570,7 @@ dependencies = [
  "semver",
  "serde",
  "sps2-errors",
+ "sps2-events",
  "sps2-index",
  "sps2-manifest",
  "sps2-types",

@@ -120,7 +120,10 @@ impl Builder {
             );
 
             // Create a BuilderApi instance to call do_fix_permissions
-            let api = crate::core::api::BuilderApi::new(environment.staging_dir().to_path_buf(), self.resources.clone())?;
+            let api = crate::core::api::BuilderApi::new(
+                environment.staging_dir().to_path_buf(),
+                self.resources.clone(),
+            )?;
             let result = api.do_fix_permissions(paths, &environment)?;
 
             send_event(

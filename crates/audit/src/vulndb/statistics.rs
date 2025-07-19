@@ -36,7 +36,9 @@ pub async fn get_vulnerability_count(pool: &SqlitePool) -> Result<usize, Error> 
         .map_err(|e| AuditError::DatabaseError {
             message: format!("Failed to get vulnerability count: {e}"),
         })?
-        .get::<i64, _>("count") as usize;
+        .get::<i64, _>("count")
+        .try_into()
+        .unwrap_or(0);
 
     Ok(count)
 }
@@ -73,7 +75,7 @@ pub async fn get_severity_breakdown(pool: &SqlitePool) -> Result<HashMap<String,
     for row in severity_counts {
         let severity: String = row.get("severity");
         let count: i64 = row.get("count");
-        severity_breakdown.insert(severity, count as usize);
+        severity_breakdown.insert(severity, count.try_into().unwrap_or(0));
     }
 
     Ok(severity_breakdown)

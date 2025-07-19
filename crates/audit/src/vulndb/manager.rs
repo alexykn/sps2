@@ -20,6 +20,11 @@ pub struct VulnDbManager {
 
 impl VulnDbManager {
     /// Create new vulnerability database manager
+    ///
+    /// # Errors
+    ///
+    /// This function does not currently return any errors, but is reserved
+    /// for future enhancements.
     pub fn new(db_path: impl AsRef<Path>) -> Result<Self, Error> {
         let db_path = db_path.as_ref().to_path_buf();
 
@@ -30,11 +35,17 @@ impl VulnDbManager {
     }
 
     /// Get default vulnerability database path
+    #[must_use]
     pub fn default_path() -> PathBuf {
         PathBuf::from("/opt/pm/vulndb/vulndb.sqlite")
     }
 
     /// Initialize database connection
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database directory cannot be created, the
+    /// connection fails, or if the schema cannot be created.
     pub async fn initialize(&mut self) -> Result<(), Error> {
         // Ensure database directory exists
         if let Some(parent) = self.db_path.parent() {
@@ -66,7 +77,11 @@ impl VulnDbManager {
     }
 
     /// Get the vulnerability database
-    pub async fn get_database(&self) -> Result<VulnerabilityDatabase, Error> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database has not been initialized.
+    pub fn get_database(&self) -> Result<VulnerabilityDatabase, Error> {
         let pool = self
             .pool
             .as_ref()
@@ -83,6 +98,10 @@ impl VulnDbManager {
     ///
     /// Panics if the pool is `None` after initialization, which should never happen
     /// as `initialize()` sets up the pool or returns an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database update fails.
     pub async fn update(&mut self) -> Result<(), Error> {
         self.update_with_events(None).await
     }
@@ -93,6 +112,10 @@ impl VulnDbManager {
     ///
     /// Panics if the pool is `None` after initialization, which should never happen
     /// as `initialize()` sets up the pool or returns an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database update fails.
     pub async fn update_with_events(
         &mut self,
         event_sender: Option<&EventSender>,
@@ -106,6 +129,11 @@ impl VulnDbManager {
     }
 
     /// Check if database is fresh (updated recently)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database has not been initialized or if the
+    /// freshness check fails.
     pub async fn is_fresh(&self) -> Result<bool, Error> {
         let pool = self
             .pool

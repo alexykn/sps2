@@ -42,24 +42,28 @@ impl ScanOptions {
     }
 
     /// Set severity threshold
+    #[must_use]
     pub fn with_severity_threshold(mut self, threshold: Severity) -> Self {
         self.severity_threshold = threshold;
         self
     }
 
     /// Set fail on critical
+    #[must_use]
     pub fn with_fail_on_critical(mut self, fail: bool) -> Self {
         self.fail_on_critical = fail;
         self
     }
 
     /// Set confidence threshold
+    #[must_use]
     pub fn with_confidence_threshold(mut self, threshold: f32) -> Self {
         self.confidence_threshold = threshold.clamp(0.0, 1.0);
         self
     }
 
     /// Include low confidence matches
+    #[must_use]
     pub fn with_include_low_confidence(mut self, include: bool) -> Self {
         self.include_low_confidence = include;
         self
@@ -79,6 +83,7 @@ pub struct ScanResult {
 
 impl ScanResult {
     /// Check if scan found critical vulnerabilities
+    #[must_use]
     pub fn has_critical(&self) -> bool {
         self.vulnerabilities
             .iter()
@@ -86,6 +91,7 @@ impl ScanResult {
     }
 
     /// Get vulnerabilities by severity
+    #[must_use]
     pub fn by_severity(&self, severity: Severity) -> Vec<&VulnerabilityMatch> {
         self.vulnerabilities
             .iter()
@@ -94,6 +100,7 @@ impl ScanResult {
     }
 
     /// Count vulnerabilities by severity
+    #[must_use]
     pub fn count_by_severity(&self, severity: Severity) -> usize {
         self.by_severity(severity).len()
     }
@@ -131,12 +138,14 @@ impl ScannerConfig {
     }
 
     /// Set maximum concurrent scans
+    #[must_use]
     pub fn with_max_concurrent(mut self, max_concurrent: usize) -> Self {
         self.max_concurrent = max_concurrent.max(1); // Ensure at least 1
         self
     }
 
     /// Set component scan timeout
+    #[must_use]
     pub fn with_component_timeout(mut self, timeout: std::time::Duration) -> Self {
         self.component_timeout = timeout;
         self
@@ -159,6 +168,16 @@ impl AuditScanner {
     }
 
     /// Scan components for vulnerabilities with parallel execution
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the scan fails, for example if a critical
+    /// number of components fail to scan or if the `fail_on_critical`
+    /// option is enabled and a critical vulnerability is found.
+    ///
+    /// # Panics
+    ///
+    /// Panics if all component scans fail.
     pub async fn scan_components(
         &self,
         components: &[Component],
@@ -266,6 +285,10 @@ impl AuditScanner {
     }
 
     /// Scan single component for vulnerabilities
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the vulnerability database cannot be queried.
     async fn scan_component(
         &self,
         component: &Component,
@@ -284,8 +307,8 @@ impl AuditScanner {
 
         for vulnerability in vulnerabilities {
             // Check if the component version is affected
-            if self.is_version_affected(&component.identifier.version, &vulnerability) {
-                let confidence = self.calculate_confidence(component, &vulnerability);
+            if Self::is_version_affected(&component.identifier.version, &vulnerability) {
+                let confidence = Self::calculate_confidence(component, &vulnerability);
 
                 matches.push(VulnerabilityMatch {
                     vulnerability,
@@ -301,7 +324,7 @@ impl AuditScanner {
             let purl_vulnerabilities = vulndb.find_vulnerabilities_by_purl(purl).await?;
 
             for vulnerability in purl_vulnerabilities {
-                let confidence = self.calculate_confidence(component, &vulnerability);
+                let confidence = Self::calculate_confidence(component, &vulnerability);
 
                 matches.push(VulnerabilityMatch {
                     vulnerability,
@@ -317,7 +340,7 @@ impl AuditScanner {
             let cpe_vulnerabilities = vulndb.find_vulnerabilities_by_cpe(cpe).await?;
 
             for vulnerability in cpe_vulnerabilities {
-                let confidence = self.calculate_confidence(component, &vulnerability);
+                let confidence = Self::calculate_confidence(component, &vulnerability);
 
                 matches.push(VulnerabilityMatch {
                     vulnerability,
@@ -336,7 +359,7 @@ impl AuditScanner {
     }
 
     /// Check if a version is affected by a vulnerability using robust semver parsing
-    fn is_version_affected(&self, version: &str, vulnerability: &Vulnerability) -> bool {
+    fn is_version_affected(version: &str, vulnerability: &Vulnerability) -> bool {
         // Check exact matches in affected versions list first
         if vulnerability
             .affected_versions
@@ -359,10 +382,10 @@ impl AuditScanner {
         // If no affected versions specified, check against fixed versions
         if vulnerability.affected_versions.is_empty() && !vulnerability.fixed_versions.is_empty() {
             // Try to parse both versions as semver
-            match semver::Version::parse(&self.normalize_version(version)) {
+            match semver::Version::parse(&Self::normalize_version(version)) {
                 Ok(current_version) => {
                     for fixed_version in &vulnerability.fixed_versions {
-                        match semver::Version::parse(&self.normalize_version(fixed_version)) {
+                        match semver::Version::parse(&Self::normalize_version(fixed_version)) {
                             Ok(fixed_ver) => {
                                 if current_version < fixed_ver {
                                     return true;
@@ -392,7 +415,7 @@ impl AuditScanner {
     }
 
     /// Normalize a version string to be semver-compatible
-    fn normalize_version(&self, version: &str) -> String {
+    fn normalize_version(version: &str) -> String {
         let trimmed = version.trim();
 
         // Handle common version formats
@@ -409,7 +432,7 @@ impl AuditScanner {
     }
 
     /// Calculate match confidence (0.0-1.0)
-    fn calculate_confidence(&self, component: &Component, vulnerability: &Vulnerability) -> f32 {
+    fn calculate_confidence(component: &Component, vulnerability: &Vulnerability) -> f32 {
         let mut confidence = 0.0_f32;
 
         // Base confidence for package name match

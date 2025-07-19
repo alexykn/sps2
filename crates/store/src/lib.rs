@@ -1,5 +1,4 @@
 #![deny(clippy::pedantic, unsafe_code)]
-#![allow(clippy::module_name_repetitions)]
 
 //! Content-addressed storage for sps2
 //!
@@ -96,7 +95,7 @@ impl PackageStore {
     /// - Package format is incompatible
     pub async fn add_package(&self, sp_file: &Path) -> Result<StoredPackage, Error> {
         // Validate package format before processing
-        #[allow(unused_variables)] // Used in debug assertions
+        #[allow(unused_variables)]
         let format_info = self
             .format_validator
             .validate_before_storage(sp_file)

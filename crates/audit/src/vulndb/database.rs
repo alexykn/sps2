@@ -15,11 +15,16 @@ pub struct VulnerabilityDatabase {
 
 impl VulnerabilityDatabase {
     /// Create new vulnerability database
+    #[must_use]
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 
     /// Find vulnerabilities by package name and version
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
     pub async fn find_vulnerabilities_by_package(
         &self,
         package_name: &str,
@@ -77,6 +82,10 @@ impl VulnerabilityDatabase {
     }
 
     /// Find vulnerabilities by PURL
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
     pub async fn find_vulnerabilities_by_purl(
         &self,
         purl: &str,
@@ -98,6 +107,10 @@ impl VulnerabilityDatabase {
     }
 
     /// Find vulnerabilities by CPE
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
     pub async fn find_vulnerabilities_by_cpe(
         &self,
         cpe: &str,
@@ -119,6 +132,10 @@ impl VulnerabilityDatabase {
     }
 
     /// Get vulnerability by CVE ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
     pub async fn get_vulnerability_by_cve(
         &self,
         cve_id: &str,
@@ -158,11 +175,19 @@ impl VulnerabilityDatabase {
     }
 
     /// Get database statistics
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
     pub async fn get_statistics(&self) -> Result<DatabaseStatistics, Error> {
         get_statistics(&self.pool).await
     }
 
     /// Get references for a vulnerability
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
     async fn get_vulnerability_references(&self, cve_id: &str) -> Result<Vec<String>, Error> {
         let rows = sqlx::query(
             r"
@@ -180,6 +205,10 @@ impl VulnerabilityDatabase {
     }
 
     /// Get affected and fixed versions for a vulnerability
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
     async fn get_affected_versions(
         &self,
         cve_id: &str,
@@ -215,6 +244,10 @@ impl VulnerabilityDatabase {
     }
 
     /// Convert database rows to vulnerabilities
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
     async fn rows_to_vulnerabilities(
         &self,
         rows: Vec<sqlx::sqlite::SqliteRow>,

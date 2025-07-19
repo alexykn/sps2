@@ -227,7 +227,11 @@ async fn install_remote_packages_parallel(
         resolution_context = resolution_context.add_runtime_dep(spec.clone());
     }
 
-    let resolution_result = match ctx.resolver.resolve_with_sat(resolution_context).await {
+    let resolution_result = match ctx
+        .resolver
+        .resolve_with_sat(resolution_context, Some(&ctx.tx))
+        .await
+    {
         Ok(result) => result,
         Err(e) => {
             // Emit helpful error event for resolution failures

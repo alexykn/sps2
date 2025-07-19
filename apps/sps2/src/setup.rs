@@ -381,12 +381,6 @@ impl SystemSetup {
         Path::new("/opt/pm/.last_gc_timestamp").to_path_buf()
     }
 
-    /// Update GC timestamp after successful cleanup
-    #[allow(dead_code)] // Instance method for future use
-    pub async fn update_gc_timestamp(&self) -> Result<(), CliError> {
-        self.write_last_gc_timestamp().await
-    }
-
     /// Update GC timestamp - public static method for ops crate
     pub async fn update_gc_timestamp_static() -> Result<(), CliError> {
         let timestamp_path = std::path::Path::new("/opt/pm/.last_gc_timestamp");

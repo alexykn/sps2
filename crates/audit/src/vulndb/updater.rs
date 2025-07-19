@@ -39,7 +39,7 @@ pub async fn update_database_from_sources(
         sender.emit(Event::VulnDbUpdateCompleted {
             total_vulnerabilities: final_count,
             sources_updated: sources_updated as usize,
-            duration_ms: total_duration.as_millis() as u64,
+            duration_ms: total_duration.as_millis().try_into().unwrap_or(u64::MAX),
         });
     }
 
@@ -66,7 +66,7 @@ async fn update_from_nvd_source(
                 sender.emit(Event::VulnDbSourceUpdateCompleted {
                     source: "NVD".to_string(),
                     vulnerabilities_added: count,
-                    duration_ms: duration.as_millis() as u64,
+                    duration_ms: duration.as_millis().try_into().unwrap_or(u64::MAX),
                 });
             }
             Ok(1) // Return 1 to indicate source was successfully updated
@@ -103,7 +103,7 @@ async fn update_from_osv_source(
                 sender.emit(Event::VulnDbSourceUpdateCompleted {
                     source: "OSV".to_string(),
                     vulnerabilities_added: count,
-                    duration_ms: duration.as_millis() as u64,
+                    duration_ms: duration.as_millis().try_into().unwrap_or(u64::MAX),
                 });
             }
             Ok(1) // Return 1 to indicate source was successfully updated
@@ -140,7 +140,7 @@ async fn update_from_github_source(
                 sender.emit(Event::VulnDbSourceUpdateCompleted {
                     source: "GitHub".to_string(),
                     vulnerabilities_added: count,
-                    duration_ms: duration.as_millis() as u64,
+                    duration_ms: duration.as_millis().try_into().unwrap_or(u64::MAX),
                 });
             }
             Ok(1) // Return 1 to indicate source was successfully updated

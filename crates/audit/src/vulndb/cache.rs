@@ -1,6 +1,6 @@
 //! Query result caching for performance optimization
 
-#![allow(dead_code)]
+
 
 use crate::types::Vulnerability;
 use std::collections::HashMap;

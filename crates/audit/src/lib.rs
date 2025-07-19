@@ -1,16 +1,5 @@
 #![deny(clippy::pedantic, unsafe_code)]
-#![allow(clippy::module_name_repetitions)]
 // Allow some placeholder implementation issues - will be removed gradually
-#![allow(clippy::missing_errors_doc)]
-#![allow(clippy::unused_async)]
-#![allow(clippy::unused_self)]
-#![allow(clippy::unnecessary_wraps)]
-#![allow(clippy::must_use_candidate)]
-#![allow(clippy::cast_possible_truncation)]
-#![allow(clippy::cast_sign_loss)]
-#![allow(clippy::return_self_not_must_use)]
-#![allow(clippy::missing_panics_doc)]
-#![allow(clippy::too_many_lines)]
 
 //! CVE audit system for sps2 (Future Implementation)
 //!
@@ -66,6 +55,11 @@ impl AuditSystem {
     }
 
     /// Scan all installed packages for vulnerabilities
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the list of installed packages cannot be retrieved
+    /// or if the scan of any package fails.
     pub async fn scan_all_packages(
         &self,
         state_manager: &StateManager,
@@ -121,6 +115,11 @@ impl AuditSystem {
     }
 
     /// Scan specific package for vulnerabilities
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the package SBOM cannot be retrieved, the SBOM
+    /// cannot be parsed, or the vulnerability scan fails.
     pub async fn scan_package(
         &self,
         package_name: &str,
@@ -136,7 +135,7 @@ impl AuditSystem {
         let components = self.sbom_parser.parse_sbom(&sbom_data)?;
 
         // Scan components for vulnerabilities
-        let vulndb = self.vulndb.get_database().await?;
+        let vulndb = self.vulndb.get_database()?;
         let scan_result = self
             .scanner
             .scan_components(&components, &vulndb, options)
@@ -152,11 +151,19 @@ impl AuditSystem {
     }
 
     /// Update vulnerability database
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database update fails.
     pub async fn update_vulnerability_database(&mut self) -> Result<(), Error> {
         self.vulndb.update().await
     }
 
     /// Update vulnerability database with event reporting
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database update fails.
     pub async fn update_vulnerability_database_with_events(
         &mut self,
         event_sender: Option<&EventSender>,
@@ -165,6 +172,10 @@ impl AuditSystem {
     }
 
     /// Check if vulnerability database exists and is recent
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database freshness check fails.
     pub async fn check_database_freshness(&self) -> Result<bool, Error> {
         self.vulndb.is_fresh().await
     }

@@ -93,7 +93,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         sps2_types::ColorChoice::Never => false,
         sps2_types::ColorChoice::Auto => console::Term::stdout().features().colors_supported(),
     };
-    let mut event_handler = EventHandler::new(renderer.clone(), colors_enabled, cli.global.debug);
+    let mut event_handler = EventHandler::new(colors_enabled, cli.global.debug);
 
     // Execute command with event handling
     let result =

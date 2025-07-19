@@ -61,24 +61,6 @@ impl GoBuildSystem {
         source_dir.join("go.mod").exists()
     }
 
-    /// Get the module name from go.mod
-    #[allow(dead_code)]
-    async fn get_module_name(&self, ctx: &BuildSystemContext) -> Result<String, Error> {
-        let go_mod = ctx.source_dir.join("go.mod");
-        if !go_mod.exists() {
-            return Ok("main".to_string());
-        }
-
-        let content = fs::read_to_string(&go_mod).await?;
-        for line in content.lines() {
-            if let Some(module_line) = line.strip_prefix("module ") {
-                return Ok(module_line.trim().to_string());
-            }
-        }
-
-        Ok("main".to_string())
-    }
-
     /// Get build arguments for go build
     fn get_build_args(ctx: &BuildSystemContext, user_args: &[String]) -> Vec<String> {
         let mut args = Vec::new();

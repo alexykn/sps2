@@ -35,7 +35,7 @@ pub async fn vulndb_stats(_ctx: &OpsCtx) -> Result<VulnDbStats, Error> {
     vulndb.initialize().await?;
 
     // Get database
-    let db = vulndb.get_database().await?;
+    let db = vulndb.get_database()?;
 
     // Get statistics
     let stats = db.get_statistics().await?;

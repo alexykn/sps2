@@ -80,6 +80,7 @@ pub(crate) async fn update_from_github(pool: &SqlitePool) -> Result<usize, Error
 }
 
 /// Insert GitHub advisory into database
+#[allow(clippy::cast_possible_truncation)]
 async fn insert_github_advisory(
     pool: &SqlitePool,
     advisory: &serde_json::Value,

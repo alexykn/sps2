@@ -468,6 +468,13 @@ pub enum Event {
         package: String,
         count: usize,
     },
+    DependencyConflictDetected {
+        conflicting_packages: Vec<(String, String)>,
+        message: String,
+    },
+    DependencyConflictSuggestions {
+        suggestions: Vec<String>,
+    },
 
     // Uninstall operations
     UninstallStarting {

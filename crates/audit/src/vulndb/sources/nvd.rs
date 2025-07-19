@@ -64,7 +64,7 @@ pub(crate) async fn update_from_nvd(pool: &SqlitePool) -> Result<usize, Error> {
             .get("totalResults")
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0);
-        if start_index >= total_results as usize {
+        if start_index >= usize::try_from(total_results).unwrap_or(usize::MAX) {
             break;
         }
 

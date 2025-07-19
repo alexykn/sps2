@@ -105,6 +105,7 @@ pub struct PackageAudit {
 
 impl PackageAudit {
     /// Get vulnerabilities by severity
+    #[must_use]
     pub fn vulnerabilities_by_severity(&self, severity: Severity) -> Vec<&VulnerabilityMatch> {
         self.vulnerabilities
             .iter()
@@ -113,16 +114,19 @@ impl PackageAudit {
     }
 
     /// Count vulnerabilities by severity
+    #[must_use]
     pub fn count_by_severity(&self, severity: Severity) -> usize {
         self.vulnerabilities_by_severity(severity).len()
     }
 
     /// Check if package has critical vulnerabilities
+    #[must_use]
     pub fn has_critical(&self) -> bool {
         self.count_by_severity(Severity::Critical) > 0
     }
 
     /// Check if package has high or critical vulnerabilities
+    #[must_use]
     pub fn has_high_or_critical(&self) -> bool {
         self.count_by_severity(Severity::High) > 0
     }
@@ -141,6 +145,7 @@ pub struct AuditReport {
 
 impl AuditReport {
     /// Create new audit report
+    #[must_use]
     pub fn new(package_audits: Vec<PackageAudit>) -> Self {
         let summary = AuditSummary::from_audits(&package_audits);
 
@@ -152,16 +157,19 @@ impl AuditReport {
     }
 
     /// Get total number of vulnerabilities
+    #[must_use]
     pub fn total_vulnerabilities(&self) -> usize {
         self.summary.total_vulnerabilities
     }
 
     /// Get count of critical vulnerabilities
+    #[must_use]
     pub fn critical_count(&self) -> usize {
         self.summary.critical_count
     }
 
     /// Get packages with critical vulnerabilities
+    #[must_use]
     pub fn critical_packages(&self) -> Vec<&PackageAudit> {
         self.package_audits
             .iter()
@@ -170,6 +178,7 @@ impl AuditReport {
     }
 
     /// Check if any package has critical vulnerabilities
+    #[must_use]
     pub fn has_critical_vulnerabilities(&self) -> bool {
         self.critical_count() > 0
     }
@@ -198,6 +207,7 @@ pub struct AuditSummary {
 
 impl AuditSummary {
     /// Create summary from package audits
+    #[must_use]
     pub fn from_audits(audits: &[PackageAudit]) -> Self {
         let packages_scanned = audits.len();
         let total_vulnerabilities = audits.iter().map(|audit| audit.vulnerabilities.len()).sum();
