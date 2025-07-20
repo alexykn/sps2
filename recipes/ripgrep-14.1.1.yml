@@ -10,8 +10,8 @@ metadata:
 
 environment:
   defaults: true
-  network: false  # Allow network access for dependency downloads
-
+  network: true  # Allow network access for dependency downloads
+  
 source:
   fetch:
     url: "https://github.com/BurntSushi/ripgrep/archive/refs/tags/14.1.1.tar.gz"
