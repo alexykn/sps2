@@ -11,8 +11,8 @@ mod download;
 
 pub use client::{NetClient, NetConfig};
 pub use download::{
-    DownloadProgress, DownloadResult, PackageDownloadConfig, PackageDownloadRequest,
-    PackageDownloadResult, PackageDownloader, RetryConfig,
+    DownloadResult, PackageDownloadConfig, PackageDownloadRequest, PackageDownloadResult,
+    PackageDownloader, RetryConfig,
 };
 
 use sps2_errors::{Error, NetworkError};

@@ -259,7 +259,6 @@ impl ProgressTracker {
         let total = self.total.unwrap_or(0);
 
         // Calculate how much work is left in current phase
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let phase_start = self
             .phases
             .iter()
@@ -267,12 +266,10 @@ impl ProgressTracker {
             .map(|p| (total as f64 * p.weight) as u64)
             .sum::<u64>();
 
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let phase_total = (total as f64 * current_phase.weight) as u64;
         let phase_remaining = phase_total.saturating_sub(self.current - phase_start);
 
         // Calculate remaining work in future phases
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let future_phases_work: u64 = self
             .phases
             .iter()

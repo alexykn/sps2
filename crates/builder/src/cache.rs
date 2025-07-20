@@ -18,20 +18,12 @@ use tokio::sync::RwLock;
 /// Build cache for storing and retrieving build artifacts
 #[derive(Debug, Clone)]
 pub struct BuildCache {
-    /// Root directory for cache storage
-    #[allow(dead_code)]
     cache_root: PathBuf,
-    /// Content-addressed store
     store: Arc<ContentAddressedStore>,
-    /// Artifact cache
     artifact_cache: Arc<ArtifactCache>,
-    /// Compiler cache integration
-    #[allow(dead_code)]
     compiler_cache: Arc<CompilerCache>,
-    /// Cache statistics
     stats: Arc<RwLock<CacheStatistics>>,
-    /// Event sender for reporting
-    event_sender: Option<EventSender>,
+    event_sender: Option<sps2_events::EventSender>,
 }
 
 impl BuildCache {
@@ -202,6 +194,18 @@ impl BuildCache {
         }
 
         Ok(())
+    }
+
+    /// Get the cache root directory
+    #[must_use]
+    pub fn cache_root(&self) -> &Path {
+        &self.cache_root
+    }
+
+    /// Get the compiler cache instance
+    #[must_use]
+    pub fn compiler_cache(&self) -> &CompilerCache {
+        &self.compiler_cache
     }
 }
 
@@ -443,7 +447,7 @@ impl ContentAddressedStore {
 /// Artifact cache for quick lookups
 #[derive(Debug)]
 struct ArtifactCache {
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Root stored for potential future cache operations
     root: PathBuf,
     index: RwLock<HashMap<CacheKey, Vec<Artifact>>>,
 }

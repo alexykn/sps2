@@ -170,9 +170,6 @@ impl UiStyle {
 
 /// Event handler for user feedback
 pub struct EventHandler {
-    /// Output renderer for final results
-    #[allow(dead_code)]
-    renderer: crate::display::OutputRenderer,
     /// UI styling configuration
     ui_style: UiStyle,
     /// Whether debug mode is enabled
@@ -180,14 +177,8 @@ pub struct EventHandler {
 }
 
 impl EventHandler {
-    /// Create new event handler
-    pub fn new(
-        renderer: crate::display::OutputRenderer,
-        colors_enabled: bool,
-        debug_enabled: bool,
-    ) -> Self {
+    pub fn new(colors_enabled: bool, debug_enabled: bool) -> Self {
         Self {
-            renderer,
             ui_style: UiStyle::new(colors_enabled),
             debug_enabled,
         }

@@ -87,7 +87,7 @@ impl CargoBuildSystem {
         // macOS ARM only - no cross-compilation support
 
         // Handle features
-        let features = self.extract_features(user_args);
+        let features = Self::extract_features(user_args);
         if !features.is_empty() {
             args.push("--features".to_string());
             args.push(features.join(","));
@@ -105,8 +105,7 @@ impl CargoBuildSystem {
     }
 
     /// Extract feature flags from arguments
-    #[allow(clippy::unused_self)]
-    fn extract_features(&self, args: &[String]) -> Vec<String> {
+    fn extract_features(args: &[String]) -> Vec<String> {
         args.iter()
             .filter_map(|arg| {
                 arg.strip_prefix("--features=")
@@ -174,8 +173,7 @@ impl CargoBuildSystem {
     }
 
     /// Parse cargo test output
-    #[allow(clippy::unused_self)]
-    fn parse_test_output(&self, output: &str) -> (usize, usize, usize, Vec<TestFailure>) {
+    fn parse_test_output(output: &str) -> (usize, usize, usize, Vec<TestFailure>) {
         let mut total = 0;
         let mut passed = 0;
         let mut failed = 0;
@@ -319,7 +317,7 @@ impl BuildSystem for CargoBuildSystem {
         let output = format!("{}\n{}", result.stdout, result.stderr);
 
         // Parse test results
-        let (total, passed, failed, failures) = self.parse_test_output(&output);
+        let (total, passed, failed, failures) = Self::parse_test_output(&output);
 
         Ok(TestResults {
             total,

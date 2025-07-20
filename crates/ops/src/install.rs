@@ -5,7 +5,7 @@
 
 use crate::{InstallReport, InstallRequest, OpsCtx};
 use sps2_errors::{Error, InstallError, OpsError};
-use sps2_events::Event;
+use sps2_events::{Event, EventEmitter};
 use sps2_guard::{OperationResult as GuardOperationResult, PackageChange as GuardPackageChange};
 use sps2_install::{InstallConfig, InstallContext, Installer, PipelineConfig, PipelineMaster};
 use sps2_types::{PackageSpec, Version};
@@ -23,7 +23,7 @@ use std::time::Instant;
 /// - No packages are specified
 /// - Package specifications cannot be parsed
 /// - Installation fails
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines)] // Complex orchestration function coordinating multiple subsystems
 pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallReport, Error> {
     let start = Instant::now();
 
@@ -63,21 +63,7 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
             Ok(result) => result,
             Err(e) => {
                 // Provide specific guidance for remote package failures
-                ctx.tx
-                    .send(Event::Error {
-                        message: format!(
-                            "Failed to install {} remote packages",
-                            remote_specs.len()
-                        ),
-                        details: Some(format!(
-                            "Error: {e}. \n\nSuggested solutions:\n\
-                            • Check your internet connection\n\
-                            • Run 'sps2 reposync' to update package index\n\
-                            • Verify package names with 'sps2 search <package>'\n\
-                            • For version constraints, use format: package>=1.0.0"
-                        )),
-                    })
-                    .ok();
+                ctx.emit_error("Failed to install remote packages");
                 return Err(e);
             }
         }
@@ -87,18 +73,16 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
             Ok(result) => result,
             Err(e) => {
                 // Provide specific guidance for local file failures
-                ctx.tx
-                    .send(Event::Error {
-                        message: format!("Failed to install {} local packages", local_files.len()),
-                        details: Some(format!(
-                            "Error: {e}. \n\nSuggested solutions:\n\
-                            • Verify file paths are correct and files exist\n\
-                            • Check file permissions (must be readable)\n\
-                            • Ensure .sp files are not corrupted\n\
-                            • Use absolute paths or './' prefix for current directory"
-                        )),
-                    })
-                    .ok();
+                ctx.emit_event(Event::Error {
+                    message: format!("Failed to install {} remote packages", remote_specs.len()),
+                    details: Some(format!(
+                        "Error: {e}. \n\nSuggested solutions:\n\
+                        • Check your internet connection\n\
+                        • Run 'sps2 reposync' to update package index\n\
+                        • Verify package names with 'sps2 search <package>'\n\
+                        • For version constraints, use format: package>=1.0.0"
+                    )),
+                });
                 return Err(e);
             }
         }
@@ -108,22 +92,20 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
             Ok(result) => result,
             Err(e) => {
                 // Provide guidance for mixed installation failures
-                ctx.tx
-                    .send(Event::Error {
-                        message: format!(
-                            "Failed to install mixed packages ({} remote, {} local)",
-                            remote_specs.len(),
-                            local_files.len()
-                        ),
-                        details: Some(format!(
-                            "Error: {e}. \n\nSuggested solutions:\n\
-                            • Try installing remote and local packages separately\n\
-                            • Check both network connectivity and local file access\n\
-                            • Run with --debug flag for detailed error information\n\
-                            • Consider using 'sps2 install package1 package2' for remote-only"
-                        )),
-                    })
-                    .ok();
+                ctx.emit_event(Event::Error {
+                    message: format!(
+                        "Failed to install mixed packages ({} remote, {} local)",
+                        remote_specs.len(),
+                        local_files.len()
+                    ),
+                    details: Some(format!(
+                        "Error: {e}. \n\nSuggested solutions:\n\
+                        • Verify file paths are correct and files exist\n\
+                        • Check file permissions (must be readable)\n\
+                        • Ensure .sp files are not corrupted\n\
+                        • Use absolute paths or './' prefix for current directory"
+                    )),
+                });
                 return Err(e);
             }
         }
@@ -173,13 +155,16 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
 }
 
 /// Install remote packages using the high-performance parallel pipeline
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines)] // Complex parallel pipeline orchestration with error handling
 async fn install_remote_packages_parallel(
     ctx: &OpsCtx,
     specs: &[PackageSpec],
 ) -> Result<sps2_install::InstallResult, Error> {
     use sps2_events::{ProgressManager, ProgressPhase};
     use sps2_state::PackageRef;
+    use std::time::Instant;
+
+    let start = Instant::now();
 
     // Create unified progress tracker for the entire install operation
     let progress_manager = ProgressManager::new();
@@ -200,60 +185,41 @@ async fn install_remote_packages_parallel(
     );
 
     // Send overall progress start event
-    ctx.tx
-        .send(Event::ProgressStarted {
-            id: progress_id.clone(),
-            operation: format!("Installing {} packages", specs.len()),
-            total: Some(specs.len() as u64),
-            phases: vec![
-                ProgressPhase::new("resolve", "Resolving dependencies").with_weight(0.1),
-                ProgressPhase::new("download", "Downloading packages").with_weight(0.5),
-                ProgressPhase::new("validate", "Validating packages").with_weight(0.15),
-                ProgressPhase::new("stage", "Staging packages").with_weight(0.15),
-                ProgressPhase::new("commit", "Committing state").with_weight(0.1),
-            ],
-        })
-        .ok();
+    ctx.emit_event(Event::ProgressStarted {
+        id: "install".to_string(),
+        operation: format!("Installing {} packages", specs.len()),
+        total: Some(specs.len() as u64),
+        phases: vec![],
+    });
 
     // Phase 1: Dependency resolution
-    ctx.tx
-        .send(Event::ResolvingDependencies {
-            package: "batch".to_string(),
-        })
-        .ok();
+    ctx.emit_event(Event::ResolvingDependencies {
+        package: "batch".to_string(),
+    });
 
     let mut resolution_context = sps2_resolver::ResolutionContext::new();
     for spec in specs {
         resolution_context = resolution_context.add_runtime_dep(spec.clone());
     }
 
-    let resolution_result = match ctx.resolver.resolve_with_sat(resolution_context).await {
+    let resolution_result = match ctx
+        .resolver
+        .resolve_with_sat(resolution_context, Some(&ctx.tx))
+        .await
+    {
         Ok(result) => result,
         Err(e) => {
             // Emit helpful error event for resolution failures
-            ctx.tx
-                .send(Event::Error {
-                    message: "Package resolution failed".to_string(),
-                    details: Some(format!(
-                        "Error: {e}. \n\nPossible reasons:\n\
-                        • Package name or version typo.\n\
-                        • Package not available in the current repositories.\n\
-                        • Version constraints are unsatisfiable.\n\
-                        \nSuggested solutions:\n\
-                        • Double-check package name and version specs.\n\
-                        • Run 'sps2 search <package_name>' to find available packages.\n\
-                        • Run 'sps2 reposync' to update your package index."
-                    )),
-                })
-                .ok();
+            ctx.emit_event(Event::Error {
+                message: "Dependency resolution failed".to_string(),
+                details: Some(format!("Error: {e}")),
+            });
 
             // Mark progress as failed
-            ctx.tx
-                .send(Event::ProgressFailed {
-                    id: progress_id.clone(),
-                    error: e.to_string(),
-                })
-                .ok();
+            ctx.emit_event(Event::ProgressFailed {
+                id: progress_id.clone(),
+                error: format!("Pipeline execution failed: {e}"),
+            });
 
             return Err(e);
         }
@@ -289,23 +255,19 @@ async fn install_remote_packages_parallel(
         Ok(result) => result,
         Err(e) => {
             // Send helpful error context
-            ctx.tx
-                .send(Event::Error {
-                    message: "Installation failed during download/validation phase".to_string(),
-                    details: Some(format!(
-                        "Error: {e}. This may be due to network issues, package corruption, or insufficient disk space. \
-                        Try running 'sps2 cleanup' to free space or check your network connection."
-                    )),
-                })
-                .ok();
+            ctx.emit_event(Event::Error {
+                message: "Installation failed during download/validation phase".to_string(),
+                details: Some(format!(
+                    "Error: {e}. This may be due to network issues, package corruption, or insufficient disk space. \
+                    Try running 'sps2 cleanup' to free space or check your network connection."
+                )),
+            });
 
             // Mark progress as failed
-            ctx.tx
-                .send(Event::ProgressFailed {
-                    id: progress_id,
-                    error: e.to_string(),
-                })
-                .ok();
+            ctx.emit_event(Event::ProgressFailed {
+                id: progress_id.clone(),
+                error: format!("Installation failed: {e}"),
+            });
 
             return Err(e);
         }
@@ -314,21 +276,7 @@ async fn install_remote_packages_parallel(
     // Phase 5: State management integration
     progress_manager.change_phase(&progress_id, 4, &ctx.tx);
 
-    ctx.tx
-        .send(Event::DebugLog {
-            message: "DEBUG: Starting state management integration".to_string(),
-            context: std::collections::HashMap::from([
-                (
-                    "successful_packages".to_string(),
-                    batch_result.successful_packages.len().to_string(),
-                ),
-                (
-                    "failed_packages".to_string(),
-                    batch_result.failed_packages.len().to_string(),
-                ),
-            ]),
-        })
-        .ok();
+    ctx.emit_debug("DEBUG: Starting state management integration");
 
     // Begin state transition
     let transition = ctx.state.begin_transition("install packages").await?;
@@ -353,21 +301,11 @@ async fn install_remote_packages_parallel(
         packages_added.push(package_ref);
     }
 
-    ctx.tx
-        .send(Event::DebugLog {
-            message: format!(
-                "DEBUG: Committing state transition with {} packages",
-                packages_added.len()
-            ),
-            context: std::collections::HashMap::from([
-                ("new_state_id".to_string(), new_state_id.to_string()),
-                (
-                    "packages_count".to_string(),
-                    packages_added.len().to_string(),
-                ),
-            ]),
-        })
-        .ok();
+    ctx.emit_debug(format!(
+        "DEBUG: Batch installation completed - {} succeeded, {} failed",
+        batch_result.successful_packages.len(),
+        batch_result.failed_packages.len()
+    ));
 
     // Commit the state transition with the installed packages
     ctx.state
@@ -378,45 +316,19 @@ async fn install_remote_packages_parallel(
         )
         .await?;
 
-    ctx.tx
-        .send(Event::DebugLog {
-            message: "DEBUG: State transition committed successfully".to_string(),
-            context: std::collections::HashMap::new(),
-        })
-        .ok();
+    ctx.emit_debug("DEBUG: State transition committed successfully");
 
     // Complete progress tracking
     progress_manager.complete_operation(&progress_id, &ctx.tx);
 
     // Send comprehensive completion metrics
-    ctx.tx
-        .send(Event::DebugLog {
-            message: format!(
-                "Install completed: {} packages, {:.1} MB/s avg speed, {:.1}% efficiency",
-                batch_result.stats.total_packages,
-                batch_result.stats.avg_download_speed / (1024.0 * 1024.0),
-                batch_result.stats.concurrency_efficiency * 100.0
-            ),
-            context: std::collections::HashMap::from([
-                (
-                    "total_downloaded".to_string(),
-                    batch_result.stats.total_downloaded.to_string(),
-                ),
-                (
-                    "peak_memory".to_string(),
-                    batch_result.peak_memory_usage.to_string(),
-                ),
-                (
-                    "duration_ms".to_string(),
-                    batch_result.duration.as_millis().to_string(),
-                ),
-                (
-                    "rollback_performed".to_string(),
-                    batch_result.rollback_performed.to_string(),
-                ),
-            ]),
-        })
-        .ok();
+    ctx.emit_debug(format!(
+        "DEBUG: Installation metrics - Total: {}, Successful: {}, Failed: {}, Duration: {:.2}s",
+        specs.len(),
+        batch_result.successful_packages.len(),
+        batch_result.failed_packages.len(),
+        start.elapsed().as_secs_f64()
+    ));
 
     // Convert batch result to install result with actual state ID
     Ok(sps2_install::InstallResult {

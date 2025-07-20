@@ -1,6 +1,5 @@
 //! Decompression and validation pipeline stage
 
-use crate::common::resource::ResourceManager;
 use crate::pipeline::download::DownloadResult;
 use crate::{validate_sp_file, ValidationResult};
 use async_compression::tokio::bufread::ZstdDecoder;
@@ -8,6 +7,7 @@ use sps2_errors::{Error, InstallError};
 use sps2_events::{Event, EventSender, EventSenderExt};
 use sps2_hash::Hash;
 use sps2_resolver::PackageId;
+use sps2_resources::ResourceManager;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -23,7 +23,7 @@ pub struct DecompressResult {
     pub decompressed_path: PathBuf,
     pub validation_result: ValidationResult,
     pub hash: Hash,
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Held for automatic cleanup on drop
     pub temp_file: Option<tempfile::NamedTempFile>,
 }
 

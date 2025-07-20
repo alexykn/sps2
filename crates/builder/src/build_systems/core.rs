@@ -185,12 +185,15 @@ impl TestResults {
 
     /// Get pass rate as percentage
     #[must_use]
-    #[allow(clippy::cast_precision_loss)] // Acceptable for percentage calculation
     pub fn pass_rate(&self) -> f64 {
         if self.total == 0 {
             100.0
         } else {
-            (self.passed as f64 / self.total as f64) * 100.0
+            // Allow precision loss: f64 has 52-bit mantissa, but we won't have 2^52 tests
+            #[allow(clippy::cast_precision_loss)]
+            {
+                (self.passed as f64 / self.total as f64) * 100.0
+            }
         }
     }
 }

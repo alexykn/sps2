@@ -12,6 +12,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
+use sps2_resources::ResourceManager;
+use std::sync::Arc;
+
 /// Builder API exposed to Starlark recipes
 #[derive(Clone)]
 pub struct BuilderApi {
@@ -33,6 +36,8 @@ pub struct BuilderApi {
     build_metadata: HashMap<String, String>,
     /// Build isolation level (None if not explicitly set)
     explicit_isolation_level: Option<IsolationLevel>,
+    /// Resource manager
+    resources: Arc<ResourceManager>,
 }
 
 impl BuilderApi {
@@ -41,7 +46,7 @@ impl BuilderApi {
     /// # Errors
     ///
     /// Returns an error if the network client cannot be created.
-    pub fn new(working_dir: PathBuf) -> Result<Self, Error> {
+    pub fn new(working_dir: PathBuf, resources: Arc<ResourceManager>) -> Result<Self, Error> {
         Ok(Self {
             working_dir,
             downloads: HashMap::new(),
@@ -57,6 +62,7 @@ impl BuilderApi {
             install_requested: false,
             build_metadata: HashMap::new(),
             explicit_isolation_level: None,
+            resources,
         })
     }
 
@@ -82,6 +88,9 @@ impl BuilderApi {
     /// - The download fails
     pub async fn fetch(&mut self, url: &str) -> Result<PathBuf, Error> {
         // Fetch operations always have network access - they're source fetching, not build operations
+
+        // Acquire a download permit
+        let _permit = self.resources.acquire_download_permit().await?;
 
         // Check if already downloaded
         if let Some(path) = self.downloads.get(url) {

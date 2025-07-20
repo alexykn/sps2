@@ -49,7 +49,9 @@ async fn run(cli: Cli) -> Result<(), CliError> {
 
     // Load configuration with proper precedence:
     // 1. Start with file config (or defaults)
-    let mut config = Config::load_or_default(&cli.global.config).await?;
+    let mut config =
+        Config::load_or_default_with_builder(&cli.global.config, &cli.global.builder_config)
+            .await?;
 
     // 2. Merge environment variables
     config.merge_env()?;
@@ -93,7 +95,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         sps2_types::ColorChoice::Never => false,
         sps2_types::ColorChoice::Auto => console::Term::stdout().features().colors_supported(),
     };
-    let mut event_handler = EventHandler::new(renderer.clone(), colors_enabled, cli.global.debug);
+    let mut event_handler = EventHandler::new(colors_enabled, cli.global.debug);
 
     // Execute command with event handling
     let result =
@@ -455,13 +457,11 @@ fn apply_cli_config(
 
     // Command-specific CLI flags
     match command {
-        cli::Commands::Build { network, jobs, .. } => {
-            if *network {
-                config.build.network_access = true;
-            }
-            if let Some(job_count) = jobs {
-                config.build.build_jobs = *job_count;
-            }
+        cli::Commands::Build {
+            jobs: Some(job_count),
+            ..
+        } => {
+            config.builder.build.build_jobs = *job_count;
         }
         _ => {
             // No command-specific config overrides for other commands yet

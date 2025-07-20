@@ -270,7 +270,7 @@ pub async fn execute_post_step_with_security(
 }
 
 /// Execute an environment step
-#[allow(dead_code)]
+#[allow(dead_code)] // Public API for environment step execution
 pub fn execute_environment_step(
     step: &EnvironmentStep,
     api: &mut BuilderApi,

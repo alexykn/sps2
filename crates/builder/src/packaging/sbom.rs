@@ -1,5 +1,6 @@
 //! SBOM generation using Syft
 
+use sps2_config::builder::SbomSettings;
 use sps2_errors::{BuildError, Error};
 use sps2_hash::Hash;
 use std::path::{Path, PathBuf};
@@ -9,82 +10,12 @@ use tokio::process::Command;
 pub struct SbomGenerator {
     /// Syft binary path
     syft_path: String,
-    /// Configuration
-    config: SbomConfig,
-}
-
-/// SBOM generation configuration
-#[derive(Clone, Debug)]
-pub struct SbomConfig {
-    /// Generate SPDX format
-    pub generate_spdx: bool,
-    /// Generate `CycloneDX` format
-    pub generate_cyclonedx: bool,
-    /// File exclusion patterns
-    pub exclude_patterns: Vec<String>,
-    /// Include package dependencies in SBOM
-    pub include_dependencies: bool,
-    /// Package name to use in SBOM (overrides path-based detection)
-    pub package_name: Option<String>,
-    /// Package version to use in SBOM
-    pub package_version: Option<String>,
-}
-
-impl Default for SbomConfig {
-    fn default() -> Self {
-        Self {
-            generate_spdx: true,
-            generate_cyclonedx: false,
-            exclude_patterns: vec![
-                "./*.dSYM".to_string(),
-                "./*.pdb".to_string(),
-                "./*.a".to_string(),
-                "./*.la".to_string(),
-            ],
-            include_dependencies: true,
-            package_name: None,
-            package_version: None,
-        }
-    }
-}
-
-impl SbomConfig {
-    /// Create config with both SPDX and `CycloneDX`
-    #[must_use]
-    pub fn with_both_formats() -> Self {
-        Self {
-            generate_cyclonedx: true,
-            ..Default::default()
-        }
-    }
-
-    /// Add exclusion pattern
-    #[must_use]
-    pub fn exclude(mut self, pattern: String) -> Self {
-        self.exclude_patterns.push(pattern);
-        self
-    }
-
-    /// Set dependency inclusion
-    #[must_use]
-    pub fn include_dependencies(mut self, include: bool) -> Self {
-        self.include_dependencies = include;
-        self
-    }
-
-    /// Set package name
-    #[must_use]
-    pub fn with_package_name(mut self, name: String) -> Self {
-        self.package_name = Some(name);
-        self
-    }
-
-    /// Set package version
-    #[must_use]
-    pub fn with_package_version(mut self, version: String) -> Self {
-        self.package_version = Some(version);
-        self
-    }
+    /// Configuration policy from `builder.config.toml`
+    settings: SbomSettings,
+    /// Package name from the recipe metadata
+    package_name: String,
+    /// Package version from the recipe metadata
+    package_version: String,
 }
 
 /// Generated SBOM files
@@ -126,28 +57,27 @@ impl Default for SbomFiles {
 }
 
 impl SbomGenerator {
-    /// Create new SBOM generator
+    /// Create new SBOM generator.
+    ///
+    /// # Arguments
+    ///
+    /// * `settings` - The SBOM generation policy from `builder.config.toml`.
+    /// * `package_name` - The name of the package from the recipe.
+    /// * `package_version` - The version of the package from the recipe.
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new(settings: SbomSettings, package_name: String, package_version: String) -> Self {
         Self {
             syft_path: "syft".to_string(),
-            config: SbomConfig::default(),
+            settings,
+            package_name,
+            package_version,
         }
     }
 
-    /// Create with custom Syft path
+    /// Create with custom Syft path.
     #[must_use]
-    pub fn with_syft_path(syft_path: String) -> Self {
-        Self {
-            syft_path,
-            config: SbomConfig::default(),
-        }
-    }
-
-    /// Set configuration
-    #[must_use]
-    pub fn with_config(mut self, config: SbomConfig) -> Self {
-        self.config = config;
+    pub fn with_syft_path(mut self, syft_path: String) -> Self {
+        self.syft_path = syft_path;
         self
     }
 
@@ -188,7 +118,7 @@ impl SbomGenerator {
         let mut sbom_files = SbomFiles::new();
 
         // Generate SPDX format
-        if self.config.generate_spdx {
+        if self.settings.format == "spdx-json" || self.settings.format == "all" {
             let spdx_path = output_dir.join("sbom.spdx.json");
             self.generate_spdx(source_dir, &spdx_path).await?;
 
@@ -198,7 +128,7 @@ impl SbomGenerator {
         }
 
         // Generate CycloneDX format
-        if self.config.generate_cyclonedx {
+        if self.settings.format == "cyclone-dx" || self.settings.format == "all" {
             let cdx_path = output_dir.join("sbom.cdx.json");
             self.generate_cyclonedx(source_dir, &cdx_path).await?;
 
@@ -227,18 +157,14 @@ impl SbomGenerator {
             source_dir.display().to_string(),
         ];
 
-        // Add package name and version if available
-        if let Some(package_name) = &self.config.package_name {
-            args.push("--source-name".to_string());
-            args.push(package_name.clone());
-        }
-        if let Some(package_version) = &self.config.package_version {
-            args.push("--source-version".to_string());
-            args.push(package_version.clone());
-        }
+        // Add package name and version
+        args.push("--source-name".to_string());
+        args.push(self.package_name.clone());
+        args.push("--source-version".to_string());
+        args.push(self.package_version.clone());
 
         // Add exclusions
-        for pattern in &self.config.exclude_patterns {
+        for pattern in &self.settings.exclusions {
             args.push("--exclude".to_string());
             args.push(pattern.clone());
         }
@@ -277,18 +203,14 @@ impl SbomGenerator {
             source_dir.display().to_string(),
         ];
 
-        // Add package name and version if available
-        if let Some(package_name) = &self.config.package_name {
-            args.push("--source-name".to_string());
-            args.push(package_name.clone());
-        }
-        if let Some(package_version) = &self.config.package_version {
-            args.push("--source-version".to_string());
-            args.push(package_version.clone());
-        }
+        // Add package name and version
+        args.push("--source-name".to_string());
+        args.push(self.package_name.clone());
+        args.push("--source-version".to_string());
+        args.push(self.package_version.clone());
 
         // Add exclusions
-        for pattern in &self.config.exclude_patterns {
+        for pattern in &self.settings.exclusions {
             args.push("--exclude".to_string());
             args.push(pattern.clone());
         }
@@ -319,7 +241,7 @@ impl SbomGenerator {
     /// # Errors
     ///
     /// Returns an error if temp directory creation fails or SBOM generation is not deterministic.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Temporarily disabled due to syft non-determinism - see TODO above
     async fn verify_deterministic(
         &self,
         sbom_files: &SbomFiles,
@@ -377,11 +299,5 @@ impl SbomGenerator {
         }
 
         Ok(())
-    }
-}
-
-impl Default for SbomGenerator {
-    fn default() -> Self {
-        Self::new()
     }
 }

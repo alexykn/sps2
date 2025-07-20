@@ -1,6 +1,6 @@
 //! Query result caching for performance optimization
 
-#![allow(dead_code)]
+
 
 use crate::types::Vulnerability;
 use std::collections::HashMap;
@@ -134,7 +134,7 @@ impl VulnerabilityCache {
     }
 
     /// Get cached vulnerability by CVE ID
-    #[allow(clippy::option_option)]
+    #[allow(clippy::option_option)] // Distinguishes not-cached from cached-but-empty
     pub fn get_cve_vulnerability(&self, cve_id: &str) -> Option<Option<Vulnerability>> {
         let cache = self.cve_cache.read().ok()?;
         cache.get(cve_id).cloned()

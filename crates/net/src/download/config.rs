@@ -5,8 +5,11 @@ use sps2_types::Version;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use sps2_resources::ResourceManager;
+use std::sync::Arc;
+
 /// Configuration for package downloads
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct PackageDownloadConfig {
     /// Maximum file size allowed (default: 2GB)
     pub max_file_size: u64,
@@ -20,6 +23,8 @@ pub struct PackageDownloadConfig {
     pub chunk_timeout: Duration,
     /// Minimum chunk size for resumable downloads (default: 1MB)
     pub min_chunk_size: u64,
+    /// Resource manager
+    pub resources: Arc<ResourceManager>,
 }
 
 impl Default for PackageDownloadConfig {
@@ -31,6 +36,7 @@ impl Default for PackageDownloadConfig {
             retry_config: RetryConfig::default(),
             chunk_timeout: Duration::from_secs(30),
             min_chunk_size: 1024 * 1024, // 1MB
+            resources: Arc::new(ResourceManager::default()),
         }
     }
 }
@@ -60,16 +66,6 @@ impl Default for RetryConfig {
             jitter_factor: 0.1,
         }
     }
-}
-
-/// Download progress tracking
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct DownloadProgress {
-    pub downloaded: u64,
-    pub total: Option<u64>,
-    pub speed_bps: u64,
-    pub eta_seconds: Option<u64>,
 }
 
 /// Request for downloading a package

@@ -140,13 +140,6 @@ impl ConflictAnalysis {
         self.conflict_clause = None;
     }
 
-    /// Get learned clauses
-    #[must_use]
-    #[allow(dead_code)] // Used for debugging and testing
-    pub fn learned_clauses(&self) -> &[Clause] {
-        &self.learned_clauses
-    }
-
     /// Analyze unsatisfiable problem and generate explanation
     pub fn explain_unsat(&self, problem: &DependencyProblem) -> ConflictExplanation {
         let mut conflicting_packages = Vec::new();
@@ -274,12 +267,5 @@ impl VariableActivity {
                 score_a.partial_cmp(&score_b).unwrap()
             })
             .copied()
-    }
-
-    /// Get activity score for a variable
-    #[must_use]
-    #[allow(dead_code)] // Used for debugging and testing
-    pub fn score(&self, var: Variable) -> f64 {
-        self.scores.get(&var).copied().unwrap_or(0.0)
     }
 }

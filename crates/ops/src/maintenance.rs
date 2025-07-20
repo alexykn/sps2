@@ -2,7 +2,7 @@
 
 use crate::{ChangeType, OpChange, OpsCtx, StateInfo};
 use sps2_errors::{Error, OpsError};
-use sps2_events::Event;
+use sps2_events::{Event, EventEmitter};
 use std::time::Instant;
 use uuid::Uuid;
 
@@ -14,7 +14,7 @@ use uuid::Uuid;
 pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
     let start = Instant::now();
 
-    ctx.tx.send(Event::CleanupStarting).ok();
+    ctx.emit_event(Event::CleanupStarting);
 
     // Clean up old states, respecting the configured retention count
     let cleanup_result = ctx
@@ -31,13 +31,11 @@ pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
         cleanup_result.states_removed, cleaned_packages
     );
 
-    ctx.tx
-        .send(Event::CleanupCompleted {
-            states_removed: cleanup_result.states_removed,
-            packages_removed: cleaned_packages,
-            duration_ms: duration,
-        })
-        .ok();
+    ctx.emit_event(Event::CleanupCompleted {
+        states_removed: cleanup_result.states_removed,
+        packages_removed: cleaned_packages,
+        duration_ms: duration,
+    });
 
     // Update GC timestamp after successful cleanup
     if let Err(e) = update_gc_timestamp().await {
@@ -70,11 +68,9 @@ pub async fn rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<StateI
             .ok_or(OpsError::NoPreviousState)?
     };
 
-    ctx.tx
-        .send(Event::RollbackStarting {
-            target_state: target_id,
-        })
-        .ok();
+    ctx.emit_event(Event::RollbackStarting {
+        target_state: target_id,
+    });
 
     // Verify target state exists in database
     if !ctx.state.state_exists(&target_id).await? {

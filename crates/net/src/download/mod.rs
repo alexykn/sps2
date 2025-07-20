@@ -12,7 +12,7 @@ mod validation;
 
 // Re-export public types and structs
 pub use config::{
-    DownloadProgress, DownloadResult, PackageDownloadConfig, PackageDownloadRequest,
-    PackageDownloadResult, RetryConfig,
+    DownloadResult, PackageDownloadConfig, PackageDownloadRequest, PackageDownloadResult,
+    RetryConfig,
 };
 pub use core::PackageDownloader;

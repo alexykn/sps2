@@ -305,14 +305,12 @@ impl SecurityContext {
     }
 
     /// Get current directory
-    #[allow(dead_code)]
     #[must_use]
     pub fn current_dir(&self) -> &Path {
         &self.current_dir
     }
 
     /// Get build root
-    #[allow(dead_code)]
     #[must_use]
     pub fn build_root(&self) -> &Path {
         &self.build_root
@@ -336,11 +334,11 @@ pub enum PathAccessType {
 #[derive(Debug, Clone)]
 pub struct ValidatedExecution {
     /// Original command
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Available for security auditing and logging
     pub original: String,
 
     /// Expanded command with variables resolved
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Available for security auditing and debugging
     pub expanded: String,
 
     /// Parsed command structure
@@ -350,7 +348,7 @@ pub struct ValidatedExecution {
     pub effect: CommandEffect,
 
     /// Validated paths accessed by this command
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Available for security analysis and auditing
     pub accessed_paths: Vec<(PathBuf, PathAccessType)>,
 }
 

@@ -9,6 +9,7 @@
 
 use semver::Version;
 use sps2_errors::{Error, PackageError};
+use sps2_events::{Event, EventSender};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -170,12 +171,10 @@ impl DependencySolution {
 #[derive(Debug, Clone)]
 pub struct ConflictExplanation {
     /// Conflicting packages
-    #[allow(dead_code)] // Used in conflict analysis output
     pub conflicting_packages: Vec<(String, String)>,
     /// Human-readable explanation
     pub message: String,
     /// Suggested resolutions
-    #[allow(dead_code)] // Used in conflict analysis output
     pub suggestions: Vec<String>,
 }
 
@@ -203,7 +202,10 @@ impl ConflictExplanation {
 /// - The SAT problem is unsatisfiable (conflicting constraints)
 /// - The solver encounters an internal error
 /// - Package version mapping fails
-pub async fn solve_dependencies(problem: DependencyProblem) -> Result<DependencySolution, Error> {
+pub async fn solve_dependencies(
+    problem: DependencyProblem,
+    event_sender: Option<&EventSender>,
+) -> Result<DependencySolution, Error> {
     // Create SAT solver with version preference
     let mut solver = SatSolver::with_variable_map(&problem.variables);
 
@@ -274,6 +276,24 @@ pub async fn solve_dependencies(problem: DependencyProblem) -> Result<Dependency
     } else {
         // Extract conflict information
         let conflict = solver.analyze_conflict(&problem);
+
+        // Emit conflict events if sender is available
+        if let Some(sender) = event_sender {
+            // Emit detailed conflict information
+            if !conflict.conflicting_packages.is_empty() {
+                let _ = sender.send(Event::DependencyConflictDetected {
+                    conflicting_packages: conflict.conflicting_packages.clone(),
+                    message: conflict.message.clone(),
+                });
+            }
+
+            // Emit suggestions for resolution
+            if !conflict.suggestions.is_empty() {
+                let _ = sender.send(Event::DependencyConflictSuggestions {
+                    suggestions: conflict.suggestions.clone(),
+                });
+            }
+        }
 
         Err(PackageError::DependencyConflict {
             message: conflict.message,

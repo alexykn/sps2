@@ -8,7 +8,7 @@ pub mod signing;
 
 use self::archive::create_deterministic_tar_archive;
 use self::compression::compress_with_zstd;
-use self::sbom::SbomFiles;
+use self::sbom::{SbomFiles, SbomGenerator};
 use self::signing::PackageSigner;
 use crate::utils::events::send_event;
 use crate::utils::fileops::copy_directory_strip_live_prefix;
@@ -33,8 +33,10 @@ pub async fn create_and_sign_package(
     context: &BuildContext,
     environment: &BuildEnvironment,
     manifest: Manifest,
-    sbom_files: SbomFiles,
 ) -> Result<PathBuf, Error> {
+    // Generate SBOM files first
+    let sbom_files = generate_sbom_files(config, context, environment, &manifest).await?;
+
     // Package the result
     send_event(
         context,
@@ -55,6 +57,48 @@ pub async fn create_and_sign_package(
     sign_package(config, context, &package_path).await?;
 
     Ok(package_path)
+}
+
+/// Generate SBOM files if enabled in the configuration.
+async fn generate_sbom_files(
+    config: &BuildConfig,
+    context: &BuildContext,
+    environment: &BuildEnvironment,
+    manifest: &Manifest,
+) -> Result<SbomFiles, Error> {
+    if !config.packaging_settings().sbom.enabled {
+        return Ok(SbomFiles::default());
+    }
+
+    send_event(
+        context,
+        Event::OperationStarted {
+            operation: "Generating SBOM".to_string(),
+        },
+    );
+
+    let sbom_generator = SbomGenerator::new(
+        config.packaging_settings().sbom.clone(),
+        manifest.package.name.clone(),
+        manifest.version().unwrap().to_string(),
+    );
+
+    let sbom_files = sbom_generator
+        .generate_sbom(
+            environment.staging_dir(),
+            &config.build_settings().build_root,
+        )
+        .await?;
+
+    send_event(
+        context,
+        Event::OperationCompleted {
+            operation: "SBOM generation completed".to_string(),
+            success: true,
+        },
+    );
+
+    Ok(sbom_files)
 }
 
 /// Create the final package
@@ -212,7 +256,12 @@ pub async fn create_sp_package(
             operation: "Compressing package with zstd".to_string(),
         },
     );
-    compress_with_zstd(&config.compression_config, &tar_path, output_path).await?;
+    compress_with_zstd(
+        &config.packaging_settings().compression,
+        &tar_path,
+        output_path,
+    )
+    .await?;
     send_event(
         context,
         Event::OperationCompleted {
@@ -239,7 +288,7 @@ pub async fn sign_package(
     context: &BuildContext,
     package_path: &Path,
 ) -> Result<(), Error> {
-    if !config.signing_config.enabled {
+    if !config.packaging_settings().signing.enabled {
         return Ok(());
     }
 
@@ -256,7 +305,7 @@ pub async fn sign_package(
         },
     );
 
-    let signer = PackageSigner::new(config.signing_config.clone());
+    let signer = PackageSigner::new(config.packaging_settings().signing.clone());
 
     match signer.sign_package(package_path).await? {
         Some(sig_path) => {

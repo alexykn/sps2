@@ -1,17 +1,16 @@
-//! Compression format detection utilities for .sp packages
+use sps2_config::builder::CompressionSettings;
 
+/// File size and formatting utilities
 use sps2_errors::{BuildError, Error};
 use std::path::Path;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 
-use crate::{CompressionConfig, CompressionLevel};
-
 /// Information about detected compression format
 #[derive(Clone, Debug, PartialEq)]
 pub struct CompressionFormatInfo {
     /// Detected compression configuration
-    pub config: CompressionConfig,
+    pub config: CompressionSettings,
     /// Estimated total compressed size
     pub compressed_size: u64,
 }
@@ -45,25 +44,14 @@ pub async fn detect_compression_format(file_path: &Path) -> Result<CompressionFo
     }
 
     // All packages use standard zstd compression
-    let config = CompressionConfig {
-        level: CompressionLevel::Balanced, // Can't determine level from file
+    let config = CompressionSettings {
+        algorithm: "zstd".to_string(),
+        level: "balanced".to_string(), // Can't determine level from file
+        threads: None,
     };
 
     Ok(CompressionFormatInfo {
         config,
         compressed_size: file_size,
     })
-}
-
-/// Check if a file has the zstd magic number
-#[allow(dead_code)]
-pub async fn is_zstd_compressed(file_path: &Path) -> Result<bool, Error> {
-    let mut file = File::open(file_path).await?;
-    let mut magic_bytes = [0u8; 4];
-
-    match file.read_exact(&mut magic_bytes).await {
-        Ok(_) => Ok(magic_bytes == ZSTD_MAGIC),
-        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => Ok(false),
-        Err(e) => Err(e.into()),
-    }
 }

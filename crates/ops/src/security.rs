@@ -2,7 +2,7 @@
 
 use crate::{OpsCtx, VulnDbStats};
 use sps2_errors::{Error, OpsError};
-use sps2_events::Event;
+use sps2_events::{Event, EventEmitter};
 
 /// Update vulnerability database
 ///
@@ -35,7 +35,7 @@ pub async fn vulndb_stats(_ctx: &OpsCtx) -> Result<VulnDbStats, Error> {
     vulndb.initialize().await?;
 
     // Get database
-    let db = vulndb.get_database().await?;
+    let db = vulndb.get_database()?;
 
     // Get statistics
     let stats = db.get_statistics().await?;
@@ -83,7 +83,7 @@ pub async fn audit(
                 package: name.to_string(),
             })?;
 
-        ctx.tx.send(Event::AuditStarting { package_count: 1 }).ok();
+        ctx.emit_event(Event::AuditStarting { package_count: 1 });
 
         let package_hash =
             sps2_hash::Hash::from_hex(&package.hash).map_err(|e| OpsError::OperationFailed {
@@ -101,22 +101,18 @@ pub async fn audit(
             .await?;
 
         let vuln_count = package_audit.vulnerabilities.len();
-        ctx.tx
-            .send(Event::AuditPackageCompleted {
-                package: package.name.clone(),
-                vulnerabilities_found: vuln_count,
-            })
-            .ok();
+        ctx.emit_event(Event::AuditPackageCompleted {
+            package: package.name.clone(),
+            vulnerabilities_found: vuln_count,
+        });
 
         let report = sps2_audit::AuditReport::new(vec![package_audit]);
 
-        ctx.tx
-            .send(Event::AuditCompleted {
-                packages_scanned: 1,
-                vulnerabilities_found: report.total_vulnerabilities(),
-                critical_count: report.critical_count(),
-            })
-            .ok();
+        ctx.emit_event(Event::AuditCompleted {
+            packages_scanned: 1,
+            vulnerabilities_found: report.total_vulnerabilities(),
+            critical_count: report.critical_count(),
+        });
 
         report
     } else {

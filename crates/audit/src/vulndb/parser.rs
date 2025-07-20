@@ -195,7 +195,13 @@ pub(crate) fn extract_nvd_severity(
                 .as_str()
                 .unwrap_or("medium")
                 .to_lowercase();
-            let score = metric["cvssData"]["baseScore"].as_f64().map(|s| s as f32);
+            let score = metric["cvssData"]["baseScore"].as_f64().map(|s| {
+                // CVSS scores are 0.0-10.0, so f32 precision is sufficient
+                #[allow(clippy::cast_possible_truncation)]
+                {
+                    s as f32
+                }
+            });
 
             let severity_str = match severity.as_str() {
                 "critical" => "critical",
@@ -211,7 +217,13 @@ pub(crate) fn extract_nvd_severity(
     // Fall back to CVSS v2
     if let Some(metrics) = cve["metrics"]["cvssMetricV2"].as_array() {
         if let Some(metric) = metrics.first() {
-            let score = metric["cvssData"]["baseScore"].as_f64().map(|s| s as f32);
+            let score = metric["cvssData"]["baseScore"].as_f64().map(|s| {
+                // CVSS scores are 0.0-10.0, so f32 precision is sufficient
+                #[allow(clippy::cast_possible_truncation)]
+                {
+                    s as f32
+                }
+            });
             let severity = match score {
                 Some(s) if s >= 9.0 => "critical",
                 Some(s) if s >= 7.0 => "high",

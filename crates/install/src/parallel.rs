@@ -2,7 +2,6 @@
 
 // InstallContext import removed as it's not used in this module
 // validate_sp_file import removed - validation now handled by AtomicInstaller
-use crate::common::resource::ResourceManager;
 use crate::PreparedPackage;
 use crossbeam::queue::SegQueue;
 use dashmap::DashMap;
@@ -10,6 +9,7 @@ use sps2_errors::{Error, InstallError};
 use sps2_events::{Event, EventEmitter, EventSender};
 use sps2_net::NetClient;
 use sps2_resolver::{ExecutionPlan, NodeAction, PackageId, ResolvedNode};
+use sps2_resources::ResourceManager;
 use sps2_state::StateManager;
 use sps2_store::PackageStore;
 use std::collections::HashMap;
@@ -613,12 +613,12 @@ impl Default for ExecutionContext {
 
 /// Execution node for tracking dependencies
 struct ExecutionNode {
-    /// Action to perform (for future use)
+    /// Action to perform (stored for future use in execution graph)
     #[allow(dead_code)]
     action: NodeAction,
     /// Remaining dependencies
     in_degree: AtomicUsize,
-    /// Parent packages (for future dependency tracking)
+    /// Parent packages (for future dependency tracking, rollback, and error reporting)
     #[allow(dead_code)]
     parents: Vec<PackageId>,
 }

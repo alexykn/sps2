@@ -45,7 +45,7 @@ impl InstallOperation {
         store: PackageStore,
     ) -> Result<Self, Error> {
         // Create a default ResourceManager for the ParallelExecutor
-        let resources = Arc::new(crate::common::resource::ResourceManager::default());
+        let resources = Arc::new(sps2_resources::ResourceManager::default());
         let executor = ParallelExecutor::new(store.clone(), state_manager.clone(), resources)?;
 
         Ok(Self {
@@ -165,7 +165,11 @@ impl InstallOperation {
             count: context.packages.len() + context.local_files.len(),
         });
 
-        let resolution = match self.resolver.resolve_with_sat(resolution_context).await {
+        let resolution = match self
+            .resolver
+            .resolve_with_sat(resolution_context, context.event_sender.as_ref())
+            .await
+        {
             Ok(result) => result,
             Err(e) => {
                 // Emit helpful error event for resolution failures

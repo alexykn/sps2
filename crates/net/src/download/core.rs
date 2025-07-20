@@ -14,16 +14,14 @@ use sps2_events::{Event, EventSender, EventSenderExt};
 use sps2_hash::Hash;
 use sps2_types::Version;
 use std::path::Path;
-use std::sync::Arc;
+
 use std::time::{Duration, Instant};
 use tokio::fs as tokio_fs;
-use tokio::sync::Semaphore;
 
 /// A streaming package downloader with resumable capabilities
 pub struct PackageDownloader {
     config: PackageDownloadConfig,
     client: NetClient,
-    semaphore: Arc<Semaphore>,
 }
 
 impl PackageDownloader {
@@ -42,13 +40,8 @@ impl PackageDownloader {
         };
 
         let client = NetClient::new(net_config)?;
-        let semaphore = Arc::new(Semaphore::new(config.max_concurrent));
 
-        Ok(Self {
-            config,
-            client,
-            semaphore,
-        })
+        Ok(Self { config, client })
     }
 
     /// Create with default configuration
@@ -66,7 +59,7 @@ impl PackageDownloader {
     ///
     /// Returns an error if the download fails, hash verification fails,
     /// or file I/O operations fail.
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)] // Core download function requires all parameters for operation
     pub async fn download_package(
         &self,
         package_name: &str,
@@ -160,13 +153,16 @@ impl PackageDownloader {
         let mut futures = FuturesUnordered::new();
 
         for request in packages {
-            let semaphore = self.semaphore.clone();
             let downloader = self.clone();
             let dest_dir = dest_dir.to_path_buf();
             let tx = tx.clone();
 
             let fut = async move {
-                let _permit = semaphore.acquire().await.unwrap();
+                let _permit = downloader
+                    .config
+                    .resources
+                    .acquire_download_permit()
+                    .await?;
                 downloader
                     .download_package(
                         &request.name,
@@ -206,7 +202,7 @@ impl PackageDownloader {
     ) -> Result<DownloadResult, Error> {
         let url = validate_url(url)?;
         let mut retry_count = 0;
-        #[allow(unused_assignments)]
+        #[allow(unused_assignments)] // Used after retry loop for error reporting
         let mut last_error: Option<Error> = None;
 
         loop {
@@ -335,7 +331,6 @@ impl Clone for PackageDownloader {
         Self {
             config: self.config.clone(),
             client: self.client.clone(),
-            semaphore: self.semaphore.clone(),
         }
     }
 }

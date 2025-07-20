@@ -7,6 +7,7 @@ use crate::{
 };
 use semver::Version;
 use sps2_errors::{Error, PackageError};
+use sps2_events::EventSender;
 use sps2_index::{IndexManager, VersionEntry};
 use sps2_manifest::Manifest;
 use sps2_types::package::PackageSpec;
@@ -18,7 +19,6 @@ use std::path::Path;
 type VersionEntriesMap<'a> = HashMap<(String, Version), (&'a VersionEntry, DepKind)>;
 
 /// Parameters for processing a single transitive dependency
-#[allow(clippy::too_many_arguments)] // This is a parameter struct to reduce arguments
 struct TransitiveDependencyParams<'a> {
     parent_name: &'a str,
     parent_version: &'a Version,
@@ -55,6 +55,7 @@ impl Resolver {
     pub async fn resolve_with_sat(
         &self,
         context: ResolutionContext,
+        event_sender: Option<&EventSender>,
     ) -> Result<ResolutionResult, Error> {
         use tokio::time::{timeout, Duration};
 
@@ -140,7 +141,7 @@ impl Resolver {
                 self.process_transitive_dependencies(&mut problem, &mut version_entries);
 
                 // Solve and convert to dependency graph
-                let solution = crate::sat::solve_dependencies(problem).await?;
+                let solution = crate::sat::solve_dependencies(problem, event_sender).await?;
                 let sat_graph =
                     Self::create_dependency_graph_from_solution(&solution, &version_entries)?;
 
@@ -632,47 +633,5 @@ impl Resolver {
         }
 
         Ok(url.to_string())
-    }
-}
-
-/// Resolution constraints for builds vs installs
-#[derive(Clone, Debug)]
-#[allow(dead_code)] // Designed for future use when build/install logic is enhanced
-pub struct ResolutionConstraints {
-    /// Include build dependencies
-    pub include_build_deps: bool,
-    /// Maximum resolution depth
-    pub max_depth: Option<usize>,
-    /// Allowed architectures
-    pub allowed_archs: Vec<String>,
-}
-
-impl Default for ResolutionConstraints {
-    fn default() -> Self {
-        Self {
-            include_build_deps: false,
-            max_depth: None,
-            allowed_archs: vec!["arm64".to_string()],
-        }
-    }
-}
-
-impl ResolutionConstraints {
-    /// Create constraints for installation (runtime deps only)
-    #[allow(dead_code)] // Will be used when installer distinguishes build vs runtime deps
-    pub fn for_install() -> Self {
-        Self {
-            include_build_deps: false,
-            ..Default::default()
-        }
-    }
-
-    /// Create constraints for building (include build deps)
-    #[allow(dead_code)] // Will be used when builder needs to resolve build dependencies
-    pub fn for_build() -> Self {
-        Self {
-            include_build_deps: true,
-            ..Default::default()
-        }
     }
 }

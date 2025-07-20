@@ -4,7 +4,7 @@ use crate::types::OrphanedFileCategory;
 use std::path::Path;
 
 /// Categorize an orphaned file based on its path and characteristics
-#[allow(clippy::case_sensitive_file_extension_comparisons)]
+#[allow(clippy::case_sensitive_file_extension_comparisons)] // macOS filesystem is case-sensitive
 pub fn categorize_orphaned_file(path_str: &str, full_path: &Path) -> OrphanedFileCategory {
     // System files that should always be preserved
     if path_str.starts_with(".DS_Store")

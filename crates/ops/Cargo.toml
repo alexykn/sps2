@@ -8,6 +8,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+sps2-resources = { path = "../resources" }
 sps2-errors = { path = "../errors" }
 sps2-types = { path = "../types" }
 sps2-events = { path = "../events" }

@@ -80,6 +80,7 @@ pub(crate) async fn update_from_github(pool: &SqlitePool) -> Result<usize, Error
 }
 
 /// Insert GitHub advisory into database
+#[allow(clippy::cast_possible_truncation)] // CVSS scores are 0.0-10.0, safe to cast f64->f32
 async fn insert_github_advisory(
     pool: &SqlitePool,
     advisory: &serde_json::Value,

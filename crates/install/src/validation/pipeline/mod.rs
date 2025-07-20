@@ -15,10 +15,7 @@ use std::path::Path;
 
 use crate::validation::types::ValidationResult;
 
-pub use context::{
-    ExecutionState, ExecutionSummary, PipelineContext, PipelineMetrics, StageProgress,
-    ValidationStage,
-};
+pub use context::{ExecutionState, ExecutionSummary, PipelineContext, PipelineMetrics};
 pub use orchestrator::{quick_validate, strict_validate, ValidationOrchestrator, ValidationStats};
 pub use recovery::{
     resilient_validation, ErrorRecoveryManager, RecoveryAction, RecoveryPresets, RecoveryStats,
@@ -100,59 +97,6 @@ pub async fn validate_with_context(
     let summary = context.execution_summary();
 
     Ok((result, summary))
-}
-
-/// Validates a package with progress tracking
-///
-/// This function provides detailed progress information during validation,
-/// useful for long-running validations or user interfaces.
-pub async fn validate_with_progress<F>(
-    file_path: &Path,
-    event_sender: Option<&EventSender>,
-    progress_callback: F,
-) -> Result<ValidationResult, Error>
-where
-    F: Fn(StageProgress) + Send + Sync,
-{
-    let mut context = PipelineContext::new();
-    context.start_execution();
-
-    // Create a custom event sender that calls our progress callback
-    let _progress_sender = if let Some(sender) = event_sender {
-        Some(ProgressTrackingEventSender::new(sender, progress_callback))
-    } else {
-        None
-    };
-
-    let orchestrator = ValidationOrchestrator::new();
-
-    // We'd need to modify the orchestrator to accept the progress context
-    // For now, we'll use the standard validation
-    orchestrator.validate_package(file_path, event_sender).await
-}
-
-/// Event sender wrapper that tracks progress
-#[allow(dead_code)]
-struct ProgressTrackingEventSender<'a, F> {
-    #[allow(dead_code)]
-    inner: &'a EventSender,
-    #[allow(dead_code)]
-    progress_callback: F,
-    #[allow(dead_code)]
-    current_stage: ValidationStage,
-}
-
-impl<'a, F> ProgressTrackingEventSender<'a, F>
-where
-    F: Fn(StageProgress),
-{
-    fn new(inner: &'a EventSender, progress_callback: F) -> Self {
-        Self {
-            inner,
-            progress_callback,
-            current_stage: ValidationStage::Initialization,
-        }
-    }
 }
 
 /// Validation pipeline builder

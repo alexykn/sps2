@@ -204,7 +204,6 @@ impl ExecutionPlan {
     /// Legacy alias used by the installer: forwards to [`Self::initial_ready`].
     #[inline]
     #[must_use]
-    #[allow(clippy::missing_const_for_fn)] // accessor, not const-safe due to Arc
     pub fn ready_packages(&self) -> Vec<PackageId> {
         self.initial_ready()
     }
@@ -267,37 +266,3 @@ impl ExecutionPlan {
 // -------------------------------------------------------------------------
 // Stats helper (unchanged public fields, lint-clean implementation)
 // -------------------------------------------------------------------------
-
-/// Aggregate execution statistics (useful for progress reporting/UI).
-#[derive(Debug, Default)]
-#[allow(dead_code)] // used by higher layers
-pub struct ExecutionStats {
-    pub total_packages: usize,
-    pub downloaded: usize,
-    pub local: usize,
-    pub batch_count: usize,
-    pub max_batch_size: usize,
-}
-
-impl ExecutionStats {
-    /// O(n) stat computation.
-    #[must_use]
-    pub fn _from_plan(plan: &ExecutionPlan, graph: &DependencyGraph) -> Self {
-        let mut stats = Self {
-            total_packages: plan.package_count(),
-            batch_count: plan.batches.len(),
-            max_batch_size: plan.batches.iter().map(Vec::len).max().unwrap_or(0),
-            ..Self::default()
-        };
-
-        for id in plan.metadata.keys() {
-            match graph.nodes.get(id).map(|n| &n.action) {
-                Some(NodeAction::Download) => stats.downloaded += 1,
-                Some(NodeAction::Local) => stats.local += 1,
-                None => {} // should never happen
-            }
-        }
-
-        stats
-    }
-}

@@ -1,5 +1,6 @@
 //! Pipeline configuration and resource limits
 
+use sps2_resources::{IntoResourceLimits, ResourceLimits};
 use std::time::Duration;
 
 /// Configuration for the parallel pipeline
@@ -34,6 +35,17 @@ impl Default for PipelineConfig {
             operation_timeout: Duration::from_secs(600), // 10 minutes
             enable_streaming: true,
             cleanup_timeout: Duration::from_secs(5),
+        }
+    }
+}
+
+impl IntoResourceLimits for PipelineConfig {
+    fn into_resource_limits(self) -> ResourceLimits {
+        ResourceLimits {
+            concurrent_downloads: self.max_downloads,
+            concurrent_decompressions: self.max_decompressions,
+            concurrent_installations: self.max_validations,
+            memory_usage: Some(self.memory_limit),
         }
     }
 }

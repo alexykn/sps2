@@ -110,7 +110,7 @@ impl BuildPlan {
     ) -> Result<StageSteps, Error> {
         let source_steps = Self::extract_source_steps(recipe, recipe_path)?;
         let build_steps = Self::extract_build_steps(recipe, sps2_config)?;
-        let post_steps = Self::extract_post_steps(recipe, sps2_config)?;
+        let post_steps = Self::extract_post_steps(recipe, &build_steps, sps2_config)?;
 
         Ok(StageSteps {
             source: source_steps,
@@ -266,6 +266,7 @@ impl BuildPlan {
     /// Extract post-processing steps from recipe
     fn extract_post_steps(
         recipe: &YamlRecipe,
+        build_steps: &[BuildCommand],
         sps2_config: Option<&sps2_config::Config>,
     ) -> Result<Vec<PostStep>, Error> {
         use crate::recipe::model::{PostOption, RpathPatchOption};
@@ -290,11 +291,26 @@ impl BuildPlan {
         // Patch rpaths
         match &recipe.post.patch_rpaths {
             RpathPatchOption::Default => {
-                // Default: Modern style (relocatable @rpath)
-                post_steps.push(PostStep::PatchRpaths {
-                    style: RpathStyle::Modern,
-                    paths: vec![], // Will use default paths
+                // Default behavior depends on the build system
+                let is_c_build_system = build_steps.iter().any(|step| {
+                    matches!(
+                        step,
+                        BuildCommand::Autotools { .. }
+                            | BuildCommand::Cmake { .. }
+                            | BuildCommand::Make { .. }
+                            | BuildCommand::Configure { .. }
+                    )
                 });
+
+                if is_c_build_system {
+                    // For C/C++ projects, default to modern rpath patching
+                    post_steps.push(PostStep::PatchRpaths {
+                        style: RpathStyle::Modern,
+                        paths: vec![], // Will use default paths
+                    });
+                } else {
+                    // For Rust, Go, etc., skip rpath patching by default
+                }
             }
             RpathPatchOption::Absolute => {
                 // Absolute: Convert @rpath to absolute paths

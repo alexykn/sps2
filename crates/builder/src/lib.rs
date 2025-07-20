@@ -8,6 +8,7 @@ pub mod artifact_qa;
 mod build_plan;
 mod build_systems;
 mod cache;
+pub mod config;
 mod core;
 mod environment;
 mod packaging;
@@ -27,19 +28,22 @@ pub use cache::{
     Artifact, ArtifactType, BuildCache, BuildInputs, CacheKey, CacheStatistics, CompilerCache,
     CompilerCacheType, IncrementalBuildTracker,
 };
+pub use config::BuildConfig;
 pub use core::api::BuilderApi;
 pub use core::builder::Builder;
-pub use core::config::BuildConfig;
 pub use environment::{BuildCommandResult, BuildEnvironment, BuildResult};
 pub use utils::format::{detect_compression_format, CompressionFormatInfo};
 
 // Re-export packaging types
 pub use packaging::archive::{create_deterministic_tar_archive, get_deterministic_timestamp};
-pub use packaging::compression::{compress_with_zstd, CompressionConfig, CompressionLevel};
+pub use packaging::compression::compress_with_zstd;
 pub use packaging::manifest::generate_sbom_and_manifest;
-pub use packaging::sbom::{SbomConfig, SbomFiles, SbomGenerator};
-pub use packaging::signing::{PackageSigner, SigningConfig};
+pub use packaging::sbom::{SbomFiles, SbomGenerator};
+pub use packaging::signing::PackageSigner;
 pub use packaging::{create_and_sign_package, create_package};
+
+// Re-export config types for backward compatibility
+
 // Re-export YAML types (from yaml module)
 pub use yaml::{BuildStep, RecipeMetadata};
 
