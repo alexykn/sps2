@@ -57,6 +57,7 @@ thiserror = "2.0.12"
 uuid = { version = "1.17.0", features = ["v4", "serde"] }
 semver = { version = "1.0.26", features = ["serde"] }
 blake3 = "1.8.2"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
 tracing = "0.1.41"
 chrono = { version = "0.4.41", features = ["serde"] }
 

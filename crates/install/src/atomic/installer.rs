@@ -6,6 +6,7 @@ use std::sync::Arc;
 use crate::{InstallContext, InstallResult, PreparedPackage, StagingManager};
 use sps2_errors::{Error, InstallError};
 use sps2_events::{Event, EventEmitter, EventSender};
+
 use sps2_resolver::{PackageId, ResolvedNode};
 use sps2_state::{PackageRef, StateManager};
 use sps2_store::{PackageStore, StoredPackage};

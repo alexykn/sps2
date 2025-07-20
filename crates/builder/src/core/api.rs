@@ -215,8 +215,8 @@ impl BuilderApi {
     ) -> Result<PathBuf, Error> {
         let download_path = self.fetch(url).await?;
 
-        // Verify BLAKE3 hash
-        let actual_hash = Hash::hash_file(&download_path).await?;
+        // Verify BLAKE3 hash specifically for download verification
+        let actual_hash = Hash::blake3_hash_file(&download_path).await?;
         let actual_blake3 = actual_hash.to_hex();
 
         if actual_blake3.to_lowercase() != expected_blake3.to_lowercase() {

@@ -15,7 +15,7 @@ use tokio::task::JoinSet;
 pub struct FileHashResult {
     /// Relative path within the package
     pub relative_path: String,
-    /// BLAKE3 hash of the file contents
+    /// Hash of the file contents (algorithm depends on context)
     pub hash: Hash,
     /// File size in bytes
     pub size: u64,

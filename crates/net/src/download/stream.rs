@@ -93,7 +93,7 @@ pub(super) async fn stream_download(
         total_bytes: params.total_size,
     });
 
-    let final_hash = Hash::from_bytes(*hasher.finalize().as_bytes());
+    let final_hash = Hash::from_blake3_bytes(*hasher.finalize().as_bytes());
 
     // Verify hash if expected
     if let Some(expected) = params.expected_hash {

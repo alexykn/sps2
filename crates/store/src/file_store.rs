@@ -311,7 +311,8 @@ impl FileStore {
             return Ok(false);
         }
 
-        let actual_hash = Hash::hash_file(&path).await?;
+        // Use the same algorithm as the expected hash for verification
+        let actual_hash = Hash::hash_file_with_algorithm(&path, hash.algorithm()).await?;
         Ok(actual_hash == *hash)
     }
 
