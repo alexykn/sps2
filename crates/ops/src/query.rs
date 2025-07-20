@@ -2,7 +2,7 @@
 
 use crate::{OpsCtx, PackageInfo, PackageStatus, SearchResult};
 use sps2_errors::{Error, OpsError};
-use sps2_events::Event;
+use sps2_events::{Event, EventEmitter};
 
 /// List installed packages
 ///
@@ -10,7 +10,7 @@ use sps2_events::Event;
 ///
 /// Returns an error if package listing fails.
 pub async fn list_packages(ctx: &OpsCtx) -> Result<Vec<PackageInfo>, Error> {
-    ctx.tx.send(Event::ListStarting).ok();
+    ctx.emit_event(Event::ListStarting);
 
     // Get installed packages from state
     let installed_packages = ctx.state.get_installed_packages().await?;
@@ -73,11 +73,9 @@ pub async fn list_packages(ctx: &OpsCtx) -> Result<Vec<PackageInfo>, Error> {
     // Sort by name
     package_infos.sort_by(|a, b| a.name.cmp(&b.name));
 
-    ctx.tx
-        .send(Event::ListCompleted {
-            count: package_infos.len(),
-        })
-        .ok();
+    ctx.emit_event(Event::ListCompleted {
+        count: package_infos.len(),
+    });
 
     Ok(package_infos)
 }
@@ -154,11 +152,9 @@ pub async fn package_info(ctx: &OpsCtx, package_name: &str) -> Result<PackageInf
 ///
 /// Returns an error if package search fails.
 pub async fn search_packages(ctx: &OpsCtx, query: &str) -> Result<Vec<SearchResult>, Error> {
-    ctx.tx
-        .send(Event::SearchStarting {
-            query: query.to_string(),
-        })
-        .ok();
+    ctx.emit_event(Event::SearchStarting {
+        query: query.to_string(),
+    });
 
     // Search package names in index
     let package_names = ctx.index.search(query);
@@ -186,12 +182,10 @@ pub async fn search_packages(ctx: &OpsCtx, query: &str) -> Result<Vec<SearchResu
         }
     }
 
-    ctx.tx
-        .send(Event::SearchCompleted {
-            query: query.to_string(),
-            count: results.len(),
-        })
-        .ok();
+    ctx.emit_event(Event::SearchCompleted {
+        query: query.to_string(),
+        count: results.len(),
+    });
 
     Ok(results)
 }

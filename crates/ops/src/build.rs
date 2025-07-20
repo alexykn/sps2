@@ -6,7 +6,7 @@
 use crate::{BuildReport, OpsCtx};
 use sps2_builder::{parse_yaml_recipe, BuildContext};
 use sps2_errors::{Error, OpsError};
-use sps2_events::Event;
+use sps2_events::{Event, EventEmitter};
 use sps2_types::Version;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -46,12 +46,10 @@ pub async fn build(
         .into());
     }
 
-    ctx.tx
-        .send(Event::BuildStarting {
-            package: "unknown".to_string(), // Will be determined from recipe
-            version: Version::parse("0.0.0").unwrap_or_else(|_| Version::new(0, 0, 0)),
-        })
-        .ok();
+    ctx.emit_event(Event::BuildStarting {
+        package: "unknown".to_string(), // Will be determined from recipe
+        version: Version::parse("0.0.0").unwrap_or_else(|_| Version::new(0, 0, 0)),
+    });
 
     // Load and execute recipe to get package metadata
     // We already validated that extension is yaml or yml
@@ -60,12 +58,10 @@ pub async fn build(
     let package_version = Version::parse(&yaml_recipe.metadata.version)?;
 
     // Send updated build starting event with correct info
-    ctx.tx
-        .send(Event::BuildStarting {
-            package: package_name.clone(),
-            version: package_version.clone(),
-        })
-        .ok();
+    ctx.emit_event(Event::BuildStarting {
+        package: package_name.clone(),
+        version: package_version.clone(),
+    });
 
     // Create build context
     let output_directory = output_dir.map_or_else(
@@ -109,24 +105,16 @@ pub async fn build(
 
     // Check if install was requested during recipe execution
     if result.install_requested {
-        ctx.tx
-            .send(Event::OperationStarted {
-                operation: format!(
-                    "Installing {package_name} {package_version} (requested by recipe)"
-                ),
-            })
-            .ok();
+        ctx.emit_operation_started("Building package");
 
         // Install the built package
         let package_path_str = result.package_path.to_string_lossy().to_string();
         let _install_report = crate::install(ctx, &[package_path_str]).await?;
 
-        ctx.tx
-            .send(Event::OperationCompleted {
-                operation: format!("Installed {package_name} {package_version} successfully"),
-                success: true,
-            })
-            .ok();
+        ctx.emit_operation_completed(
+            format!("Installed {package_name} {package_version} successfully"),
+            true,
+        );
     }
 
     let report = BuildReport {
@@ -137,13 +125,11 @@ pub async fn build(
         sbom_generated: !result.sbom_files.is_empty(),
     };
 
-    ctx.tx
-        .send(Event::BuildCompleted {
-            package: report.package.clone(),
-            version: report.version.clone(),
-            path: report.output_path.clone(),
-        })
-        .ok();
+    ctx.emit_event(Event::BuildCompleted {
+        package: report.package.clone(),
+        version: report.version.clone(),
+        path: report.output_path.clone(),
+    });
 
     Ok(report)
 }

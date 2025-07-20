@@ -2,7 +2,7 @@
 
 use crate::{keys::KeyManager, OpsCtx};
 use sps2_errors::{Error, OpsError};
-use sps2_events::Event;
+use sps2_events::{Event, EventEmitter};
 use std::time::Instant;
 
 /// Sync repository index
@@ -13,7 +13,7 @@ use std::time::Instant;
 pub async fn reposync(ctx: &OpsCtx) -> Result<String, Error> {
     let start = Instant::now();
 
-    ctx.tx.send(Event::RepoSyncStarting).ok();
+    ctx.emit_event(Event::RepoSyncStarting);
 
     // Check if index is stale (older than 7 days)
     let stale = ctx.index.is_stale(7);
@@ -35,11 +35,9 @@ pub async fn reposync(ctx: &OpsCtx) -> Result<String, Error> {
     let index_sig_url = format!("{base_url}/index.json.minisig");
     let keys_url = format!("{base_url}/keys.json");
 
-    ctx.tx
-        .send(Event::RepoSyncStarted {
-            url: base_url.to_string(),
-        })
-        .ok();
+    ctx.emit_event(Event::RepoSyncStarted {
+        url: base_url.to_string(),
+    });
 
     // 1. Download latest index.json and signature with `ETag` support
     let cached_etag = ctx.index.cache.load_etag().await.unwrap_or(None);
@@ -89,12 +87,7 @@ async fn download_index_conditional(
         if let Some(etag) = new_etag {
             if let Err(e) = ctx.index.cache.save_etag(&etag).await {
                 // Log but don't fail the operation
-                ctx.tx
-                    .send(Event::Warning {
-                        message: format!("Failed to save ETag: {e}"),
-                        context: Some("ETag caching disabled for this session".to_string()),
-                    })
-                    .ok();
+                ctx.emit_warning(format!("Failed to save ETag: {e}"));
             }
         }
         Ok(content)
@@ -150,12 +143,10 @@ async fn finalize_index_update(
         "Repository index updated (no new packages)".to_string()
     };
 
-    ctx.tx
-        .send(Event::RepoSyncCompleted {
-            packages_updated,
-            duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
-        })
-        .ok();
+    ctx.emit_event(Event::RepoSyncCompleted {
+        packages_updated,
+        duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+    });
 
     Ok(message)
 }

@@ -2,7 +2,7 @@
 
 use crate::OpsCtx;
 use sps2_errors::{Error, OpsError};
-use sps2_events::Event;
+use sps2_events::{Event, EventEmitter};
 use std::path::Path;
 use std::time::Instant;
 
@@ -18,12 +18,10 @@ pub async fn self_update(ctx: &OpsCtx, skip_verify: bool, force: bool) -> Result
     let start = Instant::now();
     let current_version = env!("CARGO_PKG_VERSION");
 
-    ctx.tx.send(Event::SelfUpdateStarting).ok();
-    ctx.tx
-        .send(Event::SelfUpdateCheckingVersion {
-            current_version: current_version.to_string(),
-        })
-        .ok();
+    ctx.emit_event(Event::SelfUpdateStarting);
+    ctx.emit_event(Event::SelfUpdateCheckingVersion {
+        current_version: current_version.to_string(),
+    });
 
     // Check latest version from GitHub API
     let latest_version = get_latest_version(&ctx.net, &ctx.tx).await?;
@@ -33,20 +31,16 @@ pub async fn self_update(ctx: &OpsCtx, skip_verify: bool, force: bool) -> Result
     let latest = sps2_types::Version::parse(&latest_version)?;
 
     if !force && latest <= current {
-        ctx.tx
-            .send(Event::SelfUpdateAlreadyLatest {
-                version: current_version.to_string(),
-            })
-            .ok();
+        ctx.emit_event(Event::SelfUpdateAlreadyLatest {
+            version: current_version.to_string(),
+        });
         return Ok(format!("Already on latest version: {current_version}"));
     }
 
-    ctx.tx
-        .send(Event::SelfUpdateVersionAvailable {
-            current_version: current_version.to_string(),
-            latest_version: latest_version.clone(),
-        })
-        .ok();
+    ctx.emit_event(Event::SelfUpdateVersionAvailable {
+        current_version: current_version.to_string(),
+        latest_version: latest_version.clone(),
+    });
 
     // Determine download URLs for ARM64 macOS
     let binary_url = format!(
@@ -54,12 +48,10 @@ pub async fn self_update(ctx: &OpsCtx, skip_verify: bool, force: bool) -> Result
     );
     let signature_url = format!("{binary_url}.minisig");
 
-    ctx.tx
-        .send(Event::SelfUpdateDownloading {
-            version: latest_version.clone(),
-            url: binary_url.clone(),
-        })
-        .ok();
+    ctx.emit_event(Event::SelfUpdateDownloading {
+        version: latest_version.clone(),
+        url: binary_url.clone(),
+    });
 
     // Create temporary directory for download
     let temp_dir = tempfile::tempdir().map_err(|e| OpsError::SelfUpdateFailed {
@@ -77,11 +69,9 @@ pub async fn self_update(ctx: &OpsCtx, skip_verify: bool, force: bool) -> Result
         })?;
 
     if !skip_verify {
-        ctx.tx
-            .send(Event::SelfUpdateVerifying {
-                version: latest_version.clone(),
-            })
-            .ok();
+        ctx.emit_event(Event::SelfUpdateVerifying {
+            version: latest_version.clone(),
+        });
 
         // Download signature
         sps2_net::download_file(&ctx.net, &signature_url, &temp_signature, None, &ctx.tx)
@@ -94,23 +84,19 @@ pub async fn self_update(ctx: &OpsCtx, skip_verify: bool, force: bool) -> Result
         verify_binary_signature(&temp_binary, &temp_signature).await?;
     }
 
-    ctx.tx
-        .send(Event::SelfUpdateInstalling {
-            version: latest_version.clone(),
-        })
-        .ok();
+    ctx.emit_event(Event::SelfUpdateInstalling {
+        version: latest_version.clone(),
+    });
 
     // Replace current executable atomically
     replace_current_executable(&temp_binary).await?;
 
     let duration = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
-    ctx.tx
-        .send(Event::SelfUpdateCompleted {
-            old_version: current_version.to_string(),
-            new_version: latest_version.clone(),
-            duration_ms: duration,
-        })
-        .ok();
+    ctx.emit_event(Event::SelfUpdateCompleted {
+        old_version: current_version.to_string(),
+        new_version: latest_version.clone(),
+        duration_ms: duration,
+    });
 
     Ok(format!(
         "Updated from {current_version} to {latest_version}"

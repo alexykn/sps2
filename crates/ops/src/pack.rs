@@ -10,7 +10,7 @@ use sps2_builder::{
     BuildEnvironment, BuildPlan, BuilderApi, RecipeMetadata, SecurityContext, YamlRecipe,
 };
 use sps2_errors::{Error, OpsError};
-use sps2_events::Event;
+use sps2_events::{Event, EventEmitter};
 use sps2_manifest::Manifest;
 use sps2_types::{BuildReport, Version};
 use std::collections::{HashMap, HashSet};
@@ -79,11 +79,7 @@ pub async fn pack_from_directory(
 ) -> Result<BuildReport, Error> {
     let start = Instant::now();
 
-    ctx.tx
-        .send(Event::OperationStarted {
-            operation: "Packing from directory".to_string(),
-        })
-        .map_err(|_| OpsError::EventChannelClosed)?;
+    ctx.emit_operation_started("Packing from directory");
 
     // Validate the directory to be packaged
     validate_staging_directory(directory, "directory", &Version::new(0, 0, 0))?;
@@ -128,12 +124,10 @@ pub async fn pack_from_directory(
 
     let duration = start.elapsed();
 
-    ctx.tx
-        .send(Event::OperationCompleted {
-            operation: format!("Packed {package_name} v{package_version} from directory"),
-            success: true,
-        })
-        .map_err(|_| OpsError::EventChannelClosed)?;
+    ctx.emit_operation_completed(
+        format!("Packaged {package_name} {package_version} successfully"),
+        true,
+    );
 
     Ok(BuildReport {
         package: package_name,
@@ -156,18 +150,14 @@ async fn pack_from_recipe_impl(
     // Validate recipe file
     validate_recipe_file(recipe_path)?;
 
-    ctx.tx
-        .send(Event::OperationStarted {
-            operation: format!(
-                "Packing from recipe{}",
-                if execute_post {
-                    " (with post steps)"
-                } else {
-                    ""
-                }
-            ),
-        })
-        .map_err(|_| OpsError::EventChannelClosed)?;
+    ctx.emit_operation_started(format!(
+        "Packing from recipe{}",
+        if execute_post {
+            " (with post steps)"
+        } else {
+            ""
+        }
+    ));
 
     // Parse recipe to get package metadata
     let yaml_recipe = parse_yaml_recipe(recipe_path).await?;
@@ -246,12 +236,10 @@ async fn pack_from_recipe_impl(
 
     let duration = start.elapsed();
 
-    ctx.tx
-        .send(Event::OperationCompleted {
-            operation: format!("Packed {package_name} v{package_version} from staging directory"),
-            success: true,
-        })
-        .map_err(|_| OpsError::EventChannelClosed)?;
+    ctx.emit_operation_completed(
+        format!("Packed {package_name} v{package_version} from staging directory"),
+        true,
+    );
 
     // Create BuildReport
     Ok(BuildReport {
@@ -280,10 +268,7 @@ async fn execute_post_steps(
         .event_sender
         .as_ref()
         .unwrap()
-        .send(Event::OperationStarted {
-            operation: "Executing post-processing steps".to_string(),
-        })
-        .map_err(|_| OpsError::EventChannelClosed)?;
+        .emit_operation_started("Executing post-processing steps");
 
     // Create working directory and security context
     let working_dir = environment.build_prefix().join("src");
@@ -305,11 +290,10 @@ async fn execute_post_steps(
             .event_sender
             .as_ref()
             .unwrap()
-            .send(Event::BuildStepStarted {
+            .emit_event(Event::BuildStepStarted {
                 step: format!("{step:?}"),
                 package: context.name.clone(),
-            })
-            .map_err(|_| OpsError::EventChannelClosed)?;
+            });
 
         execute_post_step_with_security(
             step,
@@ -324,22 +308,17 @@ async fn execute_post_steps(
             .event_sender
             .as_ref()
             .unwrap()
-            .send(Event::BuildStepCompleted {
+            .emit_event(Event::BuildStepCompleted {
                 step: format!("{step:?}"),
                 package: context.name.clone(),
-            })
-            .map_err(|_| OpsError::EventChannelClosed)?;
+            });
     }
 
     context
         .event_sender
         .as_ref()
         .unwrap()
-        .send(Event::OperationCompleted {
-            operation: "Post-processing steps completed".to_string(),
-            success: true,
-        })
-        .map_err(|_| OpsError::EventChannelClosed)?;
+        .emit_operation_completed("Post-processing steps completed", true);
 
     Ok(())
 }
