@@ -6,6 +6,7 @@
 //! This crate handles loading and merging configuration from:
 //! - Default values (hard-coded)
 //! - Configuration file (~/.config/sps2/config.toml)
+//! - Builder configuration file (~/.config/sps2/builder.config.toml)
 //! - Environment variables
 //! - CLI flags
 
@@ -20,9 +21,6 @@ use tokio::fs;
 pub struct Config {
     #[serde(default)]
     pub general: GeneralConfig,
-
-    #[serde(default)]
-    pub build: BuildConfig,
 
     #[serde(default)]
     pub security: SecurityConfig,
@@ -41,6 +39,10 @@ pub struct Config {
 
     #[serde(default)]
     pub guard: Option<GuardConfiguration>,
+
+    /// Builder configuration (loaded from separate file)
+    #[serde(skip)]
+    pub builder: BuilderConfig,
 }
 
 /// General configuration
@@ -54,6 +56,17 @@ pub struct GeneralConfig {
     pub parallel_downloads: usize,
 }
 
+/// Builder configuration (separate file: builder.config.toml)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct BuilderConfig {
+    #[serde(default)]
+    pub build: BuildConfig,
+    #[serde(default)]
+    pub commands: BuildCommandsConfig,
+    #[serde(default)]
+    pub validation: ValidationConfig,
+}
+
 /// Build configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildConfig {
@@ -63,8 +76,6 @@ pub struct BuildConfig {
     pub network_access: bool,
     #[serde(default = "default_compression_level")]
     pub compression_level: String,
-    #[serde(default)]
-    pub commands: BuildCommandsConfig,
 }
 
 /// Build commands configuration
@@ -78,6 +89,15 @@ pub struct BuildCommandsConfig {
     pub additional_allowed: Vec<String>,
     #[serde(default)]
     pub disallowed: Vec<String>,
+}
+
+/// Validation configuration for build commands
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidationConfig {
+    #[serde(default = "default_strict_validation")]
+    pub strict_validation: bool,
+    #[serde(default = "default_allow_shell_expansion")]
+    pub allow_shell_expansion: bool,
 }
 
 /// Security configuration
@@ -362,7 +382,15 @@ impl Default for BuildConfig {
             build_jobs: 0, // 0 = auto-detect
             network_access: false,
             compression_level: "balanced".to_string(),
-            commands: BuildCommandsConfig::default(),
+        }
+    }
+}
+
+impl Default for ValidationConfig {
+    fn default() -> Self {
+        Self {
+            strict_validation: true,
+            allow_shell_expansion: false,
         }
     }
 }
@@ -448,6 +476,14 @@ fn default_network_access() -> bool {
 
 fn default_compression_level() -> String {
     "balanced".to_string()
+}
+
+fn default_strict_validation() -> bool {
+    true
+}
+
+fn default_allow_shell_expansion() -> bool {
+    false
 }
 
 fn default_verify_signatures() -> bool {
@@ -869,6 +905,164 @@ impl GuardConfiguration {
     }
 }
 
+impl BuilderConfig {
+    /// Get the default builder config file path
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the home directory cannot be determined.
+    pub fn default_path() -> Result<PathBuf, Error> {
+        let home_dir = dirs::home_dir().ok_or_else(|| ConfigError::NotFound {
+            path: "home directory".to_string(),
+        })?;
+        Ok(home_dir
+            .join(".config")
+            .join("sps2")
+            .join("builder.config.toml"))
+    }
+
+    /// Load builder configuration from file
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be read or if the file contents
+    /// contain invalid TOML syntax that cannot be parsed.
+    pub async fn load_from_file(path: &Path) -> Result<Self, Error> {
+        let contents = fs::read_to_string(path)
+            .await
+            .map_err(|_| ConfigError::NotFound {
+                path: path.display().to_string(),
+            })?;
+
+        toml::from_str(&contents).map_err(|e| {
+            ConfigError::ParseError {
+                message: e.to_string(),
+            }
+            .into()
+        })
+    }
+
+    /// Load builder configuration with fallback to defaults
+    ///
+    /// If the config file doesn't exist, creates it with defaults.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the configuration file exists but cannot be read
+    /// or contains invalid TOML syntax.
+    pub async fn load() -> Result<Self, Error> {
+        let config_path = Self::default_path()?;
+
+        if config_path.exists() {
+            Self::load_from_file(&config_path).await
+        } else {
+            // Create default config and save it
+            let config = Self::default();
+            if let Err(e) = config.save().await {
+                tracing::warn!("Failed to save default builder config: {}", e);
+            }
+            Ok(config)
+        }
+    }
+
+    /// Load builder configuration from an optional path or use default
+    ///
+    /// If path is provided, loads from that file.
+    /// If path is None, uses the default loading behavior.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the config file cannot be read or parsed
+    pub async fn load_or_default(path: &Option<PathBuf>) -> Result<Self, Error> {
+        match path {
+            Some(config_path) => Self::load_from_file(config_path).await,
+            None => Self::load().await,
+        }
+    }
+
+    /// Save builder configuration to the default location
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the configuration cannot be serialized
+    /// or if the file cannot be written.
+    pub async fn save(&self) -> Result<(), Error> {
+        let config_path = Self::default_path()?;
+        self.save_to(&config_path).await
+    }
+
+    /// Save builder configuration to a specific path
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the configuration cannot be serialized
+    /// or if the file cannot be written.
+    pub async fn save_to(&self, path: &Path) -> Result<(), Error> {
+        // Ensure parent directory exists
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .await
+                .map_err(|e| ConfigError::WriteError {
+                    path: parent.display().to_string(),
+                    error: e.to_string(),
+                })?;
+        }
+
+        // Serialize to TOML with pretty formatting
+        let toml_string =
+            toml::to_string_pretty(self).map_err(|e| ConfigError::SerializeError {
+                error: e.to_string(),
+            })?;
+
+        // Add header comment
+        let content = format!(
+            "# sps2 Builder Configuration File\n\
+             # This file was automatically generated.\n\
+             # You can modify it to customize build behavior and security settings.\n\
+             # This file contains build commands, validation settings, and security policies.\n\n\
+             {toml_string}"
+        );
+
+        fs::write(path, content)
+            .await
+            .map_err(|e| ConfigError::WriteError {
+                path: path.display().to_string(),
+                error: e.to_string(),
+            })?;
+
+        Ok(())
+    }
+
+    /// Get all allowed commands (combining allowed and `additional_allowed`)
+    #[must_use]
+    pub fn get_allowed_commands(&self) -> Vec<String> {
+        let mut commands = self.commands.allowed.clone();
+        commands.extend(self.commands.additional_allowed.clone());
+        commands
+    }
+
+    /// Check if a command is allowed
+    #[must_use]
+    pub fn is_command_allowed(&self, command: &str) -> bool {
+        // First check if it's explicitly disallowed
+        if self.commands.disallowed.contains(&command.to_string()) {
+            return false;
+        }
+
+        // Then check if it's in the allowed list
+        self.get_allowed_commands().contains(&command.to_string())
+    }
+
+    /// Check if a shell pattern is allowed
+    #[must_use]
+    pub fn is_shell_pattern_allowed(&self, pattern: &str) -> bool {
+        self.commands
+            .allowed_shell
+            .iter()
+            .any(|allowed| pattern.starts_with(allowed))
+    }
+}
+
 impl Config {
     /// Get the default config file path
     ///
@@ -905,6 +1099,41 @@ impl Config {
             guard.apply_legacy_fields();
         }
 
+        // Load builder config
+        config.builder = BuilderConfig::load().await?;
+
+        Ok(config)
+    }
+
+    /// Load configuration from file with custom builder config path
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be read or if the file contents
+    /// contain invalid TOML syntax that cannot be parsed.
+    pub async fn load_from_file_with_builder(
+        path: &Path,
+        builder_path: &Option<PathBuf>,
+    ) -> Result<Self, Error> {
+        let contents = fs::read_to_string(path)
+            .await
+            .map_err(|_| ConfigError::NotFound {
+                path: path.display().to_string(),
+            })?;
+
+        let mut config: Self = toml::from_str(&contents).map_err(|e| ConfigError::ParseError {
+            message: e.to_string(),
+        })?;
+
+        // Apply legacy field conversions
+        config.verification.apply_legacy_fields();
+        if let Some(ref mut guard) = config.guard {
+            guard.apply_legacy_fields();
+        }
+
+        // Load builder config
+        config.builder = BuilderConfig::load_or_default(builder_path).await?;
+
         Ok(config)
     }
 
@@ -923,7 +1152,11 @@ impl Config {
             Self::load_from_file(&config_path).await
         } else {
             // Create default config and save it
-            let config = Self::default();
+            let builder = BuilderConfig::load().await?;
+            let config = Self {
+                builder,
+                ..Self::default()
+            };
             if let Err(e) = config.save().await {
                 tracing::warn!("Failed to save default config: {}", e);
             }
@@ -943,6 +1176,31 @@ impl Config {
         match path {
             Some(config_path) => Self::load_from_file(config_path).await,
             None => Self::load().await,
+        }
+    }
+
+    /// Load configuration from optional paths or use defaults
+    ///
+    /// If `config_path` is provided, loads from that file.
+    /// If `builder_path` is provided, loads builder config from that file.
+    /// If paths are None, uses the default loading behavior.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the config files cannot be read or parsed
+    pub async fn load_or_default_with_builder(
+        config_path: &Option<std::path::PathBuf>,
+        builder_path: &Option<std::path::PathBuf>,
+    ) -> Result<Self, Error> {
+        if let Some(path) = config_path {
+            Self::load_from_file_with_builder(path, builder_path).await
+        } else {
+            let mut config = Self::load().await?;
+            // Override builder config if custom path provided
+            if builder_path.is_some() {
+                config.builder = BuilderConfig::load_or_default(builder_path).await?;
+            }
+            Ok(config)
         }
     }
 
@@ -987,15 +1245,16 @@ impl Config {
 
         // SPS2_BUILD_JOBS
         if let Ok(jobs) = std::env::var("SPS2_BUILD_JOBS") {
-            self.build.build_jobs = jobs.parse().map_err(|_| ConfigError::InvalidValue {
-                field: "SPS2_BUILD_JOBS".to_string(),
-                value: jobs,
-            })?;
+            self.builder.build.build_jobs =
+                jobs.parse().map_err(|_| ConfigError::InvalidValue {
+                    field: "SPS2_BUILD_JOBS".to_string(),
+                    value: jobs,
+                })?;
         }
 
         // SPS2_NETWORK_ACCESS
         if let Ok(network) = std::env::var("SPS2_NETWORK_ACCESS") {
-            self.build.network_access = match network.as_str() {
+            self.builder.build.network_access = match network.as_str() {
                 "true" | "1" | "yes" => true,
                 "false" | "0" | "no" => false,
                 _ => {
@@ -1114,39 +1373,22 @@ impl Config {
         Ok(())
     }
 
-    /// Get all allowed commands (combining allowed and `additional_allowed`)
+    /// Get all allowed commands (delegated to builder config)
     #[must_use]
     pub fn get_allowed_commands(&self) -> Vec<String> {
-        let mut commands = self.build.commands.allowed.clone();
-        commands.extend(self.build.commands.additional_allowed.clone());
-        commands
+        self.builder.get_allowed_commands()
     }
 
-    /// Check if a command is allowed
+    /// Check if a command is allowed (delegated to builder config)
     #[must_use]
     pub fn is_command_allowed(&self, command: &str) -> bool {
-        // First check if it's explicitly disallowed
-        if self
-            .build
-            .commands
-            .disallowed
-            .contains(&command.to_string())
-        {
-            return false;
-        }
-
-        // Then check if it's in the allowed list
-        self.get_allowed_commands().contains(&command.to_string())
+        self.builder.is_command_allowed(command)
     }
 
-    /// Check if a shell pattern is allowed
+    /// Check if a shell pattern is allowed (delegated to builder config)
     #[must_use]
     pub fn is_shell_pattern_allowed(&self, pattern: &str) -> bool {
-        self.build
-            .commands
-            .allowed_shell
-            .iter()
-            .any(|allowed| pattern.starts_with(allowed))
+        self.builder.is_shell_pattern_allowed(pattern)
     }
 
     /// Validate guard configuration settings

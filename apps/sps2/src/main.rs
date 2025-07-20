@@ -49,7 +49,9 @@ async fn run(cli: Cli) -> Result<(), CliError> {
 
     // Load configuration with proper precedence:
     // 1. Start with file config (or defaults)
-    let mut config = Config::load_or_default(&cli.global.config).await?;
+    let mut config =
+        Config::load_or_default_with_builder(&cli.global.config, &cli.global.builder_config)
+            .await?;
 
     // 2. Merge environment variables
     config.merge_env()?;
@@ -457,10 +459,10 @@ fn apply_cli_config(
     match command {
         cli::Commands::Build { network, jobs, .. } => {
             if *network {
-                config.build.network_access = true;
+                config.builder.build.network_access = true;
             }
             if let Some(job_count) = jobs {
-                config.build.build_jobs = *job_count;
+                config.builder.build.build_jobs = *job_count;
             }
         }
         _ => {

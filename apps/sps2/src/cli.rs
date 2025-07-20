@@ -37,6 +37,10 @@ pub struct GlobalArgs {
     /// Use alternate config file
     #[arg(long, global = true, value_name = "PATH")]
     pub config: Option<PathBuf>,
+
+    /// Use alternate builder config file
+    #[arg(long, global = true, value_name = "PATH")]
+    pub builder_config: Option<PathBuf>,
 }
 
 /// Draft command source arguments
