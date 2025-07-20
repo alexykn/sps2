@@ -112,7 +112,7 @@ pub async fn pack_from_directory(
     let build_config = BuildConfig::default();
 
     // Prepare SBOM files if provided
-    let sbom_files = if let Some(path) = sbom_path {
+    let _sbom_files = if let Some(path) = sbom_path {
         sps2_builder::SbomFiles {
             spdx_path: Some(path.to_path_buf()),
             cyclonedx_path: None,
@@ -123,14 +123,8 @@ pub async fn pack_from_directory(
     };
 
     // Create and sign the package
-    let package_path = create_and_sign_package(
-        &build_config,
-        &build_context,
-        &environment,
-        manifest,
-        sbom_files,
-    )
-    .await?;
+    let package_path =
+        create_and_sign_package(&build_config, &build_context, &environment, manifest).await?;
 
     let duration = start.elapsed();
 
@@ -237,7 +231,7 @@ async fn pack_from_recipe_impl(
     };
 
     // Generate SBOM and create manifest (EXACT same as build command)
-    let (sbom_files, manifest) = generate_sbom_and_manifest(
+    let (_sbom_files, manifest) = generate_sbom_and_manifest(
         &build_config,
         &build_context,
         &environment,
@@ -247,14 +241,8 @@ async fn pack_from_recipe_impl(
     .await?;
 
     // Create and sign package (EXACT same as build command)
-    let package_path = create_and_sign_package(
-        &build_config,
-        &build_context,
-        &environment,
-        manifest,
-        sbom_files,
-    )
-    .await?;
+    let package_path =
+        create_and_sign_package(&build_config, &build_context, &environment, manifest).await?;
 
     let duration = start.elapsed();
 

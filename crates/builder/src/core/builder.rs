@@ -1,8 +1,8 @@
 //! High-level build orchestration and workflow management
 
-use super::config::BuildConfig;
 use super::context::BuildContext;
 use crate::artifact_qa::run_quality_pipeline;
+use crate::config::BuildConfig;
 use crate::packaging::create_and_sign_package;
 use crate::packaging::manifest::generate_sbom_and_manifest;
 use crate::recipe::execute_recipe;
@@ -147,7 +147,7 @@ impl Builder {
         }
 
         // Generate SBOM and create manifest
-        let (sbom_files, manifest) = generate_sbom_and_manifest(
+        let (_sbom_files, manifest) = generate_sbom_and_manifest(
             &self.config,
             &context,
             &environment,
@@ -158,8 +158,7 @@ impl Builder {
 
         // Create and sign package
         let package_path =
-            create_and_sign_package(&self.config, &context, &environment, manifest, sbom_files)
-                .await?;
+            create_and_sign_package(&self.config, &context, &environment, manifest).await?;
 
         // Update context with the generated package path
         let mut updated_context = context.clone();
@@ -178,11 +177,7 @@ impl Builder {
     ) -> Result<BuildEnvironment, Error> {
         // Create build environment with full isolation setup
         // Use the configured build_root from BuildConfig (defaults to /opt/pm/build)
-        let build_root = self
-            .config
-            .build_root
-            .as_ref()
-            .expect("build_root should have a default value");
+        let build_root = self.config.build_root();
         let mut environment = BuildEnvironment::new(context.clone(), build_root)?;
 
         // Configure environment with resolver, store, and net client if available
@@ -199,19 +194,8 @@ impl Builder {
         // Initialize isolated environment
         environment.initialize().await?;
 
-        // Apply isolation level from config
-        environment
-            .apply_isolation_level(
-                self.config.isolation_level,
-                self.config.allow_network,
-                context.event_sender.as_ref(),
-            )
-            .await?;
-
-        // Verify isolation is properly set up (skip for None isolation level)
-        if self.config.isolation_level != crate::environment::IsolationLevel::None {
-            environment.verify_isolation()?;
-        }
+        // Note: Isolation level and network access are applied later in
+        // apply_environment_config() based on recipe settings with config defaults
 
         send_event(
             context,

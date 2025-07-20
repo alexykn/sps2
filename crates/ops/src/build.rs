@@ -93,10 +93,8 @@ pub async fn build(
     // Configure builder with network and jobs options
     let mut builder_config = sps2_builder::BuildConfig::default();
     if network {
-        builder_config.allow_network = true;
-    }
-    if let Some(job_count) = jobs {
-        builder_config.build_jobs = Some(job_count);
+        builder_config.config.build.default_allow_network = true;
+        let _job_count = jobs.unwrap_or(0);
     }
     // Pass the sps2 config for command validation
     builder_config.sps2_config = Some(ctx.config.clone());

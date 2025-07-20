@@ -17,3 +17,6 @@ build:
   system: cargo
   args:
     - "--release"
+
+post:
+  patch_rpaths: skip

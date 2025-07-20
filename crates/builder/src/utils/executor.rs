@@ -301,7 +301,7 @@ async fn execute_build_stage_with_security(
             security_context,
             config.sps2_config.as_ref(),
         ),
-        config.max_build_time,
+        config.max_build_time(),
         &context.name,
     )
     .await?;

@@ -10,7 +10,7 @@ metadata:
 
 environment:
   defaults: true
-  network: true  # Allow network access for dependency downloads
+  network: false  # Allow network access for dependency downloads
 
 source:
   fetch:

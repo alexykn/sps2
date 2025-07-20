@@ -457,13 +457,11 @@ fn apply_cli_config(
 
     // Command-specific CLI flags
     match command {
-        cli::Commands::Build { network, jobs, .. } => {
-            if *network {
-                config.builder.build.network_access = true;
-            }
-            if let Some(job_count) = jobs {
-                config.builder.build.build_jobs = *job_count;
-            }
+        cli::Commands::Build {
+            jobs: Some(job_count),
+            ..
+        } => {
+            config.builder.build.build_jobs = *job_count;
         }
         _ => {
             // No command-specific config overrides for other commands yet

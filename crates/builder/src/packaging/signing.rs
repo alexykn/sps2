@@ -1,77 +1,22 @@
 //! Package signing with Minisign
 
 use minisign::{sign, KeyPair, PublicKey, SecretKey, SecretKeyBox, SignatureBox};
+use sps2_config::builder::SigningSettings;
 use sps2_errors::{BuildError, Error};
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
-/// Package signing configuration
-#[derive(Debug, Clone)]
-pub struct SigningConfig {
-    /// Path to the private key file
-    pub private_key_path: Option<PathBuf>,
-    /// Private key password
-    pub key_password: Option<String>,
-    /// Trusted comment to include in signature
-    pub trusted_comment: Option<String>,
-    /// Enable signing (false for testing/development)
-    pub enabled: bool,
-}
-
-impl Default for SigningConfig {
-    fn default() -> Self {
-        Self {
-            private_key_path: None,
-            key_password: None,
-            trusted_comment: Some("sps2 package signature".to_string()),
-            enabled: false, // Disabled by default for development
-        }
-    }
-}
-
-impl SigningConfig {
-    /// Create config with signing enabled
-    #[must_use]
-    pub fn enabled() -> Self {
-        Self {
-            enabled: true,
-            ..Default::default()
-        }
-    }
-
-    /// Set private key path
-    #[must_use]
-    pub fn with_private_key<P: Into<PathBuf>>(mut self, path: P) -> Self {
-        self.private_key_path = Some(path.into());
-        self
-    }
-
-    /// Set key password
-    #[must_use]
-    pub fn with_password<S: Into<String>>(mut self, password: S) -> Self {
-        self.key_password = Some(password.into());
-        self
-    }
-
-    /// Set trusted comment
-    #[must_use]
-    pub fn with_comment<S: Into<String>>(mut self, comment: S) -> Self {
-        self.trusted_comment = Some(comment.into());
-        self
-    }
-}
-
 /// Package signer using Minisign
 pub struct PackageSigner {
-    config: SigningConfig,
+    settings: SigningSettings,
 }
 
 impl PackageSigner {
     /// Create new package signer
     #[must_use]
-    pub fn new(config: SigningConfig) -> Self {
-        Self { config }
+    pub fn new(settings: SigningSettings) -> Self {
+        Self { settings }
     }
 
     /// Sign a package file, creating a detached .minisig signature
@@ -84,17 +29,15 @@ impl PackageSigner {
     /// - Key decryption or signature creation fails
     /// - Writing the signature file fails
     pub async fn sign_package(&self, package_path: &Path) -> Result<Option<PathBuf>, Error> {
-        if !self.config.enabled {
+        if !self.settings.enabled {
             return Ok(None);
         }
 
-        let private_key_path =
-            self.config
-                .private_key_path
-                .as_ref()
-                .ok_or_else(|| BuildError::SigningError {
-                    message: "No private key path configured".to_string(),
-                })?;
+        let private_key_path = PathBuf::from(self.settings.identity.as_ref().ok_or_else(|| {
+            BuildError::SigningError {
+                message: "No private key path configured".to_string(),
+            }
+        })?);
 
         if !private_key_path.exists() {
             return Err(BuildError::SigningError {
@@ -128,7 +71,12 @@ impl PackageSigner {
             })?;
 
         let secret_key = sk_box
-            .into_secret_key(self.config.key_password.clone())
+            .into_secret_key(
+                self.settings
+                    .keychain_path
+                    .as_deref()
+                    .map(|p| p.to_string_lossy().to_string()),
+            )
             .map_err(|e| BuildError::SigningError {
                 message: format!("Failed to decrypt private key: {e}"),
             })?;
@@ -141,11 +89,10 @@ impl PackageSigner {
             })?;
 
         // Create signature
-        let trusted_comment = self
-            .config
-            .trusted_comment
-            .as_deref()
-            .unwrap_or("sps2 package signature");
+        let trusted_comment = match self.settings.entitlements_file.as_deref() {
+            Some(path) => path.to_string_lossy(),
+            None => "sps2 package signature".into(),
+        };
         let untrusted_comment = format!(
             "signature from sps2 for {}",
             package_path
@@ -159,7 +106,7 @@ impl PackageSigner {
             None, // No additional public key validation
             &secret_key,
             package_reader,
-            Some(trusted_comment),
+            Some(trusted_comment.as_ref()),
             Some(&untrusted_comment),
         )
         .map_err(|e| BuildError::SigningError {
