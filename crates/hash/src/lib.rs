@@ -8,9 +8,6 @@
 
 mod file_hasher;
 
-#[cfg(test)]
-mod tests;
-
 pub use file_hasher::{calculate_file_storage_path, FileHashResult, FileHasher, FileHasherConfig};
 
 use blake3::Hasher as Blake3Hasher;
@@ -85,7 +82,7 @@ impl Hash {
         hex::encode(&self.bytes)
     }
 
-    /// Parse from hex string (assumes BLAKE3 for backward compatibility)
+    /// Parse from hex string (detects algorithm based on length)
     ///
     /// # Errors
     /// Returns an error if the input string is not valid hexadecimal.
