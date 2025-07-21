@@ -3404,6 +3404,7 @@ dependencies = [
  "sps2-errors",
  "sps2-types",
  "tokio",
+ "tracing",
  "uuid",
 ]
 

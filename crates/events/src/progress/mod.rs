@@ -21,7 +21,7 @@
 //! ## Usage Example
 //!
 //! ```rust
-//! use sps2_events::{ProgressManager, ProgressPhase};
+//! use sps2_events::{ProgressManager, events::ProgressPhase};
 //! use std::time::Duration;
 //!
 //! let manager = ProgressManager::new();
@@ -49,12 +49,12 @@
 //!     ProgressPhase {
 //!         name: "Download".to_string(),
 //!         weight: 0.7, // 70% of total work
-//!         estimated_duration: None,
+//!         description: Some("Downloading package files".to_string()),
 //!     },
 //!     ProgressPhase {
 //!         name: "Extract".to_string(),
 //!         weight: 0.3, // 30% of total work
-//!         estimated_duration: None,
+//!         description: Some("Extracting package contents".to_string()),
 //!     },
 //! ];
 //!
@@ -104,7 +104,7 @@ pub mod tracker;
 pub mod update;
 
 // Public re-exports for main API
-pub use config::{ProgressConfig, ProgressPhase, TrendDirection};
+pub use config::{ProgressConfig, TrendDirection};
 pub use manager::ProgressManager;
 pub use tracker::ProgressTracker;
 pub use update::ProgressUpdate;
