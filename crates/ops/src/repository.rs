@@ -2,7 +2,7 @@
 
 use crate::{keys::KeyManager, OpsCtx};
 use sps2_errors::{Error, OpsError};
-use sps2_events::{Event, EventEmitter};
+use sps2_events::{Event, EventEmitter, EventSenderExt};
 use std::time::Instant;
 
 /// Sync repository index
@@ -171,11 +171,10 @@ async fn fetch_and_verify_keys(
         // 3. Verified through multiple sources
         let bootstrap_key = "RWSGOq2NVecA2UPNdBUZykp1MLhfMmkAK/SZSjK3bpq2q7I8LbSVVBDm";
 
-        tx.send(Event::Warning {
+        tx.emit(Event::Warning {
             message: "Initializing with bootstrap key".to_string(),
             context: Some("First run - no trusted keys found".to_string()),
-        })
-        .ok();
+        });
 
         key_manager
             .initialize_with_bootstrap(bootstrap_key)
@@ -190,11 +189,10 @@ async fn fetch_and_verify_keys(
         .fetch_and_verify_keys(net_client, keys_url, tx)
         .await?;
 
-    tx.send(Event::OperationCompleted {
+    tx.emit(Event::OperationCompleted {
         operation: "Key verification".to_string(),
         success: true,
-    })
-    .ok();
+    });
 
     Ok(trusted_keys)
 }

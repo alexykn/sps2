@@ -2,7 +2,7 @@
 
 use crate::{ChangeType, OpChange, OpsCtx, StateInfo};
 use sps2_errors::{Error, OpsError};
-use sps2_events::{Event, EventEmitter};
+use sps2_events::{Event, EventEmitter, EventSenderExt};
 use std::time::Instant;
 use uuid::Uuid;
 
@@ -98,12 +98,10 @@ pub async fn rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<StateI
     // Get state information
     let state_info = get_state_info(ctx, target_id).await?;
 
-    ctx.tx
-        .send(Event::RollbackCompleted {
-            target_state: target_id,
-            duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
-        })
-        .ok();
+    ctx.tx.emit(Event::RollbackCompleted {
+        target_state: target_id,
+        duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+    });
 
     Ok(state_info)
 }
