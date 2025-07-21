@@ -21,7 +21,7 @@ pub use types::{
 pub use vulndb::{DatabaseStatistics, VulnDbManager, VulnerabilityDatabase};
 
 use sps2_errors::Error;
-use sps2_events::EventSender;
+use sps2_events::{EventEmitter, EventSender, EventSenderExt};
 use sps2_hash::Hash;
 use sps2_state::StateManager;
 use sps2_store::PackageStore;
@@ -34,6 +34,8 @@ pub struct AuditSystem {
     sbom_parser: SbomParser,
     /// Audit scanner
     scanner: AuditScanner,
+    /// Event sender for progress and status updates
+    event_sender: Option<EventSender>,
 }
 
 impl AuditSystem {
@@ -51,6 +53,28 @@ impl AuditSystem {
             vulndb,
             sbom_parser,
             scanner,
+            event_sender: None,
+        })
+    }
+
+    /// Create new audit system with event sender
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the vulnerability database manager cannot be created.
+    pub fn with_events(
+        vulndb_path: impl AsRef<std::path::Path>,
+        event_sender: EventSender,
+    ) -> Result<Self, Error> {
+        let vulndb = VulnDbManager::new(vulndb_path)?;
+        let sbom_parser = SbomParser::new();
+        let scanner = AuditScanner::new();
+
+        Ok(Self {
+            vulndb,
+            sbom_parser,
+            scanner,
+            event_sender: Some(event_sender),
         })
     }
 
@@ -65,13 +89,12 @@ impl AuditSystem {
         state_manager: &StateManager,
         store: &PackageStore,
         options: ScanOptions,
-        event_sender: Option<EventSender>,
     ) -> Result<AuditReport, Error> {
         // Get all installed packages
         let installed_packages = state_manager.get_installed_packages().await?;
 
-        if let Some(sender) = &event_sender {
-            let _ = sender.send(sps2_events::Event::AuditStarting {
+        if let Some(sender) = self.event_sender() {
+            sender.emit(sps2_events::Event::AuditStarting {
                 package_count: installed_packages.len(),
             });
         }
@@ -93,8 +116,8 @@ impl AuditSystem {
             let vuln_count = audit.vulnerabilities.len();
             package_audits.push(audit);
 
-            if let Some(sender) = &event_sender {
-                let _ = sender.send(sps2_events::Event::AuditPackageCompleted {
+            if let Some(sender) = self.event_sender() {
+                sender.emit(sps2_events::Event::AuditPackageCompleted {
                     package: package.name.clone(),
                     vulnerabilities_found: vuln_count,
                 });
@@ -103,8 +126,8 @@ impl AuditSystem {
 
         let report = AuditReport::new(package_audits);
 
-        if let Some(sender) = &event_sender {
-            let _ = sender.send(sps2_events::Event::AuditCompleted {
+        if let Some(sender) = self.event_sender() {
+            sender.emit(sps2_events::Event::AuditCompleted {
                 packages_scanned: installed_packages.len(),
                 vulnerabilities_found: report.total_vulnerabilities(),
                 critical_count: report.critical_count(),
@@ -164,10 +187,8 @@ impl AuditSystem {
     /// # Errors
     ///
     /// Returns an error if the database update fails.
-    pub async fn update_vulnerability_database_with_events(
-        &mut self,
-        event_sender: Option<&EventSender>,
-    ) -> Result<(), Error> {
+    pub async fn update_vulnerability_database_with_events(&mut self) -> Result<(), Error> {
+        let event_sender = self.event_sender.as_ref();
         self.vulndb.update_with_events(event_sender).await
     }
 
@@ -178,5 +199,11 @@ impl AuditSystem {
     /// Returns an error if the database freshness check fails.
     pub async fn check_database_freshness(&self) -> Result<bool, Error> {
         self.vulndb.is_fresh().await
+    }
+}
+
+impl EventEmitter for AuditSystem {
+    fn event_sender(&self) -> Option<&EventSender> {
+        self.event_sender.as_ref()
     }
 }
