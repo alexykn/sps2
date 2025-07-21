@@ -44,7 +44,7 @@ impl BuildEnvironment {
         // Include installed packages to check before repository resolution
         resolution_context = resolution_context.with_installed_packages(installed_packages);
 
-        let resolution = resolver.resolve_with_sat(resolution_context, None).await?;
+        let resolution = resolver.resolve_with_sat(resolution_context).await?;
 
         // Install build dependencies to deps prefix
         for node in resolution.packages_in_order() {

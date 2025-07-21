@@ -736,7 +736,7 @@ mod tests {
 
         let index = IndexManager::new(&store_dir);
         let net = NetClient::new(sps2_net::NetConfig::default()).unwrap();
-        let resolver = Resolver::new(index.clone());
+        let resolver = Resolver::with_events(index.clone(), tx.clone());
         let builder = Builder::new();
 
         let ctx = OpsContextBuilder::new()
@@ -773,7 +773,7 @@ mod tests {
 
         let index = IndexManager::new(&store_dir);
         let net = NetClient::new(sps2_net::NetConfig::default()).unwrap();
-        let resolver = Resolver::new(index.clone());
+        let resolver = Resolver::with_events(index.clone(), tx.clone());
         let builder = Builder::new();
 
         let mut ctx = OpsContextBuilder::new()
@@ -810,7 +810,7 @@ mod tests {
 
         let index = IndexManager::new(&store_dir);
         let net = NetClient::new(sps2_net::NetConfig::default()).unwrap();
-        let resolver = Resolver::new(index.clone());
+        let resolver = Resolver::with_events(index.clone(), tx.clone());
         let builder = Builder::new();
 
         let ctx = OpsContextBuilder::new()
@@ -891,7 +891,7 @@ mod tests {
 
         let index = IndexManager::new(&store_dir);
         let net = NetClient::new(sps2_net::NetConfig::default()).unwrap();
-        let resolver = Resolver::new(index.clone());
+        let resolver = Resolver::with_events(index.clone(), tx.clone());
         let builder = Builder::new();
 
         let ctx = OpsContextBuilder::new()

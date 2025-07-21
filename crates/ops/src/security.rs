@@ -65,7 +65,10 @@ pub async fn audit(
     severity_threshold: sps2_audit::Severity,
 ) -> Result<sps2_audit::AuditReport, Error> {
     // Create audit system
-    let audit_system = sps2_audit::AuditSystem::new(sps2_audit::VulnDbManager::default_path())?;
+    let audit_system = sps2_audit::AuditSystem::with_events(
+        sps2_audit::VulnDbManager::default_path(),
+        ctx.tx.clone(),
+    )?;
 
     // Configure scan options
     let scan_options = sps2_audit::ScanOptions::new()
@@ -118,7 +121,7 @@ pub async fn audit(
     } else {
         // Scan all packages
         audit_system
-            .scan_all_packages(&ctx.state, &ctx.store, scan_options, Some(ctx.tx.clone()))
+            .scan_all_packages(&ctx.state, &ctx.store, scan_options)
             .await?
     };
 

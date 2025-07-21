@@ -165,11 +165,7 @@ impl InstallOperation {
             count: context.packages.len() + context.local_files.len(),
         });
 
-        let resolution = match self
-            .resolver
-            .resolve_with_sat(resolution_context, context.event_sender.as_ref())
-            .await
-        {
+        let resolution = match self.resolver.resolve_with_sat(resolution_context).await {
             Ok(result) => result,
             Err(e) => {
                 // Emit helpful error event for resolution failures

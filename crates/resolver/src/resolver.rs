@@ -7,7 +7,7 @@ use crate::{
 };
 use semver::Version;
 use sps2_errors::{Error, PackageError};
-use sps2_events::EventSender;
+use sps2_events::{EventEmitter, EventSender};
 use sps2_index::{IndexManager, VersionEntry};
 use sps2_manifest::Manifest;
 use sps2_types::package::PackageSpec;
@@ -31,13 +31,27 @@ struct TransitiveDependencyParams<'a> {
 pub struct Resolver {
     /// Package index manager
     index: IndexManager,
+    /// Event sender for progress and status updates
+    event_sender: Option<EventSender>,
 }
 
 impl Resolver {
     /// Create new resolver with index manager
     #[must_use]
     pub fn new(index: IndexManager) -> Self {
-        Self { index }
+        Self {
+            index,
+            event_sender: None,
+        }
+    }
+
+    /// Create new resolver with index manager and event sender
+    #[must_use]
+    pub fn with_events(index: IndexManager, event_sender: EventSender) -> Self {
+        Self {
+            index,
+            event_sender: Some(event_sender),
+        }
     }
 
     /// Resolve dependencies using SAT solver for more accurate resolution
@@ -55,7 +69,6 @@ impl Resolver {
     pub async fn resolve_with_sat(
         &self,
         context: ResolutionContext,
-        event_sender: Option<&EventSender>,
     ) -> Result<ResolutionResult, Error> {
         use tokio::time::{timeout, Duration};
 
@@ -141,7 +154,7 @@ impl Resolver {
                 self.process_transitive_dependencies(&mut problem, &mut version_entries);
 
                 // Solve and convert to dependency graph
-                let solution = crate::sat::solve_dependencies(problem, event_sender).await?;
+                let solution = crate::sat::solve_dependencies(problem, self.event_sender()).await?;
                 let sat_graph =
                     Self::create_dependency_graph_from_solution(&solution, &version_entries)?;
 
@@ -633,5 +646,11 @@ impl Resolver {
         }
 
         Ok(url.to_string())
+    }
+}
+
+impl EventEmitter for Resolver {
+    fn event_sender(&self) -> Option<&EventSender> {
+        self.event_sender.as_ref()
     }
 }
