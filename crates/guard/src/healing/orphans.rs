@@ -2,9 +2,9 @@
 
 use crate::types::{OrphanedFileAction, OrphanedFileCategory};
 use sps2_errors::{Error, OpsError};
-use sps2_events::{Event, EventSender};
+use sps2_events::{EventSender, EventSenderExt};
 use sps2_state::StateManager;
-use std::collections::HashMap;
+
 use std::path::Path;
 
 /// Handle an orphaned file based on configuration and category
@@ -28,20 +28,14 @@ pub async fn handle_orphaned_file(
     let action = determine_orphaned_file_action(category, config);
 
     // Emit event about the action
-    let _ = tx.send(Event::DebugLog {
-        message: format!(
-            "Handling orphaned file: {file_path} (category: {category:?}, action: {action:?})"
-        ),
-        context: HashMap::default(),
-    });
+    tx.emit_debug(format!(
+        "Handling orphaned file: {file_path} (category: {category:?}, action: {action:?})"
+    ));
 
     match action {
         OrphanedFileAction::Preserve => {
             // Just log that we're preserving it
-            let _ = tx.send(Event::DebugLog {
-                message: format!("Preserving orphaned file: {file_path}"),
-                context: HashMap::default(),
-            });
+            tx.emit_debug(format!("Preserving orphaned file: {file_path}"));
             Ok(())
         }
         OrphanedFileAction::Remove => remove_orphaned_file(tx, &full_path, file_path).await,
@@ -99,12 +93,9 @@ pub async fn remove_orphaned_file(
             Ok(mut entries) => {
                 if entries.next_entry().await?.is_some() {
                     // Directory not empty, preserve it
-                    let _ = tx.send(Event::DebugLog {
-                        message: format!(
-                            "Preserving non-empty orphaned directory: {relative_path}"
-                        ),
-                        context: HashMap::default(),
-                    });
+                    tx.emit_debug(format!(
+                        "Preserving non-empty orphaned directory: {relative_path}"
+                    ));
                     return Ok(());
                 }
                 // Directory is empty, safe to remove
@@ -130,10 +121,7 @@ pub async fn remove_orphaned_file(
             })?;
     }
 
-    let _ = tx.send(Event::DebugLog {
-        message: format!("Removed orphaned file: {relative_path}"),
-        context: HashMap::default(),
-    });
+    tx.emit_debug(format!("Removed orphaned file: {relative_path}"));
 
     Ok(())
 }
@@ -165,13 +153,10 @@ pub async fn backup_and_remove_orphaned_file(
             ),
         })?;
 
-    let _ = tx.send(Event::DebugLog {
-        message: format!(
-            "Backed up orphaned file: {relative_path} -> {}",
-            backup_path.display()
-        ),
-        context: HashMap::default(),
-    });
+    tx.emit_debug(format!(
+        "Backed up orphaned file: {relative_path} -> {}",
+        backup_path.display()
+    ));
 
     Ok(())
 }

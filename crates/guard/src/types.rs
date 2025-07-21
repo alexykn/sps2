@@ -2,6 +2,7 @@
 
 use sps2_config::DiscrepancyHandling;
 use sps2_errors::{DiscrepancyContext, DiscrepancySeverity, RecommendedAction};
+use sps2_events::{EventEmitter, EventSender};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use uuid::Uuid;
@@ -571,6 +572,12 @@ pub struct HealingContext<'a> {
     pub store: &'a sps2_store::PackageStore,
     /// Event sender for progress reporting
     pub tx: &'a sps2_events::EventSender,
+}
+
+impl<'a> EventEmitter for HealingContext<'a> {
+    fn event_sender(&self) -> Option<&EventSender> {
+        Some(self.tx)
+    }
 }
 
 /// Policy for handling symlinks during verification

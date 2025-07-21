@@ -7,7 +7,7 @@ use crate::types::{
 };
 use crate::verification;
 use sps2_errors::Error;
-use sps2_events::{Event, EventSender};
+use sps2_events::{Event, EventEmitter, EventSender};
 use sps2_hash::Hash;
 use sps2_state::{queries, PackageFileEntry, StateManager};
 use sps2_store::PackageStore;
@@ -254,6 +254,12 @@ pub struct StateVerificationGuard {
     config: GuardConfig,
 }
 
+impl EventEmitter for StateVerificationGuard {
+    fn event_sender(&self) -> Option<&EventSender> {
+        Some(&self.tx)
+    }
+}
+
 impl StateVerificationGuard {
     /// Create a new StateVerificationGuard
     ///
@@ -344,7 +350,7 @@ impl StateVerificationGuard {
                 error_ctx.emit_error_summary();
             }
             Err(_) => {
-                let _ = self.tx.send(Event::GuardVerificationFailed {
+                self.emit_event(Event::GuardVerificationFailed {
                     operation_id: error_ctx.operation_id().to_string(),
                     error: "Verification operation failed".to_string(),
                     packages_verified: 0,
@@ -369,7 +375,7 @@ impl StateVerificationGuard {
         let state_id = self.state_manager.get_active_state().await?;
 
         // Emit verification started event
-        let _ = self.tx.send(Event::DebugLog {
+        self.emit_event(Event::DebugLog {
             message: format!(
                 "Starting scoped state verification for state {state_id} (scope: {scope:?})"
             ),
@@ -382,7 +388,7 @@ impl StateVerificationGuard {
                 .await?;
 
         // Always use parallel verification (better performance with batched DB writes)
-        let _ = self.tx.send(Event::DebugLog {
+        self.emit_event(Event::DebugLog {
             message: format!(
                 "Using parallel verification for {} packages in scope {:?} (max concurrent: {})",
                 packages_to_verify.len(),
@@ -456,7 +462,7 @@ impl StateVerificationGuard {
         let manual_intervention_count =
             verification_result.discrepancies.len() - auto_heal_count - confirmation_required;
 
-        let _ = self.tx.send(Event::GuardHealingStarted {
+        self.emit_event(Event::GuardHealingStarted {
             operation_id: healing_ctx_events.operation_id().to_string(),
             discrepancies_count: verification_result.discrepancies.len(),
             auto_heal_count,
@@ -479,7 +485,7 @@ impl StateVerificationGuard {
         let discrepancies = verification_result.discrepancies.clone();
         for (idx, discrepancy) in discrepancies.iter().enumerate() {
             // Emit healing progress
-            let _ = self.tx.send(Event::GuardHealingProgress {
+            self.emit_event(Event::GuardHealingProgress {
                 operation_id: healing_ctx_events.operation_id().to_string(),
                 completed: idx,
                 total: discrepancies.len(),
@@ -538,14 +544,14 @@ impl StateVerificationGuard {
                     {
                         Ok(()) => {
                             healed_count += 1;
-                            let _ = self.tx.send(Event::DebugLog {
+                            self.emit_event(Event::DebugLog {
                                 message: format!("Successfully handled orphaned file: {file_path} (category: {category:?})"),
                                 context: HashMap::default(),
                             });
                         }
                         Err(e) => {
                             failed_healings.push(discrepancy.clone());
-                            let _ = self.tx.send(Event::DebugLog {
+                            self.emit_event(Event::DebugLog {
                                 message: format!("Failed to handle orphaned file {file_path}: {e}"),
                                 context: HashMap::default(),
                             });
@@ -571,14 +577,14 @@ impl StateVerificationGuard {
                     {
                         Ok(()) => {
                             healed_count += 1;
-                            let _ = self.tx.send(Event::DebugLog {
+                            self.emit_event(Event::DebugLog {
                                 message: format!("Successfully restored corrupted file: {file_path} for {package_name}-{package_version}"),
                                 context: HashMap::default(),
                             });
                         }
                         Err(e) => {
                             failed_healings.push(discrepancy.clone());
-                            let _ = self.tx.send(Event::DebugLog {
+                            self.emit_event(Event::DebugLog {
                                 message: format!(
                                     "Failed to restore corrupted file {file_path}: {e}"
                                 ),
@@ -608,7 +614,7 @@ impl StateVerificationGuard {
         verification_result.duration_ms = duration_ms;
 
         // Emit healing completion event
-        let _ = self.tx.send(Event::GuardHealingCompleted {
+        self.emit_event(Event::GuardHealingCompleted {
             operation_id: healing_ctx_events.operation_id().to_string(),
             healed_count,
             failed_count: failed_healings.len(),
@@ -668,7 +674,7 @@ impl StateVerificationGuard {
         let manual_intervention_count =
             verification_result.discrepancies.len() - auto_heal_count - confirmation_required;
 
-        let _ = self.tx.send(Event::GuardHealingStarted {
+        self.emit_event(Event::GuardHealingStarted {
             operation_id: healing_ctx_events.operation_id().to_string(),
             discrepancies_count: verification_result.discrepancies.len(),
             auto_heal_count,
@@ -740,14 +746,14 @@ impl StateVerificationGuard {
                     {
                         Ok(()) => {
                             healed_count += 1;
-                            let _ = self.tx.send(Event::DebugLog {
+                            self.emit_event(Event::DebugLog {
                                 message: format!("Successfully handled orphaned file: {file_path} (category: {category:?})"),
                                 context: HashMap::default(),
                             });
                         }
                         Err(e) => {
                             failed_healings.push(discrepancy.clone());
-                            let _ = self.tx.send(Event::DebugLog {
+                            self.emit_event(Event::DebugLog {
                                 message: format!("Failed to handle orphaned file {file_path}: {e}"),
                                 context: HashMap::default(),
                             });
@@ -773,14 +779,14 @@ impl StateVerificationGuard {
                     {
                         Ok(()) => {
                             healed_count += 1;
-                            let _ = self.tx.send(Event::DebugLog {
+                            self.emit_event(Event::DebugLog {
                                 message: format!("Successfully restored corrupted file: {file_path} for {package_name}-{package_version}"),
                                 context: HashMap::default(),
                             });
                         }
                         Err(e) => {
                             failed_healings.push(discrepancy.clone());
-                            let _ = self.tx.send(Event::DebugLog {
+                            self.emit_event(Event::DebugLog {
                                 message: format!(
                                     "Failed to restore corrupted file {file_path}: {e}"
                                 ),
@@ -803,7 +809,7 @@ impl StateVerificationGuard {
         verification_result.duration_ms = duration_ms;
 
         // Emit healing complete event
-        let _ = self.tx.send(Event::DebugLog {
+        self.emit_event(Event::DebugLog {
             message: format!(
                 "Scoped healing completed: {} healed, {} failed in {}ms",
                 healed_count,
@@ -837,10 +843,7 @@ impl StateVerificationGuard {
         let _state_id = self.state_manager.get_active_state().await?;
 
         // Stage 1: Quick verification
-        let _ = self.tx.send(Event::DebugLog {
-            message: "Progressive verification: Starting with Quick level".to_string(),
-            context: HashMap::default(),
-        });
+        self.emit_debug("Progressive verification: Starting with Quick level");
 
         let original_level = self.config.verification_level;
         self.config.verification_level = VerificationLevel::Quick;
@@ -849,7 +852,7 @@ impl StateVerificationGuard {
 
         if quick_result.is_valid {
             // No issues found - we're done!
-            let _ = self.tx.send(Event::DebugLog {
+            self.emit_event(Event::DebugLog {
                 message:
                     "Progressive verification: Quick verification passed, no escalation needed"
                         .to_string(),
@@ -860,7 +863,7 @@ impl StateVerificationGuard {
 
         // Stage 2: Standard verification (if issues found and original level >= Standard)
         if original_level >= VerificationLevel::Standard {
-            let _ = self.tx.send(Event::DebugLog {
+            self.emit_event(Event::DebugLog {
                 message: format!(
                     "Progressive verification: Quick found {} issues, escalating to Standard",
                     quick_result.discrepancies.len()
@@ -879,7 +882,7 @@ impl StateVerificationGuard {
 
             // Stage 3: Full verification (if original level is Full and we found serious issues)
             if self.needs_full_verification(&standard_result) {
-                let _ = self.tx.send(Event::DebugLog {
+                self.emit_event(Event::DebugLog {
                     message: format!(
                         "Progressive verification: Standard found {} issues, escalating to Full",
                         standard_result.discrepancies.len()
@@ -893,7 +896,7 @@ impl StateVerificationGuard {
 
                 let duration_ms =
                     u64::try_from(start_time.elapsed().as_millis()).unwrap_or(u64::MAX);
-                let _ = self.tx.send(Event::DebugLog {
+                self.emit_event(Event::DebugLog {
                     message: format!(
                         "Progressive verification completed with Full level in {duration_ms}ms"
                     ),
@@ -931,7 +934,7 @@ impl StateVerificationGuard {
         let live_path = self.state_manager.live_path().to_path_buf();
 
         // Emit verification started event
-        let _ = self.tx.send(Event::DebugLog {
+        self.emit_event(Event::DebugLog {
             message: format!(
                 "Starting parallel verification for {} packages",
                 packages.len()
@@ -940,10 +943,7 @@ impl StateVerificationGuard {
         });
 
         // Pre-fetch all data from database to avoid locking issues
-        let _ = self.tx.send(Event::DebugLog {
-            message: "Pre-fetching package data and verification cache...".to_string(),
-            context: HashMap::default(),
-        });
+        self.emit_debug("Pre-fetching package data and verification cache...");
 
         let mut package_data_list = Vec::new();
         let mut all_file_hashes = HashSet::new();
@@ -994,7 +994,7 @@ impl StateVerificationGuard {
 
         db_tx.commit().await?;
 
-        let _ = self.tx.send(Event::DebugLog {
+        self.emit_event(Event::DebugLog {
             message: format!(
                 "Pre-fetched data for {} packages with {} unique file hashes",
                 package_data_list.len(),
@@ -1061,7 +1061,7 @@ impl StateVerificationGuard {
                     total_cache_hits += package_result.cache_hits;
                     total_cache_misses += package_result.cache_misses;
 
-                    let _ = self.tx.send(Event::DebugLog {
+                    self.emit_event(Event::DebugLog {
                         message: format!(
                             "Successfully verified package {package_name}-{package_version} ({files_count} files)"
                         ),
@@ -1070,13 +1070,13 @@ impl StateVerificationGuard {
                 }
                 Ok(Err(e)) => {
                     // Even if verification fails, we should have tracked files to avoid false orphans
-                    let _ = self.tx.send(Event::DebugLog {
+                    self.emit_event(Event::DebugLog {
                         message: format!("Package verification error: {e}"),
                         context: HashMap::default(),
                     });
                 }
                 Err(e) => {
-                    let _ = self.tx.send(Event::DebugLog {
+                    self.emit_event(Event::DebugLog {
                         message: format!("Verification task panicked: {e}"),
                         context: HashMap::default(),
                     });
@@ -1086,7 +1086,7 @@ impl StateVerificationGuard {
 
         // Apply all mtime updates in a single transaction
         if !all_mtime_updates.is_empty() {
-            let _ = self.tx.send(Event::DebugLog {
+            self.emit_event(Event::DebugLog {
                 message: format!("Applying {} mtime updates...", all_mtime_updates.len()),
                 context: HashMap::default(),
             });
@@ -1099,7 +1099,7 @@ impl StateVerificationGuard {
             }
             db_tx.commit().await?;
 
-            let _ = self.tx.send(Event::DebugLog {
+            self.emit_event(Event::DebugLog {
                 message: format!(
                     "Applied {} mtime updates to database",
                     all_mtime_updates.len()
@@ -1148,7 +1148,7 @@ impl StateVerificationGuard {
         };
 
         // Emit completion event
-        let _ = self.tx.send(Event::DebugLog {
+        self.emit_event(Event::DebugLog {
             message: format!(
                 "Parallel verification completed: {}/{} packages verified in {}ms with {} discrepancies (cache: {:.1}% hit rate, {}/{} hits/total)",
                 successful_verifications, total_packages, duration_ms, all_discrepancies.len(),

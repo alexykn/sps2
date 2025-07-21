@@ -2,11 +2,11 @@
 
 use crate::types::HealingContext;
 use sps2_errors::{Error, OpsError};
-use sps2_events::{Event, EventSender};
+use sps2_events::{EventEmitter, EventSender};
 use sps2_hash::Hash;
 use sps2_state::queries;
 use sps2_store::StoredPackage;
-use std::collections::HashMap;
+
 use std::path::Path;
 
 /// Restore a missing file from the package store
@@ -216,10 +216,9 @@ async fn restore_missing_file_impl(
     );
 
     // Clear the mtime trackers for this package so the healed file is re-verified
-    let _ = ctx.tx.send(Event::DebugLog {
-        message: format!("About to clear mtime trackers for {package_name}-{package_version}"),
-        context: HashMap::default(),
-    });
+    ctx.emit_debug(format!(
+        "About to clear mtime trackers for {package_name}-{package_version}"
+    ));
 
     let mut state_tx = ctx.state_manager.begin_transaction().await?;
     let cleared = sps2_state::queries::clear_package_mtime_trackers(
@@ -230,12 +229,9 @@ async fn restore_missing_file_impl(
     .await?;
     state_tx.commit().await?;
 
-    let _ = ctx.tx.send(Event::DebugLog {
-        message: format!(
-            "Cleared {cleared} mtime tracker entries for {package_name}-{package_version}"
-        ),
-        context: HashMap::default(),
-    });
+    ctx.emit_debug(format!(
+        "Cleared {cleared} mtime tracker entries for {package_name}-{package_version}"
+    ));
 
     Ok(())
 }
@@ -260,29 +256,22 @@ pub async fn heal_corrupted_file(
     let full_path = live_path.join(file_path);
 
     // Debug logging
-    let _ = ctx.tx.send(Event::DebugLog {
-        message: format!(
-            "Starting heal_corrupted_file for {file_path} (expected: {expected_hash}, actual: {actual_hash})"
-        ),
-        context: HashMap::default(),
-    });
+    ctx.emit_debug(format!(
+        "Starting heal_corrupted_file for {file_path} (expected: {expected_hash}, actual: {actual_hash})"
+    ));
 
     // First, check if this might be a legitimate user modification
     if is_user_modified_file(ctx.tx, &full_path, file_path).await? {
         // Preserve user modifications
-        let _ = ctx.tx.send(Event::DebugLog {
-            message: format!(
-                "Preserving user-modified file: {file_path} (hash mismatch: expected {expected_hash}, got {actual_hash})"
-            ),
-            context: HashMap::default(),
-        });
+        ctx.emit_debug(format!(
+            "Preserving user-modified file: {file_path} (hash mismatch: expected {expected_hash}, got {actual_hash})"
+        ));
         return Ok(());
     }
 
-    let _ = ctx.tx.send(Event::DebugLog {
-        message: format!("File {file_path} is not user-modified, proceeding with healing"),
-        context: HashMap::default(),
-    });
+    ctx.emit_debug(format!(
+        "File {file_path} is not user-modified, proceeding with healing"
+    ));
 
     // Get package from database to find store location
     let mut state_tx = ctx.state_manager.begin_transaction().await?;
@@ -429,12 +418,9 @@ pub async fn heal_corrupted_file(
     state_tx.commit().await?;
 
     // Emit success event
-    let _ = ctx.tx.send(Event::DebugLog {
-        message: format!(
-            "Restored corrupted file: {file_path}, cleared {cleared} mtime tracker entries"
-        ),
-        context: HashMap::default(),
-    });
+    ctx.emit_debug(format!(
+        "Restored corrupted file: {file_path}, cleared {cleared} mtime tracker entries"
+    ));
 
     Ok(())
 }
@@ -451,12 +437,9 @@ pub async fn is_user_modified_file(
     // Check if this is a symlink - symlinks are the only allowed user modifications
     if let Ok(metadata) = tokio::fs::symlink_metadata(full_path).await {
         if metadata.is_symlink() {
-            let _ = tx.send(Event::DebugLog {
-                message: format!(
-                    "File {relative_path} is a symlink - preserving user modification"
-                ),
-                context: HashMap::default(),
-            });
+            tx.emit_debug(format!(
+                "File {relative_path} is a symlink - preserving user modification"
+            ));
             return Ok(true);
         }
     }
