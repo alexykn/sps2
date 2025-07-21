@@ -15,6 +15,7 @@ mod yaml;
 pub use source::SourceLocation;
 
 use sps2_errors::Error;
+use sps2_events::{EventEmitter, EventSender};
 
 /// Type alias for results in this crate
 pub type Result<T> = std::result::Result<T, Error>;
@@ -52,6 +53,12 @@ pub struct Drafter {
     event_tx: Option<sps2_events::EventSender>,
 }
 
+impl EventEmitter for Drafter {
+    fn event_sender(&self) -> Option<&EventSender> {
+        self.event_tx.as_ref()
+    }
+}
+
 impl Drafter {
     /// Create a new drafter
     #[must_use]
@@ -79,12 +86,7 @@ impl Drafter {
     /// - Build system detection fails
     /// - Template rendering fails
     pub async fn run(&self) -> Result<DraftResult> {
-        // Send progress event
-        if let Some(tx) = &self.event_tx {
-            let _ = tx.send(sps2_events::Event::OperationStarted {
-                operation: "Starting recipe draft generation".to_string(),
-            });
-        }
+        self.emit_operation_started("Starting recipe draft generation");
 
         // Prepare source directory
         let (_temp_dir, source_dir) = self.prepare_source().await?;
