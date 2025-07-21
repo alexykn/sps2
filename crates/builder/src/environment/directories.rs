@@ -2,7 +2,7 @@
 
 use super::core::BuildEnvironment;
 use sps2_errors::{BuildError, Error};
-use sps2_events::Event;
+use sps2_events::{Event, EventEmitter};
 use tokio::fs;
 
 impl BuildEnvironment {
@@ -68,8 +68,6 @@ impl BuildEnvironment {
 
     /// Send event if sender is available
     pub(crate) fn send_event(&self, event: Event) {
-        if let Some(sender) = &self.context.event_sender {
-            let _ = sender.send(event);
-        }
+        self.emit_event(event);
     }
 }

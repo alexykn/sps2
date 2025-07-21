@@ -6,7 +6,7 @@
 //! to speed up repeated builds and avoid unnecessary recompilation.
 
 use sps2_errors::Error;
-use sps2_events::{Event, EventSender};
+use sps2_events::{Event, EventEmitter, EventSender};
 use sps2_hash::Hash;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -24,6 +24,12 @@ pub struct BuildCache {
     compiler_cache: Arc<CompilerCache>,
     stats: Arc<RwLock<CacheStatistics>>,
     event_sender: Option<sps2_events::EventSender>,
+}
+
+impl EventEmitter for BuildCache {
+    fn event_sender(&self) -> Option<&EventSender> {
+        self.event_sender.as_ref()
+    }
 }
 
 impl BuildCache {
@@ -84,12 +90,10 @@ impl BuildCache {
         }
 
         // Send cache event
-        if let Some(sender) = &self.event_sender {
-            let _ = sender.send(Event::BuildCacheUpdated {
-                cache_key: cache_key.to_string(),
-                artifacts_count: stats.artifacts_cached.try_into().unwrap_or(usize::MAX),
-            });
-        }
+        self.emit_event(Event::BuildCacheUpdated {
+            cache_key: cache_key.to_string(),
+            artifacts_count: stats.artifacts_cached.try_into().unwrap_or(usize::MAX),
+        });
 
         Ok(())
     }
@@ -119,33 +123,27 @@ impl BuildCache {
                 } else {
                     // Cache entry is stale
                     stats.cache_misses += 1;
-                    if let Some(sender) = &self.event_sender {
-                        let _ = sender.send(Event::BuildCacheMiss {
-                            cache_key: cache_key.to_string(),
-                            reason: "Artifact missing from store".to_string(),
-                        });
-                    }
+                    self.emit_event(Event::BuildCacheMiss {
+                        cache_key: cache_key.to_string(),
+                        reason: "Artifact missing from store".to_string(),
+                    });
                     return Ok(None);
                 }
             }
 
             stats.cache_hits += 1;
-            if let Some(sender) = &self.event_sender {
-                let _ = sender.send(Event::BuildCacheHit {
-                    cache_key: cache_key.to_string(),
-                    artifacts_count: valid_artifacts.len(),
-                });
-            }
+            self.emit_event(Event::BuildCacheHit {
+                cache_key: cache_key.to_string(),
+                artifacts_count: valid_artifacts.len(),
+            });
 
             Ok(Some(valid_artifacts))
         } else {
             stats.cache_misses += 1;
-            if let Some(sender) = &self.event_sender {
-                let _ = sender.send(Event::BuildCacheMiss {
-                    cache_key: cache_key.to_string(),
-                    reason: "No cache entry found".to_string(),
-                });
-            }
+            self.emit_event(Event::BuildCacheMiss {
+                cache_key: cache_key.to_string(),
+                reason: "No cache entry found".to_string(),
+            });
             Ok(None)
         }
     }
@@ -185,12 +183,10 @@ impl BuildCache {
             let removed = self.store.evict_lru(current_size - max_size).await?;
             stats.evictions += removed as u64;
 
-            if let Some(sender) = &self.event_sender {
-                let _ = sender.send(Event::BuildCacheCleaned {
-                    removed_items: removed,
-                    freed_bytes: current_size - self.store.get_total_size().await?,
-                });
-            }
+            self.emit_event(Event::BuildCacheCleaned {
+                removed_items: removed,
+                freed_bytes: current_size - self.store.get_total_size().await?,
+            });
         }
 
         Ok(())

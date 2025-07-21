@@ -2,6 +2,7 @@
 
 use crate::BuildContext;
 use sps2_errors::Error;
+use sps2_events::{EventEmitter, EventSender, EventSenderExt};
 use sps2_install::Installer;
 use sps2_net::NetClient;
 use sps2_resolver::Resolver;
@@ -42,6 +43,12 @@ pub struct BuildEnvironment {
     pub(crate) fix_permissions_request: Option<Vec<String>>,
     /// Current isolation level
     pub(crate) isolation_level: crate::environment::IsolationLevel,
+}
+
+impl EventEmitter for BuildEnvironment {
+    fn event_sender(&self) -> Option<&EventSender> {
+        self.context.event_sender()
+    }
 }
 
 impl BuildEnvironment {
@@ -275,7 +282,7 @@ impl BuildEnvironment {
             IsolationLevel::None => {
                 // No isolation - warn the user
                 if let Some(sender) = event_sender {
-                    let _ = sender.send(sps2_events::Event::Warning {
+                    sender.emit(sps2_events::Event::Warning {
                         message: "[WARNING] BUILD ISOLATION DISABLED! This may lead to non-reproducible builds and potential security risks.".to_string(),
                         context: Some("isolation".to_string()),
                     });

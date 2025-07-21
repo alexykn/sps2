@@ -8,7 +8,7 @@
 
 use super::core::BuildEnvironment;
 use sps2_errors::{BuildError, Error};
-use sps2_events::{Event, EventSender};
+use sps2_events::{Event, EventSender, EventSenderExt};
 use std::collections::{HashMap, HashSet};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -74,7 +74,7 @@ impl BuildEnvironment {
     ) -> Result<(), Error> {
         // Send event for isolation start
         if let Some(sender) = event_sender {
-            let _ = sender.send(Event::BuildStepStarted {
+            sender.emit(Event::BuildStepStarted {
                 package: self.context.name.clone(),
                 step: "hermetic_isolation".to_string(),
             });
@@ -109,7 +109,7 @@ impl BuildEnvironment {
 
         // Send completion event
         if let Some(sender) = event_sender {
-            let _ = sender.send(Event::BuildStepCompleted {
+            sender.emit(Event::BuildStepCompleted {
                 package: self.context.name.clone(),
                 step: "hermetic_isolation".to_string(),
             });

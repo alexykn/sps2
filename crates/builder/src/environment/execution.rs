@@ -3,7 +3,7 @@
 use super::{core::BuildEnvironment, types::BuildCommandResult};
 use crate::BuildContext;
 use sps2_errors::{BuildError, Error};
-use sps2_events::Event;
+use sps2_events::{Event, EventEmitter};
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Stdio;
@@ -202,19 +202,17 @@ impl BuildEnvironment {
     /// Send build output via events instead of direct printing
     /// Note: `is_error` should only be true for actual errors, not stderr output
     fn send_build_output(context: &BuildContext, line: &str, is_error: bool) {
-        if let Some(sender) = &context.event_sender {
-            let _ = sender.send(if is_error {
-                Event::Error {
-                    message: line.to_string(),
-                    details: Some("Build stderr".to_string()),
-                }
-            } else {
-                Event::BuildStepOutput {
-                    package: context.name.clone(),
-                    line: line.to_string(),
-                }
-            });
-        }
+        context.emit_event(if is_error {
+            Event::Error {
+                message: line.to_string(),
+                details: Some("Build stderr".to_string()),
+            }
+        } else {
+            Event::BuildStepOutput {
+                package: context.name.clone(),
+                line: line.to_string(),
+            }
+        });
     }
 
     /// Check if libtool --finish needs to be run based on command output

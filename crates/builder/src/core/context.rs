@@ -1,6 +1,6 @@
 //! Build context for package building
 
-use sps2_events::EventSender;
+use sps2_events::{EventEmitter, EventSender};
 use sps2_types::Version;
 use std::path::PathBuf;
 
@@ -23,6 +23,12 @@ pub struct BuildContext {
     pub event_sender: Option<EventSender>,
     /// Path to the generated .sp package (set after package creation)
     pub package_path: Option<PathBuf>,
+}
+
+impl EventEmitter for BuildContext {
+    fn event_sender(&self) -> Option<&EventSender> {
+        self.event_sender.as_ref()
+    }
 }
 
 impl BuildContext {
