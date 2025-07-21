@@ -4,7 +4,7 @@
 //! used throughout the staging module.
 
 use sps2_errors::{Error, InstallError};
-use sps2_events::{Event, EventSender};
+use sps2_events::{Event, EventSender, EventSenderExt};
 use std::path::Path;
 use tokio::fs;
 
@@ -44,7 +44,7 @@ pub async fn count_files(path: &Path) -> Result<usize, Error> {
 pub async fn debug_list_directory_contents(path: &Path, sender: &EventSender) {
     if let Ok(mut entries) = tokio::fs::read_dir(path).await {
         while let Ok(Some(entry)) = entries.next_entry().await {
-            let _ = sender.send(Event::DebugLog {
+            sender.emit(Event::DebugLog {
                 message: format!("DEBUG: Found file: {}", entry.file_name().to_string_lossy()),
                 context: std::collections::HashMap::new(),
             });

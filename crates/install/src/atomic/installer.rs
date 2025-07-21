@@ -5,7 +5,7 @@ use std::sync::Arc;
 // Removed Python venv handling - Python packages are now handled like regular packages
 use crate::{InstallContext, InstallResult, PreparedPackage, StagingManager};
 use sps2_errors::{Error, InstallError};
-use sps2_events::{Event, EventEmitter, EventSender};
+use sps2_events::{Event, EventEmitter, EventSender, EventSenderExt};
 
 use sps2_resolver::{PackageId, ResolvedNode};
 use sps2_state::{PackageRef, StateManager};
@@ -367,7 +367,7 @@ impl AtomicInstaller {
 
         // Link files from store to staging
         if let Some(sender) = &transition.event_sender {
-            let _ = sender.send(Event::DebugLog {
+            sender.emit(Event::DebugLog {
                 message: format!("Linking package {} to staging", package_id.name),
                 context: std::collections::HashMap::new(),
             });
@@ -398,7 +398,7 @@ impl AtomicInstaller {
 
         // Debug what was linked
         if let Some(sender) = &transition.event_sender {
-            let _ = sender.send(Event::DebugLog {
+            sender.emit(Event::DebugLog {
                 message: format!(
                     "Linked {} files/directories for package {}",
                     file_paths.len(),
