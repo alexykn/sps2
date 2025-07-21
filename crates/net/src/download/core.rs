@@ -10,7 +10,7 @@ use super::stream::{download_file_simple, stream_download};
 use super::validation::{validate_response, validate_url};
 use crate::client::{NetClient, NetConfig};
 use sps2_errors::{Error, NetworkError};
-use sps2_events::{Event, EventSender, EventSenderExt};
+use sps2_events::{AppEvent, EventSender, EventEmitter, DownloadEvent, GeneralEvent};
 use sps2_hash::Hash;
 use sps2_types::Version;
 use std::path::Path;
@@ -72,11 +72,11 @@ impl PackageDownloader {
     ) -> Result<PackageDownloadResult, Error> {
         let start_time = Instant::now();
 
-        tx.emit(Event::PackageDownloadStarted {
+        tx.emit(AppEvent::Download(DownloadEvent::PackageStarted {
             name: package_name.to_string(),
             version: version.clone(),
             url: package_url.to_string(),
-        });
+        }));
 
         // Create destination paths
         let package_filename = format!("{package_name}-{version}.sp");
@@ -105,19 +105,19 @@ impl PackageDownloader {
 
         let download_time = start_time.elapsed();
 
-        tx.emit(Event::PackageDownloaded {
+        tx.emit(AppEvent::Download(DownloadEvent::PackageCompleted {
             name: package_name.to_string(),
             version: version.clone(),
-        });
+        }));
 
         // Verify signature if available
         let signature_verified = if signature_path.is_some() {
             // TODO: Implement minisign verification once crypto support is added
-            tx.emit(Event::PackageSignatureDownloaded {
+            tx.emit(AppEvent::Download(DownloadEvent::SignatureCompleted {
                 name: package_name.to_string(),
                 version: version.clone(),
                 verified: false, // Placeholder until minisign verification is implemented
-            });
+            }));
             false
         } else {
             false
@@ -222,13 +222,13 @@ impl PackageDownloader {
                     // Calculate backoff delay with jitter
                     let delay = calculate_backoff_delay(&self.config.retry_config, retry_count);
 
-                    tx.emit(Event::DebugLog {
+                    tx.emit(AppEvent::General(GeneralEvent::DebugLog {
                         message: format!(
                             "Download failed, retrying in {delay:?} (attempt {retry_count}/{})...",
                             self.config.retry_config.max_retries
                         ),
                         context: std::collections::HashMap::new(),
-                    });
+                    }));
 
                     tokio::time::sleep(delay).await;
                 }
@@ -252,11 +252,12 @@ impl PackageDownloader {
         let resume_offset = get_resume_offset(&self.config, dest_path).await?;
 
         if resume_offset > 0 {
-            tx.emit(Event::DownloadResuming {
+            tx.emit(AppEvent::Download(DownloadEvent::Resuming {
                 url: url.to_string(),
-                offset: resume_offset,
+                resume_offset,
                 total_size: None,
-            });
+                attempts_so_far: 0,
+            }));
         }
 
         // Prepare request with range header if resuming
@@ -302,10 +303,13 @@ impl PackageDownloader {
             .into());
         }
 
-        tx.emit(Event::DownloadStarted {
+        tx.emit(AppEvent::Download(DownloadEvent::Started {
             url: url.to_string(),
-            size: Some(total_size),
-        });
+            package: None,
+            total_size: Some(total_size),
+            supports_resume: resume_offset == 0 || response.status() == reqwest::StatusCode::PARTIAL_CONTENT,
+            connection_time: Duration::from_millis(0), // TODO: Track actual connection time
+        }));
 
         // Download with streaming and progress
         let params = StreamParams {
@@ -317,10 +321,14 @@ impl PackageDownloader {
         let result =
             stream_download(&self.config, response, dest_path, resume_offset, &params).await?;
 
-        tx.emit(Event::DownloadCompleted {
+        tx.emit(AppEvent::Download(DownloadEvent::Completed {
             url: url.to_string(),
-            size: result.size,
-        });
+            package: None,
+            final_size: result.size,
+            total_time: Duration::from_millis(0), // TODO: Track actual total time
+            average_speed: 0.0, // TODO: Calculate from actual download time
+            hash: result.hash.to_string(),
+        }));
 
         Ok(result)
     }

@@ -94,6 +94,17 @@ pub enum GeneralEvent {
         delay_ms: u64,
         reason: String,
     },
+    
+    /// Dependency conflict detected during resolution
+    DependencyConflictDetected {
+        conflicting_packages: Vec<String>,
+        message: String,
+    },
+    
+    /// Suggestions for resolving dependency conflicts
+    DependencyConflictSuggestions {
+        suggestions: Vec<String>,
+    },
 }
 
 impl GeneralEvent {
