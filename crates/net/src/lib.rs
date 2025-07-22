@@ -16,7 +16,7 @@ pub use download::{
 };
 
 use sps2_errors::{Error, NetworkError};
-use sps2_events::{AppEvent, EventSender, EventEmitter, GeneralEvent};
+use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent};
 use sps2_hash::Hash;
 use std::path::Path;
 use url::Url;
@@ -48,7 +48,9 @@ pub async fn download_file(
 /// Returns an error if the HTTP request fails, the server returns an error status,
 /// or the response body cannot be decoded as text.
 pub async fn fetch_text(client: &NetClient, url: &str, tx: &EventSender) -> Result<String, Error> {
-    tx.emit(AppEvent::General(GeneralEvent::debug(format!("Fetching text from {url}"))));
+    tx.emit(AppEvent::General(GeneralEvent::debug(format!(
+        "Fetching text from {url}"
+    ))));
 
     let response = client.get(url).await?;
 
@@ -83,7 +85,9 @@ pub async fn fetch_text_conditional(
     etag: Option<&str>,
     tx: &EventSender,
 ) -> Result<Option<(String, Option<String>)>, Error> {
-    tx.emit(AppEvent::General(GeneralEvent::debug(format!("Fetching text from {url} with conditional request"))));
+    tx.emit(AppEvent::General(GeneralEvent::debug(format!(
+        "Fetching text from {url} with conditional request"
+    ))));
 
     let mut headers = Vec::new();
     if let Some(etag_value) = etag {
@@ -94,7 +98,9 @@ pub async fn fetch_text_conditional(
 
     // Handle 304 Not Modified
     if response.status() == reqwest::StatusCode::NOT_MODIFIED {
-        tx.emit(AppEvent::General(GeneralEvent::debug("Server returned 304 Not Modified - using cached content")));
+        tx.emit(AppEvent::General(GeneralEvent::debug(
+            "Server returned 304 Not Modified - using cached content",
+        )));
         return Ok(None);
     }
 
@@ -132,7 +138,9 @@ pub async fn fetch_bytes(
     url: &str,
     tx: &EventSender,
 ) -> Result<Vec<u8>, Error> {
-    tx.emit(AppEvent::General(GeneralEvent::debug(format!("Fetching bytes from {url}"))));
+    tx.emit(AppEvent::General(GeneralEvent::debug(format!(
+        "Fetching bytes from {url}"
+    ))));
 
     let response = client.get(url).await?;
 

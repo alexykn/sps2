@@ -5,7 +5,7 @@ use crate::stages::{BuildCommand, EnvironmentStep, PostStep, SourceStep};
 use crate::utils::events::send_event;
 use crate::{BuildCommandResult, BuildContext, BuildEnvironment, BuilderApi};
 use sps2_errors::Error;
-use sps2_events::Event;
+use sps2_events::AppEvent;
 use std::path::Path;
 
 /// Check if a file is an archive that should be extracted
@@ -317,7 +317,7 @@ async fn cleanup_directories(
     environment: &BuildEnvironment,
 ) -> Result<(), Error> {
     use crate::utils::events::send_event;
-    use sps2_events::Event;
+    use sps2_events::AppEvent;
     use std::collections::HashMap;
     use tokio::fs;
 

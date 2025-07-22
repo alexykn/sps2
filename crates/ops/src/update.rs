@@ -5,7 +5,7 @@
 
 use crate::{InstallReport, OpsCtx};
 use sps2_errors::Error;
-use sps2_events::{Event, EventEmitter};
+use sps2_events::{AppEvent, EventEmitter, UpdateEvent};
 use sps2_install::{InstallConfig, Installer, UpdateContext};
 use sps2_types::Version;
 use std::time::Instant;
@@ -21,13 +21,13 @@ use std::time::Instant;
 pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallReport, Error> {
     let start = Instant::now();
 
-    ctx.emit_event(Event::UpdateStarting {
+    ctx.emit_event(AppEvent::Update(UpdateEvent::Starting {
         packages: if package_names.is_empty() {
             vec!["all".to_string()]
         } else {
             package_names.to_vec()
         },
-    });
+    }));
 
     // Create installer
     let config = InstallConfig::default();
@@ -93,14 +93,14 @@ pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRep
         duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
     };
 
-    ctx.emit_event(Event::UpdateCompleted {
+    ctx.emit_event(AppEvent::Update(UpdateEvent::Completed {
         packages: result
             .updated_packages
             .iter()
             .map(|pkg| pkg.name.clone())
             .collect(),
         state_id: result.state_id,
-    });
+    }));
 
     Ok(report)
 }

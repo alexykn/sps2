@@ -8,9 +8,7 @@ pub enum RepoEvent {
     SyncStarting,
 
     /// Repository synchronization started with URL
-    SyncStarted {
-        url: String,
-    },
+    SyncStarted { url: String },
 
     /// Repository synchronization progress
     SyncProgress {
@@ -34,9 +32,7 @@ pub enum RepoEvent {
     },
 
     /// Index update starting
-    IndexUpdateStarting {
-        url: String,
-    },
+    IndexUpdateStarting { url: String },
 
     /// Index update progress
     IndexUpdateProgress {
@@ -53,15 +49,10 @@ pub enum RepoEvent {
     },
 
     /// Index update failed
-    IndexUpdateFailed {
-        url: String,
-        error: String,
-    },
+    IndexUpdateFailed { url: String, error: String },
 
     /// Repository validation started
-    ValidationStarted {
-        repository_count: usize,
-    },
+    ValidationStarted { repository_count: usize },
 
     /// Repository validation progress
     ValidationProgress {

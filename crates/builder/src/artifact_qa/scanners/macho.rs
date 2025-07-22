@@ -14,7 +14,7 @@ use object::{
     Endianness, FileKind,
 };
 use sps2_errors::Error;
-use sps2_events::Event;
+use sps2_events::AppEvent;
 
 pub struct MachOScanner;
 

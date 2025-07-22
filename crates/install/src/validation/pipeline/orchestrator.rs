@@ -77,12 +77,14 @@ impl ValidationOrchestrator {
         event_sender: Option<&EventSender>,
     ) -> Result<ValidationResult, Error> {
         if let Some(sender) = event_sender {
-            let _ = sender.send(sps2_events::Event::OperationStarted {
-                operation: format!(
-                    "Starting comprehensive validation of {}",
-                    file_path.display()
-                ),
-            });
+            let _ = sender.send(sps2_events::AppEvent::General(
+                sps2_events::GeneralEvent::OperationStarted {
+                    operation: format!(
+                        "Starting comprehensive validation of {}",
+                        file_path.display()
+                    ),
+                },
+            ));
         }
 
         // Stage 1: File format validation
@@ -124,13 +126,15 @@ impl ValidationOrchestrator {
         self.finalize_validation(&mut result)?;
 
         if let Some(sender) = event_sender {
-            let _ = sender.send(sps2_events::Event::OperationCompleted {
-                operation: format!(
-                    "Comprehensive validation completed for {}",
-                    file_path.display()
-                ),
-                success: true,
-            });
+            let _ = sender.send(sps2_events::AppEvent::General(
+                sps2_events::GeneralEvent::OperationCompleted {
+                    operation: format!(
+                        "Comprehensive validation completed for {}",
+                        file_path.display()
+                    ),
+                    success: true,
+                },
+            ));
         }
 
         Ok(result)
@@ -143,20 +147,24 @@ impl ValidationOrchestrator {
         event_sender: Option<&EventSender>,
     ) -> Result<crate::validation::types::PackageFormat, Error> {
         if let Some(sender) = event_sender {
-            let _ = sender.send(sps2_events::Event::DebugLog {
-                message: "PIPELINE: Starting format validation stage".to_string(),
-                context: std::collections::HashMap::new(),
-            });
+            let _ = sender.send(sps2_events::AppEvent::General(
+                sps2_events::GeneralEvent::DebugLog {
+                    message: "PIPELINE: Starting format validation stage".to_string(),
+                    context: std::collections::HashMap::new(),
+                },
+            ));
         }
 
         let format =
             crate::validation::format::validate_file_format(file_path, event_sender).await?;
 
         if let Some(sender) = event_sender {
-            let _ = sender.send(sps2_events::Event::DebugLog {
-                message: format!("PIPELINE: Format validation complete - detected: {format:?}"),
-                context: std::collections::HashMap::new(),
-            });
+            let _ = sender.send(sps2_events::AppEvent::General(
+                sps2_events::GeneralEvent::DebugLog {
+                    message: format!("PIPELINE: Format validation complete - detected: {format:?}"),
+                    context: std::collections::HashMap::new(),
+                },
+            ));
         }
 
         Ok(format)
@@ -171,10 +179,12 @@ impl ValidationOrchestrator {
         event_sender: Option<&EventSender>,
     ) -> Result<(), Error> {
         if let Some(sender) = event_sender {
-            let _ = sender.send(sps2_events::Event::DebugLog {
-                message: "PIPELINE: Starting content validation stage".to_string(),
-                context: std::collections::HashMap::new(),
-            });
+            let _ = sender.send(sps2_events::AppEvent::General(
+                sps2_events::GeneralEvent::DebugLog {
+                    message: "PIPELINE: Starting content validation stage".to_string(),
+                    context: std::collections::HashMap::new(),
+                },
+            ));
         }
 
         // Comprehensive content validation
@@ -188,13 +198,15 @@ impl ValidationOrchestrator {
         .await?;
 
         if let Some(sender) = event_sender {
-            let _ = sender.send(sps2_events::Event::DebugLog {
-                message: format!(
-                    "PIPELINE: Content validation complete - {} files, {} bytes",
-                    result.file_count, result.extracted_size
-                ),
-                context: std::collections::HashMap::new(),
-            });
+            let _ = sender.send(sps2_events::AppEvent::General(
+                sps2_events::GeneralEvent::DebugLog {
+                    message: format!(
+                        "PIPELINE: Content validation complete - {} files, {} bytes",
+                        result.file_count, result.extracted_size
+                    ),
+                    context: std::collections::HashMap::new(),
+                },
+            ));
         }
 
         Ok(())
@@ -209,13 +221,15 @@ impl ValidationOrchestrator {
         event_sender: Option<&EventSender>,
     ) -> Result<(), Error> {
         if let Some(sender) = event_sender {
-            let _ = sender.send(sps2_events::Event::DebugLog {
-                message: format!(
-                    "PIPELINE: Starting security validation stage with {} policy",
-                    self.security_policy.security_level_description()
-                ),
-                context: std::collections::HashMap::new(),
-            });
+            let _ = sender.send(sps2_events::AppEvent::General(
+                sps2_events::GeneralEvent::DebugLog {
+                    message: format!(
+                        "PIPELINE: Starting security validation stage with {} policy",
+                        self.security_policy.security_level_description()
+                    ),
+                    context: std::collections::HashMap::new(),
+                },
+            ));
         }
 
         // Comprehensive security validation
@@ -229,10 +243,12 @@ impl ValidationOrchestrator {
         .await?;
 
         if let Some(sender) = event_sender {
-            let _ = sender.send(sps2_events::Event::DebugLog {
-                message: "PIPELINE: Security validation complete".to_string(),
-                context: std::collections::HashMap::new(),
-            });
+            let _ = sender.send(sps2_events::AppEvent::General(
+                sps2_events::GeneralEvent::DebugLog {
+                    message: "PIPELINE: Security validation complete".to_string(),
+                    context: std::collections::HashMap::new(),
+                },
+            ));
         }
 
         Ok(())

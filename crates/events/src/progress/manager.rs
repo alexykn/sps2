@@ -132,15 +132,17 @@ impl ProgressManager {
         if let Some(update) = self.update(id, current) {
             // Send progress event
             if let Some(total) = total {
-                let _ = tx.send(crate::AppEvent::Progress(crate::events::ProgressEvent::Updated {
-                    id: id.to_string(),
-                    current,
-                    total: Some(total),
-                    phase: update.phase,
-                    speed: update.speed,
-                    eta: update.eta,
-                    efficiency: None,
-                }));
+                let _ = tx.send(crate::AppEvent::Progress(
+                    crate::events::ProgressEvent::Updated {
+                        id: id.to_string(),
+                        current,
+                        total: Some(total),
+                        phase: update.phase,
+                        speed: update.speed,
+                        eta: update.eta,
+                        efficiency: None,
+                    },
+                ));
             }
         }
     }
@@ -149,23 +151,27 @@ impl ProgressManager {
     pub fn change_phase(&self, id: &str, _phase: usize, tx: &crate::EventSender) {
         // For now, we'll just advance through phases sequentially
         if let Some(new_phase) = self.next_phase(id) {
-            let _ = tx.send(crate::AppEvent::Progress(crate::events::ProgressEvent::PhaseChanged {
-                id: id.to_string(),
-                phase: new_phase,
-                phase_name: format!("Phase {}", new_phase),
-            }));
+            let _ = tx.send(crate::AppEvent::Progress(
+                crate::events::ProgressEvent::PhaseChanged {
+                    id: id.to_string(),
+                    phase: new_phase,
+                    phase_name: format!("Phase {}", new_phase),
+                },
+            ));
         }
     }
 
     /// Complete an operation
     pub fn complete_operation(&self, id: &str, tx: &crate::EventSender) {
         if let Some(duration) = self.complete(id) {
-            let _ = tx.send(crate::AppEvent::Progress(crate::events::ProgressEvent::Completed {
-                id: id.to_string(),
-                duration,
-                final_speed: None,
-                total_processed: 0,
-            }));
+            let _ = tx.send(crate::AppEvent::Progress(
+                crate::events::ProgressEvent::Completed {
+                    id: id.to_string(),
+                    duration,
+                    final_speed: None,
+                    total_processed: 0,
+                },
+            ));
         }
     }
 }

@@ -5,21 +5,18 @@ use crate::{
     UninstallContext, UpdateContext,
 };
 use sps2_errors::{Error, InstallError};
-use sps2_events::Event;
-use sps2_events::EventEmitter;
+use sps2_events::{
+    AppEvent, EventEmitter, InstallEvent, UninstallEvent, UpdateEvent,
+};
+use sps2_events::events::{BatchUpdateStrategy, PackageUpdateType, UpdateResult};
 
 use sps2_resolver::{ResolutionContext, Resolver};
 use sps2_state::StateManager;
 use sps2_store::PackageStore;
 use sps2_types::PackageSpec;
 use std::sync::Arc;
-// HashMap import removed as it's not used in this module
 
-impl EventEmitter for UpdateContext {
-    fn event_sender(&self) -> Option<&sps2_events::EventSender> {
-        self.event_sender.as_ref()
-    }
-}
+// EventEmitter implementations are already defined in atomic/installer.rs
 
 /// Install operation
 pub struct InstallOperation {
@@ -62,9 +59,14 @@ impl InstallOperation {
     ///
     /// Returns an error if dependency resolution fails, package download fails, or installation fails.
     pub async fn execute(&mut self, context: InstallContext) -> Result<InstallResult, Error> {
-        context.emit_event(Event::InstallStarting {
+        // Emit batch installation started event
+        let operation_id = uuid::Uuid::new_v4().to_string();
+        context.emit(AppEvent::Install(InstallEvent::BatchStarted {
             packages: context.packages.iter().map(|p| p.name.clone()).collect(),
-        });
+            operation_id,
+            concurrent_limit: 4, // Default concurrent limit
+            estimated_duration: None,
+        }));
 
         // Check local .sp files exist (validation moved to AtomicInstaller)
         self.check_local_packages_exist(&context)?;
@@ -84,21 +86,10 @@ impl InstallOperation {
         );
 
         // Debug: Check what packages we're trying to process
-        context.emit_event(Event::DebugLog {
-            message: format!(
-                "DEBUG: About to process {} resolved packages via ParallelExecutor",
-                resolution.nodes.len()
-            ),
-            context: std::collections::HashMap::from([(
-                "packages".to_string(),
-                resolution
-                    .nodes
-                    .keys()
-                    .map(|id| format!("{}-{}", id.name, id.version))
-                    .collect::<Vec<_>>()
-                    .join(", "),
-            )]),
-        });
+        context.emit_debug(format!(
+            "DEBUG: About to process {} resolved packages via ParallelExecutor",
+            resolution.nodes.len()
+        ));
 
         let prepared_packages = self
             .executor
@@ -106,20 +97,10 @@ impl InstallOperation {
             .await?;
 
         // Debug: Check what packages were prepared
-        context.emit_event(Event::DebugLog {
-            message: format!(
-                "DEBUG: ParallelExecutor prepared {} packages",
-                prepared_packages.len()
-            ),
-            context: std::collections::HashMap::from([(
-                "prepared_packages".to_string(),
-                prepared_packages
-                    .keys()
-                    .map(|id| format!("{}-{}", id.name, id.version))
-                    .collect::<Vec<_>>()
-                    .join(", "),
-            )]),
-        });
+        context.emit_debug(format!(
+            "DEBUG: ParallelExecutor prepared {} packages",
+            prepared_packages.len()
+        ));
 
         // ParallelExecutor now returns prepared package data instead of doing database operations
 
@@ -131,14 +112,15 @@ impl InstallOperation {
             .install(&context, &resolution.nodes, Some(&prepared_packages))
             .await?;
 
-        context.emit_event(Event::InstallCompleted {
-            packages: result
-                .installed_packages
-                .iter()
-                .map(|id| id.name.clone())
-                .collect(),
-            state_id: result.state_id,
-        });
+        // Emit batch installation completed event
+        let operation_id = uuid::Uuid::new_v4().to_string(); // In production, this should be tracked from start
+        context.emit(AppEvent::Install(InstallEvent::BatchCompleted {
+            operation_id,
+            successful_packages: result.installed_packages.iter().map(|id| id.name.clone()).collect(),
+            failed_packages: vec![], // TODO: Track failed packages during execution
+            total_duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
+            total_disk_usage: 0, // TODO: Calculate actual disk usage
+        }));
 
         Ok(result)
     }
@@ -160,18 +142,15 @@ impl InstallOperation {
             resolution_context = resolution_context.add_local_file(path.clone());
         }
 
-        context.emit_event(Event::DependencyResolving {
-            package: "multiple".to_string(),
-            count: context.packages.len() + context.local_files.len(),
-        });
+        context.emit_operation_started("Resolving dependencies");
 
         let resolution = match self.resolver.resolve_with_sat(resolution_context).await {
             Ok(result) => result,
             Err(e) => {
                 // Emit helpful error event for resolution failures
-                context.emit_event(Event::Error {
-                    message: "Package resolution failed".to_string(),
-                    details: Some(format!(
+                context.emit_error_with_details(
+                    "Package resolution failed",
+                    format!(
                         "Error: {e}. \n\nPossible reasons:\n\
                         • Package name or version typo.\n\
                         • Package not available in the current repositories.\n\
@@ -180,17 +159,13 @@ impl InstallOperation {
                         • Double-check package name and version specs.\n\
                         • Run 'sps2 search <package_name>' to find available packages.\n\
                         • Run 'sps2 reposync' to update your package index."
-                    )),
-                });
+                    ),
+                );
                 return Err(e);
             }
         };
 
-        context.emit_event(Event::DependencyResolved {
-            package: "multiple".to_string(),
-            version: sps2_types::Version::new(1, 0, 0), // Placeholder version
-            count: resolution.nodes.len(),
-        });
+        context.emit_operation_completed("Dependency resolution", true);
 
         Ok(resolution)
     }
@@ -233,15 +208,13 @@ impl InstallOperation {
             {
                 if spec.version_spec.matches(&installed_pkg.version()) {
                     // Send informative event
-                    context.emit_event(Event::Warning {
-                        message: format!(
+                    context.emit_warning_with_context(
+                        format!(
                             "Package {}-{} is already installed",
                             installed_pkg.name, installed_pkg.version
                         ),
-                        context: Some(
-                            "Skipping installation to avoid state corruption".to_string(),
-                        ),
-                    });
+                        "Skipping installation to avoid state corruption",
+                    );
 
                     // For now, we'll return an error to prevent state corruption
                     // In the future, we might want to handle this more gracefully
@@ -264,17 +237,15 @@ impl InstallOperation {
                         .iter()
                         .find(|pkg| pkg.name == name && pkg.version == version)
                     {
-                        context.emit_event(Event::Warning {
-                            message: format!(
+                        context.emit_warning_with_context(
+                            format!(
                                 "Package {}-{} from {} is already installed",
                                 name,
                                 version,
                                 local_file.display()
                             ),
-                            context: Some(
-                                "Skipping installation to avoid state corruption".to_string(),
-                            ),
-                        });
+                            "Skipping installation to avoid state corruption",
+                        );
 
                         return Err(InstallError::PackageAlreadyInstalled {
                             package: format!("{}-{}", name, version),
@@ -331,9 +302,14 @@ impl UninstallOperation {
     ///
     /// Returns an error if package removal fails or dependency checks fail.
     pub async fn execute(&mut self, context: UninstallContext) -> Result<InstallResult, Error> {
-        context.emit_event(Event::UninstallStarting {
+        // Emit batch uninstall started event
+        let operation_id = uuid::Uuid::new_v4().to_string();
+        context.emit(AppEvent::Uninstall(UninstallEvent::BatchStarted {
             packages: context.packages.clone(),
-        });
+            operation_id,
+            dependency_order: !context.force, // Use dependency order unless forcing
+            remove_orphans: false, // Default to not removing orphans
+        }));
 
         // Get currently installed packages
         let current_packages = self.state_manager.get_installed_packages().await?;
@@ -393,14 +369,16 @@ impl UninstallOperation {
             AtomicInstaller::new(self.state_manager.clone(), self.store.clone()).await?;
         let result = atomic_installer.uninstall(&package_ids, &context).await?;
 
-        context.emit_event(Event::UninstallCompleted {
-            packages: result
-                .removed_packages
-                .iter()
-                .map(|id| id.name.clone())
-                .collect(),
-            state_id: result.state_id,
-        });
+        // Emit batch uninstall completed event
+        let operation_id = uuid::Uuid::new_v4().to_string(); // In production, this should be tracked from start
+        context.emit(AppEvent::Uninstall(UninstallEvent::BatchCompleted {
+            operation_id,
+            successful_packages: result.removed_packages.iter().map(|id| id.name.clone()).collect(),
+            failed_packages: vec![], // TODO: Track failed packages during execution
+            orphans_removed: vec![], // TODO: Track orphaned packages that were removed
+            total_duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
+            total_space_freed: 0, // TODO: Calculate actual space freed
+        }));
 
         Ok(result)
     }
@@ -439,13 +417,18 @@ impl UpdateOperation {
     ///
     /// Returns an error if package resolution fails, update conflicts occur, or installation fails.
     pub async fn execute(&mut self, context: UpdateContext) -> Result<InstallResult, Error> {
-        context.emit_event(Event::UpdateStarting {
+        // Emit batch update started event
+        let operation_id = uuid::Uuid::new_v4().to_string();
+        context.emit(AppEvent::Update(UpdateEvent::BatchStarted {
             packages: if context.packages.is_empty() {
                 vec!["all".to_string()]
             } else {
                 context.packages.clone()
             },
-        });
+            operation_id,
+            update_strategy: BatchUpdateStrategy::DependencyOrder,
+            concurrent_limit: 4, // Default concurrent limit
+        }));
 
         // Get currently installed packages
         let current_packages = self.state_manager.get_installed_packages().await?;
@@ -488,14 +471,25 @@ impl UpdateOperation {
         // Execute installation (which handles updates)
         let result = self.install_operation.execute(install_context).await?;
 
-        context.emit_event(Event::UpdateCompleted {
-            packages: result
-                .updated_packages
-                .iter()
-                .map(|id| id.name.clone())
-                .collect(),
-            state_id: result.state_id,
-        });
+        // Emit batch update completed event
+        let operation_id = uuid::Uuid::new_v4().to_string(); // In production, this should be tracked from start
+        context.emit(AppEvent::Update(UpdateEvent::BatchCompleted {
+            operation_id,
+            successful_updates: result.updated_packages.iter().map(|id| {
+                UpdateResult {
+                    package: id.name.clone(),
+                    from_version: id.version.clone(), // TODO: Track actual from/to versions
+                    to_version: id.version.clone(),
+                    update_type: PackageUpdateType::Patch, // TODO: Determine actual update type
+                    duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
+                    size_change: 0, // TODO: Calculate actual size change
+                }
+            }).collect(),
+            failed_updates: vec![], // TODO: Track failed updates during execution
+            skipped_packages: vec![], // TODO: Track skipped packages
+            total_duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
+            total_size_change: 0, // TODO: Calculate actual size change
+        }));
 
         Ok(result)
     }

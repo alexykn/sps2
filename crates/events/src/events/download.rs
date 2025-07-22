@@ -14,7 +14,7 @@ pub enum DownloadEvent {
         queue_position: usize,
         estimated_size: Option<u64>,
     },
-    
+
     /// Download started with connection info
     Started {
         url: String,
@@ -23,7 +23,7 @@ pub enum DownloadEvent {
         supports_resume: bool,
         connection_time: Duration,
     },
-    
+
     /// Download progress update with speed/ETA
     Progress {
         url: String,
@@ -33,7 +33,7 @@ pub enum DownloadEvent {
         average_speed: f64,
         eta: Option<Duration>,
     },
-    
+
     /// Download completed successfully
     Completed {
         url: String,
@@ -43,7 +43,7 @@ pub enum DownloadEvent {
         average_speed: f64,
         hash: String,
     },
-    
+
     /// Download failed with categorized error
     Failed {
         url: String,
@@ -53,7 +53,7 @@ pub enum DownloadEvent {
         bytes_downloaded: u64,
         recoverable: bool,
     },
-    
+
     /// Download interrupted but may be resumed
     Interrupted {
         url: String,
@@ -61,7 +61,7 @@ pub enum DownloadEvent {
         reason: String,
         will_resume: bool,
     },
-    
+
     /// Download resuming from previous attempt
     Resuming {
         url: String,
@@ -69,7 +69,7 @@ pub enum DownloadEvent {
         total_size: Option<u64>,
         attempts_so_far: usize,
     },
-    
+
     /// Download retrying after failure
     Retrying {
         url: String,
@@ -78,7 +78,7 @@ pub enum DownloadEvent {
         reason: String,
         backoff_delay: Duration,
     },
-    
+
     /// All retry attempts exhausted
     RetryExhausted {
         url: String,
@@ -86,28 +86,28 @@ pub enum DownloadEvent {
         final_error: String,
         total_time: Duration,
     },
-    
+
     /// Waiting for resource allocation
     ResourceWaiting {
         url: String,
         resource_type: String,
         estimated_wait: Option<Duration>,
     },
-    
+
     /// Resource acquired, download can proceed
     ResourceAcquired {
         url: String,
         resource_type: String,
         wait_time: Duration,
     },
-    
+
     /// Hash verification started
     HashVerificationStarted {
         url: String,
         algorithm: String,
         expected_hash: Option<String>,
     },
-    
+
     /// Hash verification completed
     HashVerificationCompleted {
         url: String,
@@ -115,7 +115,7 @@ pub enum DownloadEvent {
         verification_time: Duration,
         matched: bool,
     },
-    
+
     /// Hash mismatch detected
     HashMismatch {
         url: String,
@@ -123,7 +123,7 @@ pub enum DownloadEvent {
         actual: String,
         action: String, // "deleted_file", "retrying"
     },
-    
+
     /// Download speed update
     SpeedUpdate {
         url: String,
@@ -132,7 +132,7 @@ pub enum DownloadEvent {
         peak_speed: f64,
         efficiency_rating: f64, // 0.0-1.0
     },
-    
+
     /// Download has stalled
     Stalled {
         url: String,
@@ -140,7 +140,7 @@ pub enum DownloadEvent {
         bytes_at_stall: u64,
         suspected_cause: String,
     },
-    
+
     /// Batch download started
     BatchStarted {
         batch_id: String,
@@ -148,7 +148,7 @@ pub enum DownloadEvent {
         total_estimated_size: Option<u64>,
         concurrent_limit: usize,
     },
-    
+
     /// Batch download progress
     BatchProgress {
         batch_id: String,
@@ -159,7 +159,7 @@ pub enum DownloadEvent {
         total_bytes_downloaded: u64,
         overall_progress: f64,
     },
-    
+
     /// Batch download completed
     BatchCompleted {
         batch_id: String,
@@ -169,20 +169,17 @@ pub enum DownloadEvent {
         total_bytes: u64,
         average_speed: f64,
     },
-    
+
     /// Package-specific download started
     PackageStarted {
         name: String,
         version: Version,
         url: String,
     },
-    
+
     /// Package download completed
-    PackageCompleted {
-        name: String,
-        version: Version,
-    },
-    
+    PackageCompleted { name: String, version: Version },
+
     /// Package signature downloaded
     SignatureCompleted {
         name: String,

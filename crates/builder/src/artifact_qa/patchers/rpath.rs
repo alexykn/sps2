@@ -3,7 +3,7 @@
 use crate::artifact_qa::{macho_utils, reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
-use sps2_events::Event;
+use sps2_events::AppEvent;
 use sps2_types::RpathStyle;
 
 use ignore::WalkBuilder;

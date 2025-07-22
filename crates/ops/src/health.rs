@@ -2,7 +2,7 @@
 
 use crate::{ComponentHealth, HealthCheck, HealthIssue, HealthStatus, IssueSeverity, OpsCtx};
 use sps2_errors::Error;
-use sps2_events::{Event, EventEmitter};
+use sps2_events::{AppEvent, EventEmitter, PackageEvent};
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -14,7 +14,7 @@ use std::time::Instant;
 pub async fn check_health(ctx: &OpsCtx) -> Result<HealthCheck, Error> {
     let _start = Instant::now();
 
-    ctx.emit_event(Event::HealthCheckStarting);
+    ctx.emit_event(AppEvent::Package(PackageEvent::HealthCheckStarting));
 
     let mut components = HashMap::new();
     let mut issues = Vec::new();
@@ -77,14 +77,14 @@ pub async fn check_health(ctx: &OpsCtx) -> Result<HealthCheck, Error> {
         issues,
     };
 
-    ctx.emit_event(Event::HealthCheckCompleted {
+    ctx.emit_event(AppEvent::Package(PackageEvent::HealthCheckCompleted {
         healthy: overall_healthy,
         issues: health_check
             .issues
             .iter()
             .map(|i| i.description.clone())
             .collect(),
-    });
+    }));
 
     Ok(health_check)
 }

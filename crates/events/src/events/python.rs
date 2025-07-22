@@ -27,10 +27,7 @@ pub enum PythonEvent {
     },
 
     /// Python wheel installed
-    WheelInstalled {
-        package: String,
-        version: Version,
-    },
+    WheelInstalled { package: String, version: Version },
 
     /// Python wrapper creating
     WrapperCreating {

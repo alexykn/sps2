@@ -5,7 +5,7 @@ use crate::{
     queries,
 };
 use sps2_errors::{Error, StateError};
-use sps2_events::{Event, EventEmitter, EventSender, EventSenderExt};
+use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent, StateEvent};
 use sps2_hash::Hash;
 use sps2_root;
 use sps2_types::StateId;
@@ -151,14 +151,18 @@ impl StateManager {
 
         // Clone current state to staging (or create empty staging for first install)
         if sps2_root::exists(&self.live_path).await {
-            self.tx.emit(Event::OperationStarted {
+            self.tx.emit(AppEvent::State(StateEvent::Initializing {
+                state_id: staging_id.clone(),
                 operation: "Cloning current state".to_string(),
-            });
+                estimated_duration: None,
+            }));
             sps2_root::clone_directory(&self.live_path, &staging_path).await?;
         } else {
-            self.tx.emit(Event::OperationStarted {
+            self.tx.emit(AppEvent::State(StateEvent::Initializing {
+                state_id: staging_id.clone(),
                 operation: "Creating initial staging directory".to_string(),
-            });
+                estimated_duration: None,
+            }));
             sps2_root::create_dir_all(&staging_path).await?;
         }
 
@@ -269,11 +273,13 @@ impl StateManager {
         // Commit transaction
         tx.commit().await?;
 
-        self.tx.emit(Event::StateTransition {
-            from: transition.from,
-            to: transition.to,
-            operation: transition.operation,
-        });
+        self.tx
+            .emit(AppEvent::State(StateEvent::TransitionCompleted {
+                from: transition.from,
+                to: transition.to,
+                operation: transition.operation,
+                duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
+            }));
 
         Ok(())
     }
@@ -342,10 +348,12 @@ impl StateManager {
 
         tx.commit().await?;
 
-        self.tx.emit(Event::StateRollback {
+        self.tx.emit(AppEvent::State(StateEvent::RollbackCompleted {
             from: current_state,
             to: target,
-        });
+            duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
+            packages_reverted: 0,                        // TODO: Track packages reverted
+        }));
 
         Ok(())
     }
@@ -372,7 +380,10 @@ impl StateManager {
         retention_count: usize,
         _retention_days: u32,
     ) -> Result<CleanupResult, Error> {
-        self.tx.emit(Event::CleanupStarting);
+        self.tx.emit(AppEvent::State(StateEvent::CleanupStarted {
+            states_to_remove: 0,      // Will be calculated
+            estimated_space_freed: 0, // Will be calculated
+        }));
 
         let mut tx = self.pool.begin().await?;
 
@@ -421,11 +432,11 @@ impl StateManager {
 
         tx.commit().await?;
 
-        self.tx.emit(Event::CleanupCompleted {
+        self.tx.emit(AppEvent::State(StateEvent::CleanupCompleted {
             states_removed: states_to_remove.len(),
-            packages_removed: 0, // No packages removed in state cleanup
-            duration_ms: 0,      // TODO: Add proper timing
-        });
+            space_freed: space_freed,
+            duration: std::time::Duration::from_millis(0), // TODO: Add proper timing
+        }));
 
         Ok(CleanupResult {
             states_removed: states_to_remove.len(),
@@ -476,9 +487,10 @@ impl StateManager {
         &self,
         store: &sps2_store::PackageStore,
     ) -> Result<usize, Error> {
-        self.tx.emit(Event::OperationStarted {
-            operation: "Garbage collection".to_string(),
-        });
+        self.tx.emit(AppEvent::State(StateEvent::CleanupStarted {
+            states_to_remove: 0,      // Will be calculated
+            estimated_space_freed: 0, // Will be calculated
+        }));
 
         let mut tx = self.pool.begin().await?;
 
@@ -504,17 +516,18 @@ impl StateManager {
         for hash in &hashes {
             if let Err(e) = store.remove_package(hash).await {
                 // Log warning but continue with other packages
-                self.tx.emit(Event::Warning {
+                self.tx.emit(AppEvent::General(GeneralEvent::Warning {
                     message: format!("Failed to remove package {}: {e}", hash.to_hex()),
                     context: None,
-                });
+                }));
             }
         }
 
-        self.tx.emit(Event::OperationCompleted {
-            operation: "Garbage collection".to_string(),
-            success: true,
-        });
+        self.tx.emit(AppEvent::State(StateEvent::CleanupCompleted {
+            states_removed: 0,                           // GC doesn't remove states directly
+            space_freed: packages_removed as u64,        // Packages removed
+            duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
+        }));
 
         Ok(packages_removed)
     }

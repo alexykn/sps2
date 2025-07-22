@@ -9,7 +9,7 @@
 
 use semver::Version;
 use sps2_errors::{Error, PackageError};
-use sps2_events::{Event, EventSender, EventSenderExt};
+use sps2_events::{AppEvent, EventEmitter, EventSender, ResolverEvent};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -281,17 +281,17 @@ pub async fn solve_dependencies(
         if let Some(sender) = event_sender {
             // Emit detailed conflict information
             if !conflict.conflicting_packages.is_empty() {
-                sender.emit(Event::DependencyConflictDetected {
-                    conflicting_packages: conflict.conflicting_packages.clone(),
-                    message: conflict.message.clone(),
-                });
+                sender.emit(AppEvent::Resolver(ResolverEvent::conflict_detected(
+                    conflict.conflicting_packages.clone(),
+                    conflict.message.clone(),
+                )));
             }
 
             // Emit suggestions for resolution
             if !conflict.suggestions.is_empty() {
-                sender.emit(Event::DependencyConflictSuggestions {
-                    suggestions: conflict.suggestions.clone(),
-                });
+                sender.emit(AppEvent::Resolver(ResolverEvent::conflict_suggestions(
+                    conflict.suggestions.clone(),
+                )));
             }
         }
 

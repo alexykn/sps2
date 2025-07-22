@@ -10,68 +10,58 @@ pub enum GeneralEvent {
         message: String,
         context: Option<String>,
     },
-    
+
     /// Generic error message with optional details
     Error {
         message: String,
         details: Option<String>,
     },
-    
+
     /// Debug logging with structured context
     DebugLog {
         message: String,
         context: HashMap<String, String>,
     },
-    
+
     /// Generic operation started notification
-    OperationStarted {
-        operation: String,
-    },
-    
+    OperationStarted { operation: String },
+
     /// Generic operation completion with success status
-    OperationCompleted {
-        operation: String,
-        success: bool,
-    },
-    
+    OperationCompleted { operation: String, success: bool },
+
     /// Generic operation failure with error details
-    OperationFailed {
-        operation: String,
-        error: String,
-    },
-    
+    OperationFailed { operation: String, error: String },
+
     /// User confirmation request for interactive operations
     UserConfirmationRequired {
         prompt: String,
         default: Option<bool>,
         timeout_seconds: Option<u64>,
     },
-    
+
     /// User confirmation response received
-    UserConfirmationReceived {
-        response: bool,
-    },
-    
+    UserConfirmationReceived { response: bool },
+
     /// System-level status notification
     SystemNotification {
         level: String,
         message: String,
         category: String,
     },
-    
+
     /// Configuration validation results
     ConfigurationValidated {
         source: String,
         warnings: Vec<String>,
     },
-    
+
     /// Configuration validation error
     ConfigurationError {
         field: String,
         error: String,
         suggested_fix: Option<String>,
     },
-    
+
     /// Performance metric update
     PerformanceMetric {
         name: String,
@@ -79,7 +69,7 @@ pub enum GeneralEvent {
         unit: String,
         timestamp: Option<std::time::SystemTime>,
     },
-    
+
     /// System resource usage update
     ResourceUsage {
         resource_type: String, // "memory", "disk", "network"
@@ -87,23 +77,12 @@ pub enum GeneralEvent {
         total: Option<u64>,
         unit: String,
     },
-    
+
     /// Rate limiting applied to operation
     RateLimitApplied {
         operation: String,
         delay_ms: u64,
         reason: String,
-    },
-    
-    /// Dependency conflict detected during resolution
-    DependencyConflictDetected {
-        conflicting_packages: Vec<String>,
-        message: String,
-    },
-    
-    /// Suggestions for resolving dependency conflicts
-    DependencyConflictSuggestions {
-        suggestions: Vec<String>,
     },
 }
 
@@ -149,7 +128,10 @@ impl GeneralEvent {
     }
 
     /// Create a debug log event with context
-    pub fn debug_with_context(message: impl Into<String>, context: HashMap<String, String>) -> Self {
+    pub fn debug_with_context(
+        message: impl Into<String>,
+        context: HashMap<String, String>,
+    ) -> Self {
         Self::DebugLog {
             message: message.into(),
             context,

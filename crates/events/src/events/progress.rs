@@ -111,7 +111,7 @@ pub enum ProgressEvent {
     BottleneckDetected {
         id: String,
         bottleneck_type: String, // "cpu", "memory", "network", "disk"
-        severity: f64, // 0.0-1.0
+        severity: f64,           // 0.0-1.0
         suggested_action: Option<String>,
     },
 
@@ -134,7 +134,11 @@ pub enum ProgressEvent {
 
 impl ProgressEvent {
     /// Create a simple progress started event
-    pub fn started(id: impl Into<String>, operation: impl Into<String>, total: Option<u64>) -> Self {
+    pub fn started(
+        id: impl Into<String>,
+        operation: impl Into<String>,
+        total: Option<u64>,
+    ) -> Self {
         Self::Started {
             id: id.into(),
             operation: operation.into(),
@@ -146,10 +150,10 @@ impl ProgressEvent {
 
     /// Create a progress started event with phases
     pub fn started_with_phases(
-        id: impl Into<String>, 
-        operation: impl Into<String>, 
+        id: impl Into<String>,
+        operation: impl Into<String>,
         total: Option<u64>,
-        phases: Vec<ProgressPhase>
+        phases: Vec<ProgressPhase>,
     ) -> Self {
         Self::Started {
             id: id.into(),
@@ -162,10 +166,10 @@ impl ProgressEvent {
 
     /// Create a child progress started event
     pub fn child_started(
-        parent_id: impl Into<String>, 
-        child_id: impl Into<String>, 
+        parent_id: impl Into<String>,
+        child_id: impl Into<String>,
         operation: impl Into<String>,
-        weight: f64
+        weight: f64,
     ) -> Self {
         Self::ChildStarted {
             parent_id: parent_id.into(),

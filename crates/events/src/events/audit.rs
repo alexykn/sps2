@@ -5,9 +5,7 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type")]
 pub enum AuditEvent {
     /// Audit scan starting
-    Starting {
-        package_count: usize,
-    },
+    Starting { package_count: usize },
 
     /// Audit scan progress
     ScanProgress {
@@ -32,9 +30,7 @@ pub enum AuditEvent {
     VulnDbUpdateStarting,
 
     /// Vulnerability database source update starting
-    VulnDbSourceUpdateStarting {
-        source: String,
-    },
+    VulnDbSourceUpdateStarting { source: String },
 
     /// Vulnerability database source update progress
     VulnDbSourceUpdateProgress {
@@ -51,10 +47,7 @@ pub enum AuditEvent {
     },
 
     /// Vulnerability database source update failed
-    VulnDbSourceUpdateFailed {
-        source: String,
-        error: String,
-    },
+    VulnDbSourceUpdateFailed { source: String, error: String },
 
     /// Vulnerability database update completed
     VulnDbUpdateCompleted {

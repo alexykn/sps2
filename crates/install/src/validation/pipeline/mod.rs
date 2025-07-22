@@ -46,13 +46,23 @@ pub async fn validate_sp_file(
     event_sender: Option<&EventSender>,
 ) -> Result<ValidationResult, Error> {
     if let Some(sender) = event_sender {
-        let _ = sender.send(sps2_events::Event::OperationStarted {
-            operation: format!("Validating package {}", file_path.display()),
-        });
-        let _ = sender.send(sps2_events::Event::DebugLog {
-            message: format!("DEBUG: Starting validation of {}", file_path.display()),
-            context: std::collections::HashMap::new(),
-        });
+        let _ = sender.send(sps2_events::AppEvent::Install(
+            sps2_events::InstallEvent::ValidationStarted {
+                package: "unknown".to_string(), // TODO: Extract package name from file_path
+                version: sps2_types::Version::new(0, 0, 0), // TODO: Extract version from file_path
+                validation_checks: vec![
+                    "format".to_string(),
+                    "content".to_string(),
+                    "security".to_string(),
+                ],
+            },
+        ));
+        let _ = sender.send(sps2_events::AppEvent::General(
+            sps2_events::GeneralEvent::DebugLog {
+                message: format!("DEBUG: Starting validation of {}", file_path.display()),
+                context: std::collections::HashMap::new(),
+            },
+        ));
     }
 
     // Create orchestrator with default settings
@@ -64,14 +74,18 @@ pub async fn validate_sp_file(
         .await?;
 
     if let Some(sender) = event_sender {
-        let _ = sender.send(sps2_events::Event::OperationCompleted {
-            operation: format!("Package validation completed: {}", file_path.display()),
-            success: true,
-        });
-        let _ = sender.send(sps2_events::Event::DebugLog {
-            message: "DEBUG: Validation completed successfully".to_string(),
-            context: std::collections::HashMap::new(),
-        });
+        let _ = sender.send(sps2_events::AppEvent::General(
+            sps2_events::GeneralEvent::OperationCompleted {
+                operation: format!("Validation completed for {}", file_path.display()),
+                success: true,
+            },
+        ));
+        let _ = sender.send(sps2_events::AppEvent::General(
+            sps2_events::GeneralEvent::DebugLog {
+                message: "PIPELINE: Starting format validation stage".to_string(),
+                context: std::collections::HashMap::new(),
+            },
+        ));
     }
 
     Ok(result)
@@ -197,21 +211,23 @@ pub async fn validate_batch(
     let mut results = Vec::new();
     let orchestrator = ValidationOrchestrator::new();
 
-    for (index, file_path) in file_paths.iter().enumerate() {
-        if let Some(sender) = event_sender {
-            let _ = sender.send(sps2_events::Event::DebugLog {
-                message: format!(
-                    "BATCH: Validating package {} of {} - {}",
-                    index + 1,
-                    file_paths.len(),
-                    file_path.display()
-                ),
-                context: std::collections::HashMap::new(),
-            });
-        }
-
+    for (_index, file_path) in file_paths.iter().enumerate() {
         let file_name = file_path.display().to_string();
         let result = orchestrator.validate_package(file_path, event_sender).await;
+
+        if let Some(sender) = event_sender {
+            if let Ok(ref _validation_result) = result {
+                let _ = sender.send(sps2_events::AppEvent::General(
+                    sps2_events::GeneralEvent::DebugLog {
+                        message: format!(
+                            "PIPELINE: Content validation complete for {} - validation passed",
+                            file_name
+                        ),
+                        context: std::collections::HashMap::new(),
+                    },
+                ));
+            }
+        }
         results.push((file_name, result));
     }
 

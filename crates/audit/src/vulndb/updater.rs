@@ -1,7 +1,7 @@
 //! Database update and synchronization logic
 
 use sps2_errors::Error;
-use sps2_events::{Event, EventSender, EventSenderExt};
+use sps2_events::{AppEvent, AuditEvent, EventEmitter, EventSender};
 use sqlx::SqlitePool;
 
 use super::sources::{update_from_github, update_from_nvd, update_from_osv};
@@ -16,7 +16,7 @@ pub async fn update_database_from_sources(
     let mut sources_updated = 0;
 
     if let Some(sender) = &event_sender {
-        sender.emit(Event::VulnDbUpdateStarting);
+        sender.emit(AppEvent::Audit(AuditEvent::VulnDbUpdateStarting));
     }
 
     // Update from NVD
@@ -36,11 +36,11 @@ pub async fn update_database_from_sources(
     let total_duration = start_time.elapsed();
 
     if let Some(sender) = &event_sender {
-        sender.emit(Event::VulnDbUpdateCompleted {
+        sender.emit(AppEvent::Audit(AuditEvent::VulnDbUpdateCompleted {
             total_vulnerabilities: final_count,
             sources_updated: sources_updated as usize,
             duration_ms: total_duration.as_millis().try_into().unwrap_or(u64::MAX),
-        });
+        }));
     }
 
     Ok(())
@@ -52,9 +52,9 @@ async fn update_from_nvd_source(
     event_sender: Option<&EventSender>,
 ) -> Result<u32, Error> {
     if let Some(sender) = &event_sender {
-        sender.emit(Event::VulnDbSourceUpdateStarting {
+        sender.emit(AppEvent::Audit(AuditEvent::VulnDbSourceUpdateStarting {
             source: "NVD".to_string(),
-        });
+        }));
     }
 
     let nvd_start = std::time::Instant::now();
@@ -63,20 +63,20 @@ async fn update_from_nvd_source(
             let duration = nvd_start.elapsed();
 
             if let Some(sender) = &event_sender {
-                sender.emit(Event::VulnDbSourceUpdateCompleted {
+                sender.emit(AppEvent::Audit(AuditEvent::VulnDbSourceUpdateCompleted {
                     source: "NVD".to_string(),
                     vulnerabilities_added: count,
                     duration_ms: duration.as_millis().try_into().unwrap_or(u64::MAX),
-                });
+                }));
             }
             Ok(1) // Return 1 to indicate source was successfully updated
         }
         Err(e) => {
             if let Some(sender) = &event_sender {
-                sender.emit(Event::VulnDbSourceUpdateFailed {
+                sender.emit(AppEvent::Audit(AuditEvent::VulnDbSourceUpdateFailed {
                     source: "NVD".to_string(),
                     error: e.to_string(),
-                });
+                }));
             }
             Ok(0) // Return 0 to indicate source update failed
         }
@@ -89,9 +89,9 @@ async fn update_from_osv_source(
     event_sender: Option<&EventSender>,
 ) -> Result<u32, Error> {
     if let Some(sender) = &event_sender {
-        sender.emit(Event::VulnDbSourceUpdateStarting {
+        sender.emit(AppEvent::Audit(AuditEvent::VulnDbSourceUpdateStarting {
             source: "OSV".to_string(),
-        });
+        }));
     }
 
     let osv_start = std::time::Instant::now();
@@ -100,20 +100,20 @@ async fn update_from_osv_source(
             let duration = osv_start.elapsed();
 
             if let Some(sender) = &event_sender {
-                sender.emit(Event::VulnDbSourceUpdateCompleted {
+                sender.emit(AppEvent::Audit(AuditEvent::VulnDbSourceUpdateCompleted {
                     source: "OSV".to_string(),
                     vulnerabilities_added: count,
                     duration_ms: duration.as_millis().try_into().unwrap_or(u64::MAX),
-                });
+                }));
             }
             Ok(1) // Return 1 to indicate source was successfully updated
         }
         Err(e) => {
             if let Some(sender) = &event_sender {
-                sender.emit(Event::VulnDbSourceUpdateFailed {
+                sender.emit(AppEvent::Audit(AuditEvent::VulnDbSourceUpdateFailed {
                     source: "OSV".to_string(),
                     error: e.to_string(),
-                });
+                }));
             }
             Ok(0) // Return 0 to indicate source update failed
         }
@@ -126,9 +126,9 @@ async fn update_from_github_source(
     event_sender: Option<&EventSender>,
 ) -> Result<u32, Error> {
     if let Some(sender) = &event_sender {
-        sender.emit(Event::VulnDbSourceUpdateStarting {
+        sender.emit(AppEvent::Audit(AuditEvent::VulnDbSourceUpdateStarting {
             source: "GitHub".to_string(),
-        });
+        }));
     }
 
     let github_start = std::time::Instant::now();
@@ -137,20 +137,20 @@ async fn update_from_github_source(
             let duration = github_start.elapsed();
 
             if let Some(sender) = &event_sender {
-                sender.emit(Event::VulnDbSourceUpdateCompleted {
+                sender.emit(AppEvent::Audit(AuditEvent::VulnDbSourceUpdateCompleted {
                     source: "GitHub".to_string(),
                     vulnerabilities_added: count,
                     duration_ms: duration.as_millis().try_into().unwrap_or(u64::MAX),
-                });
+                }));
             }
             Ok(1) // Return 1 to indicate source was successfully updated
         }
         Err(e) => {
             if let Some(sender) = &event_sender {
-                sender.emit(Event::VulnDbSourceUpdateFailed {
+                sender.emit(AppEvent::Audit(AuditEvent::VulnDbSourceUpdateFailed {
                     source: "GitHub".to_string(),
                     error: e.to_string(),
-                });
+                }));
             }
             Ok(0) // Return 0 to indicate source update failed
         }

@@ -11,7 +11,7 @@ use crate::utils::events::send_event;
 use crate::yaml::RecipeMetadata;
 use crate::{BuildConfig, BuildContext, BuilderApi};
 use sps2_errors::Error;
-use sps2_events::Event;
+use sps2_events::AppEvent;
 use std::collections::HashMap;
 use tokio::fs;
 

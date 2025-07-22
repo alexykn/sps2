@@ -12,7 +12,7 @@ use crate::{utils::events::send_event, BuildContext, BuildEnvironment};
 use diagnostics::DiagnosticCollector;
 use reports::{MergedReport, Report};
 use sps2_errors::{BuildError, Error};
-use sps2_events::Event;
+use sps2_events::AppEvent;
 use traits::Action;
 
 /// Enum for all validators

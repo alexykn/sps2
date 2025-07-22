@@ -58,7 +58,7 @@ pub async fn copy_source_files(
     context: &crate::BuildContext,
 ) -> Result<(), Error> {
     use crate::utils::events::send_event;
-    use sps2_events::Event;
+    use sps2_events::AppEvent;
 
     send_event(
         context,

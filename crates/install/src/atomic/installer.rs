@@ -5,7 +5,7 @@ use std::sync::Arc;
 // Removed Python venv handling - Python packages are now handled like regular packages
 use crate::{InstallContext, InstallResult, PreparedPackage, StagingManager};
 use sps2_errors::{Error, InstallError};
-use sps2_events::{Event, EventEmitter, EventSender, EventSenderExt};
+use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent, StateEvent};
 
 use sps2_resolver::{PackageId, ResolvedNode};
 use sps2_state::{PackageRef, StateManager};
@@ -23,6 +23,13 @@ impl EventEmitter for InstallContext {
 
 /// Implement EventEmitter for UninstallContext
 impl EventEmitter for crate::UninstallContext {
+    fn event_sender(&self) -> Option<&EventSender> {
+        self.event_sender.as_ref()
+    }
+}
+
+/// Implement EventEmitter for UpdateContext
+impl EventEmitter for crate::UpdateContext {
     fn event_sender(&self) -> Option<&EventSender> {
         self.event_sender.as_ref()
     }
@@ -46,17 +53,19 @@ impl AtomicInstaller {
         let parent_id = transition.parent_id.unwrap_or_default();
 
         // Emit 2PC start event
-        context.emit_event(Event::TwoPhaseCommitStarting {
+        context.emit(AppEvent::State(StateEvent::TwoPhaseCommitStarting {
             state_id: transition.staging_id,
             parent_state_id: parent_id,
             operation: transition.operation.clone(),
-        });
+        }));
 
         // Phase 1: Prepare and commit the database changes
-        context.emit_event(Event::TwoPhaseCommitPhaseOneStarting {
-            state_id: transition.staging_id,
-            operation: transition.operation.clone(),
-        });
+        context.emit(AppEvent::State(
+            StateEvent::TwoPhaseCommitPhaseOneStarting {
+                state_id: transition.staging_id,
+                operation: transition.operation.clone(),
+            },
+        ));
 
         let transition_data = sps2_state::TransactionData {
             package_refs: &transition.package_refs,
@@ -77,28 +86,32 @@ impl AtomicInstaller {
             .await
         {
             Ok(journal) => {
-                context.emit_event(Event::TwoPhaseCommitPhaseOneCompleted {
-                    state_id: transition.staging_id,
-                    operation: transition.operation.clone(),
-                });
+                context.emit(AppEvent::State(
+                    StateEvent::TwoPhaseCommitPhaseOneCompleted {
+                        state_id: transition.staging_id,
+                        operation: transition.operation.clone(),
+                    },
+                ));
                 journal
             }
             Err(e) => {
-                context.emit_event(Event::TwoPhaseCommitFailed {
+                context.emit(AppEvent::State(StateEvent::TwoPhaseCommitFailed {
                     state_id: transition.staging_id,
                     operation: transition.operation.clone(),
                     error: e.to_string(),
                     phase: "phase_one".to_string(),
-                });
+                }));
                 return Err(e);
             }
         };
 
         // Phase 2: Execute filesystem swap and finalize
-        context.emit_event(Event::TwoPhaseCommitPhaseTwoStarting {
-            state_id: transition.staging_id,
-            operation: transition.operation.clone(),
-        });
+        context.emit(AppEvent::State(
+            StateEvent::TwoPhaseCommitPhaseTwoStarting {
+                state_id: transition.staging_id,
+                operation: transition.operation.clone(),
+            },
+        ));
 
         match self
             .state_manager
@@ -106,28 +119,30 @@ impl AtomicInstaller {
             .await
         {
             Ok(()) => {
-                context.emit_event(Event::TwoPhaseCommitPhaseTwoCompleted {
-                    state_id: transition.staging_id,
-                    operation: transition.operation.clone(),
-                });
+                context.emit(AppEvent::State(
+                    StateEvent::TwoPhaseCommitPhaseTwoCompleted {
+                        state_id: transition.staging_id,
+                        operation: transition.operation.clone(),
+                    },
+                ));
             }
             Err(e) => {
-                context.emit_event(Event::TwoPhaseCommitFailed {
+                context.emit(AppEvent::State(StateEvent::TwoPhaseCommitFailed {
                     state_id: transition.staging_id,
                     operation: transition.operation.clone(),
                     error: e.to_string(),
                     phase: "phase_two".to_string(),
-                });
+                }));
                 return Err(e);
             }
         }
 
         // Emit 2PC completion event
-        context.emit_event(Event::TwoPhaseCommitCompleted {
+        context.emit(AppEvent::State(StateEvent::TwoPhaseCommitCompleted {
             state_id: transition.staging_id,
             parent_state_id: parent_id,
             operation: transition.operation.clone(),
-        });
+        }));
 
         Ok(())
     }
@@ -202,9 +217,11 @@ impl AtomicInstaller {
         // Set event sender on transition
         transition.event_sender = context.event_sender().cloned();
 
-        context.emit_event(Event::StateCreating {
+        context.emit(AppEvent::State(StateEvent::Initializing {
             state_id: transition.staging_id,
-        });
+            operation: "Creating new state".to_string(),
+            estimated_duration: None,
+        }));
 
         // Clone current state to staging directory
         sps2_root::create_staging_directory(&self.live_path, &transition.staging_path).await?;
@@ -281,11 +298,12 @@ impl AtomicInstaller {
         // Execute two-phase commit
         self.execute_two_phase_commit(&transition, context).await?;
 
-        context.emit_event(Event::StateTransition {
+        context.emit(AppEvent::State(StateEvent::TransitionCompleted {
             from: transition.parent_id.unwrap_or_default(),
             to: transition.staging_id,
             operation: "install".to_string(),
-        });
+            duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
+        }));
 
         Ok(result)
     }
@@ -367,10 +385,10 @@ impl AtomicInstaller {
 
         // Link files from store to staging
         if let Some(sender) = &transition.event_sender {
-            sender.emit(Event::DebugLog {
+            let _ = sender.send(AppEvent::General(GeneralEvent::DebugLog {
                 message: format!("Linking package {} to staging", package_id.name),
                 context: std::collections::HashMap::new(),
-            });
+            }));
         }
 
         stored_package.link_to(staging_prefix).await?;
@@ -398,14 +416,14 @@ impl AtomicInstaller {
 
         // Debug what was linked
         if let Some(sender) = &transition.event_sender {
-            sender.emit(Event::DebugLog {
+            let _ = sender.send(AppEvent::General(GeneralEvent::DebugLog {
                 message: format!(
                     "Linked {} files/directories for package {}",
                     file_paths.len(),
                     package_id.name
                 ),
                 context: std::collections::HashMap::new(),
-            });
+            }));
         }
 
         // Store file information to be added during commit
@@ -481,11 +499,12 @@ impl AtomicInstaller {
         // Execute two-phase commit
         self.execute_two_phase_commit(&transition, context).await?;
 
-        context.emit_event(Event::StateTransition {
+        context.emit(AppEvent::State(StateEvent::TransitionCompleted {
             from: transition.parent_id.unwrap_or_default(),
             to: transition.staging_id,
             operation: "uninstall".to_string(),
-        });
+            duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
+        }));
 
         Ok(result)
     }

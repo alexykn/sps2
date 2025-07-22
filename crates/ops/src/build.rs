@@ -6,7 +6,7 @@
 use crate::{BuildReport, OpsCtx};
 use sps2_builder::{parse_yaml_recipe, BuildContext};
 use sps2_errors::{Error, OpsError};
-use sps2_events::{Event, EventEmitter};
+use sps2_events::{AppEvent, BuildEvent, EventEmitter};
 use sps2_types::Version;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -46,10 +46,10 @@ pub async fn build(
         .into());
     }
 
-    ctx.emit_event(Event::BuildStarting {
+    ctx.emit_event(AppEvent::Build(BuildEvent::Starting {
         package: "unknown".to_string(), // Will be determined from recipe
         version: Version::parse("0.0.0").unwrap_or_else(|_| Version::new(0, 0, 0)),
-    });
+    }));
 
     // Load and execute recipe to get package metadata
     // We already validated that extension is yaml or yml
@@ -58,10 +58,10 @@ pub async fn build(
     let package_version = Version::parse(&yaml_recipe.metadata.version)?;
 
     // Send updated build starting event with correct info
-    ctx.emit_event(Event::BuildStarting {
+    ctx.emit_event(AppEvent::Build(BuildEvent::Starting {
         package: package_name.clone(),
         version: package_version.clone(),
-    });
+    }));
 
     // Create build context
     let output_directory = output_dir.map_or_else(
@@ -125,11 +125,11 @@ pub async fn build(
         sbom_generated: !result.sbom_files.is_empty(),
     };
 
-    ctx.emit_event(Event::BuildCompleted {
+    ctx.emit_event(AppEvent::Build(BuildEvent::Completed {
         package: report.package.clone(),
         version: report.version.clone(),
         path: report.output_path.clone(),
-    });
+    }));
 
     Ok(report)
 }

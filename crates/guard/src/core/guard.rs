@@ -7,7 +7,7 @@ use crate::types::{
 };
 use crate::verification;
 use sps2_errors::Error;
-use sps2_events::{Event, EventEmitter, EventSender};
+use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent, GuardEvent};
 use sps2_hash::Hash;
 use sps2_state::{queries, PackageFileEntry, StateManager};
 use sps2_store::PackageStore;
@@ -350,13 +350,13 @@ impl StateVerificationGuard {
                 error_ctx.emit_error_summary();
             }
             Err(_) => {
-                self.emit_event(Event::GuardVerificationFailed {
+                self.emit(AppEvent::Guard(GuardEvent::VerificationFailed {
                     operation_id: error_ctx.operation_id().to_string(),
                     error: "Verification operation failed".to_string(),
                     packages_verified: 0,
                     files_verified: 0,
                     duration_ms: 0,
-                });
+                }));
             }
         }
 
@@ -375,12 +375,9 @@ impl StateVerificationGuard {
         let state_id = self.state_manager.get_active_state().await?;
 
         // Emit verification started event
-        self.emit_event(Event::DebugLog {
-            message: format!(
-                "Starting scoped state verification for state {state_id} (scope: {scope:?})"
-            ),
-            context: HashMap::default(),
-        });
+        self.emit_debug(format!(
+            "Starting scoped state verification for state {state_id} (scope: {scope:?})"
+        ));
 
         // Get packages based on scope
         let (packages_to_verify, total_packages, total_files) =
@@ -388,15 +385,12 @@ impl StateVerificationGuard {
                 .await?;
 
         // Always use parallel verification (better performance with batched DB writes)
-        self.emit_event(Event::DebugLog {
-            message: format!(
-                "Using parallel verification for {} packages in scope {:?} (max concurrent: {})",
-                packages_to_verify.len(),
-                scope,
-                self.config.performance.max_concurrent_tasks
-            ),
-            context: HashMap::default(),
-        });
+        self.emit_debug(format!(
+            "Using parallel verification for {} packages in scope {:?} (max concurrent: {})",
+            packages_to_verify.len(),
+            scope,
+            self.config.performance.max_concurrent_tasks
+        ));
 
         // Use parallel verification
         let mut result = self
@@ -462,13 +456,13 @@ impl StateVerificationGuard {
         let manual_intervention_count =
             verification_result.discrepancies.len() - auto_heal_count - confirmation_required;
 
-        self.emit_event(Event::GuardHealingStarted {
+        self.emit(AppEvent::Guard(GuardEvent::HealingStarted {
             operation_id: healing_ctx_events.operation_id().to_string(),
             discrepancies_count: verification_result.discrepancies.len(),
             auto_heal_count,
             confirmation_required_count: confirmation_required,
             manual_intervention_count,
-        });
+        }));
 
         // Create healing context
         let healing_ctx = HealingContext {
@@ -485,13 +479,13 @@ impl StateVerificationGuard {
         let discrepancies = verification_result.discrepancies.clone();
         for (idx, discrepancy) in discrepancies.iter().enumerate() {
             // Emit healing progress
-            self.emit_event(Event::GuardHealingProgress {
+            self.emit(AppEvent::Guard(GuardEvent::HealingProgress {
                 operation_id: healing_ctx_events.operation_id().to_string(),
                 completed: idx,
                 total: discrepancies.len(),
                 current_operation: discrepancy.short_description().to_string(),
                 current_file: Some(discrepancy.file_path().to_string()),
-            });
+            }));
 
             match discrepancy {
                 Discrepancy::MissingFile {
@@ -614,13 +608,13 @@ impl StateVerificationGuard {
         verification_result.duration_ms = duration_ms;
 
         // Emit healing completion event
-        self.emit_event(Event::GuardHealingCompleted {
+        self.emit(AppEvent::Guard(GuardEvent::HealingCompleted {
             operation_id: healing_ctx_events.operation_id().to_string(),
             healed_count,
             failed_count: failed_healings.len(),
             skipped_count: 0,
             duration_ms,
-        });
+        }));
 
         // Record healing results in context and emit summary
         for discrepancy in &failed_healings {
@@ -674,13 +668,13 @@ impl StateVerificationGuard {
         let manual_intervention_count =
             verification_result.discrepancies.len() - auto_heal_count - confirmation_required;
 
-        self.emit_event(Event::GuardHealingStarted {
+        self.emit(AppEvent::Guard(GuardEvent::HealingStarted {
             operation_id: healing_ctx_events.operation_id().to_string(),
             discrepancies_count: verification_result.discrepancies.len(),
             auto_heal_count,
             confirmation_required_count: confirmation_required,
             manual_intervention_count,
-        });
+        }));
 
         // Create healing context
         let healing_ctx = HealingContext {

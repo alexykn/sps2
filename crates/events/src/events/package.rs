@@ -6,47 +6,28 @@ use sps2_types::Version;
 #[serde(tag = "type")]
 pub enum PackageEvent {
     /// Package installing
-    Installing {
-        name: String,
-        version: Version,
-    },
+    Installing { name: String, version: Version },
 
     /// Package removing
-    Removing {
-        name: String,
-        version: Version,
-    },
+    Removing { name: String, version: Version },
 
     /// Package removed
-    Removed {
-        name: String,
-        version: Version,
-    },
+    Removed { name: String, version: Version },
 
     /// Package building
-    Building {
-        name: String,
-        version: Version,
-    },
+    Building { name: String, version: Version },
 
     /// List operation starting
     ListStarting,
 
     /// List operation completed
-    ListCompleted {
-        count: usize,
-    },
+    ListCompleted { count: usize },
 
     /// Search operation starting
-    SearchStarting {
-        query: String,
-    },
+    SearchStarting { query: String },
 
     /// Search operation completed
-    SearchCompleted {
-        query: String,
-        count: usize,
-    },
+    SearchCompleted { query: String, count: usize },
 
     /// Health check starting
     HealthCheckStarting,
@@ -62,18 +43,13 @@ pub enum PackageEvent {
     },
 
     /// Health check completed
-    HealthCheckCompleted {
-        healthy: bool,
-        issues: Vec<String>,
-    },
+    HealthCheckCompleted { healthy: bool, issues: Vec<String> },
 
     /// Self-update starting
     SelfUpdateStarting,
 
     /// Self-update checking version
-    SelfUpdateCheckingVersion {
-        current_version: String,
-    },
+    SelfUpdateCheckingVersion { current_version: String },
 
     /// Self-update version available
     SelfUpdateVersionAvailable {
@@ -82,25 +58,16 @@ pub enum PackageEvent {
     },
 
     /// Self-update already latest
-    SelfUpdateAlreadyLatest {
-        version: String,
-    },
+    SelfUpdateAlreadyLatest { version: String },
 
     /// Self-update downloading
-    SelfUpdateDownloading {
-        version: String,
-        url: String,
-    },
+    SelfUpdateDownloading { version: String, url: String },
 
     /// Self-update verifying
-    SelfUpdateVerifying {
-        version: String,
-    },
+    SelfUpdateVerifying { version: String },
 
     /// Self-update installing
-    SelfUpdateInstalling {
-        version: String,
-    },
+    SelfUpdateInstalling { version: String },
 
     /// Self-update completed
     SelfUpdateCompleted {

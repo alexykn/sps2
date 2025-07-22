@@ -5,7 +5,7 @@
 
 use crate::ValidationResult;
 use sps2_errors::{Error, InstallError};
-use sps2_events::{Event, EventSender, EventSenderExt};
+use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent};
 use sps2_manifest::Manifest;
 use std::path::Path;
 use tokio::fs;
@@ -22,13 +22,13 @@ pub async fn verify_and_parse_manifest(
 ) -> Result<Manifest, Error> {
     let manifest_path = staging_dir.path.join("manifest.toml");
     if let Some(sender) = event_sender {
-        sender.emit(Event::DebugLog {
+        sender.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: format!(
                 "DEBUG: Checking for manifest at: {}",
                 manifest_path.display()
             ),
             context: std::collections::HashMap::new(),
-        });
+        }));
     }
 
     // Add a small delay to ensure filesystem visibility after extraction
@@ -36,22 +36,22 @@ pub async fn verify_and_parse_manifest(
 
     let manifest_exists = tokio::fs::metadata(&manifest_path).await.is_ok();
     if let Some(sender) = event_sender {
-        sender.emit(Event::DebugLog {
+        sender.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: format!(
                 "DEBUG: Manifest exists check: {} -> {}",
                 manifest_path.display(),
                 manifest_exists
             ),
             context: std::collections::HashMap::new(),
-        });
+        }));
     }
 
     if !manifest_exists {
         if let Some(sender) = event_sender {
-            sender.emit(Event::DebugLog {
+            sender.emit(AppEvent::General(GeneralEvent::DebugLog {
                 message: "DEBUG: Manifest not found after delay, listing staging directory contents again".to_string(),
                 context: std::collections::HashMap::new(),
-            });
+            }));
             debug_list_directory_contents(&staging_dir.path, sender).await;
         }
         return Err(InstallError::InvalidPackageFile {
@@ -62,18 +62,18 @@ pub async fn verify_and_parse_manifest(
     }
 
     if let Some(sender) = event_sender {
-        sender.emit(Event::DebugLog {
+        sender.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: "DEBUG: About to parse manifest file".to_string(),
             context: std::collections::HashMap::new(),
-        });
+        }));
     }
 
     let manifest = Manifest::from_file(&manifest_path).await.map_err(|e| {
         if let Some(sender) = event_sender {
-            sender.emit(Event::DebugLog {
+            sender.emit(AppEvent::General(GeneralEvent::DebugLog {
                 message: format!("DEBUG: Manifest parsing failed: {e}"),
                 context: std::collections::HashMap::new(),
-            });
+            }));
         }
         InstallError::InvalidPackageFile {
             path: manifest_path.display().to_string(),
@@ -82,13 +82,13 @@ pub async fn verify_and_parse_manifest(
     })?;
 
     if let Some(sender) = event_sender {
-        sender.emit(Event::DebugLog {
+        sender.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: format!(
                 "DEBUG: Manifest parsed successfully: {}",
                 manifest.package.name
             ),
             context: std::collections::HashMap::new(),
-        });
+        }));
     }
 
     manifest
@@ -108,21 +108,21 @@ pub fn verify_package_identity(
     event_sender: Option<&EventSender>,
 ) -> Result<(), Error> {
     if let Some(sender) = event_sender {
-        sender.emit(Event::DebugLog {
+        sender.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: format!(
                 "DEBUG: Checking package identity: expected '{}', found '{}'",
                 staging_dir.package_id.name, manifest.package.name
             ),
             context: std::collections::HashMap::new(),
-        });
+        }));
     }
 
     if manifest.package.name != staging_dir.package_id.name {
         if let Some(sender) = event_sender {
-            sender.emit(Event::DebugLog {
+            sender.emit(AppEvent::General(GeneralEvent::DebugLog {
                 message: "DEBUG: Package name mismatch error!".to_string(),
                 context: std::collections::HashMap::new(),
-            });
+            }));
         }
         return Err(InstallError::InvalidPackageFile {
             path: staging_dir.path.display().to_string(),
@@ -145,21 +145,21 @@ pub async fn verify_file_count(
 ) -> Result<(), Error> {
     let actual_file_count = count_files(&staging_dir.path).await?;
     if let Some(sender) = event_sender {
-        sender.emit(Event::DebugLog {
+        sender.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: format!(
                 "DEBUG: File count check: expected {}, found {}",
                 validation_result.file_count, actual_file_count
             ),
             context: std::collections::HashMap::new(),
-        });
+        }));
     }
 
     if actual_file_count != validation_result.file_count {
         if let Some(sender) = event_sender {
-            sender.emit(Event::DebugLog {
+            sender.emit(AppEvent::General(GeneralEvent::DebugLog {
                 message: "DEBUG: File count mismatch error!".to_string(),
                 context: std::collections::HashMap::new(),
-            });
+            }));
         }
         return Err(InstallError::InvalidPackageFile {
             path: staging_dir.path.display().to_string(),
@@ -180,19 +180,19 @@ pub async fn verify_directory_structure(
     event_sender: Option<&EventSender>,
 ) -> Result<(), Error> {
     if let Some(sender) = event_sender {
-        sender.emit(Event::DebugLog {
+        sender.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: "DEBUG: Starting directory structure validation".to_string(),
             context: std::collections::HashMap::new(),
-        });
+        }));
     }
 
     validate_directory_structure(&staging_dir.path).await?;
 
     if let Some(sender) = event_sender {
-        sender.emit(Event::DebugLog {
+        sender.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: "DEBUG: Directory structure validation complete".to_string(),
             context: std::collections::HashMap::new(),
-        });
+        }));
     }
 
     Ok(())

@@ -3,6 +3,7 @@
 use crate::OpsCtx;
 use sps2_drafter::{Drafter, SourceLocation};
 use sps2_errors::{Error, OpsError};
+use sps2_events::{AppEvent, GeneralEvent};
 use std::path::PathBuf;
 
 /// Draft a recipe from a source location
@@ -84,13 +85,15 @@ pub async fn draft_recipe(
         })?;
 
     // Send success event
-    let _ = ctx.tx.send(sps2_events::Event::OperationCompleted {
-        operation: format!(
-            "YAML recipe successfully written to {}",
-            output_path.display()
-        ),
-        success: true,
-    });
+    let _ = ctx
+        .tx
+        .send(AppEvent::General(GeneralEvent::OperationCompleted {
+            operation: format!(
+                "YAML recipe successfully written to {}",
+                output_path.display()
+            ),
+            success: true,
+        }));
 
     Ok(())
 }

@@ -5,7 +5,9 @@
 
 use crate::{InstallReport, InstallRequest, OpsCtx};
 use sps2_errors::{Error, InstallError, OpsError};
-use sps2_events::{Event, EventEmitter};
+use sps2_events::{
+    AppEvent, EventEmitter, GeneralEvent, InstallEvent, ProgressEvent, ResolverEvent,
+};
 use sps2_guard::{OperationResult as GuardOperationResult, PackageChange as GuardPackageChange};
 use sps2_install::{InstallConfig, InstallContext, Installer, PipelineConfig, PipelineMaster};
 use sps2_types::{PackageSpec, Version};
@@ -73,16 +75,16 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
             Ok(result) => result,
             Err(e) => {
                 // Provide specific guidance for local file failures
-                ctx.emit_event(Event::Error {
+                ctx.emit_event(AppEvent::General(GeneralEvent::ErrorWithDetails {
                     message: format!("Failed to install {} remote packages", remote_specs.len()),
-                    details: Some(format!(
+                    details: format!(
                         "Error: {e}. \n\nSuggested solutions:\n\
                         • Check your internet connection\n\
                         • Run 'sps2 reposync' to update package index\n\
                         • Verify package names with 'sps2 search <package>'\n\
                         • For version constraints, use format: package>=1.0.0"
-                    )),
-                });
+                    ),
+                }));
                 return Err(e);
             }
         }
@@ -92,7 +94,7 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
             Ok(result) => result,
             Err(e) => {
                 // Provide guidance for mixed installation failures
-                ctx.emit_event(Event::Error {
+                ctx.emit_event(AppEvent::General(GeneralEvent::ErrorWithDetails {
                     message: format!(
                         "Failed to install mixed packages ({} remote, {} local)",
                         remote_specs.len(),
@@ -105,7 +107,7 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
                         • Ensure .sp files are not corrupted\n\
                         • Use absolute paths or './' prefix for current directory"
                     )),
-                });
+                }));
                 return Err(e);
             }
         }
@@ -185,17 +187,17 @@ async fn install_remote_packages_parallel(
     );
 
     // Send overall progress start event
-    ctx.emit_event(Event::ProgressStarted {
+    ctx.emit_event(AppEvent::Progress(ProgressEvent::Started {
         id: "install".to_string(),
         operation: format!("Installing {} packages", specs.len()),
         total: Some(specs.len() as u64),
         phases: vec![],
-    });
+    }));
 
     // Phase 1: Dependency resolution
-    ctx.emit_event(Event::ResolvingDependencies {
+    ctx.emit_event(AppEvent::Resolver(ResolverEvent::Starting {
         package: "batch".to_string(),
-    });
+    }));
 
     let mut resolution_context = sps2_resolver::ResolutionContext::new();
     for spec in specs {
@@ -206,16 +208,16 @@ async fn install_remote_packages_parallel(
         Ok(result) => result,
         Err(e) => {
             // Emit helpful error event for resolution failures
-            ctx.emit_event(Event::Error {
+            ctx.emit_event(AppEvent::General(GeneralEvent::ErrorWithDetails {
                 message: "Dependency resolution failed".to_string(),
-                details: Some(format!("Error: {e}")),
-            });
+                details: format!("Error: {e}"),
+            }));
 
             // Mark progress as failed
-            ctx.emit_event(Event::ProgressFailed {
+            ctx.emit_event(AppEvent::Progress(ProgressEvent::Failed {
                 id: progress_id.clone(),
                 error: format!("Pipeline execution failed: {e}"),
-            });
+            }));
 
             return Err(e);
         }
@@ -251,19 +253,19 @@ async fn install_remote_packages_parallel(
         Ok(result) => result,
         Err(e) => {
             // Send helpful error context
-            ctx.emit_event(Event::Error {
+            ctx.emit_event(AppEvent::General(GeneralEvent::ErrorWithDetails {
                 message: "Installation failed during download/validation phase".to_string(),
-                details: Some(format!(
+                details: format!(
                     "Error: {e}. This may be due to network issues, package corruption, or insufficient disk space. \
                     Try running 'sps2 cleanup' to free space or check your network connection."
-                )),
-            });
+                ),
+            }));
 
             // Mark progress as failed
-            ctx.emit_event(Event::ProgressFailed {
+            ctx.emit_event(AppEvent::Progress(ProgressEvent::Failed {
                 id: progress_id.clone(),
                 error: format!("Installation failed: {e}"),
-            });
+            }));
 
             return Err(e);
         }

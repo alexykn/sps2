@@ -6,7 +6,10 @@ use crate::PreparedPackage;
 use crossbeam::queue::SegQueue;
 use dashmap::DashMap;
 use sps2_errors::{Error, InstallError};
-use sps2_events::{Event, EventEmitter, EventSender};
+use sps2_events::events::AcquisitionSource;
+use sps2_events::{
+    AcquisitionEvent, AppEvent, EventEmitter, EventSender, GeneralEvent, InstallEvent,
+};
 use sps2_net::NetClient;
 use sps2_resolver::{ExecutionPlan, NodeAction, PackageId, ResolvedNode};
 use sps2_resources::ResourceManager;
@@ -87,7 +90,7 @@ impl ParallelExecutor {
         let graph = Self::build_execution_graph(self, execution_plan, resolved_packages);
 
         // Initialize ready queue with packages that have no dependencies
-        context.emit_event(Event::DebugLog {
+        context.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: format!(
                 "DEBUG: Execution plan has {} ready packages",
                 execution_plan.ready_packages().len()
@@ -101,47 +104,47 @@ impl ParallelExecutor {
                     .collect::<Vec<_>>()
                     .join(", "),
             )]),
-        });
+        }));
 
         for package_id in execution_plan.ready_packages() {
-            context.emit_event(Event::DebugLog {
+            context.emit(AppEvent::General(GeneralEvent::DebugLog {
                 message: format!(
                     "DEBUG: Processing ready package {}-{}",
                     package_id.name, package_id.version
                 ),
                 context: std::collections::HashMap::new(),
-            });
+            }));
 
             // Only add packages with in_degree 0 from our graph
             if let Some(node) = graph.get(&package_id) {
                 let in_degree = node.in_degree.load(std::sync::atomic::Ordering::Relaxed);
-                context.emit_event(Event::DebugLog {
+                context.emit(AppEvent::General(GeneralEvent::DebugLog {
                     message: format!(
                         "DEBUG: Package {}-{} has in_degree {}",
                         package_id.name, package_id.version, in_degree
                     ),
                     context: std::collections::HashMap::new(),
-                });
+                }));
 
                 if in_degree == 0 {
                     ready_queue.push(package_id.clone());
-                    context.emit_event(Event::DebugLog {
+                    context.emit(AppEvent::General(GeneralEvent::DebugLog {
                         message: format!(
                             "DEBUG: Added package {}-{} to ready queue",
                             package_id.name, package_id.version
                         ),
                         context: std::collections::HashMap::new(),
-                    });
+                    }));
                 }
             } else {
                 ready_queue.push(package_id.clone());
-                context.emit_event(Event::DebugLog {
+                context.emit(AppEvent::General(GeneralEvent::DebugLog {
                     message: format!(
                         "DEBUG: Added package {}-{} to ready queue (not in graph)",
                         package_id.name, package_id.version
                     ),
                     context: std::collections::HashMap::new(),
-                });
+                }));
             }
         }
 
@@ -151,23 +154,23 @@ impl ParallelExecutor {
         let mut no_progress_iterations = 0;
         let mut last_completed_count = 0;
 
-        context.emit_event(Event::DebugLog {
+        context.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: format!(
                 "DEBUG: Starting main processing loop. execution_plan.is_complete()={}, inflight.is_empty()={}",
                 execution_plan.is_complete(), inflight.is_empty()
             ),
             context: std::collections::HashMap::new(),
-        });
+        }));
 
         // Process packages until completion - ensure we process ready packages even if execution_plan reports complete
         while (!execution_plan.is_complete() || !inflight.is_empty()) || !ready_queue.is_empty() {
-            context.emit_event(Event::DebugLog {
+            context.emit(AppEvent::General(GeneralEvent::DebugLog {
                 message: format!(
                     "DEBUG: Loop iteration. execution_plan.is_complete()={}, inflight.is_empty()={}",
                     execution_plan.is_complete(), inflight.is_empty()
                 ),
                 context: std::collections::HashMap::new(),
-            });
+            }));
             // Check overall timeout
             if start_time.elapsed() > overall_timeout {
                 return Err(InstallError::OperationTimeout {
@@ -194,22 +197,22 @@ impl ParallelExecutor {
             }
             // Try to start new tasks from ready queue
             while let Some(package_id) = ready_queue.pop() {
-                context.emit_event(Event::DebugLog {
+                context.emit(AppEvent::General(GeneralEvent::DebugLog {
                     message: format!(
                         "DEBUG: Popped package {}-{} from ready queue",
                         package_id.name, package_id.version
                     ),
                     context: std::collections::HashMap::new(),
-                });
+                }));
 
                 if inflight.contains_key(&package_id) {
-                    context.emit_event(Event::DebugLog {
+                    context.emit(AppEvent::General(GeneralEvent::DebugLog {
                         message: format!(
                             "DEBUG: Package {}-{} already in flight, skipping",
                             package_id.name, package_id.version
                         ),
                         context: std::collections::HashMap::new(),
-                    });
+                    }));
                     continue; // Already in flight
                 }
 
@@ -221,13 +224,13 @@ impl ParallelExecutor {
                     }
                 })?;
 
-                context.emit_event(Event::DebugLog {
+                context.emit(AppEvent::General(GeneralEvent::DebugLog {
                     message: format!(
                         "DEBUG: Starting task for package {}-{} with action {:?}",
                         package_id.name, package_id.version, node.action
                     ),
                     context: std::collections::HashMap::new(),
-                });
+                }));
 
                 let handle = self.spawn_package_task(
                     package_id.clone(),
@@ -255,13 +258,13 @@ impl ParallelExecutor {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
 
-        context.emit_event(Event::DebugLog {
+        context.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: format!(
                 "DEBUG: Exited main processing loop. execution_plan.is_complete()={}, inflight.is_empty()={}, prepared_packages.len()={}",
                 execution_plan.is_complete(), inflight.is_empty(), prepared_packages.len()
             ),
             context: std::collections::HashMap::new(),
-        });
+        }));
 
         // Convert DashMap to HashMap and return prepared packages
         let prepared_packages =
@@ -339,18 +342,20 @@ impl ParallelExecutor {
             timeout_duration,
             prepared_packages,
         } = args;
-        context.emit_event(Event::DebugLog {
+        context.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: format!(
                 "DEBUG: Processing package {}-{} with action {:?}",
                 package_id.name, package_id.version, node.action
             ),
             context: std::collections::HashMap::new(),
-        });
+        }));
 
-        context.emit_event(Event::PackageInstalling {
-            name: package_id.name.clone(),
+        context.emit(AppEvent::Install(InstallEvent::Started {
+            package: package_id.name.clone(),
             version: package_id.version.clone(),
-        });
+            install_path: std::path::PathBuf::from("/opt/pm/live"), // Default path
+            force_reinstall: false,
+        }));
 
         match node.action {
             NodeAction::Download => {
@@ -371,10 +376,18 @@ impl ParallelExecutor {
 
                     match download_result {
                         Ok(Ok(())) => {
-                            context.emit_event(Event::PackageDownloaded {
-                                name: package_id.name.clone(),
+                            context.emit(AppEvent::Acquisition(AcquisitionEvent::Completed {
+                                package: package_id.name.clone(),
                                 version: package_id.version.clone(),
-                            });
+                                source: AcquisitionSource::Remote {
+                                    url: "https://example.com".to_string(), // TODO: Use actual URL
+                                    mirror_priority: 0,
+                                },
+                                final_path: std::path::PathBuf::from("/tmp"), // TODO: Use actual path
+                                size: 0, // TODO: Use actual size
+                                duration: std::time::Duration::from_secs(0),
+                                verification_passed: true, // TODO: Track actual verification
+                            }));
                         }
                         Ok(Err(e)) => return Err(e),
                         Err(_) => {
@@ -394,22 +407,22 @@ impl ParallelExecutor {
                 }
             }
             NodeAction::Local => {
-                context.emit_event(Event::DebugLog {
+                context.emit(AppEvent::General(GeneralEvent::DebugLog {
                     message: format!(
                         "DEBUG: Processing local package {}-{}, path: {:?}",
                         package_id.name, package_id.version, node.path
                     ),
                     context: std::collections::HashMap::new(),
-                });
+                }));
 
                 if let Some(path) = &node.path {
-                    context.emit_event(Event::DebugLog {
+                    context.emit(AppEvent::General(GeneralEvent::DebugLog {
                         message: format!(
                             "DEBUG: Adding local package to store: {}",
                             path.display()
                         ),
                         context: std::collections::HashMap::new(),
-                    });
+                    }));
 
                     // For local packages, add to store and prepare data
                     let stored_package = store.add_package(path).await?;
@@ -418,14 +431,14 @@ impl ParallelExecutor {
                         let size = stored_package.size().await?;
                         let store_path = stored_package.path().to_path_buf();
 
-                        context.emit_event(Event::DebugLog {
+                        context.emit(AppEvent::General(GeneralEvent::DebugLog {
                             message: format!(
                                 "DEBUG: Local package stored with hash {} at {}",
                                 hash.to_hex(),
                                 store_path.display()
                             ),
                             context: std::collections::HashMap::new(),
-                        });
+                        }));
 
                         let prepared_package = PreparedPackage {
                             hash: hash.clone(),
@@ -436,19 +449,22 @@ impl ParallelExecutor {
 
                         prepared_packages.insert(package_id.clone(), prepared_package);
 
-                        context.emit_event(Event::DebugLog {
+                        context.emit(AppEvent::General(GeneralEvent::DebugLog {
                             message: format!(
                                 "DEBUG: Added prepared package for {}-{}",
                                 package_id.name, package_id.version
                             ),
                             context: std::collections::HashMap::new(),
-                        });
+                        }));
 
-                        context.emit_event(Event::PackageInstalled {
-                            name: package_id.name.clone(),
+                        context.emit(AppEvent::Install(InstallEvent::Completed {
+                            package: package_id.name.clone(),
                             version: package_id.version.clone(),
-                            path: path.display().to_string(),
-                        });
+                            installed_files: 0, // TODO: Count actual files
+                            install_path: path.clone(),
+                            duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
+                            disk_usage: 0, // TODO: Calculate actual disk usage
+                        }));
                     } else {
                         return Err(InstallError::AtomicOperationFailed {
                             message: "failed to get hash from local package".to_string(),
@@ -485,11 +501,13 @@ impl ParallelExecutor {
         // Download with progress reporting
         net_client
             .download_file_with_progress(url, temp_file.path(), |progress| {
-                context.emit_event(Event::DownloadProgress {
-                    url: url.to_string(),
+                context.emit(AppEvent::Acquisition(AcquisitionEvent::DownloadProgress {
+                    package: package_id.name.clone(),
                     bytes_downloaded: progress.downloaded,
-                    total_bytes: progress.total,
-                });
+                    total_bytes: Some(progress.total),
+                    current_speed: 0.0, // TODO: Calculate actual speed
+                    eta: None,          // TODO: Calculate ETA
+                }));
             })
             .await?;
 
@@ -512,7 +530,7 @@ impl ParallelExecutor {
 
             prepared_packages.insert(package_id.clone(), prepared_package);
 
-            context.emit_event(Event::DebugLog {
+            context.emit(AppEvent::General(GeneralEvent::DebugLog {
                 message: format!(
                     "Package {}-{} downloaded and stored with hash {} (prepared for installation)",
                     package_id.name,
@@ -520,7 +538,7 @@ impl ParallelExecutor {
                     hash.to_hex()
                 ),
                 context: std::collections::HashMap::new(),
-            });
+            }));
         }
 
         Ok(())

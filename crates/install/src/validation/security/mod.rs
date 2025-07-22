@@ -49,9 +49,11 @@ pub async fn validate_security_properties(
     event_sender: Option<&EventSender>,
 ) -> Result<(), Error> {
     if let Some(sender) = event_sender {
-        let _ = sender.send(sps2_events::Event::OperationStarted {
-            operation: "Validating security properties".to_string(),
-        });
+        let _ = sender.send(sps2_events::AppEvent::General(
+            sps2_events::GeneralEvent::OperationStarted {
+                operation: "Validating security properties".to_string(),
+            },
+        ));
     }
 
     // Validate file permissions
@@ -65,10 +67,12 @@ pub async fn validate_security_properties(
     // Additional security checks can be added here in the future
 
     if let Some(sender) = event_sender {
-        let _ = sender.send(sps2_events::Event::OperationCompleted {
-            operation: "Security validation completed".to_string(),
-            success: true,
-        });
+        let _ = sender.send(sps2_events::AppEvent::General(
+            sps2_events::GeneralEvent::OperationCompleted {
+                operation: "Security validation completed".to_string(),
+                success: true,
+            },
+        ));
     }
 
     Ok(())
@@ -86,13 +90,15 @@ pub async fn validate_package_security(
     event_sender: Option<&EventSender>,
 ) -> Result<(), Error> {
     if let Some(sender) = event_sender {
-        let _ = sender.send(sps2_events::Event::DebugLog {
-            message: format!(
-                "DEBUG: Applying {} security policy to package",
-                policy.security_level_description()
-            ),
-            context: std::collections::HashMap::new(),
-        });
+        let _ = sender.send(sps2_events::AppEvent::General(
+            sps2_events::GeneralEvent::DebugLog {
+                message: format!(
+                    "DEBUG: Applying {} security policy to package",
+                    policy.security_level_description()
+                ),
+                context: std::collections::HashMap::new(),
+            },
+        ));
     }
 
     // Basic security validation

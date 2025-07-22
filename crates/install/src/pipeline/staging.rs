@@ -3,7 +3,9 @@
 use crate::pipeline::decompress::DecompressResult;
 use crate::staging::StagingManager;
 use sps2_errors::Error;
-use sps2_events::{Event, EventEmitter, EventSender, EventSenderExt};
+use sps2_events::{
+    AppEvent, EventEmitter, EventSender, GeneralEvent, InstallEvent,
+};
 use sps2_resolver::PackageId;
 use sps2_store::PackageStore;
 use std::sync::Arc;
@@ -98,22 +100,22 @@ impl StagingPipeline {
         store: &PackageStore,
         tx: &EventSender,
     ) -> Result<PackageId, Error> {
-        tx.emit(Event::DebugLog {
+        tx.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: format!(
                 "DEBUG: Starting staging/install for package: {}",
                 decompress_result.package_id.name
             ),
             context: std::collections::HashMap::new(),
-        });
+        }));
 
         // Extract to staging directory
-        tx.emit(Event::DebugLog {
+        tx.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: format!(
                 "DEBUG: Extracting to staging directory from: {}",
                 decompress_result.decompressed_path.display()
             ),
             context: std::collections::HashMap::new(),
-        });
+        }));
 
         let staging_context = StagingContext {
             event_sender: Some(tx.clone()),
@@ -127,34 +129,37 @@ impl StagingPipeline {
             )
             .await?;
 
-        tx.emit(Event::DebugLog {
+        tx.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: format!(
                 "DEBUG: Extracted to staging directory: {}",
                 staging_dir.path().display()
             ),
             context: std::collections::HashMap::new(),
-        });
+        }));
 
         // Install from staging directory
-        tx.emit(Event::DebugLog {
+        tx.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: "DEBUG: Adding package to store from staging".to_string(),
             context: std::collections::HashMap::new(),
-        });
+        }));
 
         let stored_package = store
             .add_package_from_staging(staging_dir.path(), &decompress_result.package_id)
             .await?;
 
-        tx.emit(Event::DebugLog {
+        tx.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: "DEBUG: Package added to store successfully".to_string(),
             context: std::collections::HashMap::new(),
-        });
+        }));
 
-        tx.emit(Event::PackageInstalled {
-            name: decompress_result.package_id.name.clone(),
+        tx.emit(AppEvent::Install(InstallEvent::Completed {
+            package: decompress_result.package_id.name.clone(),
             version: decompress_result.package_id.version.clone(),
-            path: staging_dir.path().display().to_string(),
-        });
+            installed_files: decompress_result.validation_result.file_count,
+            install_path: staging_dir.path().to_path_buf(),
+            duration: std::time::Duration::from_secs(0), // placeholder
+            disk_usage: decompress_result.validation_result.extracted_size,
+        }));
 
         // Get the hash from the stored package
         let hash = stored_package
@@ -163,14 +168,14 @@ impl StagingPipeline {
                 message: "failed to get hash from stored package".to_string(),
             })?;
 
-        tx.emit(Event::DebugLog {
+        tx.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: format!(
                 "DEBUG: Package installation completed: {} (hash: {})",
                 decompress_result.package_id.name,
                 hash.to_hex()
             ),
             context: std::collections::HashMap::new(),
-        });
+        }));
 
         Ok(decompress_result.package_id.clone())
     }

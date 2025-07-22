@@ -21,7 +21,7 @@ pub use types::{
 pub use vulndb::{DatabaseStatistics, VulnDbManager, VulnerabilityDatabase};
 
 use sps2_errors::Error;
-use sps2_events::{EventEmitter, EventSender, EventSenderExt};
+use sps2_events::{AppEvent, AuditEvent, EventEmitter, EventSender};
 use sps2_hash::Hash;
 use sps2_state::StateManager;
 use sps2_store::PackageStore;
@@ -94,9 +94,9 @@ impl AuditSystem {
         let installed_packages = state_manager.get_installed_packages().await?;
 
         if let Some(sender) = self.event_sender() {
-            sender.emit(sps2_events::Event::AuditStarting {
+            sender.emit(AppEvent::Audit(AuditEvent::Starting {
                 package_count: installed_packages.len(),
-            });
+            }));
         }
 
         let mut package_audits = Vec::new();
@@ -117,21 +117,21 @@ impl AuditSystem {
             package_audits.push(audit);
 
             if let Some(sender) = self.event_sender() {
-                sender.emit(sps2_events::Event::AuditPackageCompleted {
+                sender.emit(AppEvent::Audit(AuditEvent::PackageCompleted {
                     package: package.name.clone(),
                     vulnerabilities_found: vuln_count,
-                });
+                }));
             }
         }
 
         let report = AuditReport::new(package_audits);
 
         if let Some(sender) = self.event_sender() {
-            sender.emit(sps2_events::Event::AuditCompleted {
+            sender.emit(AppEvent::Audit(AuditEvent::Completed {
                 packages_scanned: installed_packages.len(),
                 vulnerabilities_found: report.total_vulnerabilities(),
                 critical_count: report.critical_count(),
-            });
+            }));
         }
 
         Ok(report)

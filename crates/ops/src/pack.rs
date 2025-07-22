@@ -10,7 +10,7 @@ use sps2_builder::{
     BuildEnvironment, BuildPlan, BuilderApi, RecipeMetadata, SecurityContext, YamlRecipe,
 };
 use sps2_errors::{Error, OpsError};
-use sps2_events::{Event, EventEmitter};
+use sps2_events::{AppEvent, BuildEvent, EventEmitter};
 use sps2_manifest::Manifest;
 use sps2_types::{BuildReport, Version};
 use std::collections::{HashMap, HashSet};
@@ -286,14 +286,15 @@ async fn execute_post_steps(
 
     // Execute each post step
     for step in &build_plan.post_steps {
-        context
-            .event_sender
-            .as_ref()
-            .unwrap()
-            .emit_event(Event::BuildStepStarted {
-                step: format!("{step:?}"),
-                package: context.name.clone(),
-            });
+        let _ =
+            context
+                .event_sender
+                .as_ref()
+                .unwrap()
+                .send(AppEvent::Build(BuildEvent::StepStarted {
+                    step: format!("{step:?}"),
+                    package: context.name.clone(),
+                }));
 
         execute_post_step_with_security(
             step,
@@ -304,14 +305,12 @@ async fn execute_post_steps(
         )
         .await?;
 
-        context
-            .event_sender
-            .as_ref()
-            .unwrap()
-            .emit_event(Event::BuildStepCompleted {
+        let _ = context.event_sender.as_ref().unwrap().send(AppEvent::Build(
+            BuildEvent::StepCompleted {
                 step: format!("{step:?}"),
                 package: context.name.clone(),
-            });
+            },
+        ));
     }
 
     context

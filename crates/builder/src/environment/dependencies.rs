@@ -2,7 +2,7 @@
 
 use super::core::BuildEnvironment;
 use sps2_errors::{BuildError, Error};
-use sps2_events::Event;
+use sps2_events::AppEvent;
 use sps2_resolver::{InstalledPackage, ResolutionContext};
 use sps2_state::StateManager;
 use sps2_types::package::PackageSpec;

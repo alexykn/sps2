@@ -5,7 +5,7 @@
 
 use crate::{validate_sp_file, ValidationResult};
 use sps2_errors::{Error, InstallError};
-use sps2_events::{Event, EventEmitter};
+use sps2_events::{AppEvent, EventEmitter, InstallEvent};
 use sps2_resolver::PackageId;
 use sps2_resources::ResourceManager;
 use sps2_store::{extract_package_with_events, PackageStore};
@@ -156,10 +156,6 @@ impl StagingManager {
         context: &T,
         validate_as_sp: bool,
     ) -> Result<StagingDirectory, Error> {
-        context.emit_event(Event::OperationStarted {
-            operation: format!("Creating staging directory for {}", package_id.name),
-        });
-
         // Validate the file if required (only for .sp files, not pre-validated tar files)
         let validation_result = if validate_as_sp {
             let result = validate_sp_file(file_path, context.event_sender()).await?;
@@ -183,12 +179,13 @@ impl StagingManager {
         // Create staging directory
         let mut staging_dir = self.create_staging_dir(package_id).await?;
 
-        context.emit_event(Event::OperationStarted {
-            operation: format!(
-                "Extracting package to staging: {}",
-                staging_dir.path.display()
-            ),
-        });
+        // Emit staging started event
+        context.emit(AppEvent::Install(InstallEvent::StagingStarted {
+            package: package_id.name.clone(),
+            version: package_id.version.clone(),
+            source_path: file_path.to_path_buf(),
+            staging_path: staging_dir.path.clone(),
+        }));
 
         // Extract package to staging directory
         extract_package_with_events(file_path, &staging_dir.path, context.event_sender())
@@ -223,10 +220,13 @@ impl StagingManager {
         self.validate_extracted_content(&mut staging_dir, &adjusted_validation_result, context)
             .await?;
 
-        context.emit_event(Event::OperationCompleted {
-            operation: format!("Package staged successfully: {}", package_id.name),
-            success: true,
-        });
+        context.emit(AppEvent::Install(InstallEvent::StagingCompleted {
+            package: package_id.name.clone(),
+            version: package_id.version.clone(),
+            files_staged: adjusted_validation_result.file_count,
+            staging_size: adjusted_validation_result.extracted_size,
+            staging_path: staging_dir.path.clone(),
+        }));
 
         Ok(staging_dir)
     }
@@ -238,9 +238,16 @@ impl StagingManager {
         validation_result: &ValidationResult,
         context: &T,
     ) -> Result<(), Error> {
-        context.emit_event(Event::OperationStarted {
-            operation: "Validating extracted content".to_string(),
-        });
+        context.emit(AppEvent::Install(InstallEvent::ValidationStarted {
+            package: staging_dir.package_id.name.clone(),
+            version: staging_dir.package_id.version.clone(),
+            validation_checks: vec![
+                "manifest_verification".to_string(),
+                "package_identity".to_string(),
+                "file_count_consistency".to_string(),
+                "directory_structure".to_string(),
+            ],
+        }));
         context.emit_debug(format!(
             "DEBUG: Starting post-extraction validation for: {}",
             staging_dir.path.display()
@@ -262,10 +269,13 @@ impl StagingManager {
         staging_dir.mark_validated();
 
         context.emit_debug("DEBUG: Marked staging directory as validated".to_string());
-        context.emit_event(Event::OperationCompleted {
-            operation: "Content validation completed".to_string(),
-            success: true,
-        });
+        context.emit(AppEvent::Install(InstallEvent::ValidationCompleted {
+            package: staging_dir.package_id.name.clone(),
+            version: staging_dir.package_id.version.clone(),
+            checks_passed: 4, // All the checks we performed
+            warnings: 0,
+            issues_found: 0,
+        }));
 
         Ok(())
     }

@@ -2,7 +2,7 @@
 
 use crate::Result;
 use sps2_errors::BuildError;
-use sps2_events::EventSenderExt;
+use sps2_events::EventEmitter;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
@@ -77,9 +77,7 @@ async fn prepare_git(
 ) -> Result<(Option<TempDir>, PathBuf)> {
     // Send progress event
     if let Some(tx) = event_tx {
-        tx.emit(sps2_events::Event::OperationStarted {
-            operation: format!("Cloning git repository: {url}"),
-        });
+        tx.emit_operation_started(format!("Cloning git repository: {url}"));
     }
 
     let temp_dir = TempDir::new().map_err(|e| BuildError::DraftSourceFailed {

@@ -8,7 +8,7 @@ use crate::artifact_qa::{
 use crate::{BuildContext, BuildEnvironment};
 use object::read::archive::ArchiveFile;
 use sps2_errors::Error;
-use sps2_events::Event;
+use sps2_events::AppEvent;
 
 pub struct ArchiveScanner;
 

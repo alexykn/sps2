@@ -14,7 +14,7 @@ use crate::utils::events::send_event;
 use crate::utils::fileops::copy_directory_strip_live_prefix;
 use crate::{BuildConfig, BuildContext, BuildEnvironment};
 use sps2_errors::{BuildError, Error};
-use sps2_events::Event;
+use sps2_events::AppEvent;
 use sps2_manifest::Manifest;
 use sps2_types::PythonPackageMetadata;
 use std::collections::HashMap;

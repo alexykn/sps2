@@ -71,12 +71,8 @@ pub enum QaEvent {
     },
 
     /// QA patching phase started
-    PatchingPhaseStarted {
-        patchers: Vec<String>,
-    },
+    PatchingPhaseStarted { patchers: Vec<String> },
 
     /// QA patching phase completed
-    PatchingPhaseCompleted {
-        patches_applied: usize,
-    },
+    PatchingPhaseCompleted { patches_applied: usize },
 }

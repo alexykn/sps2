@@ -43,23 +43,27 @@ pub async fn validate_file_format(
     event_sender: Option<&EventSender>,
 ) -> Result<PackageFormat, Error> {
     if let Some(sender) = event_sender {
-        let _ = sender.send(sps2_events::Event::DebugLog {
-            message: format!(
-                "DEBUG: validate_file_format - checking extension for: {}",
-                file_path.display()
-            ),
-            context: std::collections::HashMap::new(),
-        });
+        let _ = sender.send(sps2_events::AppEvent::General(
+            sps2_events::GeneralEvent::DebugLog {
+                message: format!(
+                    "DEBUG: validate_file_format - checking extension for: {}",
+                    file_path.display()
+                ),
+                context: std::collections::HashMap::new(),
+            },
+        ));
     }
 
     // Step 1: Check file extension
     validate_package_extension(file_path)?;
 
     if let Some(sender) = event_sender {
-        let _ = sender.send(sps2_events::Event::DebugLog {
-            message: "DEBUG: validate_file_format - extension check passed".to_string(),
-            context: std::collections::HashMap::new(),
-        });
+        let _ = sender.send(sps2_events::AppEvent::General(
+            sps2_events::GeneralEvent::DebugLog {
+                message: "DEBUG: validate_file_format - extension check passed".to_string(),
+                context: std::collections::HashMap::new(),
+            },
+        ));
     }
 
     // Step 2: Check file size
@@ -72,10 +76,12 @@ pub async fn validate_file_format(
     validate_supported_format(&format)?;
 
     if let Some(sender) = event_sender {
-        let _ = sender.send(sps2_events::Event::OperationCompleted {
-            operation: "File format validation completed".to_string(),
-            success: true,
-        });
+        let _ = sender.send(sps2_events::AppEvent::General(
+            sps2_events::GeneralEvent::OperationCompleted {
+                operation: "File format validation completed".to_string(),
+                success: true,
+            },
+        ));
     }
 
     Ok(format)

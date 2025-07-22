@@ -4,7 +4,7 @@ use crate::pipeline::download::DownloadResult;
 use crate::{validate_sp_file, ValidationResult};
 use async_compression::tokio::bufread::ZstdDecoder;
 use sps2_errors::{Error, InstallError};
-use sps2_events::{Event, EventSender, EventSenderExt};
+use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent};
 use sps2_hash::Hash;
 use sps2_resolver::PackageId;
 use sps2_resources::ResourceManager;
@@ -215,9 +215,9 @@ impl DecompressPipeline {
         let mut decoder = ZstdDecoder::new(reader);
         let mut buffer = vec![0u8; buffer_size];
 
-        tx.emit(Event::OperationStarted {
+        tx.emit(AppEvent::General(GeneralEvent::OperationStarted {
             operation: format!("Streaming decompress: {}", download_result.package_id.name),
-        });
+        }));
 
         // Stream decompress with progress
         loop {
@@ -251,13 +251,13 @@ impl DecompressPipeline {
 
         drop(output_file); // Close file for validation
 
-        tx.emit(Event::OperationCompleted {
+        tx.emit(AppEvent::General(GeneralEvent::OperationCompleted {
             operation: format!(
                 "Streaming decompress completed: {}",
                 download_result.package_id.name
             ),
             success: true,
-        });
+        }));
 
         // Concurrent validation
         let _validation_permit =
@@ -268,20 +268,20 @@ impl DecompressPipeline {
                     message: "failed to acquire validation semaphore".to_string(),
                 })?;
 
-        tx.emit(Event::DebugLog {
+        tx.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: format!(
                 "DEBUG: About to validate decompressed tar file: {}",
                 temp_path.display()
             ),
             context: std::collections::HashMap::new(),
-        });
+        }));
 
         // Validate the decompressed tar content, not as a .sp file
         let mut validation_result = crate::ValidationResult::new(crate::PackageFormat::PlainTar);
         crate::validate_tar_archive_content(&temp_path, &mut validation_result).await?;
         validation_result.mark_valid();
 
-        tx.emit(Event::DebugLog {
+        tx.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: format!(
                 "DEBUG: Validation result: valid={}, file_count={}, size={}",
                 validation_result.is_valid,
@@ -289,7 +289,7 @@ impl DecompressPipeline {
                 validation_result.extracted_size
             ),
             context: std::collections::HashMap::new(),
-        });
+        }));
 
         if !validation_result.is_valid {
             return Err(InstallError::InvalidPackageFile {

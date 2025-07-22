@@ -5,7 +5,8 @@ use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use sps2_errors::{DiscrepancySeverity, GuardError, GuardErrorSummary};
-use sps2_events::{Event, EventSender, EventSenderExt};
+use sps2_events::{AppEvent, EventSender, GuardEvent};
+use sps2_events::events::GuardDiscrepancyParams;
 
 use crate::types::{Discrepancy, OperationType, VerificationResult};
 
@@ -126,21 +127,23 @@ impl GuardErrorContext {
         {
             let context = error.user_context();
 
-            self.event_sender.emit(Event::guard_discrepancy_found(
-                sps2_events::GuardDiscrepancyParams {
-                    operation_id: self.operation_id.clone(),
-                    discrepancy_type: format!("{error:?}"),
-                    severity: format!("{:?}", error.severity()),
-                    file_path: String::new(), // No specific file path for general errors
-                    package: None,
-                    package_version: None,
-                    user_message: context.user_message.clone(),
-                    technical_details: context.technical_details.clone(),
-                    auto_heal_available: error.is_recoverable(),
-                    requires_confirmation: context.requires_user_action(),
-                    estimated_fix_time_seconds: context.estimated_fix_time.map(|d| d.as_secs()),
-                },
-            ));
+            self.event_sender
+                .send(AppEvent::Guard(GuardEvent::DiscrepancyFound(
+                    GuardDiscrepancyParams {
+                        operation_id: self.operation_id.clone(),
+                        discrepancy_type: format!("{error:?}"),
+                        severity: format!("{:?}", error.severity()),
+                        file_path: String::new(), // No specific file path for general errors
+                        package: None,
+                        package_version: None,
+                        user_message: context.user_message.clone(),
+                        technical_details: context.technical_details.clone(),
+                        auto_heal_available: error.is_recoverable(),
+                        requires_confirmation: context.requires_user_action(),
+                        estimated_fix_time_seconds: context.estimated_fix_time.map(|d| d.as_secs()),
+                    },
+                )))
+                .unwrap_or(());
         }
 
         self.errors.push(error);
@@ -155,25 +158,27 @@ impl GuardErrorContext {
         {
             let context = discrepancy.user_context();
 
-            self.event_sender.emit(Event::guard_discrepancy_found(
-                sps2_events::GuardDiscrepancyParams {
-                    operation_id: self.operation_id.clone(),
-                    discrepancy_type: discrepancy.short_description().to_string(),
-                    severity: format!("{:?}", discrepancy.severity()),
-                    file_path: discrepancy.file_path().to_string(),
-                    package: discrepancy.package_name().map(ToString::to_string),
-                    package_version: discrepancy.package_version().map(ToString::to_string),
-                    user_message: context.user_message.clone(),
-                    technical_details: if self.verbosity_level.include_technical_details() {
-                        context.technical_details.clone()
-                    } else {
-                        discrepancy.short_description().to_string()
+            self.event_sender
+                .send(AppEvent::Guard(GuardEvent::DiscrepancyFound(
+                    GuardDiscrepancyParams {
+                        operation_id: self.operation_id.clone(),
+                        discrepancy_type: discrepancy.short_description().to_string(),
+                        severity: format!("{:?}", discrepancy.severity()),
+                        file_path: discrepancy.file_path().to_string(),
+                        package: discrepancy.package_name().map(ToString::to_string),
+                        package_version: discrepancy.package_version().map(ToString::to_string),
+                        user_message: context.user_message.clone(),
+                        technical_details: if self.verbosity_level.include_technical_details() {
+                            context.technical_details.clone()
+                        } else {
+                            discrepancy.short_description().to_string()
+                        },
+                        auto_heal_available: discrepancy.can_auto_heal(),
+                        requires_confirmation: discrepancy.requires_confirmation(),
+                        estimated_fix_time_seconds: context.estimated_fix_time.map(|d| d.as_secs()),
                     },
-                    auto_heal_available: discrepancy.can_auto_heal(),
-                    requires_confirmation: discrepancy.requires_confirmation(),
-                    estimated_fix_time_seconds: context.estimated_fix_time.map(|d| d.as_secs()),
-                },
-            ));
+                )))
+                .unwrap_or(());
         }
 
         self.discrepancies.push(discrepancy);
@@ -236,15 +241,17 @@ impl GuardErrorContext {
         if all_errors.is_empty() {
             // No errors to report
             if self.verbosity_level.include_detailed_context() {
-                self.event_sender.emit(Event::guard_error_summary(
-                    &self.operation_id,
-                    0,
-                    0,
-                    0,
-                    "Low",
-                    "No issues found",
-                    vec!["No action required".to_string()],
-                ));
+                let _ = self
+                    .event_sender
+                    .send(AppEvent::Guard(GuardEvent::ErrorSummary {
+                        operation_id: self.operation_id.clone(),
+                        total_errors: 0,
+                        recoverable_errors: 0,
+                        manual_intervention_required: 0,
+                        overall_severity: "Low".to_string(),
+                        user_friendly_summary: "No issues found".to_string(),
+                        recommended_actions: vec!["No action required".to_string()],
+                    }));
             }
             return;
         }
@@ -269,15 +276,17 @@ impl GuardErrorContext {
             }
         }
 
-        self.event_sender.emit(Event::guard_error_summary(
-            &self.operation_id,
-            summary.total_errors,
-            summary.recoverable_errors.len(),
-            summary.manual_intervention_required.len(),
-            format!("{:?}", summary.overall_severity),
-            summary.summary_message(),
-            recommended_actions,
-        ));
+        let _ = self
+            .event_sender
+            .send(AppEvent::Guard(GuardEvent::ErrorSummary {
+                operation_id: self.operation_id.clone(),
+                total_errors: summary.total_errors,
+                recoverable_errors: summary.recoverable_errors.len(),
+                manual_intervention_required: summary.manual_intervention_required.len(),
+                overall_severity: format!("{:?}", summary.overall_severity),
+                user_friendly_summary: summary.summary_message(),
+                recommended_actions,
+            }));
     }
 
     /// Emit operation start event
@@ -288,13 +297,15 @@ impl GuardErrorContext {
         packages_count: usize,
         files_count: Option<usize>,
     ) {
-        self.event_sender.emit(Event::guard_verification_started(
-            &self.operation_id,
-            scope,
-            level,
-            packages_count,
-            files_count,
-        ));
+        let _ = self
+            .event_sender
+            .send(AppEvent::Guard(GuardEvent::VerificationStarted {
+                operation_id: self.operation_id.clone(),
+                scope: scope.to_string(),
+                level: level.to_string(),
+                packages_count,
+                files_count,
+            }));
     }
 
     /// Emit operation completion event
@@ -306,15 +317,17 @@ impl GuardErrorContext {
     ) {
         let by_severity = self.get_severity_counts();
 
-        self.event_sender.emit(Event::guard_verification_completed(
-            &self.operation_id,
-            self.discrepancies.len(),
-            by_severity,
-            self.start_time.elapsed().as_millis() as u64,
-            cache_hit_rate,
-            coverage_percent,
-            scope_description,
-        ));
+        let _ = self
+            .event_sender
+            .send(AppEvent::Guard(GuardEvent::VerificationCompleted {
+                operation_id: self.operation_id.clone(),
+                total_discrepancies: self.discrepancies.len(),
+                by_severity,
+                duration_ms: self.start_time.elapsed().as_millis() as u64,
+                cache_hit_rate,
+                coverage_percent,
+                scope_description: scope_description.to_string(),
+            }));
     }
 
     /// Emit healing result event
@@ -328,15 +341,17 @@ impl GuardErrorContext {
     ) {
         let start_time = Instant::now();
 
-        self.event_sender.emit(Event::guard_healing_result(
-            &self.operation_id,
-            discrepancy_type,
-            file_path,
-            success,
-            healing_action,
-            error,
-            start_time.elapsed().as_millis() as u64,
-        ));
+        let _ = self
+            .event_sender
+            .send(AppEvent::Guard(GuardEvent::HealingResult {
+                operation_id: self.operation_id.clone(),
+                discrepancy_type: discrepancy_type.to_string(),
+                file_path: file_path.to_string(),
+                success,
+                healing_action: healing_action.to_string(),
+                error,
+                duration_ms: start_time.elapsed().as_millis() as u64,
+            }));
     }
 
     /// Get severity counts for collected discrepancies

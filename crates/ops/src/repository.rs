@@ -2,7 +2,7 @@
 
 use crate::{keys::KeyManager, OpsCtx};
 use sps2_errors::{Error, OpsError};
-use sps2_events::{Event, EventEmitter, EventSenderExt};
+use sps2_events::{AppEvent, EventEmitter, GeneralEvent, RepoEvent};
 use std::time::Instant;
 
 /// Sync repository index
@@ -13,19 +13,17 @@ use std::time::Instant;
 pub async fn reposync(ctx: &OpsCtx) -> Result<String, Error> {
     let start = Instant::now();
 
-    ctx.emit_event(Event::RepoSyncStarting);
+    ctx.emit_event(AppEvent::Repo(RepoEvent::SyncStarting));
 
     // Check if index is stale (older than 7 days)
     let stale = ctx.index.is_stale(7);
 
     if !stale {
         let message = "Repository index is up to date".to_string();
-        ctx.tx
-            .send(Event::RepoSyncCompleted {
-                packages_updated: 0,
-                duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
-            })
-            .ok();
+        let _ = ctx.tx.send(AppEvent::Repo(RepoEvent::SyncCompleted {
+            packages_updated: 0,
+            duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+        }));
         return Ok(message);
     }
 
@@ -35,9 +33,9 @@ pub async fn reposync(ctx: &OpsCtx) -> Result<String, Error> {
     let index_sig_url = format!("{base_url}/index.json.minisig");
     let keys_url = format!("{base_url}/keys.json");
 
-    ctx.emit_event(Event::RepoSyncStarted {
+    ctx.emit_event(AppEvent::Repo(RepoEvent::SyncStarted {
         url: base_url.to_string(),
-    });
+    }));
 
     // 1. Download latest index.json and signature with `ETag` support
     let cached_etag = ctx.index.cache.load_etag().await.unwrap_or(None);
@@ -93,12 +91,10 @@ async fn download_index_conditional(
         Ok(content)
     } else {
         // Server returned 304 Not Modified - use cached content
-        ctx.tx
-            .send(Event::RepoSyncCompleted {
-                packages_updated: 0,
-                duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
-            })
-            .ok();
+        let _ = ctx.tx.send(AppEvent::Repo(RepoEvent::SyncCompleted {
+            packages_updated: 0,
+            duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+        }));
         Err(OpsError::RepoSyncFailed {
             message: "Repository index is unchanged (304 Not Modified)".to_string(),
         }
@@ -143,10 +139,10 @@ async fn finalize_index_update(
         "Repository index updated (no new packages)".to_string()
     };
 
-    ctx.emit_event(Event::RepoSyncCompleted {
+    ctx.emit_event(AppEvent::Repo(RepoEvent::SyncCompleted {
         packages_updated,
         duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
-    });
+    }));
 
     Ok(message)
 }
@@ -171,10 +167,10 @@ async fn fetch_and_verify_keys(
         // 3. Verified through multiple sources
         let bootstrap_key = "RWSGOq2NVecA2UPNdBUZykp1MLhfMmkAK/SZSjK3bpq2q7I8LbSVVBDm";
 
-        tx.emit(Event::Warning {
+        let _ = tx.send(AppEvent::General(GeneralEvent::Warning {
             message: "Initializing with bootstrap key".to_string(),
             context: Some("First run - no trusted keys found".to_string()),
-        });
+        }));
 
         key_manager
             .initialize_with_bootstrap(bootstrap_key)
@@ -189,10 +185,10 @@ async fn fetch_and_verify_keys(
         .fetch_and_verify_keys(net_client, keys_url, tx)
         .await?;
 
-    tx.emit(Event::OperationCompleted {
+    let _ = tx.send(AppEvent::General(GeneralEvent::OperationCompleted {
         operation: "Key verification".to_string(),
         success: true,
-    });
+    }));
 
     Ok(trusted_keys)
 }

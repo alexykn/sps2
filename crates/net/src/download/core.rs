@@ -10,7 +10,7 @@ use super::stream::{download_file_simple, stream_download};
 use super::validation::{validate_response, validate_url};
 use crate::client::{NetClient, NetConfig};
 use sps2_errors::{Error, NetworkError};
-use sps2_events::{AppEvent, EventSender, EventEmitter, DownloadEvent, GeneralEvent};
+use sps2_events::{AppEvent, DownloadEvent, EventEmitter, EventSender, GeneralEvent};
 use sps2_hash::Hash;
 use sps2_types::Version;
 use std::path::Path;
@@ -307,7 +307,8 @@ impl PackageDownloader {
             url: url.to_string(),
             package: None,
             total_size: Some(total_size),
-            supports_resume: resume_offset == 0 || response.status() == reqwest::StatusCode::PARTIAL_CONTENT,
+            supports_resume: resume_offset == 0
+                || response.status() == reqwest::StatusCode::PARTIAL_CONTENT,
             connection_time: Duration::from_millis(0), // TODO: Track actual connection time
         }));
 
@@ -326,7 +327,7 @@ impl PackageDownloader {
             package: None,
             final_size: result.size,
             total_time: Duration::from_millis(0), // TODO: Track actual total time
-            average_speed: 0.0, // TODO: Calculate from actual download time
+            average_speed: 0.0,                   // TODO: Calculate from actual download time
             hash: result.hash.to_string(),
         }));
 

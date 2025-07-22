@@ -201,10 +201,7 @@ pub enum BuildEvent {
     },
 
     /// Build cache miss
-    CacheMiss {
-        cache_key: String,
-        reason: String,
-    },
+    CacheMiss { cache_key: String, reason: String },
 
     /// Build cache updated
     CacheUpdated {
@@ -235,10 +232,7 @@ pub enum BuildEvent {
     },
 
     /// Build cleaned up
-    Cleaned {
-        session_id: String,
-        package: String,
-    },
+    Cleaned { session_id: String, package: String },
 
     /// Build resource usage update
     ResourceUsage {

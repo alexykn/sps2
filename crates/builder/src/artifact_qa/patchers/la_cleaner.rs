@@ -3,7 +3,7 @@
 use crate::artifact_qa::{reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
-use sps2_events::Event;
+use sps2_events::AppEvent;
 
 pub struct LaFileCleaner;
 

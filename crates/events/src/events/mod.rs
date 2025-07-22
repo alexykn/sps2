@@ -1,30 +1,40 @@
 use serde::{Deserialize, Serialize};
 
 // Declare all domain modules
+pub mod acquisition;
 pub mod audit;
 pub mod build;
 pub mod download;
 pub mod general;
 pub mod guard;
-pub mod lifecycle;
+pub mod install;
 pub mod package;
 pub mod progress;
 pub mod python;
+pub mod qa;
 pub mod repo;
+pub mod resolver;
 pub mod state;
+pub mod uninstall;
+pub mod update;
 
 // Re-export all domain events
+pub use acquisition::*;
 pub use audit::*;
 pub use build::*;
 pub use download::*;
 pub use general::*;
 pub use guard::*;
-pub use lifecycle::*;
+pub use install::*;
 pub use package::*;
 pub use progress::*;
 pub use python::*;
+pub use qa::*;
 pub use repo::*;
+pub use resolver::*;
 pub use state::*;
+pub use uninstall::*;
+pub use update::*;
 
 /// Top-level application event enum that aggregates all domain-specific events
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,14 +52,26 @@ pub enum AppEvent {
     /// State management events (transactions, rollbacks)
     State(StateEvent),
 
-    /// Package lifecycle events (install, uninstall, validation)
-    Lifecycle(LifecycleEvent),
+    /// Package installation events (staging, installation, validation)
+    Install(InstallEvent),
+
+    /// Package uninstallation events (removal, dependency checking)
+    Uninstall(UninstallEvent),
+
+    /// Package update/upgrade events (update planning, batch updates)
+    Update(UpdateEvent),
+
+    /// Package acquisition events (download, cache, verification)
+    Acquisition(AcquisitionEvent),
 
     /// Progress tracking events (sophisticated progress algorithms)
     Progress(ProgressEvent),
 
     /// Repository and index events (sync, mirroring)
     Repo(RepoEvent),
+
+    /// Resolver events (dependency resolution, SAT solving)
+    Resolver(ResolverEvent),
 
     /// Guard events (filesystem integrity, healing)
     Guard(GuardEvent),
@@ -79,8 +101,11 @@ impl AppEvent {
             AppEvent::Build(BuildEvent::Failed { .. }) => Level::ERROR,
             AppEvent::State(StateEvent::TransitionFailed { .. }) => Level::ERROR,
             AppEvent::State(StateEvent::RollbackFailed { .. }) => Level::ERROR,
-            AppEvent::Lifecycle(LifecycleEvent::ValidationFailed { .. }) => Level::ERROR,
-            AppEvent::Lifecycle(LifecycleEvent::InstallationFailed { .. }) => Level::ERROR,
+            AppEvent::Install(InstallEvent::ValidationFailed { .. }) => Level::ERROR,
+            AppEvent::Install(InstallEvent::Failed { .. }) => Level::ERROR,
+            AppEvent::Uninstall(UninstallEvent::Failed { .. }) => Level::ERROR,
+            AppEvent::Update(UpdateEvent::Failed { .. }) => Level::ERROR,
+            AppEvent::Acquisition(AcquisitionEvent::Failed { .. }) => Level::ERROR,
             AppEvent::Progress(ProgressEvent::Failed { .. }) => Level::ERROR,
             AppEvent::Guard(GuardEvent::VerificationFailed { .. }) => Level::ERROR,
             AppEvent::Guard(GuardEvent::HealingFailed { .. }) => Level::ERROR,
@@ -97,7 +122,10 @@ impl AppEvent {
             AppEvent::Download(DownloadEvent::Completed { .. }) => Level::INFO,
             AppEvent::Build(BuildEvent::Completed { .. }) => Level::INFO,
             AppEvent::State(StateEvent::TransitionCompleted { .. }) => Level::INFO,
-            AppEvent::Lifecycle(LifecycleEvent::InstallationCompleted { .. }) => Level::INFO,
+            AppEvent::Install(InstallEvent::Completed { .. }) => Level::INFO,
+            AppEvent::Uninstall(UninstallEvent::Completed { .. }) => Level::INFO,
+            AppEvent::Update(UpdateEvent::Completed { .. }) => Level::INFO,
+            AppEvent::Acquisition(AcquisitionEvent::Completed { .. }) => Level::INFO,
             AppEvent::Progress(ProgressEvent::Completed { .. }) => Level::INFO,
             AppEvent::Guard(GuardEvent::VerificationCompleted { .. }) => Level::INFO,
             AppEvent::Qa(QaEvent::PipelineCompleted { .. }) => Level::INFO,
@@ -126,9 +154,13 @@ impl AppEvent {
             AppEvent::Download(_) => "sps2::events::download",
             AppEvent::Build(_) => "sps2::events::build",
             AppEvent::State(_) => "sps2::events::state",
-            AppEvent::Lifecycle(_) => "sps2::events::lifecycle",
+            AppEvent::Install(_) => "sps2::events::install",
+            AppEvent::Uninstall(_) => "sps2::events::uninstall",
+            AppEvent::Update(_) => "sps2::events::update",
+            AppEvent::Acquisition(_) => "sps2::events::acquisition",
             AppEvent::Progress(_) => "sps2::events::progress",
             AppEvent::Repo(_) => "sps2::events::repo",
+            AppEvent::Resolver(_) => "sps2::events::resolver",
             AppEvent::Guard(_) => "sps2::events::guard",
             AppEvent::Qa(_) => "sps2::events::qa",
             AppEvent::Audit(_) => "sps2::events::audit",

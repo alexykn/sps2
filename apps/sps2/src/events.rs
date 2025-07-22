@@ -1,7 +1,8 @@
 //! Event handling and progress display
 
+use crate::logging::log_event_with_tracing;
 use console::{style, Term};
-use sps2_events::Event;
+use sps2_events::AppEvent;
 
 /// Event severity levels for UI styling
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -185,1173 +186,798 @@ impl EventHandler {
     }
 
     /// Handle incoming event
-    pub fn handle_event(&mut self, event: Event) {
+    pub fn handle_event(&mut self, event: AppEvent) {
+        // Log event with structured logging
+        log_event_with_tracing(&event);
+
         match event {
             // Download events
-            Event::DownloadStarted { url, size } => {
-                self.handle_download_started(&url, size);
-            }
-            Event::DownloadProgress {
-                url,
-                bytes_downloaded,
-                total_bytes,
-            } => {
-                self.handle_download_progress(&url, bytes_downloaded, total_bytes);
-            }
-            Event::DownloadCompleted { url, size: _ } => {
-                self.handle_download_completed(&url);
-            }
-            Event::DownloadFailed { url, error } => {
-                self.handle_download_failed(&url, &error);
+            AppEvent::Download(download_event) => {
+                use sps2_events::DownloadEvent;
+                match download_event {
+                    DownloadEvent::Started { url, size, .. } => {
+                        self.handle_download_started(&url, size);
+                    }
+                    DownloadEvent::Progress {
+                        url,
+                        bytes_downloaded,
+                        total_bytes,
+                        ..
+                    } => {
+                        self.handle_download_progress(&url, *bytes_downloaded, *total_bytes);
+                    }
+                    DownloadEvent::Completed { url, size: _, .. } => {
+                        self.handle_download_completed(&url);
+                    }
+                    DownloadEvent::Failed { url, error, .. } => {
+                        self.handle_download_failed(&url, &error);
+                    }
+                    _ => {
+                        // Handle other download events with debug output
+                        if self.debug_enabled {
+                            self.show_message(
+                                &format!("Download event: {download_event:?}"),
+                                EventSeverity::Debug,
+                            );
+                        }
+                    }
+                }
             }
 
-            // Package events
-            Event::PackageInstalling { name, version } => {
-                self.show_operation_message(
-                    &format!("Installing {name} {version}"),
-                    "install",
-                    EventSeverity::Info,
-                );
-            }
-            Event::PackageInstalled {
-                name,
-                version,
-                path: _,
-            } => {
-                self.show_operation_message(
-                    &format!("Installed {name} {version}"),
-                    "install",
-                    EventSeverity::Success,
-                );
-            }
-            Event::PackageDownloaded { name, version } => {
-                self.show_operation_message(
-                    &format!("Downloaded {name} {version}"),
-                    "download",
-                    EventSeverity::Success,
-                );
-            }
-            Event::PackageBuilding { name, version } => {
-                self.show_operation_message(
-                    &format!("Building {name} {version}"),
-                    "build",
-                    EventSeverity::Info,
-                );
+            // Install events (replaces package events)
+            AppEvent::Install(install_event) => {
+                use sps2_events::InstallEvent;
+                match install_event {
+                    InstallEvent::Started {
+                        package, version, ..
+                    } => {
+                        self.show_operation_message(
+                            &format!("Installing {package} {version}"),
+                            "install",
+                            EventSeverity::Info,
+                        );
+                    }
+                    InstallEvent::Completed {
+                        package, version, ..
+                    } => {
+                        self.show_operation_message(
+                            &format!("Installed {package} {version}"),
+                            "install",
+                            EventSeverity::Success,
+                        );
+                    }
+                    InstallEvent::Failed {
+                        package,
+                        version,
+                        error,
+                        ..
+                    } => {
+                        self.show_operation_message(
+                            &format!("Failed to install {package} {version}: {error}"),
+                            "install",
+                            EventSeverity::Error,
+                        );
+                    }
+                    InstallEvent::StagingStarted {
+                        package, version, ..
+                    } => {
+                        self.show_operation_message(
+                            &format!("Staging {package} {version}"),
+                            "install",
+                            EventSeverity::Info,
+                        );
+                    }
+                    InstallEvent::ValidationStarted {
+                        package, version, ..
+                    } => {
+                        self.show_operation_message(
+                            &format!("Validating {package} {version}"),
+                            "install",
+                            EventSeverity::Info,
+                        );
+                    }
+                    _ => {
+                        // Handle other install events with debug output
+                        if self.debug_enabled {
+                            self.show_message(
+                                &format!("Install event: {install_event:?}"),
+                                EventSeverity::Debug,
+                            );
+                        }
+                    }
+                }
             }
 
             // State events
-            Event::StateCreating { state_id } => {
-                self.show_operation_message(
-                    &format!("Creating state {state_id}"),
-                    "state",
-                    EventSeverity::Info,
-                );
-            }
-            Event::StateTransition {
-                from,
-                to,
-                operation: _,
-            } => {
-                self.show_operation_message(
-                    &format!("State transition {from} -> {to}"),
-                    "state",
-                    EventSeverity::Info,
-                );
+            AppEvent::State(state_event) => {
+                use sps2_events::StateEvent;
+                match state_event {
+                    StateEvent::Creating { state_id } => {
+                        self.show_operation_message(
+                            &format!("Creating state {state_id}"),
+                            "state",
+                            EventSeverity::Info,
+                        );
+                    }
+                    StateEvent::Transition { from, to, .. } => {
+                        self.show_operation_message(
+                            &format!("State transition {from} -> {to}"),
+                            "state",
+                            EventSeverity::Info,
+                        );
+                    }
+                    StateEvent::TwoPhaseCommitStarting {
+                        state_id,
+                        parent_state_id,
+                        operation,
+                    } => {
+                        self.show_operation_message(
+                            &format!(
+                                "Starting 2PC transaction: {operation} ({parent_state_id} -> {state_id})"
+                            ),
+                            "2pc",
+                            EventSeverity::Info,
+                        );
+                    }
+                    StateEvent::TwoPhaseCommitCompleted {
+                        state_id,
+                        parent_state_id,
+                        operation,
+                    } => {
+                        self.show_operation_message(
+                            &format!(
+                                "2PC transaction completed: {operation} ({parent_state_id} -> {state_id})"
+                            ),
+                            "2pc",
+                            EventSeverity::Success,
+                        );
+                    }
+                    _ => {
+                        // Handle other state events with debug output
+                        if self.debug_enabled {
+                            self.show_message(
+                                &format!("State event: {state_event:?}"),
+                                EventSeverity::Debug,
+                            );
+                        }
+                    }
+                }
             }
 
             // Build events
-            Event::BuildStarting { package, version } => {
-                self.show_operation_message(
-                    &format!("Starting build of {package} {version}"),
-                    "build",
-                    EventSeverity::Info,
-                );
-            }
-            Event::BuildCompleted {
-                package,
-                version,
-                path,
-            } => {
-                self.show_operation_message(
-                    &format!("Built {} {} -> {}", package, version, path.display()),
-                    "build",
-                    EventSeverity::Success,
-                );
-            }
-            Event::BuildFailed {
-                package,
-                version,
-                error,
-            } => {
-                self.show_operation_message(
-                    &format!("Build failed for {package} {version}: {error}"),
-                    "build",
-                    EventSeverity::Error,
-                );
-            }
-            Event::BuildStepStarted { package, step } => {
-                self.show_operation_message(
-                    &format!("{package} > {step}"),
-                    "build",
-                    EventSeverity::Info,
-                );
-            }
-            Event::BuildStepOutput { package: _, line } => {
-                // Display build output directly
-                println!("{line}");
-            }
-            Event::BuildStepCompleted { package, step } => {
-                self.show_operation_message(
-                    &format!("{package} > {step} completed"),
-                    "build",
-                    EventSeverity::Success,
-                );
-            }
-            Event::BuildCommand { package, command } => {
-                self.show_operation_message(
-                    &format!("{package} > {command}"),
-                    "build",
-                    EventSeverity::Info,
-                );
-            }
-            Event::BuildCleaned { package } => {
-                self.show_operation_message(
-                    &format!("Cleaned build for {package}"),
-                    "clean",
-                    EventSeverity::Success,
-                );
+            AppEvent::Build(build_event) => {
+                use sps2_events::BuildEvent;
+                match build_event {
+                    BuildEvent::Started {
+                        package, version, ..
+                    } => {
+                        self.show_operation_message(
+                            &format!("Starting build of {package} {version}"),
+                            "build",
+                            EventSeverity::Info,
+                        );
+                    }
+                    BuildEvent::Completed {
+                        package,
+                        version,
+                        output_path,
+                        ..
+                    } => {
+                        self.show_operation_message(
+                            &format!("Built {} {} -> {}", package, version, output_path.display()),
+                            "build",
+                            EventSeverity::Success,
+                        );
+                    }
+                    BuildEvent::Failed {
+                        package,
+                        version,
+                        error,
+                        ..
+                    } => {
+                        self.show_operation_message(
+                            &format!("Build failed for {package} {version}: {error}"),
+                            "build",
+                            EventSeverity::Error,
+                        );
+                    }
+                    BuildEvent::StepStarted { package, step, .. } => {
+                        self.show_operation_message(
+                            &format!("{package} > {step}"),
+                            "build",
+                            EventSeverity::Info,
+                        );
+                    }
+                    BuildEvent::StepOutput { line, .. } => {
+                        // Display build output directly
+                        println!("{line}");
+                    }
+                    BuildEvent::StepCompleted { package, step, .. } => {
+                        self.show_operation_message(
+                            &format!("{package} > {step} completed"),
+                            "build",
+                            EventSeverity::Success,
+                        );
+                    }
+                    BuildEvent::CommandExecuted {
+                        package, command, ..
+                    } => {
+                        self.show_operation_message(
+                            &format!("{package} > {command}"),
+                            "build",
+                            EventSeverity::Info,
+                        );
+                    }
+                    BuildEvent::Cleaned { package, .. } => {
+                        self.show_operation_message(
+                            &format!("Cleaned build for {package}"),
+                            "clean",
+                            EventSeverity::Success,
+                        );
+                    }
+                    _ => {
+                        // Handle other build events with debug output
+                        if self.debug_enabled {
+                            self.show_message(
+                                &format!("Build event: {build_event:?}"),
+                                EventSeverity::Debug,
+                            );
+                        }
+                    }
+                }
             }
 
             // Resolver events
-            Event::DependencyResolving { package, count } => {
-                if count == 1 {
-                    self.show_operation_message(
-                        &format!("Resolving dependencies for {package}"),
-                        "resolve",
-                        EventSeverity::Info,
-                    );
-                } else {
-                    self.show_operation_message(
-                        &format!("Resolving dependencies for {count} packages"),
-                        "resolve",
-                        EventSeverity::Info,
-                    );
-                }
-            }
-            Event::DependencyResolved {
-                package,
-                version: _,
-                count,
-            } => {
-                if count == 1 {
-                    self.show_operation_message(
-                        &format!("Resolved dependencies for {package}"),
-                        "resolve",
-                        EventSeverity::Success,
-                    );
-                } else {
-                    self.show_operation_message(
-                        &format!("Resolved {count} dependencies"),
-                        "resolve",
-                        EventSeverity::Success,
-                    );
-                }
-            }
-
-            // Operation events
-            Event::InstallStarting { packages } => {
-                if packages.len() == 1 {
-                    // Start animated progress bar for single package installation
-                    self.handle_install_started(&packages[0]);
-                } else {
-                    // For multiple packages, show a regular message (could be enhanced later)
-                    self.show_operation_message(
-                        &format!("Installing {} packages", packages.len()),
-                        "install",
-                        EventSeverity::Info,
-                    );
-                }
-            }
-            Event::InstallCompleted { packages, state_id } => {
-                if packages.len() == 1 {
-                    // Complete the animated progress bar for single package
-                    self.handle_install_completed(&packages[0], &state_id);
-                } else {
-                    self.show_operation_message(
-                        &format!(
-                            "Installed {} packages (state: {})",
-                            packages.len(),
-                            state_id
-                        ),
-                        "install",
-                        EventSeverity::Success,
-                    );
-                }
-            }
-            Event::UninstallStarting { packages } => {
-                if packages.len() == 1 {
-                    self.show_operation_message(
-                        &format!("Uninstalling {}", packages[0]),
-                        "uninstall",
-                        EventSeverity::Info,
-                    );
-                } else {
-                    self.show_operation_message(
-                        &format!("Uninstalling {} packages", packages.len()),
-                        "uninstall",
-                        EventSeverity::Info,
-                    );
-                }
-            }
-            Event::UninstallCompleted { packages, state_id } => {
-                if packages.len() == 1 {
-                    self.show_operation_message(
-                        &format!("Uninstalled {} (state: {})", packages[0], state_id),
-                        "uninstall",
-                        EventSeverity::Success,
-                    );
-                } else {
-                    self.show_operation_message(
-                        &format!(
-                            "Uninstalled {} packages (state: {})",
-                            packages.len(),
-                            state_id
-                        ),
-                        "uninstall",
-                        EventSeverity::Success,
-                    );
-                }
-            }
-            Event::UpdateStarting { packages } => {
-                if packages.len() == 1 && packages[0] == "all" {
-                    self.show_operation_message(
-                        "Updating all packages",
-                        "update",
-                        EventSeverity::Info,
-                    );
-                } else if packages.len() == 1 {
-                    self.show_operation_message(
-                        &format!("Updating {}", packages[0]),
-                        "update",
-                        EventSeverity::Info,
-                    );
-                } else {
-                    self.show_operation_message(
-                        &format!("Updating {} packages", packages.len()),
-                        "update",
-                        EventSeverity::Info,
-                    );
-                }
-            }
-            Event::UpdateCompleted { packages, state_id } => {
-                if packages.is_empty() {
-                    self.show_operation_message(
-                        &format!("No updates available (state: {state_id})"),
-                        "update",
-                        EventSeverity::Info,
-                    );
-                } else if packages.len() == 1 {
-                    self.show_operation_message(
-                        &format!("Updated {} (state: {})", packages[0], state_id),
-                        "update",
-                        EventSeverity::Success,
-                    );
-                } else {
-                    self.show_operation_message(
-                        &format!("Updated {} packages (state: {})", packages.len(), state_id),
-                        "update",
-                        EventSeverity::Success,
-                    );
-                }
-            }
-            Event::UpgradeStarting { packages } => {
-                if packages.len() == 1 && packages[0] == "all" {
-                    self.show_operation_message(
-                        "Upgrading all packages",
-                        "upgrade",
-                        EventSeverity::Info,
-                    );
-                } else if packages.len() == 1 {
-                    self.show_operation_message(
-                        &format!("Upgrading {}", packages[0]),
-                        "upgrade",
-                        EventSeverity::Info,
-                    );
-                } else {
-                    self.show_operation_message(
-                        &format!("Upgrading {} packages", packages.len()),
-                        "upgrade",
-                        EventSeverity::Info,
-                    );
-                }
-            }
-            Event::UpgradeCompleted { packages, state_id } => {
-                if packages.is_empty() {
-                    self.show_operation_message(
-                        &format!("No upgrades available (state: {state_id})"),
-                        "upgrade",
-                        EventSeverity::Info,
-                    );
-                } else if packages.len() == 1 {
-                    self.show_operation_message(
-                        &format!("Upgraded {} (state: {})", packages[0], state_id),
-                        "upgrade",
-                        EventSeverity::Success,
-                    );
-                } else {
-                    self.show_operation_message(
-                        &format!("Upgraded {} packages (state: {})", packages.len(), state_id),
-                        "upgrade",
-                        EventSeverity::Success,
-                    );
-                }
-            }
-
-            // Repository events
-            Event::RepoSyncStarting => {
-                self.show_operation_message(
-                    "Syncing repository index",
-                    "sync",
-                    EventSeverity::Info,
-                );
-            }
-            Event::RepoSyncCompleted {
-                packages_updated,
-                duration_ms,
-            } => {
-                if packages_updated == 0 {
-                    self.show_operation_message(
-                        &format!("Repository index up to date ({duration_ms}ms)"),
-                        "sync",
-                        EventSeverity::Success,
-                    );
-                } else {
-                    self.show_operation_message(
-                        &format!("Updated {packages_updated} packages ({duration_ms}ms)"),
-                        "sync",
-                        EventSeverity::Success,
-                    );
-                }
-            }
-
-            // Search events
-            Event::SearchStarting { query } => {
-                self.show_operation_message(
-                    &format!("Searching for '{query}'"),
-                    "search",
-                    EventSeverity::Info,
-                );
-            }
-            Event::SearchCompleted { query: _, count } => {
-                self.show_operation_message(
-                    &format!("Found {count} packages"),
-                    "search",
-                    EventSeverity::Success,
-                );
-            }
-
-            // List events
-            Event::ListStarting => {
-                self.show_operation_message(
-                    "Listing installed packages",
-                    "list",
-                    EventSeverity::Info,
-                );
-            }
-            Event::ListCompleted { count } => {
-                self.show_operation_message(
-                    &format!("Found {count} installed packages"),
-                    "list",
-                    EventSeverity::Success,
-                );
-            }
-
-            // Cleanup events
-            Event::CleanupStarting => {
-                self.show_operation_message("Cleaning up system", "clean", EventSeverity::Info);
-            }
-            Event::CleanupCompleted {
-                states_removed,
-                packages_removed,
-                duration_ms,
-            } => {
-                self.show_operation_message(
-                    &format!(
-                        "Cleaned {states_removed} states and {packages_removed} packages ({duration_ms}ms)"
-                    ),
-                    "clean",
-                    EventSeverity::Success,
-                );
-            }
-
-            // Rollback events
-            Event::RollbackStarting { target_state } => {
-                self.show_operation_message(
-                    &format!("Rolling back to state {target_state}"),
-                    "rollback",
-                    EventSeverity::Info,
-                );
-            }
-            Event::RollbackCompleted {
-                target_state,
-                duration_ms,
-            } => {
-                self.show_operation_message(
-                    &format!("Rolled back to {target_state} ({duration_ms}ms)"),
-                    "rollback",
-                    EventSeverity::Success,
-                );
-            }
-
-            // Health check events
-            Event::HealthCheckStarting => {
-                self.show_operation_message(
-                    "Checking system health",
-                    "health",
-                    EventSeverity::Info,
-                );
-            }
-            Event::HealthCheckCompleted { healthy, issues } => {
-                if healthy {
-                    self.show_operation_message("System healthy", "health", EventSeverity::Success);
-                } else {
-                    self.show_operation_message(
-                        &format!("{} issues found", issues.len()),
-                        "health",
-                        EventSeverity::Warning,
-                    );
-                }
-            }
-
-            // Operation events
-            Event::OperationStarted { operation } => {
-                self.show_operation_message(
-                    &operation,
-                    &operation.to_lowercase(),
-                    EventSeverity::Info,
-                );
-            }
-            Event::OperationCompleted {
-                operation,
-                success: _,
-            } => {
-                self.show_operation_message(
-                    &operation,
-                    &operation.to_lowercase(),
-                    EventSeverity::Success,
-                );
-            }
-            Event::OperationFailed { operation, error } => {
-                self.show_operation_message(
-                    &format!("{operation} failed: {error}"),
-                    &operation.to_lowercase(),
-                    EventSeverity::Error,
-                );
-            }
-
-            // Index events
-            Event::IndexUpdateStarting { url } => {
-                self.show_operation_message(
-                    &format!("Updating index from {url}"),
-                    "sync",
-                    EventSeverity::Info,
-                );
-            }
-            Event::IndexUpdateCompleted {
-                packages_added,
-                packages_updated,
-            } => {
-                self.show_operation_message(
-                    &format!("Index updated: {packages_added} added, {packages_updated} updated"),
-                    "sync",
-                    EventSeverity::Success,
-                );
-            }
-
-            // State rollback event
-            Event::StateRollback { from, to } => {
-                self.show_operation_message(
-                    &format!("Rolled back from {from} to {to}"),
-                    "rollback",
-                    EventSeverity::Success,
-                );
-            }
-
-            // Two-Phase Commit events
-            Event::TwoPhaseCommitStarting {
-                state_id,
-                parent_state_id,
-                operation,
-            } => {
-                self.show_operation_message(
-                    &format!(
-                        "Starting 2PC transaction: {operation} ({parent_state_id} -> {state_id})"
-                    ),
-                    "2pc",
-                    EventSeverity::Info,
-                );
-            }
-            Event::TwoPhaseCommitPhaseOneStarting {
-                state_id,
-                operation,
-            } => {
-                self.show_operation_message(
-                    &format!("2PC Phase 1: Preparing database changes for {operation} (state: {state_id})"),
-                    "2pc",
-                    EventSeverity::Info,
-                );
-            }
-            Event::TwoPhaseCommitPhaseOneCompleted {
-                state_id,
-                operation,
-            } => {
-                self.show_operation_message(
-                    &format!("2PC Phase 1: Database prepared for {operation} (state: {state_id})"),
-                    "2pc",
-                    EventSeverity::Success,
-                );
-            }
-            Event::TwoPhaseCommitPhaseTwoStarting {
-                state_id,
-                operation,
-            } => {
-                self.show_operation_message(
-                    &format!("2PC Phase 2: Executing filesystem swap for {operation} (state: {state_id})"),
-                    "2pc",
-                    EventSeverity::Info,
-                );
-            }
-            Event::TwoPhaseCommitPhaseTwoCompleted {
-                state_id,
-                operation,
-            } => {
-                self.show_operation_message(
-                    &format!("2PC Phase 2: Filesystem swap completed for {operation} (state: {state_id})"),
-                    "2pc",
-                    EventSeverity::Success,
-                );
-            }
-            Event::TwoPhaseCommitCompleted {
-                state_id,
-                parent_state_id,
-                operation,
-            } => {
-                self.show_operation_message(
-                    &format!(
-                        "2PC transaction completed: {operation} ({parent_state_id} -> {state_id})"
-                    ),
-                    "2pc",
-                    EventSeverity::Success,
-                );
-            }
-            Event::TwoPhaseCommitFailed {
-                state_id,
-                operation,
-                error,
-                phase,
-            } => {
-                self.show_operation_message(
-                    &format!("2PC transaction failed during {phase}: {operation} (state: {state_id}) - {error}"),
-                    "2pc",
-                    EventSeverity::Error,
-                );
-            }
-
-            // Warning events
-            Event::Warning { message, context } => {
-                if let Some(context) = context {
-                    self.show_warning(&format!("{message}: {context}"));
-                } else {
-                    self.show_warning(&message);
-                }
-            }
-
-            // Error events
-            Event::Error { message, details } => {
-                if let Some(details) = details {
-                    self.show_message(&format!("{message}: {details}"), EventSeverity::Error);
-                } else {
-                    self.show_message(&message, EventSeverity::Error);
-                }
-            }
-
-            // Warning events
-            // Event::Warning { message, context } => {
-            //     if let Some(context) = context {
-            //         self.show_message(
-            //             &format!("{} ({})", message, context),
-            //             EventSeverity::Warning,
-            //         );
-            //     } else {
-            //         self.show_message(&message, EventSeverity::Warning);
-            //     }
-            // }
-
-            // Quality Assurance events
-            Event::QaCheckStarted {
-                check_type,
-                check_name,
-            } => {
-                self.show_operation_message(
-                    &format!("Starting {check_type} check: {check_name}"),
-                    "qa",
-                    EventSeverity::Info,
-                );
-            }
-            Event::QaCheckCompleted {
-                check_type,
-                check_name,
-                findings_count,
-                severity_counts: _,
-            } => {
-                if findings_count == 0 {
-                    self.show_operation_message(
-                        &format!("{check_type} check passed: {check_name}"),
-                        "qa",
-                        EventSeverity::Success,
-                    );
-                } else {
-                    self.show_operation_message(
-                        &format!(
-                            "{check_type} check completed: {check_name} ({findings_count} findings)"
-                        ),
-                        "qa",
-                        EventSeverity::Warning,
-                    );
-                }
-            }
-            Event::QaCheckFailed {
-                check_type,
-                check_name,
-                error,
-            } => {
-                self.show_operation_message(
-                    &format!("{check_type} check failed: {check_name} - {error}"),
-                    "qa",
-                    EventSeverity::Error,
-                );
-            }
-            Event::QaPipelineStarted {
-                package,
-                version,
-                qa_level,
-            } => {
-                self.show_operation_message(
-                    &format!("Starting QA pipeline for {package} {version} (level: {qa_level})"),
-                    "qa",
-                    EventSeverity::Info,
-                );
-            }
-            Event::QaPipelineCompleted {
-                package,
-                version,
-                total_checks,
-                passed,
-                failed,
-                duration_seconds,
-            } => {
-                if failed == 0 {
-                    self.show_operation_message(
-                        &format!(
-                            "QA pipeline completed for {package} {version}: {passed}/{total_checks} checks passed ({duration_seconds}s)"
-                        ),
-                        "qa",
-                        EventSeverity::Success,
-                    );
-                } else {
-                    self.show_operation_message(
-                        &format!(
-                            "QA pipeline completed for {package} {version}: {passed}/{total_checks} passed, {failed} failed ({duration_seconds}s)"
-                        ),
-                        "qa",
-                        EventSeverity::Warning,
-                    );
-                }
-            }
-            Event::QaFindingReported {
-                check_type,
-                severity,
-                message,
-                file_path,
-                line,
-            } => {
-                let location = match (file_path, line) {
-                    (Some(path), Some(line)) => format!(" ({path}:{line})"),
-                    (Some(path), None) => format!(" ({path})"),
-                    _ => String::new(),
-                };
-                let event_severity = match severity.to_lowercase().as_str() {
-                    "critical" => EventSeverity::Critical,
-                    "high" => EventSeverity::Error,
-                    "medium" => EventSeverity::Warning,
-                    "low" => EventSeverity::Info,
-                    _ => EventSeverity::Info,
-                };
-                self.show_message(
-                    &format!(
-                        "[{}] {}: {}{}",
-                        check_type,
-                        severity.to_uppercase(),
-                        message,
-                        location
-                    ),
-                    event_severity,
-                );
-            }
-            Event::QaReportGenerated { format, path } => {
-                if let Some(path) = path {
-                    self.show_operation_message(
-                        &format!("QA report generated: {path} ({format})"),
-                        "qa",
-                        EventSeverity::Success,
-                    );
-                } else {
-                    self.show_operation_message(
-                        &format!("QA report generated ({format})"),
-                        "qa",
-                        EventSeverity::Success,
-                    );
-                }
-            }
-
-            // Debug events (only show if debug mode enabled)
-            Event::DebugLog { message, context } => {
-                if self.debug_enabled {
-                    if context.is_empty() {
-                        self.show_message(&message, EventSeverity::Debug);
-                    } else {
-                        let context_str = context
-                            .iter()
-                            .map(|(k, v)| format!("{k}={v}"))
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        self.show_message(
-                            &format!("{message} ({context_str})"),
-                            EventSeverity::Debug,
+            AppEvent::Resolver(resolver_event) => {
+                use sps2_events::ResolverEvent;
+                match resolver_event {
+                    ResolverEvent::ResolutionStarted { packages, .. } => {
+                        if packages.len() == 1 {
+                            self.show_operation_message(
+                                &format!("Resolving dependencies for {}", packages[0]),
+                                "resolve",
+                                EventSeverity::Info,
+                            );
+                        } else {
+                            self.show_operation_message(
+                                &format!("Resolving dependencies for {} packages", packages.len()),
+                                "resolve",
+                                EventSeverity::Info,
+                            );
+                        }
+                    }
+                    ResolverEvent::ResolutionCompleted { packages, .. } => {
+                        if packages.len() == 1 {
+                            self.show_operation_message(
+                                &format!("Resolved dependencies for {}", packages[0]),
+                                "resolve",
+                                EventSeverity::Success,
+                            );
+                        } else {
+                            self.show_operation_message(
+                                &format!("Resolved {} dependencies", packages.len()),
+                                "resolve",
+                                EventSeverity::Success,
+                            );
+                        }
+                    }
+                    ResolverEvent::DependencyConflict {
+                        package,
+                        conflicting_packages,
+                        ..
+                    } => {
+                        self.show_operation_message(
+                            &format!(
+                                "Dependency conflict for {package}: conflicts with {}",
+                                conflicting_packages.join(", ")
+                            ),
+                            "resolve",
+                            EventSeverity::Warning,
                         );
                     }
+                    _ => {
+                        // Handle other resolver events with debug output
+                        if self.debug_enabled {
+                            self.show_message(
+                                &format!("Resolver event: {resolver_event:?}"),
+                                EventSeverity::Debug,
+                            );
+                        }
+                    }
                 }
             }
 
-            // Guard verification events
-            Event::GuardVerificationStarted {
-                operation_id: _,
-                scope,
-                level,
-                packages_count,
-                files_count,
-            } => {
-                let files_info = if let Some(files) = files_count {
-                    format!(" ({files} files)")
-                } else {
-                    String::new()
-                };
-                self.show_operation_message(
-                    &format!(
-                        "Starting {level} verification: {scope} ({packages_count} packages{files_info})"
-                    ),
-                    "verify",
-                    EventSeverity::Info,
-                );
-            }
-
-            Event::GuardVerificationProgress {
-                operation_id: _,
-                verified_packages,
-                total_packages,
-                current_package,
-                cache_hit_rate,
-                ..
-            } => {
-                let package_info = if let Some(pkg) = current_package {
-                    format!(" ({pkg})")
-                } else {
-                    String::new()
-                };
-                let cache_info = if let Some(rate) = cache_hit_rate {
-                    format!(" [cache: {:.1}%]", rate * 100.0)
-                } else {
-                    String::new()
-                };
-                self.show_operation_message(
-                    &format!(
-                        "Verified {verified_packages}/{total_packages} packages{package_info}{cache_info}"
-                    ),
-                    "verify",
-                    EventSeverity::Info,
-                );
-            }
-
-            Event::GuardDiscrepancyFound {
-                operation_id: _,
-                discrepancy_type,
-                severity,
-                file_path,
-                package,
-                user_message,
-                auto_heal_available,
-                requires_confirmation,
-                ..
-            } => {
-                let severity_level = match severity.to_lowercase().as_str() {
-                    "critical" => EventSeverity::Critical,
-                    "high" => EventSeverity::Error,
-                    "medium" => EventSeverity::Warning,
-                    "low" => EventSeverity::Info,
-                    _ => EventSeverity::Warning,
-                };
-
-                let package_info = if let Some(pkg) = package {
-                    format!(" [{pkg}]")
-                } else {
-                    String::new()
-                };
-
-                let action_info = if auto_heal_available {
-                    if requires_confirmation {
-                        " (auto-heal available, confirmation required)"
-                    } else {
-                        " (auto-heal available)"
+            // Uninstall events
+            AppEvent::Uninstall(uninstall_event) => {
+                use sps2_events::UninstallEvent;
+                match uninstall_event {
+                    UninstallEvent::Started { packages, .. } => {
+                        if packages.len() == 1 {
+                            self.show_operation_message(
+                                &format!("Uninstalling {}", packages[0]),
+                                "uninstall",
+                                EventSeverity::Info,
+                            );
+                        } else {
+                            self.show_operation_message(
+                                &format!("Uninstalling {} packages", packages.len()),
+                                "uninstall",
+                                EventSeverity::Info,
+                            );
+                        }
                     }
-                } else {
-                    " (manual intervention required)"
-                };
+                    UninstallEvent::Completed {
+                        packages, state_id, ..
+                    } => {
+                        if packages.len() == 1 {
+                            self.show_operation_message(
+                                &format!("Uninstalled {} (state: {state_id})"),
+                                "uninstall",
+                                EventSeverity::Success,
+                            );
+                        } else {
+                            self.show_operation_message(
+                                &format!(
+                                    "Uninstalled {} packages (state: {state_id})",
+                                    packages.len()
+                                ),
+                                "uninstall",
+                                EventSeverity::Success,
+                            );
+                        }
+                    }
+                    UninstallEvent::Failed {
+                        packages, error, ..
+                    } => {
+                        if packages.len() == 1 {
+                            self.show_operation_message(
+                                &format!("Failed to uninstall {}: {error}", packages[0]),
+                                "uninstall",
+                                EventSeverity::Error,
+                            );
+                        } else {
+                            self.show_operation_message(
+                                &format!(
+                                    "Failed to uninstall {} packages: {error}",
+                                    packages.len()
+                                ),
+                                "uninstall",
+                                EventSeverity::Error,
+                            );
+                        }
+                    }
+                    _ => {
+                        // Handle other uninstall events with debug output
+                        if self.debug_enabled {
+                            self.show_message(
+                                &format!("Uninstall event: {uninstall_event:?}"),
+                                EventSeverity::Debug,
+                            );
+                        }
+                    }
+                }
+            }
 
-                self.show_message(
-                    &format!(
-                        "{}: {}{} - {}{}",
-                        discrepancy_type.to_uppercase(),
-                        severity.to_uppercase(),
-                        package_info,
+            // Update events
+            AppEvent::Update(update_event) => {
+                use sps2_events::UpdateEvent;
+                match update_event {
+                    UpdateEvent::Started { packages, .. } => {
+                        if packages.len() == 1 && packages[0] == "all" {
+                            self.show_operation_message(
+                                "Updating all packages",
+                                "update",
+                                EventSeverity::Info,
+                            );
+                        } else if packages.len() == 1 {
+                            self.show_operation_message(
+                                &format!("Updating {}", packages[0]),
+                                "update",
+                                EventSeverity::Info,
+                            );
+                        } else {
+                            self.show_operation_message(
+                                &format!("Updating {} packages", packages.len()),
+                                "update",
+                                EventSeverity::Info,
+                            );
+                        }
+                    }
+                    UpdateEvent::Completed {
+                        packages, state_id, ..
+                    } => {
+                        if packages.is_empty() {
+                            self.show_operation_message(
+                                &format!("No updates available (state: {state_id})"),
+                                "update",
+                                EventSeverity::Info,
+                            );
+                        } else if packages.len() == 1 {
+                            self.show_operation_message(
+                                &format!("Updated {} (state: {state_id})", packages[0]),
+                                "update",
+                                EventSeverity::Success,
+                            );
+                        } else {
+                            self.show_operation_message(
+                                &format!("Updated {} packages (state: {state_id})", packages.len()),
+                                "update",
+                                EventSeverity::Success,
+                            );
+                        }
+                    }
+                    UpdateEvent::PlanningStarted { packages, .. } => {
+                        self.show_operation_message(
+                            &format!("Planning updates for {} packages", packages.len()),
+                            "update",
+                            EventSeverity::Info,
+                        );
+                    }
+                    _ => {
+                        // Handle other update events with debug output
+                        if self.debug_enabled {
+                            self.show_message(
+                                &format!("Update event: {update_event:?}"),
+                                EventSeverity::Debug,
+                            );
+                        }
+                    }
+                }
+            }
+
+            // General operation events (handles repository, search, list, cleanup, rollback, health)
+            AppEvent::General(general_event) => {
+                use sps2_events::GeneralEvent;
+                match general_event {
+                    GeneralEvent::OperationStarted { operation } => {
+                        // Map operation names to appropriate display messages and icons
+                        let (message, icon) = match operation.to_lowercase().as_str() {
+                            op if op.contains("sync") || op.contains("repo") => {
+                                ("Syncing repository index", "sync")
+                            }
+                            op if op.contains("search") => {
+                                (&format!("Searching packages"), "search")
+                            }
+                            op if op.contains("list") => ("Listing installed packages", "list"),
+                            op if op.contains("clean") => ("Cleaning up system", "clean"),
+                            op if op.contains("rollback") => {
+                                (&format!("Rolling back system"), "rollback")
+                            }
+                            op if op.contains("health") => ("Checking system health", "health"),
+                            _ => (operation, "operation"),
+                        };
+                        self.show_operation_message(message, icon, EventSeverity::Info);
+                    }
+                    GeneralEvent::OperationCompleted { operation, success } => {
+                        let severity = if *success {
+                            EventSeverity::Success
+                        } else {
+                            EventSeverity::Warning
+                        };
+                        let (message, icon) = match operation.to_lowercase().as_str() {
+                            op if op.contains("sync") || op.contains("repo") => {
+                                ("Repository sync completed", "sync")
+                            }
+                            op if op.contains("search") => ("Search completed", "search"),
+                            op if op.contains("list") => ("Package listing completed", "list"),
+                            op if op.contains("clean") => ("System cleanup completed", "clean"),
+                            op if op.contains("rollback") => ("Rollback completed", "rollback"),
+                            op if op.contains("health") => ("Health check completed", "health"),
+                            _ => (operation, "operation"),
+                        };
+                        self.show_operation_message(message, icon, severity);
+                    }
+                    GeneralEvent::Warning { message, .. } => {
+                        self.show_warning(message);
+                    }
+                    GeneralEvent::Error { message, .. } => {
+                        self.show_error(message);
+                    }
+                    GeneralEvent::DebugLog { message, context } => {
+                        if self.debug_enabled {
+                            if context.is_empty() {
+                                self.show_message(message, EventSeverity::Debug);
+                            } else {
+                                let context_str = context
+                                    .iter()
+                                    .map(|(k, v)| format!("{k}={v}"))
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                self.show_message(
+                                    &format!("{message} ({context_str})"),
+                                    EventSeverity::Debug,
+                                );
+                            }
+                        }
+                    }
+                    _ => {
+                        // Handle other general events with debug output
+                        if self.debug_enabled {
+                            self.show_message(
+                                &format!("General event: {general_event:?}"),
+                                EventSeverity::Debug,
+                            );
+                        }
+                    }
+                }
+            }
+
+            AppEvent::Qa(qa_event) => {
+                use sps2_events::QaEvent;
+                match qa_event {
+                    QaEvent::PipelineStarted {
+                        package,
+                        version,
+                        qa_level,
+                        ..
+                    } => {
+                        self.show_operation_message(
+                            &format!(
+                                "Starting QA pipeline for {package} {version} (level: {qa_level})"
+                            ),
+                            "qa",
+                            EventSeverity::Info,
+                        );
+                    }
+                    QaEvent::PipelineCompleted {
+                        package,
+                        version,
+                        total_checks,
+                        passed,
+                        failed,
+                        duration_seconds,
+                        ..
+                    } => {
+                        if *failed == 0 {
+                            self.show_operation_message(
+                                &format!(
+                                    "QA pipeline completed for {package} {version}: {passed}/{total_checks} checks passed ({duration_seconds}s)"
+                                ),
+                                "qa",
+                                EventSeverity::Success,
+                            );
+                        } else {
+                            self.show_operation_message(
+                                &format!(
+                                    "QA pipeline completed for {package} {version}: {passed}/{total_checks} passed, {failed} failed ({duration_seconds}s)"
+                                ),
+                                "qa",
+                                EventSeverity::Warning,
+                            );
+                        }
+                    }
+                    QaEvent::CheckStarted {
+                        check_type,
+                        check_name,
+                        ..
+                    } => {
+                        self.show_operation_message(
+                            &format!("Starting {check_type} check: {check_name}"),
+                            "qa",
+                            EventSeverity::Info,
+                        );
+                    }
+                    QaEvent::CheckCompleted {
+                        check_type,
+                        check_name,
+                        findings_count,
+                        ..
+                    } => {
+                        if *findings_count == 0 {
+                            self.show_operation_message(
+                                &format!("{check_type} check passed: {check_name}"),
+                                "qa",
+                                EventSeverity::Success,
+                            );
+                        } else {
+                            self.show_operation_message(
+                                &format!(
+                                    "{check_type} check completed: {check_name} ({findings_count} findings)"
+                                ),
+                                "qa",
+                                EventSeverity::Warning,
+                            );
+                        }
+                    }
+                    QaEvent::FindingReported {
+                        check_type,
+                        severity,
+                        message,
+                        file_path,
+                        line,
+                        ..
+                    } => {
+                        let location = match (file_path, line) {
+                            (Some(path), Some(line)) => format!(" ({}:{})", path.display(), line),
+                            (Some(path), None) => format!(" ({})", path.display()),
+                            _ => String::new(),
+                        };
+                        let event_severity = match severity.to_lowercase().as_str() {
+                            "critical" => EventSeverity::Critical,
+                            "high" => EventSeverity::Error,
+                            "medium" => EventSeverity::Warning,
+                            "low" => EventSeverity::Info,
+                            _ => EventSeverity::Info,
+                        };
+                        self.show_message(
+                            &format!(
+                                "[{}] {}: {}{}",
+                                check_type,
+                                severity.to_uppercase(),
+                                message,
+                                location
+                            ),
+                            event_severity,
+                        );
+                    }
+                    _ => {
+                        if self.debug_enabled {
+                            self.show_message(
+                                &format!("QA event: {qa_event:?}"),
+                                EventSeverity::Debug,
+                            );
+                        }
+                    }
+                }
+            }
+
+            AppEvent::Guard(guard_event) => {
+                use sps2_events::GuardEvent;
+                match guard_event {
+                    GuardEvent::VerificationStarted {
+                        scope,
+                        level,
+                        packages_count,
+                        files_count,
+                        ..
+                    } => {
+                        let files_info = if let Some(files) = files_count {
+                            format!(" ({files} files)")
+                        } else {
+                            String::new()
+                        };
+                        self.show_operation_message(
+                            &format!(
+                                "Starting {level} verification: {scope} ({packages_count} packages{files_info})"
+                            ),
+                            "verify",
+                            EventSeverity::Info,
+                        );
+                    }
+                    GuardEvent::VerificationCompleted {
+                        total_discrepancies,
+                        by_severity,
+                        duration_ms,
+                        cache_hit_rate,
+                        coverage_percent,
+                        scope_description,
+                        ..
+                    } => {
+                        if *total_discrepancies == 0 {
+                            self.show_operation_message(
+                                &format!(
+                                    "Verification completed: {} ({:.1}% coverage, {:.1}% cache hits, {}ms)",
+                                    scope_description,
+                                    coverage_percent.unwrap_or(0.0),
+                                    cache_hit_rate.unwrap_or(0.0) * 100.0,
+                                    duration_ms
+                                ),
+                                "verify",
+                                EventSeverity::Success,
+                            );
+                        } else {
+                            let severity_breakdown = by_severity
+                                .iter()
+                                .map(|(sev, count)| format!("{sev}: {count}"))
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            self.show_operation_message(
+                                &format!(
+                                    "Verification completed: {total_discrepancies} discrepancies found ({severity_breakdown}) ({duration_ms}ms)"
+                                ),
+                                "verify",
+                                EventSeverity::Warning,
+                            );
+                        }
+                    }
+                    GuardEvent::DiscrepancyFound {
+                        discrepancy_type,
+                        severity,
+                        file_path,
+                        package,
                         user_message,
-                        action_info
-                    ),
-                    severity_level,
-                );
+                        auto_heal_available,
+                        requires_confirmation,
+                        ..
+                    } => {
+                        let severity_level = match severity.to_lowercase().as_str() {
+                            "critical" => EventSeverity::Critical,
+                            "high" => EventSeverity::Error,
+                            "medium" => EventSeverity::Warning,
+                            "low" => EventSeverity::Info,
+                            _ => EventSeverity::Warning,
+                        };
 
-                // Show file path in debug mode
-                if self.debug_enabled && !file_path.is_empty() {
-                    self.show_message(&format!("  File: {file_path}"), EventSeverity::Debug);
-                }
-            }
+                        let package_info = if let Some(pkg) = package {
+                            format!(" [{pkg}]")
+                        } else {
+                            String::new()
+                        };
 
-            Event::GuardVerificationCompleted {
-                operation_id: _,
-                total_discrepancies,
-                by_severity,
-                duration_ms,
-                cache_hit_rate,
-                coverage_percent,
-                scope_description,
-                ..
-            } => {
-                if total_discrepancies == 0 {
-                    self.show_operation_message(
-                        &format!(
-                            "Verification completed: {} ({:.1}% coverage, {:.1}% cache hits, {}ms)",
-                            scope_description,
-                            coverage_percent,
-                            cache_hit_rate * 100.0,
-                            duration_ms
-                        ),
-                        "verify",
-                        EventSeverity::Success,
-                    );
-                } else {
-                    let severity_breakdown = by_severity
-                        .iter()
-                        .map(|(sev, count)| format!("{sev}: {count}"))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    self.show_operation_message(
-                        &format!(
-                            "Verification completed: {total_discrepancies} discrepancies found ({severity_breakdown}) ({duration_ms}ms)"
-                        ),
-                        "verify",
-                        EventSeverity::Warning,
-                    );
-                }
-            }
+                        let action_info = if *auto_heal_available {
+                            if *requires_confirmation {
+                                " (auto-heal available, confirmation required)"
+                            } else {
+                                " (auto-heal available)"
+                            }
+                        } else {
+                            " (manual intervention required)"
+                        };
 
-            Event::GuardVerificationFailed {
-                operation_id: _,
-                error,
-                packages_verified,
-                files_verified,
-                duration_ms,
-            } => {
-                self.show_operation_message(
-                    &format!(
-                        "Verification failed after verifying {packages_verified} packages, {files_verified} files ({duration_ms}ms): {error}"
-                    ),
-                    "verify",
-                    EventSeverity::Error,
-                );
-            }
+                        self.show_message(
+                            &format!(
+                                "{}: {}{} - {}{}",
+                                discrepancy_type.to_uppercase(),
+                                severity.to_uppercase(),
+                                package_info,
+                                user_message,
+                                action_info
+                            ),
+                            severity_level,
+                        );
 
-            Event::GuardErrorSummary {
-                operation_id: _,
-                total_errors: _,
-                recoverable_errors: _,
-                manual_intervention_required: _,
-                overall_severity,
-                user_friendly_summary,
-                recommended_actions,
-                ..
-            } => {
-                let severity_level = match overall_severity.to_lowercase().as_str() {
-                    "critical" => EventSeverity::Critical,
-                    "high" => EventSeverity::Error,
-                    "medium" => EventSeverity::Warning,
-                    "low" => EventSeverity::Info,
-                    _ => EventSeverity::Warning,
-                };
-
-                self.show_message(
-                    &format!("Guard Summary: {user_friendly_summary}"),
-                    severity_level,
-                );
-
-                if !recommended_actions.is_empty() {
-                    for action in recommended_actions {
-                        self.show_message(&format!("  → {action}"), EventSeverity::Info);
+                        if self.debug_enabled {
+                            if let Some(path) = file_path {
+                                self.show_message(
+                                    &format!("  File: {}", path.display()),
+                                    EventSeverity::Debug,
+                                );
+                            }
+                        }
+                    }
+                    _ => {
+                        if self.debug_enabled {
+                            self.show_message(
+                                &format!("Guard event: {guard_event:?}"),
+                                EventSeverity::Debug,
+                            );
+                        }
                     }
                 }
-            }
-
-            Event::GuardHealingStarted {
-                operation_id: _,
-                discrepancies_count,
-                auto_heal_count,
-                confirmation_required_count,
-                ..
-            } => {
-                self.show_operation_message(
-                    &format!(
-                        "Starting healing: {discrepancies_count} discrepancies ({auto_heal_count} auto, {confirmation_required_count} require confirmation)"
-                    ),
-                    "heal",
-                    EventSeverity::Info,
-                );
-            }
-
-            Event::GuardHealingProgress {
-                operation_id: _,
-                completed,
-                total,
-                current_operation,
-                current_file,
-            } => {
-                let file_info = if let Some(file) = current_file {
-                    format!(" ({file})")
-                } else {
-                    String::new()
-                };
-                self.show_operation_message(
-                    &format!("Healing {completed}/{total}: {current_operation}{file_info}"),
-                    "heal",
-                    EventSeverity::Info,
-                );
-            }
-
-            Event::GuardHealingResult {
-                operation_id: _,
-                file_path,
-                success,
-                healing_action,
-                error,
-                ..
-            } => {
-                if success {
-                    self.show_operation_message(
-                        &format!("Healed {file_path}: {healing_action}"),
-                        "heal",
-                        EventSeverity::Success,
-                    );
-                } else {
-                    let error_msg = error.as_deref().unwrap_or("unknown error");
-                    self.show_operation_message(
-                        &format!("Failed to heal {file_path}: {error_msg}"),
-                        "heal",
-                        EventSeverity::Error,
-                    );
-                }
-            }
-
-            Event::GuardHealingCompleted {
-                operation_id: _,
-                healed_count,
-                failed_count,
-                skipped_count,
-                duration_ms,
-            } => {
-                let total = healed_count + failed_count + skipped_count;
-                if failed_count == 0 {
-                    self.show_operation_message(
-                        &format!(
-                            "Healing completed: {healed_count}/{total} healed ({skipped_count} skipped, {duration_ms}ms)"
-                        ),
-                        "heal",
-                        EventSeverity::Success,
-                    );
-                } else {
-                    self.show_operation_message(
-                        &format!(
-                            "Healing completed: {healed_count} healed, {failed_count} failed, {skipped_count} skipped ({duration_ms}ms)"
-                        ),
-                        "heal",
-                        EventSeverity::Warning,
-                    );
-                }
-            }
-
-            Event::GuardHealingFailed {
-                operation_id: _,
-                error,
-                completed_healing,
-                failed_healing,
-                duration_ms,
-            } => {
-                self.show_operation_message(
-                    &format!(
-                        "Healing operation failed: {error} ({completed_healing} completed, {failed_healing} failed, {duration_ms}ms)"
-                    ),
-                    "heal",
-                    EventSeverity::Error,
-                );
-            }
-
-            Event::GuardCacheWarming {
-                operation_id: _,
-                operation_type,
-                cache_entries_loading,
-            } => {
-                if self.debug_enabled {
-                    self.show_operation_message(
-                        &format!(
-                            "Warming cache for {operation_type}: loading {cache_entries_loading} entries"
-                        ),
-                        "cache",
-                        EventSeverity::Debug,
-                    );
-                }
-            }
-
-            Event::GuardCacheWarmingCompleted {
-                operation_id: _,
-                cache_entries_loaded,
-                cache_hit_rate_improvement,
-                duration_ms,
-            } => {
-                if self.debug_enabled {
-                    self.show_operation_message(
-                        &format!(
-                            "Cache warmed: {} entries loaded, {:.1}% hit rate improvement ({}ms)",
-                            cache_entries_loaded,
-                            cache_hit_rate_improvement * 100.0,
-                            duration_ms
-                        ),
-                        "cache",
-                        EventSeverity::Debug,
-                    );
-                }
-            }
-
-            Event::GuardConfigurationValidated {
-                approach,
-                enabled,
-                verification_level,
-                auto_heal,
-                validation_warnings,
-            } => {
-                if self.debug_enabled {
-                    self.show_message(
-                        &format!("Guard configuration validated: {approach} approach, enabled={enabled}, level={verification_level}, auto_heal={auto_heal}"),
-                        EventSeverity::Debug,
-                    );
-
-                    for warning in validation_warnings {
-                        self.show_message(&format!("  Warning: {warning}"), EventSeverity::Warning);
-                    }
-                }
-            }
-
-            Event::GuardConfigurationError {
-                field,
-                error,
-                suggested_fix,
-                ..
-            } => {
-                if let Some(fix) = suggested_fix {
-                    self.show_message(
-                        &format!(
-                            "Configuration error in '{field}': {error} (suggested fix: {fix})"
-                        ),
-                        EventSeverity::Error,
-                    );
-                } else {
-                    self.show_message(
-                        &format!("Configuration error in '{field}': {error}"),
-                        EventSeverity::Error,
-                    );
-                }
-            }
-
-            Event::GuardRecoveryAttempt {
-                operation_id: _,
-                error_category,
-                recovery_strategy,
-                attempt_number,
-                max_attempts,
-            } => {
-                if self.debug_enabled {
-                    self.show_message(
-                        &format!(
-                            "Recovery attempt {attempt_number}/{max_attempts} for {error_category} error: {recovery_strategy}"
-                        ),
-                        EventSeverity::Debug,
-                    );
-                }
-            }
-
-            Event::GuardRecoverySuccess {
-                operation_id: _,
-                error_category,
-                recovery_strategy,
-                attempt_number,
-                recovery_duration_ms,
-            } => {
-                self.show_message(
-                    &format!(
-                        "Recovery successful for {error_category} error: {recovery_strategy} (attempt {attempt_number}, {recovery_duration_ms}ms)"
-                    ),
-                    EventSeverity::Success,
-                );
-            }
-
-            Event::GuardRecoveryFailed {
-                operation_id: _,
-                error_category,
-                recovery_strategy,
-                attempts_made,
-                final_error,
-            } => {
-                self.show_message(
-                    &format!(
-                        "Recovery failed for {error_category} error after {attempts_made} attempts using {recovery_strategy}: {final_error}"
-                    ),
-                    EventSeverity::Error,
-                );
             }
 
             // Catch-all for other events (silently ignore for now)
             _ => {
-                // These events are not displayed in the CLI
-                // but could be logged if debug mode is enabled
-                if self.debug_enabled {
-                    self.show_message(&format!("Unhandled event: {event:?}"), EventSeverity::Debug);
-                }
+                self.show_unhandled_event(&event);
             }
+        }
+    }
+
+    /// Show unhandled event message
+    fn show_unhandled_event(&self, event: &AppEvent) {
+        if self.debug_enabled {
+            let event_name = match event {
+                AppEvent::Acquisition(_) => "Acquisition",
+                AppEvent::Audit(_) => "Audit",
+                AppEvent::Build(_) => "Build",
+                AppEvent::Download(_) => "Download",
+                AppEvent::General(_) => "General",
+                AppEvent::Guard(_) => "Guard",
+                AppEvent::Install(_) => "Install",
+                AppEvent::Package(_) => "Package",
+                AppEvent::Progress(_) => "Progress",
+                AppEvent::Python(_) => "Python",
+                AppEvent::Qa(_) => "Qa",
+                AppEvent::Repo(_) => "Repo",
+                AppEvent::Resolver(_) => "Resolver",
+                AppEvent::State(_) => "State",
+                AppEvent::Uninstall(_) => "Uninstall",
+                AppEvent::Update(_) => "Update",
+            };
+            self.show_message(
+                &format!("Unhandled event in domain \"{}\": {:?}", event_name, event),
+                EventSeverity::Debug,
+            );
         }
     }
 

@@ -19,7 +19,8 @@ use decompress::DecompressPipeline;
 use download::DownloadPipeline;
 use operation::PipelineOperation;
 use sps2_errors::Error;
-use sps2_events::{Event, EventEmitter, ProgressManager, ProgressPhase};
+use sps2_events::{AppEvent, EventEmitter, GeneralEvent, ProgressManager};
+use sps2_events::config::ProgressPhase;
 use sps2_net::{PackageDownloadConfig, PackageDownloader};
 use sps2_resolver::{ExecutionPlan, PackageId, ResolvedNode};
 use sps2_resources::{IntoResourceLimits, ResourceManager};
@@ -140,12 +141,12 @@ impl PipelineMaster {
             });
         }
 
-        context.emit_event(Event::OperationStarted {
+        context.emit(AppEvent::General(GeneralEvent::OperationStarted {
             operation: format!(
                 "Batch pipeline execution: {} packages",
                 resolved_packages.len()
             ),
-        });
+        }));
 
         // Set up progress tracking
         let phases = vec![
@@ -219,13 +220,13 @@ impl PipelineMaster {
         self.progress_manager
             .complete_operation(&progress_id, &context.event_sender().cloned().unwrap());
 
-        context.emit_event(Event::OperationCompleted {
+        context.emit(AppEvent::General(GeneralEvent::OperationCompleted {
             operation: format!(
                 "Batch pipeline execution completed: {}",
                 batch_result.batch_id
             ),
             success: batch_result.failed_packages.is_empty(),
-        });
+        }));
 
         Ok(batch_result)
     }
@@ -373,9 +374,9 @@ impl PipelineMaster {
         batch_id: &str,
         context: &T,
     ) -> Result<(), Error> {
-        context.emit_event(Event::OperationStarted {
+        context.emit(AppEvent::General(GeneralEvent::OperationStarted {
             operation: format!("Rolling back batch: {batch_id}"),
-        });
+        }));
 
         let state = self.batch_manager.batch_state.read().await;
         if let Some(rollback_info) = &state.rollback_info {
@@ -390,10 +391,10 @@ impl PipelineMaster {
             context.emit_warning("State rollback not yet implemented".to_string());
         }
 
-        context.emit_event(Event::OperationCompleted {
+        context.emit(AppEvent::General(GeneralEvent::OperationCompleted {
             operation: format!("Rollback completed: {batch_id}"),
             success: true,
-        });
+        }));
 
         Ok(())
     }

@@ -4,7 +4,7 @@
 
 use async_compression::tokio::bufread::ZstdDecoder as AsyncZstdReader;
 use sps2_errors::{Error, PackageError, StorageError};
-use sps2_events::{Event, EventSender, EventSenderExt};
+use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent};
 use sps2_root::{create_dir_all, exists};
 use std::path::Path;
 use tar::Archive;
@@ -226,18 +226,18 @@ async fn extract_zstd_tar_file(
 
     // Send decompression completed event
     if let Some(sender) = event_sender {
-        sender.emit(Event::OperationCompleted {
+        sender.emit(AppEvent::General(GeneralEvent::OperationCompleted {
             operation: "Zstd decompression completed".to_string(),
             success: true,
-        });
+        }));
     }
 
     // Send overall extraction completed event
     if let Some(sender) = event_sender {
-        sender.emit(Event::OperationCompleted {
+        sender.emit(AppEvent::General(GeneralEvent::OperationCompleted {
             operation: format!("Package extraction completed: {}", file_path.display()),
             success: true,
-        });
+        }));
     }
 
     Ok(())
@@ -276,10 +276,10 @@ async fn extract_plain_tar_file(
 
     // Send extraction completed event
     if let Some(sender) = event_sender {
-        sender.emit(Event::OperationCompleted {
+        sender.emit(AppEvent::General(GeneralEvent::OperationCompleted {
             operation: "Plain tar extraction completed".to_string(),
             success: true,
-        });
+        }));
     }
 
     Ok(())

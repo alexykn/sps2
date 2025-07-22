@@ -6,7 +6,7 @@ use crate::{BuildContext, BuildEnvironment};
 use bstr::ByteSlice;
 use ignore::WalkBuilder;
 use sps2_errors::Error;
-use sps2_events::Event;
+use sps2_events::AppEvent;
 
 pub struct HardcodedScanner;
 impl crate::artifact_qa::traits::Action for HardcodedScanner {

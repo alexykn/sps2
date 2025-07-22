@@ -9,7 +9,7 @@ use crate::recipe::execute_recipe;
 use crate::utils::events::send_event;
 use crate::{BuildEnvironment, BuildResult};
 use sps2_errors::Error;
-use sps2_events::Event;
+use sps2_events::AppEvent;
 use sps2_net::NetClient;
 use sps2_resolver::Resolver;
 use sps2_store::PackageStore;
