@@ -14,6 +14,7 @@ use tokio::fs;
 
 use sps2_resources::ResourceManager;
 use std::sync::Arc;
+use sps2_events::{AppEvent, GeneralEvent};
 
 /// Builder API exposed to Starlark recipes
 #[derive(Clone)]
@@ -1332,7 +1333,7 @@ impl BuilderApi {
 
         crate::utils::events::send_event(
             &env.context,
-            sps2_events::Event::debug(format!(
+            AppEvent::General(GeneralEvent::debug(format!(
                 "fix_permissions called with {} paths, staging_dir: {} (exists: {}, is_dir: {})",
                 if paths.is_empty() {
                     "no specific".to_string()
@@ -1342,7 +1343,7 @@ impl BuilderApi {
                 staging_dir.display(),
                 dir_exists,
                 is_dir
-            )),
+            )))
         );
     }
 
@@ -1384,13 +1385,12 @@ impl BuilderApi {
         let mut total_files = 0;
         let mut checked_files = 0;
 
-        crate::utils::events::send_event(
-            &env.context,
-            sps2_events::Event::debug(format!(
-                "Walking directory tree from: {}",
-                staging_dir.display()
-            )),
-        );
+            crate::utils::events::send_event(
+                &env.context,
+                AppEvent::General(GeneralEvent::debug(format!(
+                    "Walking directory tree from: {}",
+                    staging_dir.display()
+                )))        );
 
         for entry in WalkBuilder::new(staging_dir)
             .hidden(false)
@@ -1409,12 +1409,12 @@ impl BuilderApi {
                     let needs_fix = PermissionsFixer::needs_execute_permission_aggressive(&path);
                     crate::utils::events::send_event(
                         &env.context,
-                        sps2_events::Event::debug(format!(
+                        AppEvent::General(GeneralEvent::debug(format!(
                             "File #{}: {} - needs fix: {}",
                             total_files,
                             path.display(),
                             needs_fix
-                        )),
+                        )))
                     );
                 }
 
@@ -1431,13 +1431,12 @@ impl BuilderApi {
             }
         }
 
-        crate::utils::events::send_event(
-            &env.context,
-            sps2_events::Event::debug(format!(
-                "fix_permissions: Checked {}/{} files, fixed {}",
-                checked_files, total_files, *fixed_count
-            )),
-        );
+            crate::utils::events::send_event(
+                &env.context,
+                AppEvent::General(GeneralEvent::debug(format!(
+                    "fix_permissions: Checked {}/{} files, fixed {}",
+                    checked_files, total_files, *fixed_count
+                )))        );
     }
 
     /// Build the result for `fix_permissions` operation
@@ -1464,15 +1463,15 @@ impl BuilderApi {
         if fixed_count > 0 {
             crate::utils::events::send_event(
                 &env.context,
-                sps2_events::Event::debug(format!("fix_permissions: {stdout}")),
+                AppEvent::General(GeneralEvent::debug(format!("fix_permissions: {stdout}")))
             );
         } else {
             crate::utils::events::send_event(
                 &env.context,
-                sps2_events::Event::debug(format!(
+                AppEvent::General(GeneralEvent::debug(format!(
                     "fix_permissions: No files needed fixes in {}",
                     staging_dir.display()
-                )),
+                )))
             );
         }
 

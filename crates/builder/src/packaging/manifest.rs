@@ -26,9 +26,9 @@ pub async fn generate_sbom_and_manifest(
     // Generate SBOM
     send_event(
         context,
-        Event::OperationStarted {
+        AppEvent::General(GeneralEvent::OperationStarted {
             operation: "Generating SBOM".to_string(),
-        },
+        }),
     );
     let sbom_files = generate_sbom(config, environment).await?;
     send_event(
@@ -42,9 +42,9 @@ pub async fn generate_sbom_and_manifest(
     // Create manifest
     send_event(
         context,
-        Event::OperationStarted {
+        AppEvent::General(GeneralEvent::OperationStarted {
             operation: "Creating package manifest".to_string(),
-        },
+        }),
     );
     let manifest = create_manifest(
         context,

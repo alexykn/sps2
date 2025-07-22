@@ -15,7 +15,7 @@
 use crate::artifact_qa::{macho_utils, reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
-use sps2_events::AppEvent;
+use sps2_events::{AppEvent, QaEvent};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
@@ -216,10 +216,12 @@ impl crate::artifact_qa::traits::Action for PermissionsFixer {
         if fixed_count > 0 {
             crate::utils::events::send_event(
                 ctx,
-                Event::OperationCompleted {
-                    operation: format!("Fixed permissions on {fixed_count} files"),
-                    success: true,
-                },
+                AppEvent::Qa(QaEvent::CheckCompleted {
+                    check_type: "patcher".to_string(),
+                    check_name: "permissions".to_string(),
+                    findings_count: fixed_count,
+                    severity_counts: std::collections::HashMap::new(),
+                }),
             );
         }
 

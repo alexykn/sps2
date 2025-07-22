@@ -5,7 +5,7 @@ use crate::stages::{BuildCommand, EnvironmentStep, PostStep, SourceStep};
 use crate::utils::events::send_event;
 use crate::{BuildCommandResult, BuildContext, BuildEnvironment, BuilderApi};
 use sps2_errors::Error;
-use sps2_events::AppEvent;
+use sps2_events::{AppEvent, BuildEvent, GeneralEvent};
 use std::path::Path;
 
 /// Check if a file is an archive that should be extracted
@@ -324,10 +324,10 @@ async fn cleanup_directories(
     let staging_dir = environment.staging_dir();
     send_event(
         &environment.context,
-        Event::DebugLog {
-            message: format!("Cleaned staging directory: {}", staging_dir.display()),
-            context: HashMap::new(),
-        },
+        AppEvent::General(GeneralEvent::debug(
+            &format!("Cleaned staging directory: {}", staging_dir.display()),
+            None,
+        )),
     );
     if staging_dir.exists() {
         fs::remove_dir_all(&staging_dir).await?;
@@ -337,10 +337,10 @@ async fn cleanup_directories(
     let source_dir = &api.working_dir;
     send_event(
         &environment.context,
-        Event::DebugLog {
-            message: format!("Cleaned source directory: {}", source_dir.display()),
-            context: HashMap::new(),
-        },
+        AppEvent::General(GeneralEvent::debug(
+            &format!("Cleaned source directory: {}", source_dir.display()),
+            None,
+        )),
     );
     if source_dir.exists() {
         fs::remove_dir_all(source_dir).await?;
@@ -364,10 +364,15 @@ pub async fn execute_build_commands_list_with_security(
     for command in build_commands {
         send_event(
             context,
-            Event::BuildStepStarted {
-                step: format!("{command:?}"),
+            AppEvent::Build(BuildEvent::CommandStarted {
+                session_id: "build".to_string(),
                 package: context.name.clone(),
-            },
+                command_id: format!("build_step_{}", std::ptr::addr_of!(*command) as usize),
+                build_system: crate::build_systems::BuildSystem::Custom,
+                command: format!("{:?}", command),
+                working_dir: environment.build_prefix().join("src"),
+                timeout: None,
+            }),
         );
 
         execute_build_command_with_security(
@@ -381,10 +386,13 @@ pub async fn execute_build_commands_list_with_security(
 
         send_event(
             context,
-            Event::BuildStepCompleted {
-                step: format!("{command:?}"),
+            AppEvent::Build(BuildEvent::CommandCompleted {
+                session_id: "build".to_string(),
                 package: context.name.clone(),
-            },
+                command_id: format!("build_step_{}", std::ptr::addr_of!(*command) as usize),
+                exit_code: 0,
+                duration: std::time::Duration::from_secs(0), // TODO: track actual duration
+            }),
         );
     }
 

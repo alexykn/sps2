@@ -3,7 +3,7 @@
 use crate::artifact_qa::{reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
-use sps2_events::AppEvent;
+use sps2_events::{AppEvent, QaEvent};
 
 pub struct ObjectFileCleaner;
 
@@ -50,10 +50,12 @@ impl crate::artifact_qa::traits::Action for ObjectFileCleaner {
         if !removed.is_empty() {
             crate::utils::events::send_event(
                 ctx,
-                Event::OperationCompleted {
-                    operation: format!("Removed {} object files", removed.len()),
-                    success: true,
-                },
+                AppEvent::Qa(QaEvent::CheckCompleted {
+                    check_type: "patcher".to_string(),
+                    check_name: "object_cleaner".to_string(),
+                    findings_count: removed.len(),
+                    severity_counts: std::collections::HashMap::new(),
+                }),
             );
         }
 

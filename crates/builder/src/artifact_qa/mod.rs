@@ -12,7 +12,7 @@ use crate::{utils::events::send_event, BuildContext, BuildEnvironment};
 use diagnostics::DiagnosticCollector;
 use reports::{MergedReport, Report};
 use sps2_errors::{BuildError, Error};
-use sps2_events::AppEvent;
+use sps2_events::{AppEvent, GeneralEvent, QaEvent};
 use traits::Action;
 
 /// Enum for all validators
@@ -155,11 +155,10 @@ pub async fn run_quality_pipeline(
     if profile_opt.is_none() {
         send_event(
             ctx,
-            Event::DebugLog {
-                message: "Skipping artifact QA pipeline entirely due to qa_pipeline: skip override"
-                    .to_string(),
-                context: std::collections::HashMap::new(),
-            },
+            AppEvent::General(GeneralEvent::debug(
+                "Skipping artifact QA pipeline entirely due to qa_pipeline: skip override",
+                None,
+            )),
         );
         return Ok(());
     }
@@ -170,15 +169,15 @@ pub async fn run_quality_pipeline(
     let override_info = qa_override.map_or("auto".to_string(), |o| format!("{o:?}").to_lowercase());
     send_event(
         ctx,
-        Event::DebugLog {
-            message: format!(
-                "Using {} for build systems: {:?} (override: {})",
+        AppEvent::General(GeneralEvent::debug(
+            &format!(
+                "Using {} for build systems: {:?} (override: {}",
                 router::get_pipeline_name(profile),
                 used_build_systems,
                 override_info
             ),
-            context: std::collections::HashMap::new(),
-        },
+            None,
+        )),
     );
     // ----------------    PHASE 1  -----------------
     let mut pre = run_validators(
@@ -219,10 +218,10 @@ pub async fn run_quality_pipeline(
         // Emit a short success note
         send_event(
             ctx,
-            Event::OperationCompleted {
+            AppEvent::General(GeneralEvent::OperationCompleted {
                 operation: "Post‑build validation".into(),
                 success: true,
-            },
+            }),
         );
     }
     Ok(())
@@ -241,17 +240,20 @@ async fn run_validators(
         let action_name = action.name();
         send_event(
             ctx,
-            Event::OperationStarted {
-                operation: action_name.into(),
-            },
+            AppEvent::Qa(QaEvent::CheckStarted {
+                check_type: "validator".to_string(),
+                check_name: action_name.to_string(),
+            }),
         );
         let rep = action.run(ctx, env, None).await?;
         send_event(
             ctx,
-            Event::OperationCompleted {
-                operation: action_name.into(),
-                success: !rep.is_fatal(),
-            },
+            AppEvent::Qa(QaEvent::CheckCompleted {
+                check_type: "validator".to_string(),
+                check_name: action_name.to_string(),
+                findings_count: rep.findings().len(),
+                severity_counts: rep.severity_counts(),
+            }),
         );
         merged.absorb(rep);
         if allow_early_break && merged.is_fatal() {
@@ -274,17 +276,20 @@ async fn run_patchers(
         let action_name = action.name();
         send_event(
             ctx,
-            Event::OperationStarted {
-                operation: action_name.into(),
-            },
+            AppEvent::Qa(QaEvent::CheckStarted {
+                check_type: "patcher".to_string(),
+                check_name: action_name.to_string(),
+            }),
         );
         let rep = action.run(ctx, env, validator_findings.as_ref()).await?;
         send_event(
             ctx,
-            Event::OperationCompleted {
-                operation: action_name.into(),
-                success: !rep.is_fatal(),
-            },
+            AppEvent::Qa(QaEvent::CheckCompleted {
+                check_type: "patcher".to_string(),
+                check_name: action_name.to_string(),
+                findings_count: rep.findings().len(),
+                severity_counts: rep.severity_counts(),
+            }),
         );
         merged.absorb(rep);
         if merged.is_fatal() {

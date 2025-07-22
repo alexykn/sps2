@@ -58,18 +58,18 @@ pub async fn copy_source_files(
     context: &crate::BuildContext,
 ) -> Result<(), Error> {
     use crate::utils::events::send_event;
-    use sps2_events::AppEvent;
+    use sps2_events::{AppEvent, GeneralEvent};
 
     send_event(
         context,
-        Event::DebugLog {
-            message: format!(
+        AppEvent::General(GeneralEvent::debug(
+            &format!(
                 "Copying source files from {} to {}",
                 recipe_dir.display(),
                 working_dir.display()
             ),
-            context: std::collections::HashMap::new(),
-        },
+            None,
+        )),
     );
 
     let mut entries = fs::read_dir(recipe_dir).await?;
@@ -84,14 +84,14 @@ pub async fn copy_source_files(
 
             send_event(
                 context,
-                Event::DebugLog {
-                    message: format!(
+                AppEvent::General(GeneralEvent::debug(
+                    &format!(
                         "Copied directory {} to {}",
                         file_name.to_string_lossy(),
                         dest_path.display()
                     ),
-                    context: std::collections::HashMap::new(),
-                },
+                    None,
+                )),
             );
         } else if entry_path.extension().is_none_or(|ext| ext != "star") {
             // Copy files except .star files
@@ -99,14 +99,14 @@ pub async fn copy_source_files(
 
             send_event(
                 context,
-                Event::DebugLog {
-                    message: format!(
+                AppEvent::General(GeneralEvent::debug(
+                    &format!(
                         "Copied {} to {}",
                         file_name.to_string_lossy(),
                         dest_path.display()
                     ),
-                    context: std::collections::HashMap::new(),
-                },
+                    None,
+                )),
             );
         }
     }

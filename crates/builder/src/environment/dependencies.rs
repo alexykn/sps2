@@ -2,7 +2,7 @@
 
 use super::core::BuildEnvironment;
 use sps2_errors::{BuildError, Error};
-use sps2_events::AppEvent;
+use sps2_events::{AppEvent, DownloadEvent, GeneralEvent, InstallEvent, ResolverEvent};
 use sps2_resolver::{InstalledPackage, ResolutionContext};
 use sps2_state::StateManager;
 use sps2_types::package::PackageSpec;
@@ -26,11 +26,12 @@ impl BuildEnvironment {
             .into());
         };
 
-        self.send_event(Event::DependencyResolved {
-            package: self.context.name.clone(),
-            version: self.context.version.clone(),
-            count: 1, // Single package resolved
-        });
+        self.send_event(AppEvent::Resolver(ResolverEvent::ResolutionCompleted {
+            total_packages: 1,
+            execution_batches: 1,
+            duration_ms: 0, // TODO: track actual duration
+            packages_resolved: vec![format!("{}:{}", self.context.name, self.context.version)],
+        }));
 
         // Get installed packages to check before resolving from repository
         let installed_packages = Self::get_installed_packages().await.unwrap_or_default();
@@ -76,23 +77,26 @@ impl BuildEnvironment {
 
             if is_empty_or_none {
                 // Already installed - just verify it exists
-                self.send_event(Event::DebugLog {
-                    message: format!(
+                self.send_event(AppEvent::General(GeneralEvent::debug(
+                    &format!(
                         "{} {} is already installed in /opt/pm/live",
                         node.name, node.version
                     ),
-                    context: std::collections::HashMap::new(),
-                });
+                    None,
+                )));
 
                 // Verify the package is installed
                 self.verify_installed_package(&node.name, &node.version)
                     .await?;
 
-                self.send_event(Event::PackageInstalled {
-                    name: node.name.clone(),
+                self.send_event(AppEvent::Install(InstallEvent::Completed {
+                    package: node.name.clone(),
                     version: node.version.clone(),
-                    path: "/opt/pm/live".to_string(),
-                });
+                    installed_files: 0, // TODO: track actual file count
+                    install_path: std::path::PathBuf::from("/opt/pm/live"),
+                    duration: std::time::Duration::from_secs(0), // TODO: track actual duration
+                    disk_usage: 0, // TODO: track actual disk usage
+                }));
 
                 return Ok(());
             }
@@ -119,20 +123,25 @@ impl BuildEnvironment {
             .into());
         };
 
-        self.send_event(Event::PackageInstalling {
-            name: node.name.clone(),
+        self.send_event(AppEvent::Install(InstallEvent::Started {
+            package: node.name.clone(),
             version: node.version.clone(),
-        });
+            install_path: std::path::PathBuf::from("/opt/pm/live"),
+            force_reinstall: false,
+        }));
 
         // Install the build dependency to the isolated deps prefix
         // This extracts the package contents to the build environment
         match &node.action {
             sps2_resolver::NodeAction::Download => {
                 if let Some(url) = &node.url {
-                    self.send_event(Event::DownloadStarted {
+                    self.send_event(AppEvent::Download(DownloadEvent::Started {
                         url: url.clone(),
-                        size: None,
-                    });
+                        package: Some(format!("{}:{}", node.name, node.version)),
+                        total_size: None,
+                        supports_resume: false,
+                        connection_time: std::time::Duration::from_secs(0), // TODO: track actual connection time
+                    }));
 
                     // Download the .sp file to a temporary location
                     let temp_dir = std::env::temp_dir();

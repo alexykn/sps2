@@ -3,7 +3,7 @@
 use crate::artifact_qa::{macho_utils, reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
-use sps2_events::AppEvent;
+use sps2_events::{AppEvent, QaEvent};
 use std::path::Path;
 use tokio::process::Command;
 
@@ -85,10 +85,12 @@ impl crate::artifact_qa::traits::Action for CodeSigner {
         if resigned_count > 0 {
             crate::utils::events::send_event(
                 ctx,
-                Event::OperationCompleted {
-                    operation: format!("Re-signed {resigned_count} binaries"),
-                    success: true,
-                },
+                AppEvent::Qa(QaEvent::CheckCompleted {
+                    check_type: "patcher".to_string(),
+                    check_name: "codesigner".to_string(),
+                    findings_count: resigned_count,
+                    severity_counts: std::collections::HashMap::new(),
+                }),
             );
         }
 

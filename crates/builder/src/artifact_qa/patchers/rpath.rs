@@ -3,7 +3,7 @@
 use crate::artifact_qa::{macho_utils, reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
-use sps2_events::AppEvent;
+use sps2_events::{AppEvent, GeneralEvent, QaEvent};
 use sps2_types::RpathStyle;
 
 use ignore::WalkBuilder;
@@ -389,16 +389,16 @@ impl RPathPatcher {
 
         crate::utils::events::send_event(
             ctx,
-            Event::Warning {
+            AppEvent::Qa(QaEvent::FindingReported {
+                check_type: "patcher".to_string(),
+                severity: "warning".to_string(),
                 message: format!(
-                    "Found {} dylibs with headerpad errors",
+                    "Found {} dylibs with headerpad errors. Attempting fallback strategy: updating references in dependent binaries",
                     headerpad_errors.len()
                 ),
-                context: Some(
-                    "Attempting fallback strategy: updating references in dependent binaries"
-                        .to_string(),
-                ),
-            },
+                file_path: None,
+                line: None,
+            }),
         );
 
         for dylib_path in headerpad_errors {
@@ -421,14 +421,12 @@ impl RPathPatcher {
                                 if !updated_files.is_empty() {
                                     crate::utils::events::send_event(
                                         ctx,
-                                        Event::OperationCompleted {
-                                            operation: format!(
-                                                "Updated {} references to {} (headerpad workaround)",
-                                                updated_files.len(),
-                                                file_name
-                                            ),
-                                            success: true,
-                                        },
+                                        AppEvent::Qa(QaEvent::CheckCompleted {
+                                            check_type: "patcher".to_string(),
+                                            check_name: "rpath_headerpad_workaround".to_string(),
+                                            findings_count: updated_files.len(),
+                                            severity_counts: std::collections::HashMap::new(),
+                                        }),
                                     );
                                     fixed_files.extend(updated_files);
                                 }
@@ -473,10 +471,10 @@ impl RPathPatcher {
                 } else {
                     crate::utils::events::send_event(
                         ctx,
-                        Event::Warning {
-                            message: "Install name fix failed".to_string(),
-                            context: Some(msg.clone()),
-                        },
+                        AppEvent::General(GeneralEvent::warning(
+                            "Install name fix failed",
+                            Some(msg.clone()),
+                        )),
                     );
                     warnings.push(format!("{}: install name fix failed", path.display()));
                 }
@@ -582,14 +580,12 @@ impl crate::artifact_qa::traits::Action for RPathPatcher {
 
             crate::utils::events::send_event(
                 ctx,
-                Event::OperationCompleted {
-                    operation: format!(
-                        "Fixed {} in {} binaries",
-                        operations.join(" and "),
-                        changed.len()
-                    ),
-                    success: true,
-                },
+                AppEvent::Qa(QaEvent::CheckCompleted {
+                    check_type: "patcher".to_string(),
+                    check_name: "rpath".to_string(),
+                    findings_count: changed.len(),
+                    severity_counts: std::collections::HashMap::new(),
+                }),
             );
         }
 

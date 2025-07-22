@@ -14,7 +14,7 @@ use object::{
     Endianness, FileKind,
 };
 use sps2_errors::Error;
-use sps2_events::AppEvent;
+use sps2_events::{AppEvent, GeneralEvent};
 
 pub struct MachOScanner;
 
@@ -59,10 +59,10 @@ impl crate::artifact_qa::traits::Action for MachOScanner {
             for msg in &diagnostic_messages {
                 crate::utils::events::send_event(
                     ctx,
-                    Event::Warning {
-                        message: "Mach-O validation failed".to_string(),
-                        context: Some(msg.clone()),
-                    },
+                    AppEvent::General(GeneralEvent::warning_with_context(
+                        "Mach-O validation failed",
+                        msg,
+                    )),
                 );
             }
 

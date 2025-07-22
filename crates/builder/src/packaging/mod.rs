@@ -40,9 +40,9 @@ pub async fn create_and_sign_package(
     // Package the result
     send_event(
         context,
-        Event::OperationStarted {
+        AppEvent::General(GeneralEvent::OperationStarted {
             operation: "Creating package archive".to_string(),
-        },
+        }),
     );
     let package_path = create_package(config, context, environment, manifest, sbom_files).await?;
     send_event(
@@ -72,9 +72,9 @@ async fn generate_sbom_files(
 
     send_event(
         context,
-        Event::OperationStarted {
+        AppEvent::General(GeneralEvent::OperationStarted {
             operation: "Generating SBOM".to_string(),
-        },
+        }),
     );
 
     let sbom_generator = SbomGenerator::new(
@@ -187,9 +187,9 @@ pub async fn create_sp_package(
     // Step 3: Copy staging directory contents as package files
     send_event(
         context,
-        Event::OperationStarted {
+        AppEvent::General(GeneralEvent::OperationStarted {
             operation: "Copying package files".to_string(),
-        },
+        }),
     );
 
     // Copy staging directory contents, stripping the opt/pm/live prefix
@@ -208,18 +208,15 @@ pub async fn create_sp_package(
     // Step 4: Create deterministic tar archive
     send_event(
         context,
-        Event::OperationStarted {
+        AppEvent::General(GeneralEvent::OperationStarted {
             operation: "Creating tar archive".to_string(),
-        },
+        }),
     );
 
     // Debug: List contents before tar creation
     send_event(
         context,
-        Event::DebugLog {
-            message: format!("Creating tar from: {}", package_temp_dir.display()),
-            context: std::collections::HashMap::new(),
-        },
+        AppEvent::General(GeneralEvent::debug(format!("Creating tar from: {}", package_temp_dir.display()))),
     );
 
     let tar_path = package_temp_dir.join("package.tar");
@@ -252,9 +249,9 @@ pub async fn create_sp_package(
     // Step 5: Compress with zstd at configured level
     send_event(
         context,
-        Event::OperationStarted {
+        AppEvent::General(GeneralEvent::OperationStarted {
             operation: "Compressing package with zstd".to_string(),
-        },
+        }),
     );
     compress_with_zstd(
         &config.packaging_settings().compression,
@@ -294,7 +291,7 @@ pub async fn sign_package(
 
     send_event(
         context,
-        Event::OperationStarted {
+        AppEvent::General(GeneralEvent::OperationStarted {
             operation: format!(
                 "Signing package {}",
                 package_path
@@ -302,7 +299,7 @@ pub async fn sign_package(
                     .unwrap_or_default()
                     .to_string_lossy()
             ),
-        },
+        }),
     );
 
     let signer = PackageSigner::new(config.packaging_settings().signing.clone());

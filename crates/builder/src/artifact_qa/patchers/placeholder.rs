@@ -3,7 +3,7 @@
 use crate::artifact_qa::{reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
-use sps2_events::AppEvent;
+use sps2_events::{AppEvent, QaEvent};
 
 use globset::{Glob, GlobSetBuilder};
 use ignore::WalkBuilder;
@@ -105,10 +105,12 @@ impl crate::artifact_qa::traits::Action for PlaceholderPatcher {
         if !changed.is_empty() {
             crate::utils::events::send_event(
                 ctx,
-                Event::OperationCompleted {
-                    operation: format!("Rewrote {} files", changed.len()),
-                    success: true,
-                },
+                AppEvent::Qa(QaEvent::CheckCompleted {
+                    check_type: "patcher".to_string(),
+                    check_name: "placeholder".to_string(),
+                    findings_count: changed.len(),
+                    severity_counts: std::collections::HashMap::new(),
+                }),
             );
         }
 

@@ -242,4 +242,17 @@ pub enum BuildEvent {
         memory_mb: u64,
         disk_usage_mb: u64,
     },
+
+    /// Build orchestration phase started (recipe parsing, env setup, etc.)
+    OrchestrationPhaseStarted {
+        phase: String,
+        description: Option<String>,
+    },
+
+    /// Build orchestration phase completed
+    OrchestrationPhaseCompleted {
+        phase: String,
+        success: bool,
+        duration: Option<Duration>,
+    },
 }

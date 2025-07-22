@@ -7,7 +7,7 @@ use crate::types::{
 };
 use crate::verification;
 use sps2_errors::Error;
-use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent, GuardEvent};
+use sps2_events::{AppEvent, EventEmitter, EventSender, GuardEvent};
 use sps2_hash::Hash;
 use sps2_state::{queries, PackageFileEntry, StateManager};
 use sps2_store::PackageStore;

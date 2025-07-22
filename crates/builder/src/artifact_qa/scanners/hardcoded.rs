@@ -6,7 +6,7 @@ use crate::{BuildContext, BuildEnvironment};
 use bstr::ByteSlice;
 use ignore::WalkBuilder;
 use sps2_errors::Error;
-use sps2_events::AppEvent;
+use sps2_events::{AppEvent, GeneralEvent};
 
 pub struct HardcodedScanner;
 impl crate::artifact_qa::traits::Action for HardcodedScanner {
@@ -24,12 +24,12 @@ impl crate::artifact_qa::traits::Action for HardcodedScanner {
         // Debug: Print the build prefixes we're scanning for
         crate::utils::events::send_event(
             ctx,
-            Event::DebugLog {
-                message: format!(
+            AppEvent::General(GeneralEvent::debug(
+                &format!(
                     "Hardcoded path scanner: checking for {build_base} | {build_prefix} | {build_src}"
                 ),
-                context: std::collections::HashMap::new(),
-            },
+                None,
+            )),
         );
 
         let mut collector = DiagnosticCollector::new();
@@ -71,10 +71,10 @@ impl crate::artifact_qa::traits::Action for HardcodedScanner {
             for msg in &diagnostic_messages {
                 crate::utils::events::send_event(
                     ctx,
-                    Event::Warning {
-                        message: "Hardcoded path validation failed".to_string(),
-                        context: Some(msg.clone()),
-                    },
+                    AppEvent::General(GeneralEvent::warning_with_context(
+                        "Hardcoded path validation failed",
+                        msg,
+                    )),
                 );
             }
 

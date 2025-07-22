@@ -11,7 +11,7 @@ use crate::utils::events::send_event;
 use crate::yaml::RecipeMetadata;
 use crate::{BuildConfig, BuildContext, BuilderApi};
 use sps2_errors::Error;
-use sps2_events::AppEvent;
+use sps2_events::{AppEvent, BuildEvent, GeneralEvent};
 use std::collections::HashMap;
 use tokio::fs;
 
@@ -33,9 +33,10 @@ pub async fn execute_staged_build(
     // Stage 0: Parse and analyze recipe
     send_event(
         context,
-        Event::OperationStarted {
-            operation: "Analyzing recipe".to_string(),
-        },
+        AppEvent::Build(BuildEvent::OrchestrationPhaseStarted {
+            phase: "recipe_analysis".to_string(),
+            description: Some("Analyzing recipe".to_string()),
+        }),
     );
 
     let yaml_recipe = parse_yaml_recipe(&context.recipe_path).await?;
@@ -47,10 +48,11 @@ pub async fn execute_staged_build(
 
     send_event(
         context,
-        Event::OperationCompleted {
-            operation: "Recipe analysis complete".to_string(),
+        AppEvent::Build(BuildEvent::OrchestrationPhaseCompleted {
+            phase: "recipe_analysis".to_string(),
             success: true,
-        },
+            duration: None,
+        }),
     );
 
     // Create security context for the build
@@ -115,19 +117,20 @@ async fn apply_environment_config(
 ) -> Result<(), Error> {
     send_event(
         context,
-        Event::OperationStarted {
-            operation: "Configuring build environment".to_string(),
-        },
+        AppEvent::Build(BuildEvent::OrchestrationPhaseStarted {
+            phase: "environment_config".to_string(),
+            description: Some("Configuring build environment".to_string()),
+        }),
     );
 
     // Apply isolation level from recipe
     if config.isolation != environment.isolation_level() {
         send_event(
             context,
-            Event::DebugLog {
-                message: format!("Applying isolation level {} from recipe", config.isolation),
-                context: HashMap::new(),
-            },
+            AppEvent::General(GeneralEvent::debug(
+                &format!("Applying isolation level {} from recipe", config.isolation),
+                None,
+            )),
         );
 
         environment.set_isolation_level_from_recipe(config.isolation);
@@ -149,20 +152,21 @@ async fn apply_environment_config(
     if config.defaults {
         send_event(
             context,
-            Event::BuildStepStarted {
-                step: "WithDefaults".to_string(),
-                package: context.name.clone(),
-            },
+            AppEvent::Build(BuildEvent::OrchestrationPhaseStarted {
+                phase: "apply_defaults".to_string(),
+                description: Some("Applying compiler defaults".to_string()),
+            }),
         );
 
         environment.apply_default_compiler_flags();
 
         send_event(
             context,
-            Event::BuildStepCompleted {
-                step: "WithDefaults".to_string(),
-                package: context.name.clone(),
-            },
+            AppEvent::Build(BuildEvent::OrchestrationPhaseCompleted {
+                phase: "apply_defaults".to_string(),
+                success: true,
+                duration: None,
+            }),
         );
     }
 
@@ -173,10 +177,11 @@ async fn apply_environment_config(
 
     send_event(
         context,
-        Event::OperationCompleted {
-            operation: "Build environment configured".to_string(),
+        AppEvent::Build(BuildEvent::OrchestrationPhaseCompleted {
+            phase: "environment_config".to_string(),
             success: true,
-        },
+            duration: None,
+        }),
     );
 
     Ok(())
@@ -195,9 +200,10 @@ async fn execute_source_stage(
 
     send_event(
         context,
-        Event::OperationStarted {
-            operation: "Acquiring sources".to_string(),
-        },
+        AppEvent::Build(BuildEvent::OrchestrationPhaseStarted {
+            phase: "source_acquisition".to_string(),
+            description: Some("Acquiring sources".to_string()),
+        }),
     );
 
     // Create working directory
@@ -212,10 +218,10 @@ async fn execute_source_stage(
     // Clean staging area first
     send_event(
         context,
-        Event::BuildStepStarted {
-            step: "Cleanup".to_string(),
-            package: context.name.clone(),
-        },
+        AppEvent::Build(BuildEvent::OrchestrationPhaseStarted {
+            phase: "cleanup".to_string(),
+            description: Some("Cleaning staging area".to_string()),
+        }),
     );
 
     // Cleanup is handled as the first source step
@@ -223,39 +229,49 @@ async fn execute_source_stage(
 
     send_event(
         context,
-        Event::BuildStepCompleted {
-            step: "Cleanup".to_string(),
-            package: context.name.clone(),
-        },
+        AppEvent::Build(BuildEvent::OrchestrationPhaseCompleted {
+            phase: "cleanup".to_string(),
+            success: true,
+            duration: None,
+        }),
     );
 
     // Execute source steps
     for step in &build_plan.source_steps {
         send_event(
             context,
-            Event::BuildStepStarted {
-                step: format!("{step:?}"),
+            AppEvent::Build(BuildEvent::CommandStarted {
+                session_id: "source_acquisition".to_string(),
                 package: context.name.clone(),
-            },
+                command_id: format!("source_step_{}", std::ptr::addr_of!(*step) as usize),
+                build_system: crate::build_systems::BuildSystem::Custom,
+                command: format!("{step:?}"),
+                working_dir: environment.build_prefix().join("src"),
+                timeout: None,
+            }),
         );
 
         execute_source_step(step, &mut api, environment).await?;
 
         send_event(
             context,
-            Event::BuildStepCompleted {
-                step: format!("{step:?}"),
+            AppEvent::Build(BuildEvent::CommandCompleted {
+                session_id: "source_acquisition".to_string(),
                 package: context.name.clone(),
-            },
+                command_id: format!("source_step_{}", std::ptr::addr_of!(*step) as usize),
+                exit_code: 0,
+                duration: std::time::Duration::from_secs(0), // TODO: track actual duration
+            }),
         );
     }
 
     send_event(
         context,
-        Event::OperationCompleted {
-            operation: "Sources acquired".to_string(),
+        AppEvent::Build(BuildEvent::OrchestrationPhaseCompleted {
+            phase: "source_acquisition".to_string(),
             success: true,
-        },
+            duration: None,
+        }),
     );
 
     Ok(())
@@ -275,9 +291,10 @@ async fn execute_build_stage_with_security(
 
     send_event(
         context,
-        Event::OperationStarted {
-            operation: "Building package".to_string(),
-        },
+        AppEvent::Build(BuildEvent::OrchestrationPhaseStarted {
+            phase: "package_build".to_string(),
+            description: Some("Building package".to_string()),
+        }),
     );
 
     // Get working directory
@@ -313,10 +330,11 @@ async fn execute_build_stage_with_security(
 
     send_event(
         context,
-        Event::OperationCompleted {
-            operation: "Build complete".to_string(),
+        AppEvent::Build(BuildEvent::OrchestrationPhaseCompleted {
+            phase: "package_build".to_string(),
             success: true,
-        },
+            duration: None,
+        }),
     );
 
     Ok(())
@@ -336,9 +354,10 @@ async fn execute_post_stage_with_security(
 
     send_event(
         context,
-        Event::OperationStarted {
-            operation: "Post-processing".to_string(),
-        },
+        AppEvent::Build(BuildEvent::OrchestrationPhaseStarted {
+            phase: "post_processing".to_string(),
+            description: Some("Post-processing".to_string()),
+        }),
     );
 
     // Get working directory
@@ -354,10 +373,15 @@ async fn execute_post_stage_with_security(
     for step in &build_plan.post_steps {
         send_event(
             context,
-            Event::BuildStepStarted {
-                step: format!("{step:?}"),
+            AppEvent::Build(BuildEvent::CommandStarted {
+                session_id: "post_processing".to_string(),
                 package: context.name.clone(),
-            },
+                command_id: format!("post_step_{}", std::ptr::addr_of!(*step) as usize),
+                build_system: crate::build_systems::BuildSystem::Custom,
+                command: format!("{step:?}"),
+                working_dir: environment.build_prefix().join("src"),
+                timeout: None,
+            }),
         );
 
         execute_post_step_with_security(
@@ -371,19 +395,23 @@ async fn execute_post_stage_with_security(
 
         send_event(
             context,
-            Event::BuildStepCompleted {
-                step: format!("{step:?}"),
+            AppEvent::Build(BuildEvent::CommandCompleted {
+                session_id: "post_processing".to_string(),
                 package: context.name.clone(),
-            },
+                command_id: format!("post_step_{}", std::ptr::addr_of!(*step) as usize),
+                exit_code: 0,
+                duration: std::time::Duration::from_secs(0), // TODO: track actual duration
+            }),
         );
     }
 
     send_event(
         context,
-        Event::OperationCompleted {
-            operation: "Post-processing complete".to_string(),
+        AppEvent::Build(BuildEvent::OrchestrationPhaseCompleted {
+            phase: "post_processing".to_string(),
             success: true,
-        },
+            duration: None,
+        }),
     );
 
     Ok(())
