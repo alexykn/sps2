@@ -128,8 +128,7 @@ async fn apply_environment_config(
         send_event(
             context,
             AppEvent::General(GeneralEvent::debug(
-                &format!("Applying isolation level {} from recipe", config.isolation),
-                None,
+                &format!("Applying isolation level {} from recipe", config.isolation)
             )),
         );
 
@@ -244,7 +243,7 @@ async fn execute_source_stage(
                 session_id: "source_acquisition".to_string(),
                 package: context.name.clone(),
                 command_id: format!("source_step_{}", std::ptr::addr_of!(*step) as usize),
-                build_system: crate::build_systems::BuildSystem::Custom,
+                build_system: sps2_events::BuildSystem::Custom,
                 command: format!("{step:?}"),
                 working_dir: environment.build_prefix().join("src"),
                 timeout: None,
@@ -377,7 +376,7 @@ async fn execute_post_stage_with_security(
                 session_id: "post_processing".to_string(),
                 package: context.name.clone(),
                 command_id: format!("post_step_{}", std::ptr::addr_of!(*step) as usize),
-                build_system: crate::build_systems::BuildSystem::Custom,
+                build_system: sps2_events::BuildSystem::Custom,
                 command: format!("{step:?}"),
                 working_dir: environment.build_prefix().join("src"),
                 timeout: None,

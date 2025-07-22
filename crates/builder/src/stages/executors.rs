@@ -325,8 +325,7 @@ async fn cleanup_directories(
     send_event(
         &environment.context,
         AppEvent::General(GeneralEvent::debug(
-            &format!("Cleaned staging directory: {}", staging_dir.display()),
-            None,
+            &format!("Cleaned staging directory: {}", staging_dir.display())
         )),
     );
     if staging_dir.exists() {
@@ -338,8 +337,7 @@ async fn cleanup_directories(
     send_event(
         &environment.context,
         AppEvent::General(GeneralEvent::debug(
-            &format!("Cleaned source directory: {}", source_dir.display()),
-            None,
+            &format!("Cleaned source directory: {}", source_dir.display())
         )),
     );
     if source_dir.exists() {
@@ -368,7 +366,7 @@ pub async fn execute_build_commands_list_with_security(
                 session_id: "build".to_string(),
                 package: context.name.clone(),
                 command_id: format!("build_step_{}", std::ptr::addr_of!(*command) as usize),
-                build_system: crate::build_systems::BuildSystem::Custom,
+                build_system: sps2_events::BuildSystem::Custom,
                 command: format!("{:?}", command),
                 working_dir: environment.build_prefix().join("src"),
                 timeout: None,

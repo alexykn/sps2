@@ -59,7 +59,7 @@ impl BuildEnvironment {
             session_id: "unknown".to_string(), // TODO: should come from build context
             package: self.context.name.clone(),
             command_id: "unknown".to_string(), // TODO: generate unique ID
-            build_system: crate::BuildSystem::Custom, // TODO: detect actual build system
+            build_system: sps2_events::BuildSystem::Custom, // TODO: detect actual build system
             command: format!("{program} {}", arg_refs.join(" ")),
             working_dir: self.build_prefix.clone(),
             timeout: None,

@@ -81,8 +81,7 @@ impl BuildEnvironment {
                     &format!(
                         "{} {} is already installed in /opt/pm/live",
                         node.name, node.version
-                    ),
-                    None,
+                    )
                 )));
 
                 // Verify the package is installed

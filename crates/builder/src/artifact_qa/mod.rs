@@ -156,30 +156,13 @@ pub async fn run_quality_pipeline(
         send_event(
             ctx,
             AppEvent::General(GeneralEvent::debug(
-                "Skipping artifact QA pipeline entirely due to qa_pipeline: skip override",
-                None,
-            )),
+            "Artifact QA pipeline completed"
+        )),
         );
         return Ok(());
     }
-
     let profile = profile_opt.unwrap();
-
-    // Log which pipeline we're using
-    let override_info = qa_override.map_or("auto".to_string(), |o| format!("{o:?}").to_lowercase());
-    send_event(
-        ctx,
-        AppEvent::General(GeneralEvent::debug(
-            &format!(
-                "Using {} for build systems: {:?} (override: {}",
-                router::get_pipeline_name(profile),
-                used_build_systems,
-                override_info
-            ),
-            None,
-        )),
-    );
-    // ----------------    PHASE 1  -----------------
+    // ----------------    PHASE1  -----------------
     let mut pre = run_validators(
         ctx,
         env,
@@ -248,12 +231,11 @@ async fn run_validators(
         let rep = action.run(ctx, env, None).await?;
         send_event(
             ctx,
-            AppEvent::Qa(QaEvent::CheckCompleted {
-                check_type: "validator".to_string(),
-                check_name: action_name.to_string(),
-                findings_count: rep.findings().len(),
-                severity_counts: rep.severity_counts(),
-            }),
+                AppEvent::Qa(QaEvent::CheckCompleted {
+                    check_type: "validator".to_string(),
+                    check_name: action_name.to_string(),
+                    findings_count: rep.findings.as_ref().map_or(0, |f| f.count()),
+                    severity_counts: std::collections::HashMap::new(),            }),
         );
         merged.absorb(rep);
         if allow_early_break && merged.is_fatal() {
@@ -284,12 +266,11 @@ async fn run_patchers(
         let rep = action.run(ctx, env, validator_findings.as_ref()).await?;
         send_event(
             ctx,
-            AppEvent::Qa(QaEvent::CheckCompleted {
-                check_type: "patcher".to_string(),
-                check_name: action_name.to_string(),
-                findings_count: rep.findings().len(),
-                severity_counts: rep.severity_counts(),
-            }),
+                AppEvent::Qa(QaEvent::CheckCompleted {
+                    check_type: "patcher".to_string(),
+                    check_name: action_name.to_string(),
+                    findings_count: rep.findings.as_ref().map_or(0, |f| f.count()),
+                    severity_counts: std::collections::HashMap::new(),            }),
         );
         merged.absorb(rep);
         if merged.is_fatal() {

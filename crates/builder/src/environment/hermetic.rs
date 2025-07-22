@@ -74,10 +74,8 @@ impl BuildEnvironment {
     ) -> Result<(), Error> {
         // Send event for isolation start
         if let Some(sender) = event_sender {
-            sender.emit(Event::BuildStepStarted {
-                package: self.context.name.clone(),
-                step: "hermetic_isolation".to_string(),
-            });
+            sender.emit(AppEvent::General(GeneralEvent::debug("Build step started")));
+
         }
 
         // Clear environment variables
@@ -109,10 +107,8 @@ impl BuildEnvironment {
 
         // Send completion event
         if let Some(sender) = event_sender {
-            sender.emit(Event::BuildStepCompleted {
-                package: self.context.name.clone(),
-                step: "hermetic_isolation".to_string(),
-            });
+            sender.emit(AppEvent::General(GeneralEvent::debug("Build step completed")));
+
         }
 
         Ok(())

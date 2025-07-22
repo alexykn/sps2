@@ -62,7 +62,9 @@ impl BuildEnvironment {
     }
 
     /// Send event if sender is available
-    pub(crate) fn send_event(&self, event: Event) {
-        self.emit_event(event);
+    pub(crate) fn send_event(&self, event: AppEvent) {
+        if let Some(sender) = self.event_sender() {
+            sender.emit(event);
+        }
     }
 }

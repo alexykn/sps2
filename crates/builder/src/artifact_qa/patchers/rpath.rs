@@ -471,10 +471,8 @@ impl RPathPatcher {
                 } else {
                     crate::utils::events::send_event(
                         ctx,
-                        AppEvent::General(GeneralEvent::warning(
-                            "Install name fix failed",
-                            Some(msg.clone()),
-                        )),
+AppEvent::General(GeneralEvent::warning(
+                             "Install name fix failed"                        )),
                     );
                     warnings.push(format!("{}: install name fix failed", path.display()));
                 }

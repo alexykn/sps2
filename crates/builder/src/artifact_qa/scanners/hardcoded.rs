@@ -27,8 +27,7 @@ impl crate::artifact_qa::traits::Action for HardcodedScanner {
             AppEvent::General(GeneralEvent::debug(
                 &format!(
                     "Hardcoded path scanner: checking for {build_base} | {build_prefix} | {build_src}"
-                ),
-                None,
+                )
             )),
         );
 

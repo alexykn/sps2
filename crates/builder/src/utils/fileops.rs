@@ -62,13 +62,8 @@ pub async fn copy_source_files(
 
     send_event(
         context,
-        AppEvent::General(GeneralEvent::debug(
-            &format!(
-                "Copying source files from {} to {}",
-                recipe_dir.display(),
-                working_dir.display()
-            ),
-            None,
+AppEvent::General(GeneralEvent::debug(
+            "Cleaning up temporary files"
         )),
     );
 
@@ -90,7 +85,6 @@ pub async fn copy_source_files(
                         file_name.to_string_lossy(),
                         dest_path.display()
                     ),
-                    None,
                 )),
             );
         } else if entry_path.extension().is_none_or(|ext| ext != "star") {
@@ -105,7 +99,6 @@ pub async fn copy_source_files(
                         file_name.to_string_lossy(),
                         dest_path.display()
                     ),
-                    None,
                 )),
             );
         }
