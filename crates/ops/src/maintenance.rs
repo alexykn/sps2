@@ -14,7 +14,7 @@ use uuid::Uuid;
 pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
     let start = Instant::now();
 
-    ctx.emit_event(AppEvent::Package(PackageEvent::CleanupStarting));
+    ctx.emit(AppEvent::Package(PackageEvent::CleanupStarting));
 
     // Clean up old states, respecting the configured retention count
     let cleanup_result = ctx
@@ -31,7 +31,7 @@ pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
         cleanup_result.states_removed, cleaned_packages
     );
 
-    ctx.emit_event(AppEvent::Package(PackageEvent::CleanupCompleted {
+    ctx.emit(AppEvent::Package(PackageEvent::CleanupCompleted {
         states_removed: cleanup_result.states_removed,
         packages_removed: cleaned_packages,
         duration_ms: duration,
@@ -68,8 +68,10 @@ pub async fn rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<StateI
             .ok_or(OpsError::NoPreviousState)?
     };
 
-    ctx.emit_event(AppEvent::State(StateEvent::RollbackStarting {
-        target_state: target_id,
+    ctx.emit(AppEvent::State(StateEvent::RollbackExecuting {
+        from: ctx.state.get_current_state_id().await?,
+        to: target_id,
+        packages_affected: 0, // Will be updated during execution
     }));
 
     // Verify target state exists in database
@@ -99,8 +101,10 @@ pub async fn rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<StateI
     let state_info = get_state_info(ctx, target_id).await?;
 
     let _ = ctx.tx.send(AppEvent::State(StateEvent::RollbackCompleted {
-        target_state: target_id,
-        duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+        from: ctx.state.get_current_state_id().await?,
+        to: target_id,
+        duration: start.elapsed(),
+        packages_reverted: 0, // TODO: Track actual packages reverted
     }));
 
     Ok(state_info)

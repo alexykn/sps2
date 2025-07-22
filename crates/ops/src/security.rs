@@ -86,7 +86,7 @@ pub async fn audit(
                 package: name.to_string(),
             })?;
 
-        ctx.emit_event(AppEvent::Audit(AuditEvent::Starting { package_count: 1 }));
+        ctx.emit(AppEvent::Audit(AuditEvent::Starting { package_count: 1 }));
 
         let package_hash =
             sps2_hash::Hash::from_hex(&package.hash).map_err(|e| OpsError::OperationFailed {
@@ -104,14 +104,14 @@ pub async fn audit(
             .await?;
 
         let vuln_count = package_audit.vulnerabilities.len();
-        ctx.emit_event(AppEvent::Audit(AuditEvent::PackageCompleted {
+        ctx.emit(AppEvent::Audit(AuditEvent::PackageCompleted {
             package: package.name.clone(),
             vulnerabilities_found: vuln_count,
         }));
 
         let report = sps2_audit::AuditReport::new(vec![package_audit]);
 
-        ctx.emit_event(AppEvent::Audit(AuditEvent::Completed {
+        ctx.emit(AppEvent::Audit(AuditEvent::Completed {
             packages_scanned: 1,
             vulnerabilities_found: report.total_vulnerabilities(),
             critical_count: report.critical_count(),

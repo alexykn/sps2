@@ -6,7 +6,7 @@
 use crate::{InstallReport, InstallRequest, OpsCtx};
 use sps2_errors::{Error, InstallError, OpsError};
 use sps2_events::{
-    AppEvent, EventEmitter, GeneralEvent, InstallEvent, ProgressEvent, ResolverEvent,
+    AppEvent, EventEmitter, GeneralEvent, ProgressEvent, ResolverEvent,
 };
 use sps2_guard::{OperationResult as GuardOperationResult, PackageChange as GuardPackageChange};
 use sps2_install::{InstallConfig, InstallContext, Installer, PipelineConfig, PipelineMaster};
@@ -75,16 +75,22 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
             Ok(result) => result,
             Err(e) => {
                 // Provide specific guidance for local file failures
-                ctx.emit_event(AppEvent::General(GeneralEvent::ErrorWithDetails {
-                    message: format!("Failed to install {} remote packages", remote_specs.len()),
-                    details: format!(
-                        "Error: {e}. \n\nSuggested solutions:\n\
-                        • Check your internet connection\n\
-                        • Run 'sps2 reposync' to update package index\n\
-                        • Verify package names with 'sps2 search <package>'\n\
-                        • For version constraints, use format: package>=1.0.0"
+                ctx.emit(AppEvent::General(GeneralEvent::error_with_details(
+                    format!("Failed to install {} local packages", local_files.len()),
+                    format!(
+                        "Error: {e}. 
+
+Suggested solutions:
+\
+                        • Verify file paths are correct and files exist
+\
+                        • Check file permissions (must be readable)
+\
+                        • Ensure .sp files are not corrupted
+\
+                        • Use absolute paths or './' prefix for current directory"
                     ),
-                }));
+                )));
                 return Err(e);
             }
         }
@@ -94,20 +100,26 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
             Ok(result) => result,
             Err(e) => {
                 // Provide guidance for mixed installation failures
-                ctx.emit_event(AppEvent::General(GeneralEvent::ErrorWithDetails {
-                    message: format!(
+                ctx.emit(AppEvent::General(GeneralEvent::error_with_details(
+                    format!(
                         "Failed to install mixed packages ({} remote, {} local)",
                         remote_specs.len(),
                         local_files.len()
                     ),
-                    details: Some(format!(
-                        "Error: {e}. \n\nSuggested solutions:\n\
-                        • Verify file paths are correct and files exist\n\
-                        • Check file permissions (must be readable)\n\
-                        • Ensure .sp files are not corrupted\n\
+                    format!(
+                        "Error: {e}. 
+
+Suggested solutions:
+\
+                        • Verify file paths are correct and files exist
+\
+                        • Check file permissions (must be readable)
+\
+                        • Ensure .sp files are not corrupted
+\
                         • Use absolute paths or './' prefix for current directory"
-                    )),
-                }));
+                    ),
+                )));
                 return Err(e);
             }
         }
@@ -162,7 +174,7 @@ async fn install_remote_packages_parallel(
     ctx: &OpsCtx,
     specs: &[PackageSpec],
 ) -> Result<sps2_install::InstallResult, Error> {
-    use sps2_events::{ProgressManager, ProgressPhase};
+    use sps2_events::{ProgressManager, config::ProgressPhase};
     use sps2_state::PackageRef;
     use std::time::Instant;
 
@@ -171,11 +183,31 @@ async fn install_remote_packages_parallel(
     // Create unified progress tracker for the entire install operation
     let progress_manager = ProgressManager::new();
     let install_phases = vec![
-        ProgressPhase::new("resolve", "Resolving dependencies").with_weight(0.1),
-        ProgressPhase::new("download", "Downloading packages").with_weight(0.5),
-        ProgressPhase::new("validate", "Validating packages").with_weight(0.15),
-        ProgressPhase::new("stage", "Staging packages").with_weight(0.15),
-        ProgressPhase::new("commit", "Committing state").with_weight(0.1),
+        ProgressPhase {
+            name: "resolve".to_string(),
+            weight: 0.1,
+            estimated_duration: None,
+        },
+        ProgressPhase {
+            name: "download".to_string(),
+            weight: 0.5,
+            estimated_duration: None,
+        },
+        ProgressPhase {
+            name: "validate".to_string(),
+            weight: 0.15,
+            estimated_duration: None,
+        },
+        ProgressPhase {
+            name: "stage".to_string(),
+            weight: 0.15,
+            estimated_duration: None,
+        },
+        ProgressPhase {
+            name: "commit".to_string(),
+            weight: 0.1,
+            estimated_duration: None,
+        },
     ];
 
     let progress_id = progress_manager.start_operation(
@@ -187,16 +219,20 @@ async fn install_remote_packages_parallel(
     );
 
     // Send overall progress start event
-    ctx.emit_event(AppEvent::Progress(ProgressEvent::Started {
+    ctx.emit(AppEvent::Progress(ProgressEvent::Started {
         id: "install".to_string(),
         operation: format!("Installing {} packages", specs.len()),
         total: Some(specs.len() as u64),
         phases: vec![],
+        parent_id: None,
     }));
 
     // Phase 1: Dependency resolution
-    ctx.emit_event(AppEvent::Resolver(ResolverEvent::Starting {
-        package: "batch".to_string(),
+    ctx.emit(AppEvent::Resolver(ResolverEvent::ResolutionStarted {
+        runtime_deps: specs.len(),
+        build_deps: 0,
+        local_files: 0,
+        timeout_seconds: 300, // 5 minute timeout
     }));
 
     let mut resolution_context = sps2_resolver::ResolutionContext::new();
@@ -208,15 +244,17 @@ async fn install_remote_packages_parallel(
         Ok(result) => result,
         Err(e) => {
             // Emit helpful error event for resolution failures
-            ctx.emit_event(AppEvent::General(GeneralEvent::ErrorWithDetails {
-                message: "Dependency resolution failed".to_string(),
-                details: format!("Error: {e}"),
-            }));
+            ctx.emit(AppEvent::General(GeneralEvent::error_with_details(
+                "Dependency resolution failed".to_string(),
+                format!("Error: {e}")
+            )));
 
             // Mark progress as failed
-            ctx.emit_event(AppEvent::Progress(ProgressEvent::Failed {
+            ctx.emit(AppEvent::Progress(ProgressEvent::Failed {
                 id: progress_id.clone(),
                 error: format!("Pipeline execution failed: {e}"),
+                completed_items: 0,
+                partial_duration: std::time::Duration::from_secs(0),
             }));
 
             return Err(e);
@@ -253,18 +291,20 @@ async fn install_remote_packages_parallel(
         Ok(result) => result,
         Err(e) => {
             // Send helpful error context
-            ctx.emit_event(AppEvent::General(GeneralEvent::ErrorWithDetails {
-                message: "Installation failed during download/validation phase".to_string(),
-                details: format!(
+            ctx.emit(AppEvent::General(GeneralEvent::error_with_details(
+                "Installation failed during download/validation phase".to_string(),
+                format!(
                     "Error: {e}. This may be due to network issues, package corruption, or insufficient disk space. \
                     Try running 'sps2 cleanup' to free space or check your network connection."
                 ),
-            }));
+            )));
 
             // Mark progress as failed
-            ctx.emit_event(AppEvent::Progress(ProgressEvent::Failed {
+            ctx.emit(AppEvent::Progress(ProgressEvent::Failed {
                 id: progress_id.clone(),
                 error: format!("Installation failed: {e}"),
+                completed_items: 0,
+                partial_duration: std::time::Duration::from_secs(0),
             }));
 
             return Err(e);

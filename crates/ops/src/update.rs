@@ -5,7 +5,7 @@
 
 use crate::{InstallReport, OpsCtx};
 use sps2_errors::Error;
-use sps2_events::{AppEvent, EventEmitter, UpdateEvent};
+use sps2_events::{AppEvent, EventEmitter, UpdateEvent, events::{UpdateOperationType, UpdateResult}};
 use sps2_install::{InstallConfig, Installer, UpdateContext};
 use sps2_types::Version;
 use std::time::Instant;
@@ -21,12 +21,15 @@ use std::time::Instant;
 pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallReport, Error> {
     let start = Instant::now();
 
-    ctx.emit_event(AppEvent::Update(UpdateEvent::Starting {
-        packages: if package_names.is_empty() {
+    ctx.emit(AppEvent::Update(UpdateEvent::Started {
+        operation_type: UpdateOperationType::Update,
+        packages_specified: if package_names.is_empty() {
             vec!["all".to_string()]
         } else {
             package_names.to_vec()
         },
+        check_all_packages: package_names.is_empty(),
+        ignore_constraints: false,
     }));
 
     // Create installer
@@ -93,13 +96,19 @@ pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRep
         duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
     };
 
-    ctx.emit_event(AppEvent::Update(UpdateEvent::Completed {
-        packages: result
-            .updated_packages
-            .iter()
-            .map(|pkg| pkg.name.clone())
-            .collect(),
-        state_id: result.state_id,
+    ctx.emit(AppEvent::Update(UpdateEvent::Completed {
+        operation_type: UpdateOperationType::Update,
+        packages_updated: result.updated_packages.iter().map(|pkg| UpdateResult {
+            package: pkg.name.clone(),
+            from_version: installed_map.get(&pkg.name).cloned().unwrap_or_else(|| pkg.version.clone()),
+            to_version: pkg.version.clone(),
+            update_type: sps2_events::events::PackageUpdateType::Minor, // TODO: Determine actual update type
+            duration: std::time::Duration::from_secs(30), // TODO: Track actual duration per package
+            size_change: 0, // TODO: Calculate actual size change
+        }).collect(),
+        packages_unchanged: result.installed_packages.iter().map(|pkg| pkg.name.clone()).collect(),
+        total_duration: start.elapsed(),
+        space_difference: 0, // TODO: Calculate actual space difference
     }));
 
     Ok(report)

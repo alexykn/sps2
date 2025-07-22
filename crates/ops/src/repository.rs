@@ -13,7 +13,7 @@ use std::time::Instant;
 pub async fn reposync(ctx: &OpsCtx) -> Result<String, Error> {
     let start = Instant::now();
 
-    ctx.emit_event(AppEvent::Repo(RepoEvent::SyncStarting));
+    ctx.emit(AppEvent::Repo(RepoEvent::SyncStarting));
 
     // Check if index is stale (older than 7 days)
     let stale = ctx.index.is_stale(7);
@@ -23,6 +23,7 @@ pub async fn reposync(ctx: &OpsCtx) -> Result<String, Error> {
         let _ = ctx.tx.send(AppEvent::Repo(RepoEvent::SyncCompleted {
             packages_updated: 0,
             duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+            bytes_transferred: 0, // Not tracking bytes for non-update case
         }));
         return Ok(message);
     }
@@ -33,7 +34,7 @@ pub async fn reposync(ctx: &OpsCtx) -> Result<String, Error> {
     let index_sig_url = format!("{base_url}/index.json.minisig");
     let keys_url = format!("{base_url}/keys.json");
 
-    ctx.emit_event(AppEvent::Repo(RepoEvent::SyncStarted {
+    ctx.emit(AppEvent::Repo(RepoEvent::SyncStarted {
         url: base_url.to_string(),
     }));
 
@@ -94,6 +95,7 @@ async fn download_index_conditional(
         let _ = ctx.tx.send(AppEvent::Repo(RepoEvent::SyncCompleted {
             packages_updated: 0,
             duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+            bytes_transferred: 0, // No transfer for cached content
         }));
         Err(OpsError::RepoSyncFailed {
             message: "Repository index is unchanged (304 Not Modified)".to_string(),
@@ -139,9 +141,10 @@ async fn finalize_index_update(
         "Repository index updated (no new packages)".to_string()
     };
 
-    ctx.emit_event(AppEvent::Repo(RepoEvent::SyncCompleted {
+    ctx.emit(AppEvent::Repo(RepoEvent::SyncCompleted {
         packages_updated,
         duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+        bytes_transferred: 0, // TODO: Track actual bytes transferred
     }));
 
     Ok(message)

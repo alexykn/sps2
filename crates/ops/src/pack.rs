@@ -10,7 +10,7 @@ use sps2_builder::{
     BuildEnvironment, BuildPlan, BuilderApi, RecipeMetadata, SecurityContext, YamlRecipe,
 };
 use sps2_errors::{Error, OpsError};
-use sps2_events::{AppEvent, BuildEvent, EventEmitter};
+use sps2_events::{AppEvent, BuildEvent, EventEmitter, events::BuildPhase};
 use sps2_manifest::Manifest;
 use sps2_types::{BuildReport, Version};
 use std::collections::{HashMap, HashSet};
@@ -291,9 +291,11 @@ async fn execute_post_steps(
                 .event_sender
                 .as_ref()
                 .unwrap()
-                .send(AppEvent::Build(BuildEvent::StepStarted {
-                    step: format!("{step:?}"),
+                .send(AppEvent::Build(BuildEvent::PhaseStarted {
+                    session_id: "pack-session".to_string(),
                     package: context.name.clone(),
+                    phase: BuildPhase::Build,
+                    estimated_duration: None,
                 }));
 
         execute_post_step_with_security(
@@ -306,9 +308,11 @@ async fn execute_post_steps(
         .await?;
 
         let _ = context.event_sender.as_ref().unwrap().send(AppEvent::Build(
-            BuildEvent::StepCompleted {
-                step: format!("{step:?}"),
+            BuildEvent::PhaseCompleted {
+                session_id: "pack-session".to_string(),
                 package: context.name.clone(),
+                phase: BuildPhase::Build,
+                duration: std::time::Duration::from_secs(0), // Not tracking duration here
             },
         ));
     }

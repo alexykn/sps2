@@ -10,7 +10,7 @@ use sps2_events::{AppEvent, EventEmitter, PackageEvent};
 ///
 /// Returns an error if package listing fails.
 pub async fn list_packages(ctx: &OpsCtx) -> Result<Vec<PackageInfo>, Error> {
-    ctx.emit_event(AppEvent::Package(PackageEvent::ListStarting));
+    ctx.emit(AppEvent::Package(PackageEvent::ListStarting));
 
     // Get installed packages from state
     let installed_packages = ctx.state.get_installed_packages().await?;
@@ -73,7 +73,7 @@ pub async fn list_packages(ctx: &OpsCtx) -> Result<Vec<PackageInfo>, Error> {
     // Sort by name
     package_infos.sort_by(|a, b| a.name.cmp(&b.name));
 
-    ctx.emit_event(AppEvent::Package(PackageEvent::ListCompleted {
+    ctx.emit(AppEvent::Package(PackageEvent::ListCompleted {
         count: package_infos.len(),
     }));
 
@@ -152,7 +152,7 @@ pub async fn package_info(ctx: &OpsCtx, package_name: &str) -> Result<PackageInf
 ///
 /// Returns an error if package search fails.
 pub async fn search_packages(ctx: &OpsCtx, query: &str) -> Result<Vec<SearchResult>, Error> {
-    ctx.emit_event(AppEvent::Package(PackageEvent::SearchStarting {
+    ctx.emit(AppEvent::Package(PackageEvent::SearchStarting {
         query: query.to_string(),
     }));
 
@@ -182,7 +182,7 @@ pub async fn search_packages(ctx: &OpsCtx, query: &str) -> Result<Vec<SearchResu
         }
     }
 
-    ctx.emit_event(AppEvent::Package(PackageEvent::SearchCompleted {
+    ctx.emit(AppEvent::Package(PackageEvent::SearchCompleted {
         query: query.to_string(),
         count: results.len(),
     }));

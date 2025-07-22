@@ -7,6 +7,7 @@ use crate::{BuildCommandResult, BuildContext, BuildEnvironment, BuilderApi};
 use sps2_errors::Error;
 use sps2_events::{AppEvent, BuildEvent, GeneralEvent};
 use std::path::Path;
+use tokio::fs;
 
 /// Check if a file is an archive that should be extracted
 fn is_archive(path: &Path) -> bool {
@@ -316,17 +317,13 @@ async fn cleanup_directories(
     api: &BuilderApi,
     environment: &BuildEnvironment,
 ) -> Result<(), Error> {
-    use crate::utils::events::send_event;
-    use sps2_events::AppEvent;
-    use std::collections::HashMap;
-    use tokio::fs;
-
     let staging_dir = environment.staging_dir();
     send_event(
         &environment.context,
-        AppEvent::General(GeneralEvent::debug(
-            &format!("Cleaned staging directory: {}", staging_dir.display())
-        )),
+        AppEvent::General(GeneralEvent::debug(&format!(
+            "Cleaned staging directory: {}",
+            staging_dir.display()
+        ))),
     );
     if staging_dir.exists() {
         fs::remove_dir_all(&staging_dir).await?;
@@ -336,9 +333,10 @@ async fn cleanup_directories(
     let source_dir = &api.working_dir;
     send_event(
         &environment.context,
-        AppEvent::General(GeneralEvent::debug(
-            &format!("Cleaned source directory: {}", source_dir.display())
-        )),
+        AppEvent::General(GeneralEvent::debug(&format!(
+            "Cleaned source directory: {}",
+            source_dir.display()
+        ))),
     );
     if source_dir.exists() {
         fs::remove_dir_all(source_dir).await?;

@@ -14,7 +14,7 @@ use std::time::Instant;
 pub async fn check_health(ctx: &OpsCtx) -> Result<HealthCheck, Error> {
     let _start = Instant::now();
 
-    ctx.emit_event(AppEvent::Package(PackageEvent::HealthCheckStarting));
+    ctx.emit(AppEvent::Package(PackageEvent::HealthCheckStarting));
 
     let mut components = HashMap::new();
     let mut issues = Vec::new();
@@ -77,7 +77,7 @@ pub async fn check_health(ctx: &OpsCtx) -> Result<HealthCheck, Error> {
         issues,
     };
 
-    ctx.emit_event(AppEvent::Package(PackageEvent::HealthCheckCompleted {
+    ctx.emit(AppEvent::Package(PackageEvent::HealthCheckCompleted {
         healthy: overall_healthy,
         issues: health_check
             .issues

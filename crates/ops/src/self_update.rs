@@ -18,8 +18,8 @@ pub async fn self_update(ctx: &OpsCtx, skip_verify: bool, force: bool) -> Result
     let start = Instant::now();
     let current_version = env!("CARGO_PKG_VERSION");
 
-    ctx.emit_event(AppEvent::Package(PackageEvent::SelfUpdateStarting));
-    ctx.emit_event(AppEvent::Package(PackageEvent::SelfUpdateCheckingVersion {
+    ctx.emit(AppEvent::Package(PackageEvent::SelfUpdateStarting));
+    ctx.emit(AppEvent::Package(PackageEvent::SelfUpdateCheckingVersion {
         current_version: current_version.to_string(),
     }));
 
@@ -31,13 +31,13 @@ pub async fn self_update(ctx: &OpsCtx, skip_verify: bool, force: bool) -> Result
     let latest = sps2_types::Version::parse(&latest_version)?;
 
     if !force && latest <= current {
-        ctx.emit_event(AppEvent::Package(PackageEvent::SelfUpdateAlreadyLatest {
+        ctx.emit(AppEvent::Package(PackageEvent::SelfUpdateAlreadyLatest {
             version: current_version.to_string(),
         }));
         return Ok(format!("Already on latest version: {current_version}"));
     }
 
-    ctx.emit_event(AppEvent::Package(
+    ctx.emit(AppEvent::Package(
         PackageEvent::SelfUpdateVersionAvailable {
             current_version: current_version.to_string(),
             latest_version: latest_version.clone(),
@@ -50,7 +50,7 @@ pub async fn self_update(ctx: &OpsCtx, skip_verify: bool, force: bool) -> Result
     );
     let signature_url = format!("{binary_url}.minisig");
 
-    ctx.emit_event(AppEvent::Package(PackageEvent::SelfUpdateDownloading {
+    ctx.emit(AppEvent::Package(PackageEvent::SelfUpdateDownloading {
         version: latest_version.clone(),
         url: binary_url.clone(),
     }));
@@ -71,7 +71,7 @@ pub async fn self_update(ctx: &OpsCtx, skip_verify: bool, force: bool) -> Result
         })?;
 
     if !skip_verify {
-        ctx.emit_event(AppEvent::Package(PackageEvent::SelfUpdateVerifying {
+        ctx.emit(AppEvent::Package(PackageEvent::SelfUpdateVerifying {
             version: latest_version.clone(),
         }));
 
@@ -86,7 +86,7 @@ pub async fn self_update(ctx: &OpsCtx, skip_verify: bool, force: bool) -> Result
         verify_binary_signature(&temp_binary, &temp_signature).await?;
     }
 
-    ctx.emit_event(AppEvent::Package(PackageEvent::SelfUpdateInstalling {
+    ctx.emit(AppEvent::Package(PackageEvent::SelfUpdateInstalling {
         version: latest_version.clone(),
     }));
 
@@ -94,7 +94,7 @@ pub async fn self_update(ctx: &OpsCtx, skip_verify: bool, force: bool) -> Result
     replace_current_executable(&temp_binary).await?;
 
     let duration = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
-    ctx.emit_event(AppEvent::Package(PackageEvent::SelfUpdateCompleted {
+    ctx.emit(AppEvent::Package(PackageEvent::SelfUpdateCompleted {
         old_version: current_version.to_string(),
         new_version: latest_version.clone(),
         duration_ms: duration,

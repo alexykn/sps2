@@ -46,9 +46,12 @@ pub async fn build(
         .into());
     }
 
-    ctx.emit_event(AppEvent::Build(BuildEvent::Starting {
+    ctx.emit(AppEvent::Build(BuildEvent::SessionStarted {
+        session_id: "build-session".to_string(),
         package: "unknown".to_string(), // Will be determined from recipe
         version: Version::parse("0.0.0").unwrap_or_else(|_| Version::new(0, 0, 0)),
+        build_system: sps2_events::BuildSystem::Custom,
+        cache_enabled: false,
     }));
 
     // Load and execute recipe to get package metadata
@@ -58,9 +61,12 @@ pub async fn build(
     let package_version = Version::parse(&yaml_recipe.metadata.version)?;
 
     // Send updated build starting event with correct info
-    ctx.emit_event(AppEvent::Build(BuildEvent::Starting {
+    ctx.emit(AppEvent::Build(BuildEvent::SessionStarted {
+        session_id: "build-session".to_string(),
         package: package_name.clone(),
         version: package_version.clone(),
+        build_system: sps2_events::BuildSystem::Custom,
+        cache_enabled: false,
     }));
 
     // Create build context
@@ -125,10 +131,12 @@ pub async fn build(
         sbom_generated: !result.sbom_files.is_empty(),
     };
 
-    ctx.emit_event(AppEvent::Build(BuildEvent::Completed {
+    ctx.emit(AppEvent::Build(BuildEvent::Completed {
+        session_id: "build-session".to_string(),
         package: report.package.clone(),
         version: report.version.clone(),
         path: report.output_path.clone(),
+        duration: start.elapsed(),
     }));
 
     Ok(report)
