@@ -127,9 +127,10 @@ async fn apply_environment_config(
     if config.isolation != environment.isolation_level() {
         send_event(
             context,
-            AppEvent::General(GeneralEvent::debug(
-                &format!("Applying isolation level {} from recipe", config.isolation)
-            )),
+            AppEvent::General(GeneralEvent::debug(&format!(
+                "Applying isolation level {} from recipe",
+                config.isolation
+            ))),
         );
 
         environment.set_isolation_level_from_recipe(config.isolation);

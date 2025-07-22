@@ -5,9 +5,7 @@
 
 use crate::{InstallReport, InstallRequest, OpsCtx};
 use sps2_errors::{Error, InstallError, OpsError};
-use sps2_events::{
-    AppEvent, EventEmitter, GeneralEvent, ProgressEvent, ResolverEvent,
-};
+use sps2_events::{AppEvent, EventEmitter, GeneralEvent, ProgressEvent, ResolverEvent};
 use sps2_guard::{OperationResult as GuardOperationResult, PackageChange as GuardPackageChange};
 use sps2_install::{InstallConfig, InstallContext, Installer, PipelineConfig, PipelineMaster};
 use sps2_types::{PackageSpec, Version};
@@ -174,7 +172,7 @@ async fn install_remote_packages_parallel(
     ctx: &OpsCtx,
     specs: &[PackageSpec],
 ) -> Result<sps2_install::InstallResult, Error> {
-    use sps2_events::{ProgressManager, config::ProgressPhase};
+    use sps2_events::{config::ProgressPhase, ProgressManager};
     use sps2_state::PackageRef;
     use std::time::Instant;
 
@@ -246,7 +244,7 @@ async fn install_remote_packages_parallel(
             // Emit helpful error event for resolution failures
             ctx.emit(AppEvent::General(GeneralEvent::error_with_details(
                 "Dependency resolution failed".to_string(),
-                format!("Error: {e}")
+                format!("Error: {e}"),
             )));
 
             // Mark progress as failed

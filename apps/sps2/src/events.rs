@@ -195,8 +195,10 @@ impl EventHandler {
             AppEvent::Download(download_event) => {
                 use sps2_events::DownloadEvent;
                 match download_event {
-                    DownloadEvent::Started { url, size, .. } => {
-                        self.handle_download_started(&url, size);
+                    DownloadEvent::Started {
+                        url, total_size, ..
+                    } => {
+                        self.handle_download_started(&url, total_size);
                     }
                     DownloadEvent::Progress {
                         url,
@@ -204,9 +206,9 @@ impl EventHandler {
                         total_bytes,
                         ..
                     } => {
-                        self.handle_download_progress(&url, *bytes_downloaded, *total_bytes);
+                        self.handle_download_progress(&url, bytes_downloaded, total_bytes);
                     }
-                    DownloadEvent::Completed { url, size: _, .. } => {
+                    DownloadEvent::Completed { url, .. } => {
                         self.handle_download_completed(&url);
                     }
                     DownloadEvent::Failed { url, error, .. } => {
@@ -292,18 +294,27 @@ impl EventHandler {
             AppEvent::State(state_event) => {
                 use sps2_events::StateEvent;
                 match state_event {
-                    StateEvent::Creating { state_id } => {
+                    StateEvent::Created {
+                        state_id,
+                        operation,
+                        ..
+                    } => {
                         self.show_operation_message(
-                            &format!("Creating state {state_id}"),
+                            &format!("Created state {state_id} for {operation}"),
                             "state",
                             EventSeverity::Info,
                         );
                     }
-                    StateEvent::Transition { from, to, .. } => {
+                    StateEvent::TransitionCompleted {
+                        from,
+                        to,
+                        operation,
+                        ..
+                    } => {
                         self.show_operation_message(
-                            &format!("State transition {from} -> {to}"),
+                            &format!("State transition completed: {operation} ({from} -> {to})"),
                             "state",
-                            EventSeverity::Info,
+                            EventSeverity::Success,
                         );
                     }
                     StateEvent::TwoPhaseCommitStarting {
@@ -348,11 +359,11 @@ impl EventHandler {
             AppEvent::Build(build_event) => {
                 use sps2_events::BuildEvent;
                 match build_event {
-                    BuildEvent::Started {
+                    BuildEvent::SessionStarted {
                         package, version, ..
                     } => {
                         self.show_operation_message(
-                            &format!("Starting build of {package} {version}"),
+                            &format!("Starting build session for {package} {version}"),
                             "build",
                             EventSeverity::Info,
                         );
@@ -360,11 +371,11 @@ impl EventHandler {
                     BuildEvent::Completed {
                         package,
                         version,
-                        output_path,
+                        path,
                         ..
                     } => {
                         self.show_operation_message(
-                            &format!("Built {} {} -> {}", package, version, output_path.display()),
+                            &format!("Built {} {} -> {}", package, version, path.display()),
                             "build",
                             EventSeverity::Success,
                         );
@@ -381,9 +392,9 @@ impl EventHandler {
                             EventSeverity::Error,
                         );
                     }
-                    BuildEvent::StepStarted { package, step, .. } => {
+                    BuildEvent::PhaseStarted { package, phase, .. } => {
                         self.show_operation_message(
-                            &format!("{package} > {step}"),
+                            &format!("{package} > {:?} phase started", phase),
                             "build",
                             EventSeverity::Info,
                         );
@@ -392,14 +403,14 @@ impl EventHandler {
                         // Display build output directly
                         println!("{line}");
                     }
-                    BuildEvent::StepCompleted { package, step, .. } => {
+                    BuildEvent::PhaseCompleted { package, phase, .. } => {
                         self.show_operation_message(
-                            &format!("{package} > {step} completed"),
+                            &format!("{package} > {:?} phase completed", phase),
                             "build",
                             EventSeverity::Success,
                         );
                     }
-                    BuildEvent::CommandExecuted {
+                    BuildEvent::CommandStarted {
                         package, command, ..
                     } => {
                         self.show_operation_message(
@@ -431,45 +442,43 @@ impl EventHandler {
             AppEvent::Resolver(resolver_event) => {
                 use sps2_events::ResolverEvent;
                 match resolver_event {
-                    ResolverEvent::ResolutionStarted { packages, .. } => {
-                        if packages.len() == 1 {
-                            self.show_operation_message(
-                                &format!("Resolving dependencies for {}", packages[0]),
-                                "resolve",
-                                EventSeverity::Info,
-                            );
-                        } else {
-                            self.show_operation_message(
-                                &format!("Resolving dependencies for {} packages", packages.len()),
-                                "resolve",
-                                EventSeverity::Info,
-                            );
-                        }
-                    }
-                    ResolverEvent::ResolutionCompleted { packages, .. } => {
-                        if packages.len() == 1 {
-                            self.show_operation_message(
-                                &format!("Resolved dependencies for {}", packages[0]),
-                                "resolve",
-                                EventSeverity::Success,
-                            );
-                        } else {
-                            self.show_operation_message(
-                                &format!("Resolved {} dependencies", packages.len()),
-                                "resolve",
-                                EventSeverity::Success,
-                            );
-                        }
-                    }
-                    ResolverEvent::DependencyConflict {
-                        package,
-                        conflicting_packages,
+                    ResolverEvent::ResolutionStarted {
+                        runtime_deps,
+                        build_deps,
+                        local_files,
                         ..
                     } => {
+                        let total = runtime_deps + build_deps + local_files;
                         self.show_operation_message(
                             &format!(
-                                "Dependency conflict for {package}: conflicts with {}",
-                                conflicting_packages.join(", ")
+                                "Resolving dependencies ({} runtime, {} build, {} local)",
+                                runtime_deps, build_deps, local_files
+                            ),
+                            "resolve",
+                            EventSeverity::Info,
+                        );
+                    }
+                    ResolverEvent::ResolutionCompleted { total_packages, .. } => {
+                        self.show_operation_message(
+                            &format!("Resolved {} dependencies successfully", total_packages),
+                            "resolve",
+                            EventSeverity::Success,
+                        );
+                    }
+                    ResolverEvent::DependencyConflictDetected {
+                        conflicting_packages,
+                        message,
+                        ..
+                    } => {
+                        let package_list = conflicting_packages
+                            .iter()
+                            .map(|(name, version)| format!("{}:{}", name, version))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        self.show_operation_message(
+                            &format!(
+                                "Dependency conflict detected: {} ({})",
+                                message, package_list
                             ),
                             "resolve",
                             EventSeverity::Warning,
@@ -491,60 +500,42 @@ impl EventHandler {
             AppEvent::Uninstall(uninstall_event) => {
                 use sps2_events::UninstallEvent;
                 match uninstall_event {
-                    UninstallEvent::Started { packages, .. } => {
-                        if packages.len() == 1 {
-                            self.show_operation_message(
-                                &format!("Uninstalling {}", packages[0]),
-                                "uninstall",
-                                EventSeverity::Info,
-                            );
-                        } else {
-                            self.show_operation_message(
-                                &format!("Uninstalling {} packages", packages.len()),
-                                "uninstall",
-                                EventSeverity::Info,
-                            );
-                        }
+                    UninstallEvent::Started {
+                        package, version, ..
+                    } => {
+                        self.show_operation_message(
+                            &format!("Uninstalling {package} {version}"),
+                            "uninstall",
+                            EventSeverity::Info,
+                        );
                     }
                     UninstallEvent::Completed {
-                        packages, state_id, ..
+                        package,
+                        version,
+                        files_removed,
+                        space_freed,
+                        ..
                     } => {
-                        if packages.len() == 1 {
-                            self.show_operation_message(
-                                &format!("Uninstalled {} (state: {state_id})"),
-                                "uninstall",
-                                EventSeverity::Success,
-                            );
-                        } else {
-                            self.show_operation_message(
-                                &format!(
-                                    "Uninstalled {} packages (state: {state_id})",
-                                    packages.len()
-                                ),
-                                "uninstall",
-                                EventSeverity::Success,
-                            );
-                        }
+                        self.show_operation_message(
+                            &format!(
+                                "Uninstalled {package} {version} ({files_removed} files, {} freed)",
+                                self.format_bytes(space_freed)
+                            ),
+                            "uninstall",
+                            EventSeverity::Success,
+                        );
                     }
                     UninstallEvent::Failed {
-                        packages, error, ..
+                        package,
+                        version,
+                        error,
+                        ..
                     } => {
-                        if packages.len() == 1 {
-                            self.show_operation_message(
-                                &format!("Failed to uninstall {}: {error}", packages[0]),
-                                "uninstall",
-                                EventSeverity::Error,
-                            );
-                        } else {
-                            self.show_operation_message(
-                                &format!(
-                                    "Failed to uninstall {} packages: {error}",
-                                    packages.len()
-                                ),
-                                "uninstall",
-                                EventSeverity::Error,
-                            );
-                        }
+                        self.show_operation_message(
+                            &format!("Failed to uninstall {package} {version}: {error}"),
+                            "uninstall",
+                            EventSeverity::Error,
+                        );
                     }
                     _ => {
                         // Handle other uninstall events with debug output
@@ -562,53 +553,60 @@ impl EventHandler {
             AppEvent::Update(update_event) => {
                 use sps2_events::UpdateEvent;
                 match update_event {
-                    UpdateEvent::Started { packages, .. } => {
-                        if packages.len() == 1 && packages[0] == "all" {
+                    UpdateEvent::Started {
+                        packages_specified, ..
+                    } => {
+                        if packages_specified.len() == 1 && packages_specified[0] == "all" {
                             self.show_operation_message(
                                 "Updating all packages",
                                 "update",
                                 EventSeverity::Info,
                             );
-                        } else if packages.len() == 1 {
+                        } else if packages_specified.len() == 1 {
                             self.show_operation_message(
-                                &format!("Updating {}", packages[0]),
+                                &format!("Updating {}", packages_specified[0]),
                                 "update",
                                 EventSeverity::Info,
                             );
                         } else {
                             self.show_operation_message(
-                                &format!("Updating {} packages", packages.len()),
+                                &format!("Updating {} packages", packages_specified.len()),
                                 "update",
                                 EventSeverity::Info,
                             );
                         }
                     }
                     UpdateEvent::Completed {
-                        packages, state_id, ..
+                        packages_updated, ..
                     } => {
-                        if packages.is_empty() {
+                        if packages_updated.is_empty() {
                             self.show_operation_message(
-                                &format!("No updates available (state: {state_id})"),
+                                "No packages needed updates",
                                 "update",
                                 EventSeverity::Info,
                             );
-                        } else if packages.len() == 1 {
+                        } else if packages_updated.len() == 1 {
                             self.show_operation_message(
-                                &format!("Updated {} (state: {state_id})", packages[0]),
+                                &format!(
+                                    "Updated {} to {}",
+                                    packages_updated[0].package, packages_updated[0].to_version
+                                ),
                                 "update",
                                 EventSeverity::Success,
                             );
                         } else {
                             self.show_operation_message(
-                                &format!("Updated {} packages (state: {state_id})", packages.len()),
+                                &format!("Updated {} packages", packages_updated.len()),
                                 "update",
                                 EventSeverity::Success,
                             );
                         }
                     }
-                    UpdateEvent::PlanningStarted { packages, .. } => {
+                    UpdateEvent::PlanningStarted {
+                        packages_to_check, ..
+                    } => {
                         self.show_operation_message(
-                            &format!("Planning updates for {} packages", packages.len()),
+                            &format!("Planning updates for {} packages", packages_to_check.len()),
                             "update",
                             EventSeverity::Info,
                         );
@@ -635,21 +633,17 @@ impl EventHandler {
                             op if op.contains("sync") || op.contains("repo") => {
                                 ("Syncing repository index", "sync")
                             }
-                            op if op.contains("search") => {
-                                (&format!("Searching packages"), "search")
-                            }
+                            op if op.contains("search") => ("Searching packages", "search"),
                             op if op.contains("list") => ("Listing installed packages", "list"),
                             op if op.contains("clean") => ("Cleaning up system", "clean"),
-                            op if op.contains("rollback") => {
-                                (&format!("Rolling back system"), "rollback")
-                            }
+                            op if op.contains("rollback") => ("Rolling back system", "rollback"),
                             op if op.contains("health") => ("Checking system health", "health"),
-                            _ => (operation, "operation"),
+                            _ => (operation.as_str(), "operation"),
                         };
                         self.show_operation_message(message, icon, EventSeverity::Info);
                     }
                     GeneralEvent::OperationCompleted { operation, success } => {
-                        let severity = if *success {
+                        let severity = if success {
                             EventSeverity::Success
                         } else {
                             EventSeverity::Warning
@@ -663,20 +657,20 @@ impl EventHandler {
                             op if op.contains("clean") => ("System cleanup completed", "clean"),
                             op if op.contains("rollback") => ("Rollback completed", "rollback"),
                             op if op.contains("health") => ("Health check completed", "health"),
-                            _ => (operation, "operation"),
+                            _ => (operation.as_str(), "operation"),
                         };
                         self.show_operation_message(message, icon, severity);
                     }
                     GeneralEvent::Warning { message, .. } => {
-                        self.show_warning(message);
+                        self.show_warning(&message);
                     }
                     GeneralEvent::Error { message, .. } => {
-                        self.show_error(message);
+                        self.show_error(&message);
                     }
                     GeneralEvent::DebugLog { message, context } => {
                         if self.debug_enabled {
                             if context.is_empty() {
-                                self.show_message(message, EventSeverity::Debug);
+                                self.show_message(&message, EventSeverity::Debug);
                             } else {
                                 let context_str = context
                                     .iter()
@@ -728,7 +722,7 @@ impl EventHandler {
                         duration_seconds,
                         ..
                     } => {
-                        if *failed == 0 {
+                        if failed == 0 {
                             self.show_operation_message(
                                 &format!(
                                     "QA pipeline completed for {package} {version}: {passed}/{total_checks} checks passed ({duration_seconds}s)"
@@ -763,7 +757,7 @@ impl EventHandler {
                         findings_count,
                         ..
                     } => {
-                        if *findings_count == 0 {
+                        if findings_count == 0 {
                             self.show_operation_message(
                                 &format!("{check_type} check passed: {check_name}"),
                                 "qa",
@@ -788,8 +782,8 @@ impl EventHandler {
                         ..
                     } => {
                         let location = match (file_path, line) {
-                            (Some(path), Some(line)) => format!(" ({}:{})", path.display(), line),
-                            (Some(path), None) => format!(" ({})", path.display()),
+                            (Some(path), Some(line)) => format!(" ({}:{})", path, line),
+                            (Some(path), None) => format!(" ({})", path),
                             _ => String::new(),
                         };
                         let event_severity = match severity.to_lowercase().as_str() {
@@ -853,13 +847,13 @@ impl EventHandler {
                         scope_description,
                         ..
                     } => {
-                        if *total_discrepancies == 0 {
+                        if total_discrepancies == 0 {
                             self.show_operation_message(
                                 &format!(
                                     "Verification completed: {} ({:.1}% coverage, {:.1}% cache hits, {}ms)",
                                     scope_description,
-                                    coverage_percent.unwrap_or(0.0),
-                                    cache_hit_rate.unwrap_or(0.0) * 100.0,
+                                    coverage_percent,
+                                    cache_hit_rate * 100.0,
                                     duration_ms
                                 ),
                                 "verify",
@@ -880,16 +874,14 @@ impl EventHandler {
                             );
                         }
                     }
-                    GuardEvent::DiscrepancyFound {
-                        discrepancy_type,
-                        severity,
-                        file_path,
-                        package,
-                        user_message,
-                        auto_heal_available,
-                        requires_confirmation,
-                        ..
-                    } => {
+                    GuardEvent::DiscrepancyFound(params) => {
+                        let discrepancy_type = &params.discrepancy_type;
+                        let severity = &params.severity;
+                        let file_path = &params.file_path;
+                        let package = &params.package;
+                        let user_message = &params.user_message;
+                        let auto_heal_available = params.auto_heal_available;
+                        let requires_confirmation = params.requires_confirmation;
                         let severity_level = match severity.to_lowercase().as_str() {
                             "critical" => EventSeverity::Critical,
                             "high" => EventSeverity::Error,
@@ -904,8 +896,8 @@ impl EventHandler {
                             String::new()
                         };
 
-                        let action_info = if *auto_heal_available {
-                            if *requires_confirmation {
+                        let action_info = if auto_heal_available {
+                            if requires_confirmation {
                                 " (auto-heal available, confirmation required)"
                             } else {
                                 " (auto-heal available)"
@@ -927,9 +919,9 @@ impl EventHandler {
                         );
 
                         if self.debug_enabled {
-                            if let Some(path) = file_path {
+                            if !file_path.is_empty() {
                                 self.show_message(
-                                    &format!("  File: {}", path.display()),
+                                    &format!("  File: {}", file_path),
                                     EventSeverity::Debug,
                                 );
                             }

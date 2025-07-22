@@ -5,8 +5,8 @@ use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use sps2_errors::{DiscrepancySeverity, GuardError, GuardErrorSummary};
-use sps2_events::{AppEvent, EventSender, GuardEvent};
 use sps2_events::events::GuardDiscrepancyParams;
+use sps2_events::{AppEvent, EventSender, GuardEvent};
 
 use crate::types::{Discrepancy, OperationType, VerificationResult};
 

@@ -44,9 +44,11 @@ pub async fn validate_archive_content(
     event_sender: Option<&EventSender>,
 ) -> Result<(), Error> {
     if let Some(sender) = event_sender {
-        let _ = sender.send(sps2_events::AppEvent::General(sps2_events::GeneralEvent::OperationStarted {
-            operation: "Validating archive content".to_string(),
-        }));
+        let _ = sender.send(sps2_events::AppEvent::General(
+            sps2_events::GeneralEvent::OperationStarted {
+                operation: "Validating archive content".to_string(),
+            },
+        ));
     }
 
     match format {
@@ -66,10 +68,12 @@ pub async fn validate_archive_content(
     }
 
     if let Some(sender) = event_sender {
-        let _ = sender.send(sps2_events::AppEvent::General(sps2_events::GeneralEvent::OperationCompleted {
-            operation: "Archive content validation completed".to_string(),
-            success: true,
-        }));
+        let _ = sender.send(sps2_events::AppEvent::General(
+            sps2_events::GeneralEvent::OperationCompleted {
+                operation: "Archive content validation completed".to_string(),
+                success: true,
+            },
+        ));
     }
 
     Ok(())

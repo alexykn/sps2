@@ -542,7 +542,9 @@ impl StateVerificationGuard {
                         }
                         Err(e) => {
                             failed_healings.push(discrepancy.clone());
-                            self.emit_debug(format!("Failed to handle orphaned file {file_path}: {e}"));
+                            self.emit_debug(format!(
+                                "Failed to handle orphaned file {file_path}: {e}"
+                            ));
                         }
                     }
                 }
@@ -569,7 +571,9 @@ impl StateVerificationGuard {
                         }
                         Err(e) => {
                             failed_healings.push(discrepancy.clone());
-                            self.emit_debug(format!("Failed to restore corrupted file {file_path}: {e}"));
+                            self.emit_debug(format!(
+                                "Failed to restore corrupted file {file_path}: {e}"
+                            ));
                         }
                     }
                 }
@@ -730,7 +734,9 @@ impl StateVerificationGuard {
                         }
                         Err(e) => {
                             failed_healings.push(discrepancy.clone());
-                            self.emit_debug(format!("Failed to handle orphaned file {file_path}: {e}"));
+                            self.emit_debug(format!(
+                                "Failed to handle orphaned file {file_path}: {e}"
+                            ));
                         }
                     }
                 }
@@ -757,7 +763,9 @@ impl StateVerificationGuard {
                         }
                         Err(e) => {
                             failed_healings.push(discrepancy.clone());
-                            self.emit_debug(format!("Failed to restore corrupted file {file_path}: {e}"));
+                            self.emit_debug(format!(
+                                "Failed to restore corrupted file {file_path}: {e}"
+                            ));
                         }
                     }
                 }
@@ -815,7 +823,9 @@ impl StateVerificationGuard {
 
         if quick_result.is_valid {
             // No issues found - we're done!
-            self.emit_debug("Progressive verification: Quick verification passed, no escalation needed");
+            self.emit_debug(
+                "Progressive verification: Quick verification passed, no escalation needed",
+            );
             return Ok(quick_result);
         }
 
@@ -1020,7 +1030,10 @@ impl StateVerificationGuard {
 
         // Apply all mtime updates in a single transaction
         if !all_mtime_updates.is_empty() {
-            self.emit_debug(format!("Applying {} mtime updates...", all_mtime_updates.len()));
+            self.emit_debug(format!(
+                "Applying {} mtime updates...",
+                all_mtime_updates.len()
+            ));
 
             // Apply mtime updates to database
             let mut db_tx = self.state_manager.begin_transaction().await?;

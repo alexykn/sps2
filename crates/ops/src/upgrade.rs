@@ -5,7 +5,10 @@
 
 use crate::{InstallReport, OpsCtx};
 use sps2_errors::Error;
-use sps2_events::{AppEvent, EventEmitter, UpdateEvent, events::{UpdateOperationType, UpdateResult}};
+use sps2_events::{
+    events::{UpdateOperationType, UpdateResult},
+    AppEvent, EventEmitter, UpdateEvent,
+};
 use sps2_guard::{OperationResult as GuardOperationResult, PackageChange as GuardPackageChange};
 use sps2_install::{InstallConfig, Installer, UpdateContext};
 use sps2_types::Version;
@@ -99,15 +102,26 @@ pub async fn upgrade(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRe
 
     ctx.emit(AppEvent::Update(UpdateEvent::Completed {
         operation_type: UpdateOperationType::Upgrade,
-        packages_updated: result.updated_packages.iter().map(|pkg| UpdateResult {
-            package: pkg.name.clone(),
-            from_version: installed_map.get(&pkg.name).cloned().unwrap_or_else(|| pkg.version.clone()),
-            to_version: pkg.version.clone(),
-            update_type: sps2_events::events::PackageUpdateType::Major, // TODO: Determine actual update type
-            duration: std::time::Duration::from_secs(30), // TODO: Track actual duration per package
-            size_change: 0, // TODO: Calculate actual size change
-        }).collect(),
-        packages_unchanged: result.installed_packages.iter().map(|pkg| pkg.name.clone()).collect(),
+        packages_updated: result
+            .updated_packages
+            .iter()
+            .map(|pkg| UpdateResult {
+                package: pkg.name.clone(),
+                from_version: installed_map
+                    .get(&pkg.name)
+                    .cloned()
+                    .unwrap_or_else(|| pkg.version.clone()),
+                to_version: pkg.version.clone(),
+                update_type: sps2_events::events::PackageUpdateType::Major, // TODO: Determine actual update type
+                duration: std::time::Duration::from_secs(30), // TODO: Track actual duration per package
+                size_change: 0,                               // TODO: Calculate actual size change
+            })
+            .collect(),
+        packages_unchanged: result
+            .installed_packages
+            .iter()
+            .map(|pkg| pkg.name.clone())
+            .collect(),
         total_duration: start.elapsed(),
         space_difference: 0, // TODO: Calculate actual space difference
     }));

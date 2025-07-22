@@ -7,6 +7,7 @@ mod cli;
 mod display;
 mod error;
 mod events;
+mod logging;
 mod setup;
 
 use crate::cli::{Cli, Commands, VulnDbCommands};
@@ -16,7 +17,7 @@ use crate::events::EventHandler;
 use crate::setup::SystemSetup;
 use clap::Parser;
 use sps2_config::Config;
-use sps2_events::{AppEvent, EventReceiver, EventSender};
+use sps2_events::{EventReceiver, EventSender};
 use sps2_ops::{OperationResult, OpsContextBuilder};
 use sps2_state::StateManager;
 use sps2_types::state::TransactionPhase;

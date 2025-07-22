@@ -2,7 +2,7 @@
 
 use crate::types::{OrphanedFileAction, OrphanedFileCategory};
 use sps2_errors::{Error, OpsError};
-use sps2_events::{EventSender, EventEmitter};
+use sps2_events::{EventEmitter, EventSender};
 use sps2_state::StateManager;
 
 use std::path::Path;

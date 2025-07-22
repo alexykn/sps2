@@ -5,10 +5,8 @@ use crate::{
     UninstallContext, UpdateContext,
 };
 use sps2_errors::{Error, InstallError};
-use sps2_events::{
-    AppEvent, EventEmitter, InstallEvent, UninstallEvent, UpdateEvent,
-};
 use sps2_events::events::{BatchUpdateStrategy, PackageUpdateType, UpdateResult};
+use sps2_events::{AppEvent, EventEmitter, InstallEvent, UninstallEvent, UpdateEvent};
 
 use sps2_resolver::{ResolutionContext, Resolver};
 use sps2_state::StateManager;
@@ -116,10 +114,14 @@ impl InstallOperation {
         let operation_id = uuid::Uuid::new_v4().to_string(); // In production, this should be tracked from start
         context.emit(AppEvent::Install(InstallEvent::BatchCompleted {
             operation_id,
-            successful_packages: result.installed_packages.iter().map(|id| id.name.clone()).collect(),
+            successful_packages: result
+                .installed_packages
+                .iter()
+                .map(|id| id.name.clone())
+                .collect(),
             failed_packages: vec![], // TODO: Track failed packages during execution
             total_duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
-            total_disk_usage: 0, // TODO: Calculate actual disk usage
+            total_disk_usage: 0,     // TODO: Calculate actual disk usage
         }));
 
         Ok(result)
@@ -308,7 +310,7 @@ impl UninstallOperation {
             packages: context.packages.clone(),
             operation_id,
             dependency_order: !context.force, // Use dependency order unless forcing
-            remove_orphans: false, // Default to not removing orphans
+            remove_orphans: false,            // Default to not removing orphans
         }));
 
         // Get currently installed packages
@@ -373,11 +375,15 @@ impl UninstallOperation {
         let operation_id = uuid::Uuid::new_v4().to_string(); // In production, this should be tracked from start
         context.emit(AppEvent::Uninstall(UninstallEvent::BatchCompleted {
             operation_id,
-            successful_packages: result.removed_packages.iter().map(|id| id.name.clone()).collect(),
+            successful_packages: result
+                .removed_packages
+                .iter()
+                .map(|id| id.name.clone())
+                .collect(),
             failed_packages: vec![], // TODO: Track failed packages during execution
             orphans_removed: vec![], // TODO: Track orphaned packages that were removed
             total_duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
-            total_space_freed: 0, // TODO: Calculate actual space freed
+            total_space_freed: 0,    // TODO: Calculate actual space freed
         }));
 
         Ok(result)
@@ -475,20 +481,24 @@ impl UpdateOperation {
         let operation_id = uuid::Uuid::new_v4().to_string(); // In production, this should be tracked from start
         context.emit(AppEvent::Update(UpdateEvent::BatchCompleted {
             operation_id,
-            successful_updates: result.updated_packages.iter().map(|id| {
-                UpdateResult {
-                    package: id.name.clone(),
-                    from_version: id.version.clone(), // TODO: Track actual from/to versions
-                    to_version: id.version.clone(),
-                    update_type: PackageUpdateType::Patch, // TODO: Determine actual update type
-                    duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
-                    size_change: 0, // TODO: Calculate actual size change
-                }
-            }).collect(),
+            successful_updates: result
+                .updated_packages
+                .iter()
+                .map(|id| {
+                    UpdateResult {
+                        package: id.name.clone(),
+                        from_version: id.version.clone(), // TODO: Track actual from/to versions
+                        to_version: id.version.clone(),
+                        update_type: PackageUpdateType::Patch, // TODO: Determine actual update type
+                        duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
+                        size_change: 0,                        // TODO: Calculate actual size change
+                    }
+                })
+                .collect(),
             failed_updates: vec![], // TODO: Track failed updates during execution
             skipped_packages: vec![], // TODO: Track skipped packages
             total_duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
-            total_size_change: 0, // TODO: Calculate actual size change
+            total_size_change: 0,   // TODO: Calculate actual size change
         }));
 
         Ok(result)

@@ -3,9 +3,7 @@
 use crate::pipeline::decompress::DecompressResult;
 use crate::staging::StagingManager;
 use sps2_errors::Error;
-use sps2_events::{
-    AppEvent, EventEmitter, EventSender, GeneralEvent, InstallEvent,
-};
+use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent, InstallEvent};
 use sps2_resolver::PackageId;
 use sps2_store::PackageStore;
 use std::sync::Arc;

@@ -82,8 +82,14 @@ pub trait EventEmitter {
     }
 
     /// Emit a debug log event with context
-    fn emit_debug_with_context(&self, message: impl Into<String>, context: std::collections::HashMap<String, String>) {
-        self.emit(AppEvent::General(GeneralEvent::debug_with_context(message, context)));
+    fn emit_debug_with_context(
+        &self,
+        message: impl Into<String>,
+        context: std::collections::HashMap<String, String>,
+    ) {
+        self.emit(AppEvent::General(GeneralEvent::debug_with_context(
+            message, context,
+        )));
     }
 
     /// Emit a warning event

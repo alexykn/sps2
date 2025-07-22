@@ -8,7 +8,7 @@
 
 use super::core::BuildEnvironment;
 use sps2_errors::{BuildError, Error};
-use sps2_events::{AppEvent, EventSender, EventEmitter, GeneralEvent};
+use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent};
 use std::collections::{HashMap, HashSet};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -75,7 +75,6 @@ impl BuildEnvironment {
         // Send event for isolation start
         if let Some(sender) = event_sender {
             sender.emit(AppEvent::General(GeneralEvent::debug("Build step started")));
-
         }
 
         // Clear environment variables
@@ -107,8 +106,9 @@ impl BuildEnvironment {
 
         // Send completion event
         if let Some(sender) = event_sender {
-            sender.emit(AppEvent::General(GeneralEvent::debug("Build step completed")));
-
+            sender.emit(AppEvent::General(GeneralEvent::debug(
+                "Build step completed",
+            )));
         }
 
         Ok(())

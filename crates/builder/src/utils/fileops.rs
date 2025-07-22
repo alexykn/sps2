@@ -62,9 +62,7 @@ pub async fn copy_source_files(
 
     send_event(
         context,
-AppEvent::General(GeneralEvent::debug(
-            "Cleaning up temporary files"
-        )),
+        AppEvent::General(GeneralEvent::debug("Cleaning up temporary files")),
     );
 
     let mut entries = fs::read_dir(recipe_dir).await?;
@@ -79,13 +77,11 @@ AppEvent::General(GeneralEvent::debug(
 
             send_event(
                 context,
-                AppEvent::General(GeneralEvent::debug(
-                    &format!(
-                        "Copied directory {} to {}",
-                        file_name.to_string_lossy(),
-                        dest_path.display()
-                    ),
-                )),
+                AppEvent::General(GeneralEvent::debug(&format!(
+                    "Copied directory {} to {}",
+                    file_name.to_string_lossy(),
+                    dest_path.display()
+                ))),
             );
         } else if entry_path.extension().is_none_or(|ext| ext != "star") {
             // Copy files except .star files
@@ -93,13 +89,11 @@ AppEvent::General(GeneralEvent::debug(
 
             send_event(
                 context,
-                AppEvent::General(GeneralEvent::debug(
-                    &format!(
-                        "Copied {} to {}",
-                        file_name.to_string_lossy(),
-                        dest_path.display()
-                    ),
-                )),
+                AppEvent::General(GeneralEvent::debug(&format!(
+                    "Copied {} to {}",
+                    file_name.to_string_lossy(),
+                    dest_path.display()
+                ))),
             );
         }
     }

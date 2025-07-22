@@ -155,9 +155,7 @@ pub async fn run_quality_pipeline(
     if profile_opt.is_none() {
         send_event(
             ctx,
-            AppEvent::General(GeneralEvent::debug(
-            "Artifact QA pipeline completed"
-        )),
+            AppEvent::General(GeneralEvent::debug("Artifact QA pipeline completed")),
         );
         return Ok(());
     }
@@ -231,11 +229,12 @@ async fn run_validators(
         let rep = action.run(ctx, env, None).await?;
         send_event(
             ctx,
-                AppEvent::Qa(QaEvent::CheckCompleted {
-                    check_type: "validator".to_string(),
-                    check_name: action_name.to_string(),
-                    findings_count: rep.findings.as_ref().map_or(0, |f| f.count()),
-                    severity_counts: std::collections::HashMap::new(),            }),
+            AppEvent::Qa(QaEvent::CheckCompleted {
+                check_type: "validator".to_string(),
+                check_name: action_name.to_string(),
+                findings_count: rep.findings.as_ref().map_or(0, |f| f.count()),
+                severity_counts: std::collections::HashMap::new(),
+            }),
         );
         merged.absorb(rep);
         if allow_early_break && merged.is_fatal() {
@@ -266,11 +265,12 @@ async fn run_patchers(
         let rep = action.run(ctx, env, validator_findings.as_ref()).await?;
         send_event(
             ctx,
-                AppEvent::Qa(QaEvent::CheckCompleted {
-                    check_type: "patcher".to_string(),
-                    check_name: action_name.to_string(),
-                    findings_count: rep.findings.as_ref().map_or(0, |f| f.count()),
-                    severity_counts: std::collections::HashMap::new(),            }),
+            AppEvent::Qa(QaEvent::CheckCompleted {
+                check_type: "patcher".to_string(),
+                check_name: action_name.to_string(),
+                findings_count: rep.findings.as_ref().map_or(0, |f| f.count()),
+                severity_counts: std::collections::HashMap::new(),
+            }),
         );
         merged.absorb(rep);
         if merged.is_fatal() {

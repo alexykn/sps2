@@ -77,12 +77,10 @@ impl BuildEnvironment {
 
             if is_empty_or_none {
                 // Already installed - just verify it exists
-                self.send_event(AppEvent::General(GeneralEvent::debug(
-                    &format!(
-                        "{} {} is already installed in /opt/pm/live",
-                        node.name, node.version
-                    )
-                )));
+                self.send_event(AppEvent::General(GeneralEvent::debug(&format!(
+                    "{} {} is already installed in /opt/pm/live",
+                    node.name, node.version
+                ))));
 
                 // Verify the package is installed
                 self.verify_installed_package(&node.name, &node.version)
@@ -94,7 +92,7 @@ impl BuildEnvironment {
                     installed_files: 0, // TODO: track actual file count
                     install_path: std::path::PathBuf::from("/opt/pm/live"),
                     duration: std::time::Duration::from_secs(0), // TODO: track actual duration
-                    disk_usage: 0, // TODO: track actual disk usage
+                    disk_usage: 0,                               // TODO: track actual disk usage
                 }));
 
                 return Ok(());

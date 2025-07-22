@@ -216,7 +216,10 @@ pub async fn create_sp_package(
     // Debug: List contents before tar creation
     send_event(
         context,
-        AppEvent::General(GeneralEvent::debug(format!("Creating tar from: {}", package_temp_dir.display()))),
+        AppEvent::General(GeneralEvent::debug(format!(
+            "Creating tar from: {}",
+            package_temp_dir.display()
+        ))),
     );
 
     let tar_path = package_temp_dir.join("package.tar");
