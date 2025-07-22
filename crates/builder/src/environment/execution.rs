@@ -3,7 +3,7 @@
 use super::{core::BuildEnvironment, types::BuildCommandResult};
 use crate::BuildContext;
 use sps2_errors::{BuildError, Error};
-use sps2_events::{Event, EventEmitter};
+use sps2_events::{AppEvent, BuildEvent, EventEmitter, GeneralEvent};
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Stdio;
@@ -55,22 +55,27 @@ impl BuildEnvironment {
             cmd.current_dir(&self.build_prefix);
         }
 
-        self.send_event(Event::BuildStepStarted {
-            step: format!("{program} {}", arg_refs.join(" ")),
+        self.emit(AppEvent::Build(BuildEvent::CommandStarted {
+            session_id: "unknown".to_string(), // TODO: should come from build context
             package: self.context.name.clone(),
-        });
+            command_id: "unknown".to_string(), // TODO: generate unique ID
+            build_system: crate::BuildSystem::Custom, // TODO: detect actual build system
+            command: format!("{program} {}", arg_refs.join(" ")),
+            working_dir: self.build_prefix.clone(),
+            timeout: None,
+        }));
 
         // Send command info event to show what's running (with replaced paths)
-        self.send_event(Event::DebugLog {
-            message: format!("Executing: {program} {}", arg_refs.join(" ")),
-            context: std::collections::HashMap::from([(
+        self.emit_debug_with_context(
+            format!("Executing: {program} {}", arg_refs.join(" ")),
+            std::collections::HashMap::from([(
                 "working_dir".to_string(),
                 working_dir.map_or_else(
                     || self.build_prefix.display().to_string(),
                     |p| p.display().to_string(),
                 ),
             )]),
-        });
+        );
 
         let mut child = cmd.spawn().map_err(|e| BuildError::CompileFailed {
             message: format!("{program}: {e}"),
@@ -202,16 +207,19 @@ impl BuildEnvironment {
     /// Send build output via events instead of direct printing
     /// Note: `is_error` should only be true for actual errors, not stderr output
     fn send_build_output(context: &BuildContext, line: &str, is_error: bool) {
-        context.emit_event(if is_error {
-            Event::Error {
-                message: line.to_string(),
-                details: Some("Build stderr".to_string()),
-            }
+        context.emit(if is_error {
+            AppEvent::General(GeneralEvent::error_with_details(
+                line.to_string(),
+                "Build stderr",
+            ))
         } else {
-            Event::BuildStepOutput {
+            AppEvent::Build(BuildEvent::StepOutput {
+                session_id: "unknown".to_string(), // TODO: should come from build context
                 package: context.name.clone(),
+                command_id: "unknown".to_string(), // TODO: generate unique ID
                 line: line.to_string(),
-            }
+                is_stderr: false,
+            })
         });
     }
 
@@ -279,18 +287,15 @@ impl BuildEnvironment {
         let libtool_dirs = Self::check_libtool_finish_needed(result);
         if !libtool_dirs.is_empty() {
             for dir in &libtool_dirs {
-                self.send_event(Event::DebugLog {
-                    message: format!("Running libtool --finish {dir}"),
-                    context: std::collections::HashMap::new(),
-                });
+                self.emit_debug(format!("Running libtool --finish {dir}"));
 
                 // Run libtool --finish for this directory
                 let finish_result = self.execute_libtool_finish(dir).await?;
                 if !finish_result.success {
-                    self.send_event(Event::Warning {
-                        message: format!("libtool --finish {dir} failed"),
-                        context: Some(finish_result.stderr),
-                    });
+                    self.emit_warning_with_context(
+                        format!("libtool --finish {dir} failed"),
+                        finish_result.stderr,
+                    );
                 }
             }
         }

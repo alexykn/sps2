@@ -2,7 +2,7 @@
 
 use super::core::BuildEnvironment;
 use sps2_errors::{BuildError, Error};
-use sps2_events::{Event, EventEmitter};
+use sps2_events::{AppEvent, EventEmitter, GeneralEvent};
 use tokio::fs;
 
 impl BuildEnvironment {
@@ -12,9 +12,7 @@ impl BuildEnvironment {
     ///
     /// Returns an error if directories cannot be created or environment setup fails.
     pub async fn initialize(&mut self) -> Result<(), Error> {
-        self.send_event(Event::OperationStarted {
-            operation: format!("Building {} {}", self.context.name, self.context.version),
-        });
+        self.emit_operation_started(format!("Building {} {}", self.context.name, self.context.version));
 
         // Create build directories with better error reporting
         fs::create_dir_all(&self.build_prefix)
@@ -58,10 +56,7 @@ impl BuildEnvironment {
             }
         }
 
-        self.send_event(Event::OperationCompleted {
-            operation: format!("Cleaned build environment for {}", self.context.name),
-            success: true,
-        });
+        self.emit_operation_completed(format!("Cleaned build environment for {}", self.context.name), true);
 
         Ok(())
     }

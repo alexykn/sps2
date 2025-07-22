@@ -8,7 +8,7 @@
 
 use super::core::BuildEnvironment;
 use sps2_errors::{BuildError, Error};
-use sps2_events::{Event, EventSender, EventSenderExt};
+use sps2_events::{AppEvent, EventSender, EventEmitter, GeneralEvent};
 use std::collections::{HashMap, HashSet};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};

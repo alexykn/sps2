@@ -2,7 +2,7 @@
 
 use crate::BuildContext;
 use sps2_errors::Error;
-use sps2_events::{EventEmitter, EventSender, EventSenderExt};
+use sps2_events::{EventEmitter, EventSender};
 use sps2_install::Installer;
 use sps2_net::NetClient;
 use sps2_resolver::Resolver;

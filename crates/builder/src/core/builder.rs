@@ -9,7 +9,7 @@ use crate::recipe::execute_recipe;
 use crate::utils::events::send_event;
 use crate::{BuildEnvironment, BuildResult};
 use sps2_errors::Error;
-use sps2_events::AppEvent;
+use sps2_events::{AppEvent, GeneralEvent};
 use sps2_net::NetClient;
 use sps2_resolver::Resolver;
 use sps2_store::PackageStore;
@@ -94,9 +94,9 @@ impl Builder {
     pub async fn build(&self, context: BuildContext) -> Result<BuildResult, Error> {
         send_event(
             &context,
-            Event::OperationStarted {
+            AppEvent::General(GeneralEvent::OperationStarted {
                 operation: format!("Building {} {}", context.name, context.version),
-            },
+            }),
         );
 
         // Setup build environment
@@ -114,9 +114,9 @@ impl Builder {
         if let Some(paths) = &environment.fix_permissions_request {
             send_event(
                 &context,
-                Event::OperationStarted {
+                AppEvent::General(GeneralEvent::OperationStarted {
                     operation: "Final permissions fix".into(),
-                },
+                }),
             );
 
             // Create a BuilderApi instance to call do_fix_permissions
@@ -128,20 +128,17 @@ impl Builder {
 
             send_event(
                 &context,
-                Event::OperationCompleted {
+                AppEvent::General(GeneralEvent::OperationCompleted {
                     operation: "Final permissions fix".into(),
                     success: result.success,
-                },
+                }),
             );
 
             // Log the result
             if !result.stdout.is_empty() {
                 send_event(
                     &context,
-                    Event::DebugLog {
-                        message: result.stdout,
-                        context: std::collections::HashMap::new(),
-                    },
+                    AppEvent::General(GeneralEvent::debug(result.stdout)),
                 );
             }
         }
@@ -199,12 +196,12 @@ impl Builder {
 
         send_event(
             context,
-            Event::OperationStarted {
+            AppEvent::General(GeneralEvent::OperationStarted {
                 operation: format!(
                     "Build environment isolated for {} {}",
                     context.name, context.version
                 ),
-            },
+            }),
         );
 
         Ok(environment)
@@ -247,9 +244,9 @@ impl Builder {
         if !build_deps.is_empty() {
             send_event(
                 context,
-                Event::OperationStarted {
+                AppEvent::General(GeneralEvent::OperationStarted {
                     operation: format!("Setting up {} build dependencies", build_deps.len()),
-                },
+                }),
             );
 
             environment.setup_dependencies(build_deps).await?;
@@ -258,10 +255,10 @@ impl Builder {
             let env_summary = environment.environment_summary();
             send_event(
                 context,
-                Event::DebugLog {
-                    message: "Build environment configured".to_string(),
-                    context: env_summary,
-                },
+                AppEvent::General(GeneralEvent::debug_with_context(
+                    "Build environment configured",
+                    env_summary,
+                )),
             );
         }
 
@@ -293,21 +290,18 @@ impl Builder {
         // environment.cleanup().await?;
         send_event(
             context,
-            Event::DebugLog {
-                message: format!(
-                    "Skipping cleanup for debugging - check {}",
-                    environment.build_prefix().display()
-                ),
-                context: std::collections::HashMap::new(),
-            },
+            AppEvent::General(GeneralEvent::debug(format!(
+                "Skipping cleanup for debugging - check {}",
+                environment.build_prefix().display()
+            ))),
         );
 
         send_event(
             context,
-            Event::OperationCompleted {
+            AppEvent::General(GeneralEvent::OperationCompleted {
                 operation: format!("Built {} {}", context.name, context.version),
                 success: true,
-            },
+            }),
         );
     }
 }

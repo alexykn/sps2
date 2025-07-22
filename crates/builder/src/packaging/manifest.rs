@@ -4,7 +4,7 @@ use crate::utils::events::send_event;
 use crate::yaml::RecipeMetadata;
 use crate::{BuildContext, BuildEnvironment, SbomFiles, SbomGenerator};
 use sps2_errors::Error;
-use sps2_events::AppEvent;
+use sps2_events::{AppEvent, GeneralEvent};
 use sps2_manifest::Manifest;
 use tokio::fs;
 
@@ -33,10 +33,10 @@ pub async fn generate_sbom_and_manifest(
     let sbom_files = generate_sbom(config, environment).await?;
     send_event(
         context,
-        Event::OperationCompleted {
+        AppEvent::General(GeneralEvent::OperationCompleted {
             operation: "SBOM generation completed".to_string(),
             success: true,
-        },
+        }),
     );
 
     // Create manifest
@@ -55,10 +55,10 @@ pub async fn generate_sbom_and_manifest(
     );
     send_event(
         context,
-        Event::OperationCompleted {
+        AppEvent::General(GeneralEvent::OperationCompleted {
             operation: "Package manifest created".to_string(),
             success: true,
-        },
+        }),
     );
 
     Ok((sbom_files, manifest))

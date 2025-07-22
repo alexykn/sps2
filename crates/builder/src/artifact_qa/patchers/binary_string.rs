@@ -3,7 +3,7 @@
 use crate::artifact_qa::{macho_utils, reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
-use sps2_events::AppEvent;
+use sps2_events::{AppEvent, GeneralEvent};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -153,8 +153,8 @@ impl crate::artifact_qa::traits::Action for BinaryStringPatcher {
             // Send warning event about skipped files
             crate::utils::events::send_event(
                 ctx,
-                Event::Warning {
-                    message: format!(
+                AppEvent::General(GeneralEvent::warning_with_context(
+                    format!(
                         "Binary string patcher: {} paths too long to patch in {} files",
                         skipped.len(),
                         skipped
@@ -163,21 +163,18 @@ impl crate::artifact_qa::traits::Action for BinaryStringPatcher {
                             .collect::<std::collections::HashSet<_>>()
                             .len()
                     ),
-                    context: Some(
-                        "Some embedded paths could not be patched due to length constraints"
-                            .to_string(),
-                    ),
-                },
+                    "Some embedded paths could not be patched due to length constraints",
+                )),
             );
         }
 
         if !patched.is_empty() {
             crate::utils::events::send_event(
                 ctx,
-                Event::OperationCompleted {
+                AppEvent::General(GeneralEvent::OperationCompleted {
                     operation: format!("Patched {} binary files", patched.len()),
                     success: true,
-                },
+                }),
             );
         }
 

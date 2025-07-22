@@ -6,7 +6,7 @@
 //! to speed up repeated builds and avoid unnecessary recompilation.
 
 use sps2_errors::Error;
-use sps2_events::{Event, EventEmitter, EventSender};
+use sps2_events::{AppEvent, BuildEvent, EventEmitter, EventSender};
 use sps2_hash::Hash;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -90,10 +90,10 @@ impl BuildCache {
         }
 
         // Send cache event
-        self.emit_event(Event::BuildCacheUpdated {
+        self.emit(AppEvent::Build(BuildEvent::CacheUpdated {
             cache_key: cache_key.to_string(),
             artifacts_count: stats.artifacts_cached.try_into().unwrap_or(usize::MAX),
-        });
+        }));
 
         Ok(())
     }
@@ -123,27 +123,27 @@ impl BuildCache {
                 } else {
                     // Cache entry is stale
                     stats.cache_misses += 1;
-                    self.emit_event(Event::BuildCacheMiss {
+                    self.emit(AppEvent::Build(BuildEvent::CacheMiss {
                         cache_key: cache_key.to_string(),
                         reason: "Artifact missing from store".to_string(),
-                    });
+                    }));
                     return Ok(None);
                 }
             }
 
             stats.cache_hits += 1;
-            self.emit_event(Event::BuildCacheHit {
+            self.emit(AppEvent::Build(BuildEvent::CacheHit {
                 cache_key: cache_key.to_string(),
                 artifacts_count: valid_artifacts.len(),
-            });
+            }));
 
             Ok(Some(valid_artifacts))
         } else {
             stats.cache_misses += 1;
-            self.emit_event(Event::BuildCacheMiss {
+            self.emit(AppEvent::Build(BuildEvent::CacheMiss {
                 cache_key: cache_key.to_string(),
                 reason: "No cache entry found".to_string(),
-            });
+            }));
             Ok(None)
         }
     }
@@ -183,10 +183,10 @@ impl BuildCache {
             let removed = self.store.evict_lru(current_size - max_size).await?;
             stats.evictions += removed as u64;
 
-            self.emit_event(Event::BuildCacheCleaned {
+            self.emit(AppEvent::Build(BuildEvent::CacheCleaned {
                 removed_items: removed,
                 freed_bytes: current_size - self.store.get_total_size().await?,
-            });
+            }));
         }
 
         Ok(())

@@ -14,7 +14,7 @@ use crate::utils::events::send_event;
 use crate::utils::fileops::copy_directory_strip_live_prefix;
 use crate::{BuildConfig, BuildContext, BuildEnvironment};
 use sps2_errors::{BuildError, Error};
-use sps2_events::AppEvent;
+use sps2_events::{AppEvent, GeneralEvent};
 use sps2_manifest::Manifest;
 use sps2_types::PythonPackageMetadata;
 use std::collections::HashMap;
@@ -47,10 +47,10 @@ pub async fn create_and_sign_package(
     let package_path = create_package(config, context, environment, manifest, sbom_files).await?;
     send_event(
         context,
-        Event::OperationCompleted {
+        AppEvent::General(GeneralEvent::OperationCompleted {
             operation: format!("Package created: {}", package_path.display()),
             success: true,
-        },
+        }),
     );
 
     // Sign the package if configured
@@ -92,10 +92,10 @@ async fn generate_sbom_files(
 
     send_event(
         context,
-        Event::OperationCompleted {
+        AppEvent::General(GeneralEvent::OperationCompleted {
             operation: "SBOM generation completed".to_string(),
             success: true,
-        },
+        }),
     );
 
     Ok(sbom_files)
@@ -199,10 +199,10 @@ pub async fn create_sp_package(
 
     send_event(
         context,
-        Event::OperationCompleted {
+        AppEvent::General(GeneralEvent::OperationCompleted {
             operation: "Package files copied".to_string(),
             success: true,
-        },
+        }),
     );
 
     // Step 4: Create deterministic tar archive
@@ -243,10 +243,10 @@ pub async fn create_sp_package(
 
     send_event(
         context,
-        Event::OperationCompleted {
+        AppEvent::General(GeneralEvent::OperationCompleted {
             operation: "Tar archive created".to_string(),
             success: true,
-        },
+        }),
     );
 
     // Step 5: Compress with zstd at configured level
@@ -264,10 +264,10 @@ pub async fn create_sp_package(
     .await?;
     send_event(
         context,
-        Event::OperationCompleted {
+        AppEvent::General(GeneralEvent::OperationCompleted {
             operation: "Package compression completed".to_string(),
             success: true,
-        },
+        }),
     );
 
     // Step 6: Cleanup temporary files
@@ -311,20 +311,20 @@ pub async fn sign_package(
         Some(sig_path) => {
             send_event(
                 context,
-                Event::OperationCompleted {
+                AppEvent::General(GeneralEvent::OperationCompleted {
                     operation: format!("Package signed: {}", sig_path.display()),
                     success: true,
-                },
+                }),
             );
         }
         None => {
             // Signing was disabled
             send_event(
                 context,
-                Event::OperationCompleted {
+                AppEvent::General(GeneralEvent::OperationCompleted {
                     operation: "Package signing skipped (disabled)".to_string(),
                     success: true,
-                },
+                }),
             );
         }
     }

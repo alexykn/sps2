@@ -538,17 +538,11 @@ impl StateVerificationGuard {
                     {
                         Ok(()) => {
                             healed_count += 1;
-                            self.emit_event(Event::DebugLog {
-                                message: format!("Successfully handled orphaned file: {file_path} (category: {category:?})"),
-                                context: HashMap::default(),
-                            });
+                            self.emit_debug(format!("Successfully handled orphaned file: {file_path} (category: {category:?})"));
                         }
                         Err(e) => {
                             failed_healings.push(discrepancy.clone());
-                            self.emit_event(Event::DebugLog {
-                                message: format!("Failed to handle orphaned file {file_path}: {e}"),
-                                context: HashMap::default(),
-                            });
+                            self.emit_debug(format!("Failed to handle orphaned file {file_path}: {e}"));
                         }
                     }
                 }
@@ -571,19 +565,11 @@ impl StateVerificationGuard {
                     {
                         Ok(()) => {
                             healed_count += 1;
-                            self.emit_event(Event::DebugLog {
-                                message: format!("Successfully restored corrupted file: {file_path} for {package_name}-{package_version}"),
-                                context: HashMap::default(),
-                            });
+                            self.emit_debug(format!("Successfully restored corrupted file: {file_path} for {package_name}-{package_version}"));
                         }
                         Err(e) => {
                             failed_healings.push(discrepancy.clone());
-                            self.emit_event(Event::DebugLog {
-                                message: format!(
-                                    "Failed to restore corrupted file {file_path}: {e}"
-                                ),
-                                context: HashMap::default(),
-                            });
+                            self.emit_debug(format!("Failed to restore corrupted file {file_path}: {e}"));
                         }
                     }
                 }
@@ -740,17 +726,11 @@ impl StateVerificationGuard {
                     {
                         Ok(()) => {
                             healed_count += 1;
-                            self.emit_event(Event::DebugLog {
-                                message: format!("Successfully handled orphaned file: {file_path} (category: {category:?})"),
-                                context: HashMap::default(),
-                            });
+                            self.emit_debug(format!("Successfully handled orphaned file: {file_path} (category: {category:?})"));
                         }
                         Err(e) => {
                             failed_healings.push(discrepancy.clone());
-                            self.emit_event(Event::DebugLog {
-                                message: format!("Failed to handle orphaned file {file_path}: {e}"),
-                                context: HashMap::default(),
-                            });
+                            self.emit_debug(format!("Failed to handle orphaned file {file_path}: {e}"));
                         }
                     }
                 }
@@ -773,19 +753,11 @@ impl StateVerificationGuard {
                     {
                         Ok(()) => {
                             healed_count += 1;
-                            self.emit_event(Event::DebugLog {
-                                message: format!("Successfully restored corrupted file: {file_path} for {package_name}-{package_version}"),
-                                context: HashMap::default(),
-                            });
+                            self.emit_debug(format!("Successfully restored corrupted file: {file_path} for {package_name}-{package_version}"));
                         }
                         Err(e) => {
                             failed_healings.push(discrepancy.clone());
-                            self.emit_event(Event::DebugLog {
-                                message: format!(
-                                    "Failed to restore corrupted file {file_path}: {e}"
-                                ),
-                                context: HashMap::default(),
-                            });
+                            self.emit_debug(format!("Failed to restore corrupted file {file_path}: {e}"));
                         }
                     }
                 }
@@ -803,15 +775,12 @@ impl StateVerificationGuard {
         verification_result.duration_ms = duration_ms;
 
         // Emit healing complete event
-        self.emit_event(Event::DebugLog {
-            message: format!(
-                "Scoped healing completed: {} healed, {} failed in {}ms",
-                healed_count,
-                verification_result.discrepancies.len(),
-                duration_ms
-            ),
-            context: HashMap::default(),
-        });
+        self.emit_debug(format!(
+            "Scoped healing completed: {} healed, {} failed in {}ms",
+            healed_count,
+            verification_result.discrepancies.len(),
+            duration_ms
+        ));
 
         Ok(verification_result)
     }
@@ -846,24 +815,16 @@ impl StateVerificationGuard {
 
         if quick_result.is_valid {
             // No issues found - we're done!
-            self.emit_event(Event::DebugLog {
-                message:
-                    "Progressive verification: Quick verification passed, no escalation needed"
-                        .to_string(),
-                context: HashMap::default(),
-            });
+            self.emit_debug("Progressive verification: Quick verification passed, no escalation needed");
             return Ok(quick_result);
         }
 
         // Stage 2: Standard verification (if issues found and original level >= Standard)
         if original_level >= VerificationLevel::Standard {
-            self.emit_event(Event::DebugLog {
-                message: format!(
-                    "Progressive verification: Quick found {} issues, escalating to Standard",
-                    quick_result.discrepancies.len()
-                ),
-                context: HashMap::default(),
-            });
+            self.emit_debug(format!(
+                "Progressive verification: Quick found {} issues, escalating to Standard",
+                quick_result.discrepancies.len()
+            ));
 
             self.config.verification_level = VerificationLevel::Standard;
             let standard_result = self.verify_with_scope(scope).await?;
@@ -876,13 +837,10 @@ impl StateVerificationGuard {
 
             // Stage 3: Full verification (if original level is Full and we found serious issues)
             if self.needs_full_verification(&standard_result) {
-                self.emit_event(Event::DebugLog {
-                    message: format!(
-                        "Progressive verification: Standard found {} issues, escalating to Full",
-                        standard_result.discrepancies.len()
-                    ),
-                    context: HashMap::default(),
-                });
+                self.emit_debug(format!(
+                    "Progressive verification: Standard found {} issues, escalating to Full",
+                    standard_result.discrepancies.len()
+                ));
 
                 self.config.verification_level = VerificationLevel::Full;
                 let full_result = self.verify_with_scope(scope).await?;
@@ -890,12 +848,9 @@ impl StateVerificationGuard {
 
                 let duration_ms =
                     u64::try_from(start_time.elapsed().as_millis()).unwrap_or(u64::MAX);
-                self.emit_event(Event::DebugLog {
-                    message: format!(
-                        "Progressive verification completed with Full level in {duration_ms}ms"
-                    ),
-                    context: HashMap::default(),
-                });
+                self.emit_debug(format!(
+                    "Progressive verification completed with Full level in {duration_ms}ms"
+                ));
 
                 return Ok(full_result);
             }
@@ -928,13 +883,10 @@ impl StateVerificationGuard {
         let live_path = self.state_manager.live_path().to_path_buf();
 
         // Emit verification started event
-        self.emit_event(Event::DebugLog {
-            message: format!(
-                "Starting parallel verification for {} packages",
-                packages.len()
-            ),
-            context: HashMap::default(),
-        });
+        self.emit_debug(format!(
+            "Starting parallel verification for {} packages",
+            packages.len()
+        ));
 
         // Pre-fetch all data from database to avoid locking issues
         self.emit_debug("Pre-fetching package data and verification cache...");
@@ -988,14 +940,11 @@ impl StateVerificationGuard {
 
         db_tx.commit().await?;
 
-        self.emit_event(Event::DebugLog {
-            message: format!(
-                "Pre-fetched data for {} packages with {} unique file hashes",
-                package_data_list.len(),
-                all_file_hashes.len()
-            ),
-            context: HashMap::default(),
-        });
+        self.emit_debug(format!(
+            "Pre-fetched data for {} packages with {} unique file hashes",
+            package_data_list.len(),
+            all_file_hashes.len()
+        ));
 
         // Prepare shared data for parallel tasks
         let max_concurrent = self.config.performance.max_concurrent_tasks;
@@ -1055,35 +1004,23 @@ impl StateVerificationGuard {
                     total_cache_hits += package_result.cache_hits;
                     total_cache_misses += package_result.cache_misses;
 
-                    self.emit_event(Event::DebugLog {
-                        message: format!(
-                            "Successfully verified package {package_name}-{package_version} ({files_count} files)"
-                        ),
-                        context: HashMap::default(),
-                    });
+                    self.emit_debug(format!(
+                        "Successfully verified package {package_name}-{package_version} ({files_count} files)"
+                    ));
                 }
                 Ok(Err(e)) => {
                     // Even if verification fails, we should have tracked files to avoid false orphans
-                    self.emit_event(Event::DebugLog {
-                        message: format!("Package verification error: {e}"),
-                        context: HashMap::default(),
-                    });
+                    self.emit_debug(format!("Package verification error: {e}"));
                 }
                 Err(e) => {
-                    self.emit_event(Event::DebugLog {
-                        message: format!("Verification task panicked: {e}"),
-                        context: HashMap::default(),
-                    });
+                    self.emit_debug(format!("Verification task panicked: {e}"));
                 }
             }
         }
 
         // Apply all mtime updates in a single transaction
         if !all_mtime_updates.is_empty() {
-            self.emit_event(Event::DebugLog {
-                message: format!("Applying {} mtime updates...", all_mtime_updates.len()),
-                context: HashMap::default(),
-            });
+            self.emit_debug(format!("Applying {} mtime updates...", all_mtime_updates.len()));
 
             // Apply mtime updates to database
             let mut db_tx = self.state_manager.begin_transaction().await?;
@@ -1093,13 +1030,10 @@ impl StateVerificationGuard {
             }
             db_tx.commit().await?;
 
-            self.emit_event(Event::DebugLog {
-                message: format!(
-                    "Applied {} mtime updates to database",
-                    all_mtime_updates.len()
-                ),
-                context: HashMap::default(),
-            });
+            self.emit_debug(format!(
+                "Applied {} mtime updates to database",
+                all_mtime_updates.len()
+            ));
         }
 
         // Check for orphaned files if not in Quick mode
@@ -1142,14 +1076,11 @@ impl StateVerificationGuard {
         };
 
         // Emit completion event
-        self.emit_event(Event::DebugLog {
-            message: format!(
-                "Parallel verification completed: {}/{} packages verified in {}ms with {} discrepancies (cache: {:.1}% hit rate, {}/{} hits/total)",
-                successful_verifications, total_packages, duration_ms, all_discrepancies.len(),
-                cache_hit_rate * 100.0, total_cache_hits, total_cache_hits + total_cache_misses
-            ),
-            context: HashMap::default(),
-        });
+        self.emit_debug(format!(
+            "Parallel verification completed: {}/{} packages verified in {}ms with {} discrepancies (cache: {:.1}% hit rate, {}/{} hits/total)",
+            successful_verifications, total_packages, duration_ms, all_discrepancies.len(),
+            cache_hit_rate * 100.0, total_cache_hits, total_cache_hits + total_cache_misses
+        ));
 
         Ok(VerificationResult::with_coverage_and_cache(
             state_id,
