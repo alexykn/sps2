@@ -192,6 +192,7 @@ pub enum GuardEvent {
 
 impl GuardEvent {
     /// Create a guard discrepancy found event
+    #[must_use]
     pub fn discrepancy_found(params: GuardDiscrepancyParams) -> Self {
         Self::DiscrepancyFound(params)
     }

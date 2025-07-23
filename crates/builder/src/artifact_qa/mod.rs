@@ -232,7 +232,10 @@ async fn run_validators(
             AppEvent::Qa(QaEvent::CheckCompleted {
                 check_type: "validator".to_string(),
                 check_name: action_name.to_string(),
-                findings_count: rep.findings.as_ref().map_or(0, |f| f.count()),
+                findings_count: rep
+                    .findings
+                    .as_ref()
+                    .map_or(0, diagnostics::DiagnosticCollector::count),
                 severity_counts: std::collections::HashMap::new(),
             }),
         );
@@ -268,7 +271,10 @@ async fn run_patchers(
             AppEvent::Qa(QaEvent::CheckCompleted {
                 check_type: "patcher".to_string(),
                 check_name: action_name.to_string(),
-                findings_count: rep.findings.as_ref().map_or(0, |f| f.count()),
+                findings_count: rep
+                    .findings
+                    .as_ref()
+                    .map_or(0, diagnostics::DiagnosticCollector::count),
                 severity_counts: std::collections::HashMap::new(),
             }),
         );

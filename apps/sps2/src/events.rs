@@ -394,7 +394,7 @@ impl EventHandler {
                     }
                     BuildEvent::PhaseStarted { package, phase, .. } => {
                         self.show_operation_message(
-                            &format!("{package} > {:?} phase started", phase),
+                            &format!("{package} > {phase:?} phase started"),
                             "build",
                             EventSeverity::Info,
                         );
@@ -405,7 +405,7 @@ impl EventHandler {
                     }
                     BuildEvent::PhaseCompleted { package, phase, .. } => {
                         self.show_operation_message(
-                            &format!("{package} > {:?} phase completed", phase),
+                            &format!("{package} > {phase:?} phase completed"),
                             "build",
                             EventSeverity::Success,
                         );
@@ -450,8 +450,7 @@ impl EventHandler {
                     } => {
                         self.show_operation_message(
                             &format!(
-                                "Resolving dependencies ({} runtime, {} build, {} local)",
-                                runtime_deps, build_deps, local_files
+                                "Resolving dependencies ({runtime_deps} runtime, {build_deps} build, {local_files} local)"
                             ),
                             "resolve",
                             EventSeverity::Info,
@@ -459,7 +458,7 @@ impl EventHandler {
                     }
                     ResolverEvent::ResolutionCompleted { total_packages, .. } => {
                         self.show_operation_message(
-                            &format!("Resolved {} dependencies successfully", total_packages),
+                            &format!("Resolved {total_packages} dependencies successfully"),
                             "resolve",
                             EventSeverity::Success,
                         );
@@ -471,14 +470,11 @@ impl EventHandler {
                     } => {
                         let package_list = conflicting_packages
                             .iter()
-                            .map(|(name, version)| format!("{}:{}", name, version))
+                            .map(|(name, version)| format!("{name}:{version}"))
                             .collect::<Vec<_>>()
                             .join(", ");
                         self.show_operation_message(
-                            &format!(
-                                "Dependency conflict detected: {} ({})",
-                                message, package_list
-                            ),
+                            &format!("Dependency conflict detected: {message} ({package_list})"),
                             "resolve",
                             EventSeverity::Warning,
                         );
@@ -781,8 +777,8 @@ impl EventHandler {
                         ..
                     } => {
                         let location = match (file_path, line) {
-                            (Some(path), Some(line)) => format!(" ({}:{})", path, line),
-                            (Some(path), None) => format!(" ({})", path),
+                            (Some(path), Some(line)) => format!(" ({path}:{line})"),
+                            (Some(path), None) => format!(" ({path})"),
                             _ => String::new(),
                         };
                         let event_severity = match severity.to_lowercase().as_str() {
@@ -917,13 +913,11 @@ impl EventHandler {
                             severity_level,
                         );
 
-                        if self.debug_enabled {
-                            if !file_path.is_empty() {
-                                self.show_message(
-                                    &format!("  File: {}", file_path),
-                                    EventSeverity::Debug,
-                                );
-                            }
+                        if self.debug_enabled && !file_path.is_empty() {
+                            self.show_message(
+                                &format!("  File: {file_path}"),
+                                EventSeverity::Debug,
+                            );
                         }
                     }
                     _ => {
@@ -966,7 +960,7 @@ impl EventHandler {
                 AppEvent::Update(_) => "Update",
             };
             self.show_message(
-                &format!("Unhandled event in domain \"{}\": {:?}", event_name, event),
+                &format!("Unhandled event in domain \"{event_name}\": {event:?}"),
                 EventSeverity::Debug,
             );
         }

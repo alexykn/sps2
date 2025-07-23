@@ -91,56 +91,48 @@ pub enum AppEvent {
 
 impl AppEvent {
     /// Determine the appropriate tracing log level for this event
+    #[must_use]
     pub fn log_level(&self) -> tracing::Level {
         use tracing::Level;
 
         match self {
             // Error-level events
-            AppEvent::General(GeneralEvent::Error { .. }) => Level::ERROR,
-            AppEvent::Download(DownloadEvent::Failed { .. }) => Level::ERROR,
-            AppEvent::Build(BuildEvent::Failed { .. }) => Level::ERROR,
-            AppEvent::State(StateEvent::TransitionFailed { .. }) => Level::ERROR,
-            AppEvent::State(StateEvent::RollbackFailed { .. }) => Level::ERROR,
-            AppEvent::Install(InstallEvent::ValidationFailed { .. }) => Level::ERROR,
-            AppEvent::Install(InstallEvent::Failed { .. }) => Level::ERROR,
-            AppEvent::Uninstall(UninstallEvent::Failed { .. }) => Level::ERROR,
-            AppEvent::Update(UpdateEvent::Failed { .. }) => Level::ERROR,
-            AppEvent::Acquisition(AcquisitionEvent::Failed { .. }) => Level::ERROR,
-            AppEvent::Progress(ProgressEvent::Failed { .. }) => Level::ERROR,
-            AppEvent::Guard(GuardEvent::VerificationFailed { .. }) => Level::ERROR,
-            AppEvent::Guard(GuardEvent::HealingFailed { .. }) => Level::ERROR,
-            AppEvent::Qa(QaEvent::CheckFailed { .. }) => Level::ERROR,
+            AppEvent::General(GeneralEvent::Error { .. })
+            | AppEvent::Download(DownloadEvent::Failed { .. })
+            | AppEvent::Build(BuildEvent::Failed { .. })
+            | AppEvent::State(
+                StateEvent::TransitionFailed { .. } | StateEvent::RollbackFailed { .. },
+            )
+            | AppEvent::Install(
+                InstallEvent::ValidationFailed { .. } | InstallEvent::Failed { .. },
+            )
+            | AppEvent::Uninstall(UninstallEvent::Failed { .. })
+            | AppEvent::Update(UpdateEvent::Failed { .. })
+            | AppEvent::Acquisition(AcquisitionEvent::Failed { .. })
+            | AppEvent::Progress(ProgressEvent::Failed { .. })
+            | AppEvent::Guard(
+                GuardEvent::VerificationFailed { .. } | GuardEvent::HealingFailed { .. },
+            )
+            | AppEvent::Qa(QaEvent::CheckFailed { .. }) => Level::ERROR,
 
             // Warning-level events
-            AppEvent::General(GeneralEvent::Warning { .. }) => Level::WARN,
-            AppEvent::Build(BuildEvent::Warning { .. }) => Level::WARN,
-            AppEvent::Download(DownloadEvent::Stalled { .. }) => Level::WARN,
-            AppEvent::Progress(ProgressEvent::Stalled { .. }) => Level::WARN,
-            AppEvent::Progress(ProgressEvent::BottleneckDetected { .. }) => Level::WARN,
-
-            // Info-level events (completions, starts)
-            AppEvent::Download(DownloadEvent::Completed { .. }) => Level::INFO,
-            AppEvent::Build(BuildEvent::Completed { .. }) => Level::INFO,
-            AppEvent::State(StateEvent::TransitionCompleted { .. }) => Level::INFO,
-            AppEvent::Install(InstallEvent::Completed { .. }) => Level::INFO,
-            AppEvent::Uninstall(UninstallEvent::Completed { .. }) => Level::INFO,
-            AppEvent::Update(UpdateEvent::Completed { .. }) => Level::INFO,
-            AppEvent::Acquisition(AcquisitionEvent::Completed { .. }) => Level::INFO,
-            AppEvent::Progress(ProgressEvent::Completed { .. }) => Level::INFO,
-            AppEvent::Guard(GuardEvent::VerificationCompleted { .. }) => Level::INFO,
-            AppEvent::Qa(QaEvent::PipelineCompleted { .. }) => Level::INFO,
-            AppEvent::Audit(AuditEvent::Completed { .. }) => Level::INFO,
+            AppEvent::General(GeneralEvent::Warning { .. })
+            | AppEvent::Build(BuildEvent::Warning { .. })
+            | AppEvent::Download(DownloadEvent::Stalled { .. })
+            | AppEvent::Progress(
+                ProgressEvent::Stalled { .. } | ProgressEvent::BottleneckDetected { .. },
+            ) => Level::WARN,
 
             // Debug-level events (progress updates, internal state)
-            AppEvent::General(GeneralEvent::DebugLog { .. }) => Level::DEBUG,
-            AppEvent::Download(DownloadEvent::Progress { .. }) => Level::DEBUG,
-            AppEvent::Build(BuildEvent::StepOutput { .. }) => Level::DEBUG,
-            AppEvent::Progress(ProgressEvent::Updated { .. }) => Level::DEBUG,
-            AppEvent::Guard(GuardEvent::VerificationProgress { .. }) => Level::DEBUG,
+            AppEvent::General(GeneralEvent::DebugLog { .. })
+            | AppEvent::Download(DownloadEvent::Progress { .. })
+            | AppEvent::Build(BuildEvent::StepOutput { .. })
+            | AppEvent::Progress(ProgressEvent::Updated { .. })
+            | AppEvent::Guard(GuardEvent::VerificationProgress { .. }) => Level::DEBUG,
 
             // Trace-level events (very detailed internal operations)
-            AppEvent::Build(BuildEvent::ResourceUsage { .. }) => Level::TRACE,
-            AppEvent::Progress(ProgressEvent::StatisticsUpdated { .. }) => Level::TRACE,
+            AppEvent::Build(BuildEvent::ResourceUsage { .. })
+            | AppEvent::Progress(ProgressEvent::StatisticsUpdated { .. }) => Level::TRACE,
 
             // Default to INFO for most events
             _ => Level::INFO,
@@ -148,6 +140,7 @@ impl AppEvent {
     }
 
     /// Get the log target for this event (for structured logging)
+    #[must_use]
     pub fn log_target(&self) -> &'static str {
         match self {
             AppEvent::General(_) => "sps2::events::general",
@@ -170,9 +163,10 @@ impl AppEvent {
     }
 
     /// Get structured fields for logging (simplified for now)
+    #[must_use]
     pub fn log_fields(&self) -> String {
         // For now, use debug formatting. In the future, this could be more sophisticated
         // with structured key-value pairs extracted from each event type.
-        format!("{:?}", self)
+        format!("{self:?}")
     }
 }

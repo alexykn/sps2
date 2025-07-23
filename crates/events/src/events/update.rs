@@ -390,6 +390,7 @@ pub enum SystemIntegrityStatus {
 
 impl UpdateEvent {
     /// Create a basic update started event
+    #[must_use]
     pub fn started(packages: Vec<String>, operation_type: UpdateOperationType) -> Self {
         Self::Started {
             operation_type,
@@ -400,16 +401,17 @@ impl UpdateEvent {
     }
 
     /// Create an available update from versions
-    pub fn plan_generated(updates: Vec<AvailableUpdate>) -> Self {
+    #[must_use]
+    pub fn plan_generated(updates: &[AvailableUpdate]) -> Self {
         let total_size: u64 = updates
             .iter()
             .filter_map(|u| u.size_change)
             .filter(|&s| s > 0)
-            .map(|s| s as u64)
+            .map(|s| s.try_into().unwrap_or(0_u64))
             .sum();
 
         Self::PlanGenerated {
-            updates_available: updates.clone(),
+            updates_available: updates.to_owned(),
             dependency_updates: vec![],
             conflicts_detected: 0,
             total_estimated_size: total_size,

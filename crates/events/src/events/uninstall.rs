@@ -3,7 +3,7 @@ use sps2_types::Version;
 use std::path::PathBuf;
 use std::time::Duration;
 
-/// Uninstallation domain events - maps to install crate UninstallOperation and `sps2 uninstall` command
+/// Uninstallation domain events - maps to install crate `UninstallOperation` and `sps2 uninstall` command
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum UninstallEvent {

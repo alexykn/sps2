@@ -152,14 +152,14 @@ impl StateManager {
         // Clone current state to staging (or create empty staging for first install)
         if sps2_root::exists(&self.live_path).await {
             self.tx.emit(AppEvent::State(StateEvent::Initializing {
-                state_id: staging_id.clone(),
+                state_id: staging_id,
                 operation: "Cloning current state".to_string(),
                 estimated_duration: None,
             }));
             sps2_root::clone_directory(&self.live_path, &staging_path).await?;
         } else {
             self.tx.emit(AppEvent::State(StateEvent::Initializing {
-                state_id: staging_id.clone(),
+                state_id: staging_id,
                 operation: "Creating initial staging directory".to_string(),
                 estimated_duration: None,
             }));
@@ -434,7 +434,7 @@ impl StateManager {
 
         self.tx.emit(AppEvent::State(StateEvent::CleanupCompleted {
             states_removed: states_to_remove.len(),
-            space_freed: space_freed,
+            space_freed,
             duration: std::time::Duration::from_millis(0), // TODO: Add proper timing
         }));
 

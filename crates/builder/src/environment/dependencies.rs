@@ -77,7 +77,7 @@ impl BuildEnvironment {
 
             if is_empty_or_none {
                 // Already installed - just verify it exists
-                self.send_event(AppEvent::General(GeneralEvent::debug(&format!(
+                self.send_event(AppEvent::General(GeneralEvent::debug(format!(
                     "{} {} is already installed in /opt/pm/live",
                     node.name, node.version
                 ))));

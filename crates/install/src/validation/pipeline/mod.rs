@@ -211,7 +211,7 @@ pub async fn validate_batch(
     let mut results = Vec::new();
     let orchestrator = ValidationOrchestrator::new();
 
-    for (_index, file_path) in file_paths.iter().enumerate() {
+    for file_path in file_paths {
         let file_name = file_path.display().to_string();
         let result = orchestrator.validate_package(file_path, event_sender).await;
 

@@ -295,6 +295,7 @@ pub enum DependencyConflictType {
 
 impl ResolverEvent {
     /// Create a conflict detected event with basic info
+    #[must_use]
     pub fn conflict_detected(packages: Vec<(String, String)>, message: String) -> Self {
         Self::DependencyConflictDetected {
             conflicting_packages: packages,
@@ -305,6 +306,7 @@ impl ResolverEvent {
     }
 
     /// Create a conflict suggestions event
+    #[must_use]
     pub fn conflict_suggestions(suggestions: Vec<String>) -> Self {
         Self::DependencyConflictSuggestions {
             suggestions,

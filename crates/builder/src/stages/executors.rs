@@ -320,7 +320,7 @@ async fn cleanup_directories(
     let staging_dir = environment.staging_dir();
     send_event(
         &environment.context,
-        AppEvent::General(GeneralEvent::debug(&format!(
+        AppEvent::General(GeneralEvent::debug(format!(
             "Cleaned staging directory: {}",
             staging_dir.display()
         ))),
@@ -333,7 +333,7 @@ async fn cleanup_directories(
     let source_dir = &api.working_dir;
     send_event(
         &environment.context,
-        AppEvent::General(GeneralEvent::debug(&format!(
+        AppEvent::General(GeneralEvent::debug(format!(
             "Cleaned source directory: {}",
             source_dir.display()
         ))),
@@ -365,7 +365,7 @@ pub async fn execute_build_commands_list_with_security(
                 package: context.name.clone(),
                 command_id: format!("build_step_{}", std::ptr::addr_of!(*command) as usize),
                 build_system: sps2_events::BuildSystem::Custom,
-                command: format!("{:?}", command),
+                command: format!("{command:?}"),
                 working_dir: environment.build_prefix().join("src"),
                 timeout: None,
             }),

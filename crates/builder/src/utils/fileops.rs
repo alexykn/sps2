@@ -77,7 +77,7 @@ pub async fn copy_source_files(
 
             send_event(
                 context,
-                AppEvent::General(GeneralEvent::debug(&format!(
+                AppEvent::General(GeneralEvent::debug(format!(
                     "Copied directory {} to {}",
                     file_name.to_string_lossy(),
                     dest_path.display()
@@ -89,7 +89,7 @@ pub async fn copy_source_files(
 
             send_event(
                 context,
-                AppEvent::General(GeneralEvent::debug(&format!(
+                AppEvent::General(GeneralEvent::debug(format!(
                     "Copied {} to {}",
                     file_name.to_string_lossy(),
                     dest_path.display()

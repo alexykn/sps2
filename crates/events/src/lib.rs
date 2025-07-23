@@ -11,7 +11,7 @@
 //! ## Architecture
 //!
 //! - **Domain-driven events**: Events grouped by functional domain (Build, Download, etc.)
-//! - **Unified EventEmitter trait**: Single, consistent API for all event emissions
+//! - **Unified `EventEmitter` trait**: Single, consistent API for all event emissions
 //! - **Tracing integration**: Built-in structured logging with intelligent log levels
 //! - **Progress tracking**: Sophisticated algorithms with ETA, speed calculation, and phases
 
@@ -48,13 +48,13 @@ pub use events::{
 
 use tokio::sync::mpsc::UnboundedSender;
 
-/// Type alias for event sender using the new AppEvent system
+/// Type alias for event sender using the new `AppEvent` system
 pub type EventSender = UnboundedSender<AppEvent>;
 
-/// Type alias for event receiver using the new AppEvent system
+/// Type alias for event receiver using the new `AppEvent` system
 pub type EventReceiver = tokio::sync::mpsc::UnboundedReceiver<AppEvent>;
 
-/// Create a new event channel with the AppEvent system
+/// Create a new event channel with the `AppEvent` system
 #[must_use]
 pub fn channel() -> (EventSender, EventReceiver) {
     tokio::sync::mpsc::unbounded_channel()
@@ -63,7 +63,7 @@ pub fn channel() -> (EventSender, EventReceiver) {
 /// The unified trait for emitting events throughout the sps2 system
 ///
 /// This trait provides a single, consistent API for emitting events regardless of
-/// whether you have a raw EventSender or a struct that contains one.
+/// whether you have a raw `EventSender` or a struct that contains one.
 pub trait EventEmitter {
     /// Get the event sender for this emitter
     fn event_sender(&self) -> Option<&EventSender>;
@@ -235,8 +235,8 @@ pub trait EventEmitter {
     }
 }
 
-/// Implementation of EventEmitter for the raw EventSender
-/// This allows EventSender to be used directly where EventEmitter is expected
+/// Implementation of `EventEmitter` for the raw `EventSender`
+/// This allows `EventSender` to be used directly where `EventEmitter` is expected
 impl EventEmitter for EventSender {
     fn event_sender(&self) -> Option<&EventSender> {
         Some(self)
