@@ -448,7 +448,6 @@ impl EventHandler {
                         local_files,
                         ..
                     } => {
-                        let total = runtime_deps + build_deps + local_files;
                         self.show_operation_message(
                             &format!(
                                 "Resolving dependencies ({} runtime, {} build, {} local)",
@@ -1008,24 +1007,6 @@ impl EventHandler {
     fn handle_download_failed(&mut self, url: &str, error: &str) {
         let filename = url.split('/').next_back().unwrap_or(url);
         self.show_error(&format!("Failed to download {filename}: {error}"));
-    }
-
-    /// Handle installation started event
-    fn handle_install_started(&mut self, package_name: &str) {
-        self.show_operation_message(
-            &format!("Processing {package_name}"),
-            "install",
-            EventSeverity::Info,
-        );
-    }
-
-    /// Handle installation completed event
-    fn handle_install_completed(&mut self, package_name: &str, state_id: &impl std::fmt::Display) {
-        self.show_operation_message(
-            &format!("Installed {package_name} (state: {state_id})"),
-            "install",
-            EventSeverity::Success,
-        );
     }
 
     /// Show styled message based on severity

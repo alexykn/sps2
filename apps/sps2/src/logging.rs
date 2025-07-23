@@ -13,7 +13,6 @@ use tracing::{debug, error, info, trace, warn};
 /// structured fields that can be consumed by observability tools.
 pub fn log_event_with_tracing(event: &AppEvent) {
     let level = event.log_level();
-    let target = event.log_target();
 
     // Extract structured fields based on event type
     match event {
@@ -405,7 +404,7 @@ pub fn log_event_with_tracing(event: &AppEvent) {
 
 /// Log an event at a specific level with custom message and fields
 #[allow(dead_code)]
-pub fn log_event_custom(level: tracing::Level, target: &str, message: &str, event: &AppEvent) {
+pub fn log_event_custom(level: tracing::Level, message: &str, event: &AppEvent) {
     match level {
         tracing::Level::ERROR => error!(target: "sps2", event = ?event, "{}", message),
         tracing::Level::WARN => warn!(target: "sps2", event = ?event, "{}", message),
