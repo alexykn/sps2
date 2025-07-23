@@ -302,12 +302,13 @@ async fn collect_files_for_hashing(
 /// Calculate the storage path for a file based on its hash
 ///
 /// Returns the path components: (prefix, `full_hash`)
-/// For example: hash "abc123..." -> ("ab", "abc123...")
+/// For example: hash "abc123..." -> ("ab/c1", "abc123...")
 #[must_use]
 pub fn calculate_file_storage_path(hash: &Hash) -> (String, String) {
     let hex = hash.to_hex();
-    let prefix = hex.chars().take(2).collect::<String>();
-    (prefix, hex)
+    let prefix1 = hex.chars().take(2).collect::<String>();
+    let prefix2 = hex.chars().skip(2).take(2).collect::<String>();
+    (format!("{prefix1}/{prefix2}"), hex)
 }
 
 #[cfg(test)]
@@ -369,8 +370,9 @@ mod tests {
         let hash = Hash::from_data(b"test data");
         let (prefix, full_hash) = calculate_file_storage_path(&hash);
 
-        assert_eq!(prefix.len(), 2);
+        assert_eq!(prefix.len(), 5);
         assert_eq!(full_hash, hash.to_hex());
-        assert!(full_hash.starts_with(&prefix));
+        let expected_prefix = format!("{}/{}", &full_hash[0..2], &full_hash[2..4]);
+        assert_eq!(prefix, expected_prefix);
     }
 }

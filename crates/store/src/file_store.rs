@@ -44,9 +44,14 @@ impl FileStore {
 
         // Create prefix directories (00-ff)
         for i in 0..256 {
-            let prefix = format!("{i:02x}");
-            let prefix_path = self.objects_path.join(&prefix);
-            create_dir_all(&prefix_path).await?;
+            let prefix1 = format!("{i:02x}");
+            let prefix1_path = self.objects_path.join(&prefix1);
+            create_dir_all(&prefix1_path).await?;
+            for j in 0..256 {
+                let prefix2 = format!("{j:02x}");
+                let prefix2_path = prefix1_path.join(&prefix2);
+                create_dir_all(&prefix2_path).await?;
+            }
         }
 
         Ok(())

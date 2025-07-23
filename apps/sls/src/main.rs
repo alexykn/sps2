@@ -158,7 +158,7 @@ async fn list_store(
     if recursive {
         list_recursive(&objects_dir, file_map, long_format, hash_only, use_color, 0).await?;
     } else {
-        // Just list the subdirectories
+        // List the first-level directories
         let mut entries = fs::read_dir(&objects_dir).await?;
         let mut dirs = Vec::new();
 
@@ -223,83 +223,76 @@ async fn list_recursive(
             ))
             .await?;
         } else {
-            // It's a file - reconstruct the hash
-            if let Some(parent) = entry.path().parent() {
-                if let Some(prefix) = parent.file_name() {
-                    let _full_hash = format!("{}{}", prefix.to_string_lossy(), name);
-                    // Remove the prefix for database lookup
-                    let hash_without_prefix = &name;
+            // It's a file - the filename is the hash
+            let full_hash = &name;
 
-                    if hash_only {
-                        // Just show the full hash
-                        println!("{indent}{hash_without_prefix}");
-                    } else if long_format {
-                        let size = format_size(metadata.len(), BINARY);
-                        let perms = format_permissions(&metadata);
+            if hash_only {
+                println!("{indent}{full_hash}");
+            } else if long_format {
+                let size = format_size(metadata.len(), BINARY);
+                let perms = format_permissions(&metadata);
 
-                        if let Some(names) = file_map.get(hash_without_prefix) {
-                            for file_name in names {
-                                println!(
-                                    "{}{} {:>8} {} -> {}",
-                                    indent,
-                                    perms,
-                                    size,
-                                    if use_color {
-                                        name[..8].dimmed()
-                                    } else {
-                                        name[..8].normal()
-                                    },
-                                    if use_color {
-                                        file_name.green()
-                                    } else {
-                                        file_name.normal()
-                                    }
-                                );
+                if let Some(names) = file_map.get(full_hash) {
+                    for file_name in names {
+                        println!(
+                            "{}{} {:>8} {} -> {}",
+                            indent,
+                            perms,
+                            size,
+                            if use_color {
+                                full_hash[..16].dimmed()
+                            } else {
+                                full_hash[..16].normal()
+                            },
+                            if use_color {
+                                file_name.green()
+                            } else {
+                                file_name.normal()
                             }
-                        } else {
-                            println!(
-                                "{}{} {:>8} {} (unknown)",
-                                indent,
-                                perms,
-                                size,
-                                if use_color {
-                                    name[..8].dimmed()
-                                } else {
-                                    name[..8].normal()
-                                }
-                            );
-                        }
-                    } else {
-                        // Default: short hash + filename
-                        if let Some(names) = file_map.get(hash_without_prefix) {
-                            for file_name in names {
-                                println!(
-                                    "{}{} {}",
-                                    indent,
-                                    if use_color {
-                                        hash_without_prefix[..8].dimmed()
-                                    } else {
-                                        hash_without_prefix[..8].normal()
-                                    },
-                                    if use_color {
-                                        file_name.green()
-                                    } else {
-                                        file_name.normal()
-                                    }
-                                );
-                            }
-                        } else {
-                            println!(
-                                "{}{} (unknown)",
-                                indent,
-                                if use_color {
-                                    hash_without_prefix[..8].dimmed()
-                                } else {
-                                    hash_without_prefix[..8].normal()
-                                }
-                            );
-                        }
+                        );
                     }
+                } else {
+                    println!(
+                        "{}{} {:>8} {} (unknown)",
+                        indent,
+                        perms,
+                        size,
+                        if use_color {
+                            full_hash[..16].dimmed()
+                        } else {
+                            full_hash[..16].normal()
+                        }
+                    );
+                }
+            } else {
+                // Default: short hash + filename
+                if let Some(names) = file_map.get(full_hash) {
+                    for file_name in names {
+                        println!(
+                            "{}{} {}",
+                            indent,
+                            if use_color {
+                                full_hash[..8].dimmed()
+                            } else {
+                                full_hash[..8].normal()
+                            },
+                            if use_color {
+                                file_name.green()
+                            } else {
+                                file_name.normal()
+                            }
+                        );
+                    }
+                } else {
+                    println!(
+                        "{}{} (unknown)",
+                        indent,
+                        if use_color {
+                            full_hash[..8].dimmed()
+                        } else {
+                            full_hash[..8].normal()
+                        }
+                    );
                 }
             }
         }
@@ -319,44 +312,42 @@ async fn list_specific(
     // Check if it's a hash prefix
     if path_or_hash.len() >= 2 && path_or_hash.chars().all(|c| c.is_ascii_hexdigit()) {
         // It's a hash - find matching objects
-        let prefix = &path_or_hash[..2];
-        let rest = if path_or_hash.len() > 2 {
-            &path_or_hash[2..]
+        let prefix1 = &path_or_hash[..2];
+        let prefix2 = if path_or_hash.len() > 2 {
+            &path_or_hash[2..4]
         } else {
             ""
         };
 
-        let dir = store_path.join("objects").join(prefix);
+        let dir = store_path.join("objects").join(prefix1).join(prefix2);
         if dir.exists() {
             let mut entries = fs::read_dir(&dir).await?;
             let mut found = false;
 
             while let Some(entry) = entries.next_entry().await? {
                 let name = entry.file_name().to_string_lossy().to_string();
-                if name.starts_with(rest) {
+                if name.starts_with(&path_or_hash[4..]) {
                     found = true;
-                    let full_hash = format!("{prefix}{name}");
+                    let full_hash = format!("{prefix1}{prefix2}{name}");
                     let metadata = entry.metadata().await?;
-                    // For database lookup, use the hash without prefix
-                    let hash_without_prefix = &full_hash[2..];
 
                     if hash_only {
                         // Just show the full hash
-                        println!("{hash_without_prefix}");
+                        println!("{full_hash}");
                     } else if long_format {
                         let size = format_size(metadata.len(), BINARY);
                         let perms = format_permissions(&metadata);
 
-                        if let Some(names) = file_map.get(hash_without_prefix) {
+                        if let Some(names) = file_map.get(&full_hash) {
                             for file_name in names {
                                 println!(
                                     "{} {:>8} {} -> {}",
                                     perms,
                                     size,
                                     if use_color {
-                                        hash_without_prefix[..16].dimmed()
+                                        full_hash[..16].dimmed()
                                     } else {
-                                        hash_without_prefix[..16].normal()
+                                        full_hash[..16].normal()
                                     },
                                     if use_color {
                                         file_name.green()
@@ -371,22 +362,22 @@ async fn list_specific(
                                 perms,
                                 size,
                                 if use_color {
-                                    hash_without_prefix[..16].dimmed()
+                                    full_hash[..16].dimmed()
                                 } else {
-                                    hash_without_prefix[..16].normal()
+                                    full_hash[..16].normal()
                                 }
                             );
                         }
                     } else {
                         // Default: short hash + filename
-                        if let Some(names) = file_map.get(hash_without_prefix) {
+                        if let Some(names) = file_map.get(&full_hash) {
                             for file_name in names {
                                 println!(
                                     "{} {}",
                                     if use_color {
-                                        hash_without_prefix[..8].dimmed()
+                                        full_hash[..8].dimmed()
                                     } else {
-                                        hash_without_prefix[..8].normal()
+                                        full_hash[..8].normal()
                                     },
                                     if use_color {
                                         file_name.green()
@@ -399,9 +390,9 @@ async fn list_specific(
                             println!(
                                 "{} (unknown)",
                                 if use_color {
-                                    hash_without_prefix[..8].dimmed()
+                                    full_hash[..8].dimmed()
                                 } else {
-                                    hash_without_prefix[..8].normal()
+                                    full_hash[..8].normal()
                                 }
                             );
                         }
@@ -413,7 +404,7 @@ async fn list_specific(
                 eprintln!("No objects found with prefix '{path_or_hash}'");
             }
         } else {
-            eprintln!("No objects found with prefix '{prefix}'");
+            eprintln!("No objects found with prefix '{path_or_hash}'");
         }
     } else {
         eprintln!("Invalid hash prefix: {path_or_hash}");
