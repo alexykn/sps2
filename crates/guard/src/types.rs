@@ -135,6 +135,20 @@ pub enum OrphanedFileAction {
     Backup,
 }
 
+/// Types of special files that may require custom handling
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub enum SpecialFileType {
+    /// Device file (block device)
+    BlockDevice,
+    /// Device file (character device)
+    CharDevice,
+    /// Unix domain socket
+    Socket,
+    /// Named pipe (FIFO)
+    Fifo,
+    /// Other special file type
+    Other(String),
+}
 /// Type of discrepancy found during verification
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub enum Discrepancy {
@@ -176,6 +190,58 @@ pub enum Discrepancy {
         package_name: String,
         package_version: String,
     },
+    /// Special file type detected that cannot be verified
+    UnsupportedSpecialFile {
+        package_name: String,
+        package_version: String,
+        file_path: String,
+        file_type: SpecialFileType,
+    },
+}
+/// Helper functions for special file type handling
+impl SpecialFileType {
+    /// Identify the special file type from file metadata
+    pub fn from_metadata(metadata: &std::fs::Metadata) -> Option<Self> {
+        use std::os::unix::fs::FileTypeExt;
+
+        let file_type = metadata.file_type();
+
+        if file_type.is_block_device() {
+            Some(SpecialFileType::BlockDevice)
+        } else if file_type.is_char_device() {
+            Some(SpecialFileType::CharDevice)
+        } else if file_type.is_socket() {
+            Some(SpecialFileType::Socket)
+        } else if file_type.is_fifo() {
+            Some(SpecialFileType::Fifo)
+        } else {
+            None
+        }
+    }
+
+    /// Get a human-readable description of the file type
+    pub fn description(&self) -> String {
+        match self {
+            SpecialFileType::BlockDevice => "block device".to_string(),
+            SpecialFileType::CharDevice => "character device".to_string(),
+            SpecialFileType::Socket => "Unix domain socket".to_string(),
+            SpecialFileType::Fifo => "named pipe (FIFO)".to_string(),
+            SpecialFileType::Other(desc) => desc.clone(),
+        }
+    }
+
+    /// Check if this special file type should be skipped during verification
+    pub fn should_skip_verification(&self) -> bool {
+        match self {
+            // All special file types should be skipped for content verification
+            // but their existence should still be tracked
+            SpecialFileType::BlockDevice
+            | SpecialFileType::CharDevice
+            | SpecialFileType::Socket
+            | SpecialFileType::Fifo
+            | SpecialFileType::Other(_) => true,
+        }
+    }
 }
 
 impl Discrepancy {
@@ -358,6 +424,25 @@ impl Discrepancy {
                 ])
                 .with_estimated_fix_time(Duration::from_secs(60))
             }
+            Self::UnsupportedSpecialFile { package_name, package_version, file_path, file_type } => {
+                DiscrepancyContext::new(
+                    DiscrepancySeverity::Low,
+                    RecommendedAction::Ignore,
+                    format!(
+                        "Special file '{}' ({}) from package '{}' v{} cannot be fully verified. This is expected behavior.",
+                        file_path, file_type.description(), package_name, package_version
+                    ),
+                    format!("Special file {file_path} of type {} detected", file_type.description()),
+                )
+                .with_manual_steps(vec![
+                    "No action required - special files are tracked but not content-verified".to_string(),
+                    format!("Verify package integrity: sps2 verify {}:{}", package_name, package_version),
+                ])
+                .with_prevention_tips(vec![
+                    "This is normal behavior for device files, sockets, and FIFOs".to_string(),
+                ])
+                .with_estimated_fix_time(Duration::from_secs(0))
+            }
         }
     }
 
@@ -419,6 +504,13 @@ impl Discrepancy {
             } => {
                 format!("Missing package content: {package_name}:{package_version}")
             }
+            Self::UnsupportedSpecialFile {
+                file_path,
+                file_type,
+                ..
+            } => {
+                format!("Special file ({}): {}", file_type.description(), file_path)
+            }
         }
     }
 
@@ -429,7 +521,8 @@ impl Discrepancy {
             Self::MissingFile { file_path, .. }
             | Self::TypeMismatch { file_path, .. }
             | Self::CorruptedFile { file_path, .. }
-            | Self::OrphanedFile { file_path, .. } => file_path,
+            | Self::OrphanedFile { file_path, .. }
+            | Self::UnsupportedSpecialFile { file_path, .. } => file_path,
             Self::MissingVenv { venv_path, .. } => venv_path,
             Self::MissingPackageContent { .. } => "",
         }
@@ -443,7 +536,8 @@ impl Discrepancy {
             | Self::TypeMismatch { package_name, .. }
             | Self::CorruptedFile { package_name, .. }
             | Self::MissingVenv { package_name, .. }
-            | Self::MissingPackageContent { package_name, .. } => Some(package_name),
+            | Self::MissingPackageContent { package_name, .. }
+            | Self::UnsupportedSpecialFile { package_name, .. } => Some(package_name),
             Self::OrphanedFile { .. } => None,
         }
     }
@@ -465,6 +559,9 @@ impl Discrepancy {
                 package_version, ..
             }
             | Self::MissingPackageContent {
+                package_version, ..
+            }
+            | Self::UnsupportedSpecialFile {
                 package_version, ..
             } => Some(package_version),
             Self::OrphanedFile { .. } => None,

@@ -136,6 +136,20 @@ async fn verify_single_package_with_data(
                 continue;
             }
 
+            // Check for special file types that require custom handling
+            if let Some(special_type) = crate::types::SpecialFileType::from_metadata(&metadata) {
+                if special_type.should_skip_verification() {
+                    // Log the special file for tracking but skip content verification
+                    discrepancies.push(crate::types::Discrepancy::UnsupportedSpecialFile {
+                        package_name: package.name.clone(),
+                        package_version: package.version.clone(),
+                        file_path: file_path.to_string(),
+                        file_type: special_type,
+                    });
+                    continue;
+                }
+            }
+
             // Skip Python bytecode files and cache directories from hash verification
             if file_path.ends_with(".pyc") || file_path.contains("__pycache__") {
                 continue;
