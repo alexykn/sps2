@@ -10,6 +10,7 @@ use sps2_errors::{Error, PackageError};
 use sps2_events::{EventEmitter, EventSender};
 use sps2_index::{IndexManager, VersionEntry};
 use sps2_manifest::Manifest;
+use sps2_platform::{Platform, PlatformContext};
 use sps2_types::package::PackageSpec;
 use sps2_types::version::VersionConstraint;
 use std::collections::{HashMap, HashSet};
@@ -506,7 +507,6 @@ impl Resolver {
     /// Load manifest from local .sp file
     async fn load_local_manifest(path: &Path) -> Result<Manifest, Error> {
         use tokio::fs;
-        use tokio::process::Command;
 
         // Create temporary directory for extraction
         let temp_dir =
@@ -522,14 +522,22 @@ impl Resolver {
 
         // Step 1: Decompress .sp file with zstd to get tar file
         let tar_path = temp_dir.join("package.tar");
-        let zstd_output = Command::new("zstd")
-            .args([
-                "--decompress",
-                "-o",
-                &tar_path.display().to_string(),
-                &path.display().to_string(),
-            ])
-            .output()
+
+        // Use platform abstraction for process execution
+        let platform = Platform::current();
+        let context = PlatformContext::new(None);
+
+        let mut zstd_cmd = platform.process().create_command("zstd");
+        zstd_cmd.args([
+            "--decompress",
+            "-o",
+            &tar_path.display().to_string(),
+            &path.display().to_string(),
+        ]);
+
+        let zstd_output = platform
+            .process()
+            .execute_command(&context, zstd_cmd)
             .await?;
 
         if !zstd_output.status.success() {
@@ -553,18 +561,23 @@ impl Resolver {
 
     /// Extract manifest.toml content from tar archive
     async fn extract_manifest_from_tar(tar_path: &Path) -> Result<String, Error> {
-        use tokio::process::Command;
+        // Use platform abstraction for process execution
+        let platform = Platform::current();
+        let context = PlatformContext::new(None);
 
         // Use tar to extract just the manifest.toml file and output to stdout
-        let tar_output = Command::new("tar")
-            .args([
-                "--extract",
-                "--file",
-                &tar_path.display().to_string(),
-                "--to-stdout",
-                "manifest.toml",
-            ])
-            .output()
+        let mut tar_cmd = platform.process().create_command("tar");
+        tar_cmd.args([
+            "--extract",
+            "--file",
+            &tar_path.display().to_string(),
+            "--to-stdout",
+            "manifest.toml",
+        ]);
+
+        let tar_output = platform
+            .process()
+            .execute_command(&context, tar_cmd)
             .await?;
 
         if !tar_output.status.success() {

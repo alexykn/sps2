@@ -40,7 +40,8 @@ impl CodeSigner {
         path: &Path,
     ) -> Result<bool, sps2_errors::Error> {
         // First check if the signature is valid
-        let is_valid = (self.platform.binary().verify_signature(ctx, path).await).unwrap_or_default();
+        let is_valid =
+            (self.platform.binary().verify_signature(ctx, path).await).unwrap_or_default();
 
         // If signature is invalid or modified, re-sign it
         if is_valid {
@@ -69,7 +70,7 @@ impl crate::artifact_qa::traits::Action for CodeSigner {
         }
 
         let signer = Self::new();
-        
+
         // Create platform context from build context
         let platform_ctx = signer.platform.create_context(ctx.event_sender.clone());
 

@@ -1,13 +1,11 @@
 //! Command execution in isolated environment
 
 use super::{core::BuildEnvironment, types::BuildCommandResult};
-use crate::BuildContext;
 use sps2_errors::{BuildError, Error};
-use sps2_events::{AppEvent, BuildEvent, EventEmitter, GeneralEvent};
+use sps2_events::{AppEvent, BuildEvent, EventEmitter};
+use sps2_platform::{Platform, PlatformContext};
 use std::collections::HashMap;
 use std::path::Path;
-use std::process::Stdio;
-use tokio::process::Command;
 
 impl BuildEnvironment {
     /// Convert command arguments to strings (no placeholder replacement needed)
@@ -35,19 +33,19 @@ impl BuildEnvironment {
         args: &[&str],
         working_dir: Option<&Path>,
     ) -> Result<BuildCommandResult, Error> {
-        let mut cmd = Command::new(program);
+        // Use platform abstraction for process execution
+        let platform = Platform::current();
+        let context = PlatformContext::new(self.context.event_sender.clone());
+
+        let mut cmd = platform.process().create_command(program);
 
         // Replace placeholders in command arguments
         let converted_args = Self::convert_args_to_strings(args);
-        let arg_refs: Vec<&str> = converted_args.iter().map(String::as_str).collect();
-        cmd.args(&arg_refs);
+        cmd.args(&converted_args);
 
         // Get environment variables for execution
         let build_env_vars = self.get_execution_env();
         cmd.envs(&build_env_vars);
-        cmd.stdout(Stdio::piped());
-        cmd.stderr(Stdio::piped());
-        cmd.stdin(Stdio::null());
 
         if let Some(dir) = working_dir {
             cmd.current_dir(dir);
@@ -60,14 +58,14 @@ impl BuildEnvironment {
             package: self.context.name.clone(),
             command_id: "unknown".to_string(), // TODO: generate unique ID
             build_system: sps2_events::BuildSystem::Custom, // TODO: detect actual build system
-            command: format!("{program} {}", arg_refs.join(" ")),
+            command: format!("{program} {}", converted_args.join(" ")),
             working_dir: self.build_prefix.clone(),
             timeout: None,
         }));
 
         // Send command info event to show what's running (with replaced paths)
         self.emit_debug_with_context(
-            format!("Executing: {program} {}", arg_refs.join(" ")),
+            format!("Executing: {program} {}", converted_args.join(" ")),
             std::collections::HashMap::from([(
                 "working_dir".to_string(),
                 working_dir.map_or_else(
@@ -77,36 +75,27 @@ impl BuildEnvironment {
             )]),
         );
 
-        let mut child = cmd.spawn().map_err(|e| BuildError::CompileFailed {
-            message: format!("{program}: {e}"),
-        })?;
+        let output = platform
+            .process()
+            .execute_command(&context, cmd)
+            .await
+            .map_err(|e| BuildError::CompileFailed {
+                message: format!("{program}: {e}"),
+            })?;
 
-        let stdout = child.stdout.take().unwrap();
-        let stderr = child.stderr.take().unwrap();
+        let stdout_lines: Vec<String> = String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(|s| s.to_string())
+            .collect();
 
-        let (stdout_lines, stderr_lines) = self
-            .handle_process_output(stdout, stderr, &mut child)
-            .await?;
-
-        // Add timeout for individual commands (default: 10 minutes)
-        let status = tokio::time::timeout(
-            std::time::Duration::from_secs(600), // 10 minutes timeout
-            child.wait(),
-        )
-        .await
-        .map_err(|_| BuildError::CompileFailed {
-            message: format!(
-                "Command '{program} {}' timed out after 10 minutes",
-                args.join(" ")
-            ),
-        })?
-        .map_err(|e| BuildError::CompileFailed {
-            message: format!("Failed to wait for {program}: {e}"),
-        })?;
+        let stderr_lines: Vec<String> = String::from_utf8_lossy(&output.stderr)
+            .lines()
+            .map(|s| s.to_string())
+            .collect();
 
         let result = BuildCommandResult {
-            success: status.success(),
-            exit_code: status.code(),
+            success: output.status.success(),
+            exit_code: output.status.code(),
             stdout: stdout_lines.join("\n"),
             stderr: stderr_lines.join("\n"),
         };
@@ -127,100 +116,6 @@ impl BuildEnvironment {
         self.handle_libtool_finish(&result).await?;
 
         Ok(result)
-    }
-
-    /// Handle process output streams with timeout and real-time event emission
-    async fn handle_process_output(
-        &self,
-        stdout: tokio::process::ChildStdout,
-        stderr: tokio::process::ChildStderr,
-        child: &mut tokio::process::Child,
-    ) -> Result<(Vec<String>, Vec<String>), Error> {
-        use tokio::io::{AsyncBufReadExt, BufReader};
-
-        let mut stdout_reader = BufReader::new(stdout).lines();
-        let mut stderr_reader = BufReader::new(stderr).lines();
-
-        let mut stdout_lines = Vec::new();
-        let mut stderr_lines = Vec::new();
-
-        // Read output in real-time with timeout to prevent deadlock
-        let mut stdout_closed = false;
-        let mut stderr_closed = false;
-
-        while !stdout_closed || !stderr_closed {
-            tokio::select! {
-                line = stdout_reader.next_line(), if !stdout_closed => {
-                    match line {
-                        Ok(Some(line)) => {
-                            // Send build output via events
-                            Self::send_build_output(&self.context, &line, false);
-                            stdout_lines.push(line);
-                        }
-                        Ok(None) => stdout_closed = true,
-                        Err(e) => {
-                            return Err(BuildError::CompileFailed {
-                                message: format!("Failed to read stdout: {e}"),
-                            }.into());
-                        }
-                    }
-                }
-                line = stderr_reader.next_line(), if !stderr_closed => {
-                    match line {
-                        Ok(Some(line)) => {
-                            // Send stderr as normal build output (not error) since many tools output progress to stderr
-                            Self::send_build_output(&self.context, &line, false);
-                            stderr_lines.push(line);
-                        }
-                        Ok(None) => stderr_closed = true,
-                        Err(e) => {
-                            return Err(BuildError::CompileFailed {
-                                message: format!("Failed to read stderr: {e}"),
-                            }.into());
-                        }
-                    }
-                }
-                // Add timeout to prevent hanging on output reading
-                () = tokio::time::sleep(std::time::Duration::from_secs(30)) => {
-                    // Check if child process is still alive
-                    match child.try_wait() {
-                        Ok(Some(_)) => {
-                            // Process finished, break out of loop
-                            break;
-                        }
-                        Ok(None) => {
-                            // Process still running, continue reading
-                        }
-                        Err(e) => {
-                            return Err(BuildError::CompileFailed {
-                                message: format!("Failed to check process status: {e}"),
-                            }.into());
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok((stdout_lines, stderr_lines))
-    }
-
-    /// Send build output via events instead of direct printing
-    /// Note: `is_error` should only be true for actual errors, not stderr output
-    fn send_build_output(context: &BuildContext, line: &str, is_error: bool) {
-        context.emit(if is_error {
-            AppEvent::General(GeneralEvent::error_with_details(
-                line.to_string(),
-                "Build stderr",
-            ))
-        } else {
-            AppEvent::Build(BuildEvent::StepOutput {
-                session_id: "unknown".to_string(), // TODO: should come from build context
-                package: context.name.clone(),
-                command_id: "unknown".to_string(), // TODO: generate unique ID
-                line: line.to_string(),
-                is_stderr: false,
-            })
-        });
     }
 
     /// Check if libtool --finish needs to be run based on command output
@@ -263,22 +158,38 @@ impl BuildEnvironment {
             "libtool"
         };
 
-        let mut cmd = Command::new(libtool_path);
+        // Use platform abstraction for process execution
+        let platform = Platform::current();
+        let context = PlatformContext::new(self.context.event_sender.clone());
+
+        let mut cmd = platform.process().create_command(libtool_path);
         cmd.args(["--finish", dir]);
         cmd.envs(&self.env_vars);
-        cmd.stdout(Stdio::piped());
-        cmd.stderr(Stdio::piped());
         cmd.current_dir(&self.build_prefix);
 
-        let output = cmd.output().await.map_err(|e| BuildError::CompileFailed {
-            message: format!("Failed to run libtool --finish: {e}"),
-        })?;
+        let output = platform
+            .process()
+            .execute_command(&context, cmd)
+            .await
+            .map_err(|e| BuildError::CompileFailed {
+                message: format!("Failed to run libtool --finish: {e}"),
+            })?;
+
+        let stdout_lines: Vec<String> = String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(|s| s.to_string())
+            .collect();
+
+        let stderr_lines: Vec<String> = String::from_utf8_lossy(&output.stderr)
+            .lines()
+            .map(|s| s.to_string())
+            .collect();
 
         Ok(BuildCommandResult {
             success: output.status.success(),
             exit_code: output.status.code(),
-            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+            stdout: stdout_lines.join("\n"),
+            stderr: stderr_lines.join("\n"),
         })
     }
 

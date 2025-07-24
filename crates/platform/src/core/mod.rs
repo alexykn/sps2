@@ -1,11 +1,11 @@
 //! Core platform abstractions and context management
 
-use std::collections::HashMap;
-use std::time::Instant;
-use std::future::Future;
-use tokio::sync::mpsc;
-use sps2_events::AppEvent;
 use sps2_errors::PlatformError;
+use sps2_events::AppEvent;
+use std::collections::HashMap;
+use std::future::Future;
+use std::time::Instant;
+use tokio::sync::mpsc;
 
 use crate::binary::BinaryOperations;
 use crate::filesystem::FilesystemOperations;
@@ -43,14 +43,14 @@ impl PlatformContext {
         F: Future<Output = Result<T, PlatformError>>,
     {
         let start = Instant::now();
-        
+
         // TODO: Emit operation started event
-        
+
         let result = f.await;
         let _duration = start.elapsed();
-        
+
         // TODO: Emit operation completed/failed event based on result
-        
+
         result
     }
 }
@@ -79,8 +79,7 @@ impl Platform {
     /// Get the current platform (macOS in our case)
     pub fn current() -> Self {
         use crate::implementations::macos::{
-            binary::MacOSBinaryOperations,
-            filesystem::MacOSFilesystemOperations,
+            binary::MacOSBinaryOperations, filesystem::MacOSFilesystemOperations,
             process::MacOSProcessOperations,
         };
 
@@ -107,22 +106,38 @@ impl Platform {
     }
 
     /// Create a platform context with event emission
-    pub fn create_context(&self, event_sender: Option<mpsc::UnboundedSender<AppEvent>>) -> PlatformContext {
+    pub fn create_context(
+        &self,
+        event_sender: Option<mpsc::UnboundedSender<AppEvent>>,
+    ) -> PlatformContext {
         PlatformContext::new(event_sender)
     }
 
     /// Convenience method: Clone a file using APFS clonefile
-    pub async fn clone_file(&self, ctx: &PlatformContext, src: &std::path::Path, dst: &std::path::Path) -> Result<(), sps2_errors::PlatformError> {
+    pub async fn clone_file(
+        &self,
+        ctx: &PlatformContext,
+        src: &std::path::Path,
+        dst: &std::path::Path,
+    ) -> Result<(), sps2_errors::PlatformError> {
         self.filesystem().clone_file(ctx, src, dst).await
     }
 
     /// Convenience method: Get binary dependencies
-    pub async fn get_dependencies(&self, ctx: &PlatformContext, binary: &std::path::Path) -> Result<Vec<String>, sps2_errors::PlatformError> {
+    pub async fn get_dependencies(
+        &self,
+        ctx: &PlatformContext,
+        binary: &std::path::Path,
+    ) -> Result<Vec<String>, sps2_errors::PlatformError> {
         self.binary().get_dependencies(ctx, binary).await
     }
 
     /// Convenience method: Execute a command and get output
-    pub async fn execute_command(&self, ctx: &PlatformContext, cmd: crate::process::PlatformCommand) -> Result<crate::process::CommandOutput, sps2_errors::Error> {
+    pub async fn execute_command(
+        &self,
+        ctx: &PlatformContext,
+        cmd: crate::process::PlatformCommand,
+    ) -> Result<crate::process::CommandOutput, sps2_errors::Error> {
         self.process().execute_command(ctx, cmd).await
     }
 
@@ -132,20 +147,28 @@ impl Platform {
     }
 
     /// Convenience method: Sign a binary
-    pub async fn sign_binary(&self, ctx: &PlatformContext, binary: &std::path::Path, identity: Option<&str>) -> Result<(), sps2_errors::PlatformError> {
+    pub async fn sign_binary(
+        &self,
+        ctx: &PlatformContext,
+        binary: &std::path::Path,
+        identity: Option<&str>,
+    ) -> Result<(), sps2_errors::PlatformError> {
         self.binary().sign_binary(ctx, binary, identity).await
     }
 
     /// Convenience method: Atomically rename a file
-    pub async fn atomic_rename(&self, ctx: &PlatformContext, src: &std::path::Path, dst: &std::path::Path) -> Result<(), sps2_errors::PlatformError> {
+    pub async fn atomic_rename(
+        &self,
+        ctx: &PlatformContext,
+        src: &std::path::Path,
+        dst: &std::path::Path,
+    ) -> Result<(), sps2_errors::PlatformError> {
         self.filesystem().atomic_rename(ctx, src, dst).await
     }
 }
 
 /// Integration helpers for converting from other context types
 impl PlatformContext {
-
-
     /// Create a PlatformContext with basic package information (fallback when BuildContext is not available)
     pub fn with_package_info(
         event_sender: Option<mpsc::UnboundedSender<AppEvent>>,
@@ -157,7 +180,7 @@ impl PlatformContext {
         metadata.insert("package_name".to_string(), package_name.to_string());
         metadata.insert("package_version".to_string(), package_version.to_string());
         metadata.insert("package_arch".to_string(), arch.to_string());
-        
+
         Self {
             event_sender,
             operation_metadata: metadata,

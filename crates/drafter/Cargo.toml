@@ -38,3 +38,4 @@ sps2-errors = { path = "../errors" }
 sps2-hash = { path = "../hash" }
 sps2-events = { path = "../events" }
 sps2-types = { path = "../types" }
+sps2-platform = { path = "../platform" }

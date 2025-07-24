@@ -14,7 +14,7 @@ impl MacOSPlatform {
         use binary::MacOSBinaryOperations;
         use filesystem::MacOSFilesystemOperations;
         use process::MacOSProcessOperations;
-        
+
         crate::core::Platform::new(
             Box::new(MacOSBinaryOperations::new()),
             Box::new(MacOSFilesystemOperations::new()),

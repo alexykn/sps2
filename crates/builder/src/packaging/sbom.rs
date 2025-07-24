@@ -3,8 +3,8 @@
 use sps2_config::builder::SbomSettings;
 use sps2_errors::{BuildError, Error};
 use sps2_hash::Hash;
+use sps2_platform::{Platform, PlatformContext};
 use std::path::{Path, PathBuf};
-use tokio::process::Command;
 
 /// SBOM generator using Syft
 pub struct SbomGenerator {
@@ -87,10 +87,14 @@ impl SbomGenerator {
     ///
     /// Returns an error if Syft cannot be executed.
     pub async fn check_syft_available(&self) -> Result<bool, Error> {
-        let output = Command::new(&self.syft_path)
-            .arg("--version")
-            .output()
-            .await;
+        // Use platform abstraction for process execution
+        let platform = Platform::current();
+        let context = PlatformContext::new(None);
+
+        let mut cmd = platform.process().create_command(&self.syft_path);
+        cmd.arg("--version");
+
+        let output = platform.process().execute_command(&context, cmd).await;
 
         match output {
             Ok(output) => Ok(output.status.success()),
@@ -169,12 +173,19 @@ impl SbomGenerator {
             args.push(pattern.clone());
         }
 
-        let output = Command::new(&self.syft_path)
-            .args(&args)
-            .env("SYFT_SPDX_CREATION_INFO_CREATED", "2024-01-01T00:00:00Z")
-            .env("SOURCE_DATE_EPOCH", "1704067200")
-            .env("SYFT_DISABLE_METADATA_TIMESTAMP", "true")
-            .output()
+        // Use platform abstraction for process execution
+        let platform = Platform::current();
+        let context = PlatformContext::new(None);
+
+        let mut cmd = platform.process().create_command(&self.syft_path);
+        cmd.args(&args);
+        cmd.env("SYFT_SPDX_CREATION_INFO_CREATED", "2024-01-01T00:00:00Z");
+        cmd.env("SOURCE_DATE_EPOCH", "1704067200");
+        cmd.env("SYFT_DISABLE_METADATA_TIMESTAMP", "true");
+
+        let output = platform
+            .process()
+            .execute_command(&context, cmd)
             .await
             .map_err(|e| BuildError::SbomError {
                 message: format!("failed to run syft: {e}"),
@@ -215,12 +226,19 @@ impl SbomGenerator {
             args.push(pattern.clone());
         }
 
-        let output = Command::new(&self.syft_path)
-            .args(&args)
-            .env("SYFT_SPDX_CREATION_INFO_CREATED", "2024-01-01T00:00:00Z")
-            .env("SOURCE_DATE_EPOCH", "1704067200")
-            .env("SYFT_DISABLE_METADATA_TIMESTAMP", "true")
-            .output()
+        // Use platform abstraction for process execution
+        let platform = Platform::current();
+        let context = PlatformContext::new(None);
+
+        let mut cmd = platform.process().create_command(&self.syft_path);
+        cmd.args(&args);
+        cmd.env("SYFT_SPDX_CREATION_INFO_CREATED", "2024-01-01T00:00:00Z");
+        cmd.env("SOURCE_DATE_EPOCH", "1704067200");
+        cmd.env("SYFT_DISABLE_METADATA_TIMESTAMP", "true");
+
+        let output = platform
+            .process()
+            .execute_command(&context, cmd)
             .await
             .map_err(|e| BuildError::SbomError {
                 message: format!("failed to run syft: {e}"),

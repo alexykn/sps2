@@ -23,8 +23,10 @@ mod apfs {
     pub async fn clone_path(src: &Path, dst: &Path) -> Result<()> {
         let platform = Platform::current();
         let context = platform.create_context(None);
-        
-        platform.filesystem().clone_file(&context, src, dst)
+
+        platform
+            .filesystem()
+            .clone_file(&context, src, dst)
             .await
             .map_err(|platform_err| {
                 // Convert PlatformError back to StorageError for backward compatibility
@@ -34,7 +36,8 @@ mod apfs {
                     }
                     _ => StorageError::ApfsCloneFailed {
                         message: platform_err.to_string(),
-                    }.into()
+                    }
+                    .into(),
                 }
             })
     }
@@ -131,8 +134,10 @@ pub async fn atomic_rename(src: &Path, dst: &Path) -> Result<()> {
 pub async fn atomic_swap(path1: &Path, path2: &Path) -> Result<()> {
     let platform = Platform::current();
     let context = platform.create_context(None);
-    
-    platform.filesystem().atomic_swap(&context, path1, path2)
+
+    platform
+        .filesystem()
+        .atomic_swap(&context, path1, path2)
         .await
         .map_err(|platform_err| {
             // Convert PlatformError back to StorageError for backward compatibility
@@ -142,7 +147,8 @@ pub async fn atomic_swap(path1: &Path, path2: &Path) -> Result<()> {
                 }
                 _ => StorageError::AtomicRenameFailed {
                     message: platform_err.to_string(),
-                }.into()
+                }
+                .into(),
             }
         })
 }
@@ -247,8 +253,10 @@ pub async fn remove_dir_all(path: &Path) -> Result<()> {
 pub async fn hard_link(src: &Path, dst: &Path) -> Result<()> {
     let platform = Platform::current();
     let context = platform.create_context(None);
-    
-    platform.filesystem().hard_link(&context, src, dst)
+
+    platform
+        .filesystem()
+        .hard_link(&context, src, dst)
         .await
         .map_err(|platform_err| {
             // Convert PlatformError back to StorageError for backward compatibility
@@ -258,7 +266,8 @@ pub async fn hard_link(src: &Path, dst: &Path) -> Result<()> {
                 }
                 _ => StorageError::IoError {
                     message: platform_err.to_string(),
-                }.into()
+                }
+                .into(),
             }
         })
 }

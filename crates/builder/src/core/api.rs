@@ -7,6 +7,7 @@ use sha2::{Digest as Sha2Digest, Sha256};
 use sps2_errors::{BuildError, Error};
 use sps2_hash::Hash;
 use sps2_net::{NetClient, NetConfig};
+use sps2_platform::{Platform, PlatformContext};
 use sps2_types::RpathStyle;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -264,35 +265,37 @@ impl BuilderApi {
 
         let clone_path = self.working_dir.join(repo_name);
 
+        // Use platform abstraction for process execution
+        let platform = Platform::current();
+        let context = PlatformContext::new(None);
+
         // Clone using git command (better compatibility than git2 crate)
         let output = if ref_ == "HEAD" {
             // For HEAD, don't use --branch flag
-            tokio::process::Command::new("git")
-                .args([
-                    "clone",
-                    "--depth",
-                    "1",
-                    url,
-                    &clone_path.display().to_string(),
-                ])
-                .current_dir(&self.working_dir)
-                .output()
-                .await?
+            let mut cmd = platform.process().create_command("git");
+            cmd.args([
+                "clone",
+                "--depth",
+                "1",
+                url,
+                &clone_path.display().to_string(),
+            ]);
+            cmd.current_dir(&self.working_dir);
+            platform.process().execute_command(&context, cmd).await?
         } else {
             // For specific branches/tags, use --branch
-            tokio::process::Command::new("git")
-                .args([
-                    "clone",
-                    "--depth",
-                    "1",
-                    "--branch",
-                    ref_,
-                    url,
-                    &clone_path.display().to_string(),
-                ])
-                .current_dir(&self.working_dir)
-                .output()
-                .await?
+            let mut cmd = platform.process().create_command("git");
+            cmd.args([
+                "clone",
+                "--depth",
+                "1",
+                "--branch",
+                ref_,
+                url,
+                &clone_path.display().to_string(),
+            ]);
+            cmd.current_dir(&self.working_dir);
+            platform.process().execute_command(&context, cmd).await?
         };
 
         if !output.status.success() {
@@ -1205,7 +1208,7 @@ impl BuilderApi {
 
         // Create a custom RPathPatcher with the specified style
         let patcher = RPathPatcher::new(style);
-        
+
         // Create platform context for the patcher
         let platform_ctx = patcher.create_platform_context(None);
 
@@ -1229,8 +1232,9 @@ impl BuilderApi {
             {
                 let path = entry.into_path();
                 if RPathPatcher::should_process_file(&path) {
-                    let (_, was_fixed, _, error) =
-                        patcher.process_file(&platform_ctx, &path, lib_path, &build_paths).await;
+                    let (_, was_fixed, _, error) = patcher
+                        .process_file(&platform_ctx, &path, lib_path, &build_paths)
+                        .await;
                     if was_fixed {
                         patched_count += 1;
                     }
@@ -1244,8 +1248,9 @@ impl BuilderApi {
             for path_str in paths {
                 let path = staging_dir.join(path_str);
                 if path.exists() && RPathPatcher::should_process_file(&path) {
-                    let (_, was_fixed, _, error) =
-                        patcher.process_file(&platform_ctx, &path, lib_path, &build_paths).await;
+                    let (_, was_fixed, _, error) = patcher
+                        .process_file(&platform_ctx, &path, lib_path, &build_paths)
+                        .await;
                     if was_fixed {
                         patched_count += 1;
                     }

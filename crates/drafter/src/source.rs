@@ -3,6 +3,7 @@
 use crate::Result;
 use sps2_errors::BuildError;
 use sps2_events::EventEmitter;
+use sps2_platform::{Platform, PlatformContext};
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
@@ -95,18 +96,21 @@ async fn prepare_git(
 
     let repo_path = temp_dir.path().join(repo_name);
 
-    // Clone using git command for better compatibility
-    let output = tokio::process::Command::new("git")
-        .args([
-            "clone",
-            "--depth",
-            "1",
-            url,
-            &repo_path.display().to_string(),
-        ])
-        .current_dir(temp_dir.path())
-        .output()
-        .await?;
+    // Use platform abstraction for process execution
+    let platform = Platform::current();
+    let context = PlatformContext::new(event_tx.cloned());
+
+    let mut cmd = platform.process().create_command("git");
+    cmd.args([
+        "clone",
+        "--depth",
+        "1",
+        url,
+        &repo_path.display().to_string(),
+    ]);
+    cmd.current_dir(temp_dir.path());
+
+    let output = platform.process().execute_command(&context, cmd).await?;
 
     if !output.status.success() {
         return Err(BuildError::GitCloneFailed {
