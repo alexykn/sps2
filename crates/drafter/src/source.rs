@@ -3,7 +3,7 @@
 use crate::Result;
 use sps2_errors::BuildError;
 use sps2_events::EventEmitter;
-use sps2_platform::{Platform, PlatformContext};
+use sps2_platform::{PlatformContext, PlatformManager};
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
@@ -97,7 +97,7 @@ async fn prepare_git(
     let repo_path = temp_dir.path().join(repo_name);
 
     // Use platform abstraction for process execution
-    let platform = Platform::current();
+    let platform = PlatformManager::instance().platform();
     let context = PlatformContext::new(event_tx.cloned());
 
     let mut cmd = platform.process().create_command("git");

@@ -4,11 +4,11 @@ use crate::artifact_qa::{macho_utils, reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
 use sps2_events::{AppEvent, QaEvent};
-use sps2_platform::{Platform, PlatformContext};
+use sps2_platform::{PlatformContext, PlatformManager};
 use std::path::Path;
 
 pub struct CodeSigner {
-    platform: Platform,
+    platform: &'static sps2_platform::Platform,
 }
 
 impl CodeSigner {
@@ -16,7 +16,7 @@ impl CodeSigner {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            platform: Platform::current(),
+            platform: PlatformManager::instance().platform(),
         }
     }
 

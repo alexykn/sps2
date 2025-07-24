@@ -3,7 +3,7 @@
 use super::{core::BuildEnvironment, types::BuildCommandResult};
 use sps2_errors::{BuildError, Error};
 use sps2_events::{AppEvent, BuildEvent, EventEmitter};
-use sps2_platform::{Platform, PlatformContext};
+use sps2_platform::{PlatformContext, PlatformManager};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -34,7 +34,7 @@ impl BuildEnvironment {
         working_dir: Option<&Path>,
     ) -> Result<BuildCommandResult, Error> {
         // Use platform abstraction for process execution
-        let platform = Platform::current();
+        let platform = PlatformManager::instance().platform();
         let context = PlatformContext::new(self.context.event_sender.clone());
 
         let mut cmd = platform.process().create_command(program);
@@ -159,7 +159,7 @@ impl BuildEnvironment {
         };
 
         // Use platform abstraction for process execution
-        let platform = Platform::current();
+        let platform = PlatformManager::instance().platform();
         let context = PlatformContext::new(self.context.event_sender.clone());
 
         let mut cmd = platform.process().create_command(libtool_path);

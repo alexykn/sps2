@@ -3,7 +3,7 @@
 use sps2_config::builder::SbomSettings;
 use sps2_errors::{BuildError, Error};
 use sps2_hash::Hash;
-use sps2_platform::{Platform, PlatformContext};
+use sps2_platform::{PlatformContext, PlatformManager};
 use std::path::{Path, PathBuf};
 
 /// SBOM generator using Syft
@@ -88,7 +88,7 @@ impl SbomGenerator {
     /// Returns an error if Syft cannot be executed.
     pub async fn check_syft_available(&self) -> Result<bool, Error> {
         // Use platform abstraction for process execution
-        let platform = Platform::current();
+        let platform = PlatformManager::instance().platform();
         let context = PlatformContext::new(None);
 
         let mut cmd = platform.process().create_command(&self.syft_path);
@@ -174,7 +174,7 @@ impl SbomGenerator {
         }
 
         // Use platform abstraction for process execution
-        let platform = Platform::current();
+        let platform = PlatformManager::instance().platform();
         let context = PlatformContext::new(None);
 
         let mut cmd = platform.process().create_command(&self.syft_path);
@@ -227,7 +227,7 @@ impl SbomGenerator {
         }
 
         // Use platform abstraction for process execution
-        let platform = Platform::current();
+        let platform = PlatformManager::instance().platform();
         let context = PlatformContext::new(None);
 
         let mut cmd = platform.process().create_command(&self.syft_path);

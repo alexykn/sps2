@@ -114,8 +114,14 @@ impl ProcessOperations for MacOSProcessOperations {
     }
 
     async fn which(&self, program: &str) -> Result<PathBuf, Error> {
-        // Use the standard which command implementation
-        let output = Command::new("which")
+        // Use the platform manager's tool registry for which command
+        let platform_manager = crate::core::PlatformManager::instance();
+        let which_path = platform_manager
+            .get_tool("which")
+            .await
+            .map_err(Error::from)?;
+
+        let output = Command::new(&which_path)
             .arg(program)
             .output()
             .await

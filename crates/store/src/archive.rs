@@ -6,14 +6,14 @@ use async_compression::tokio::bufread::ZstdDecoder as AsyncZstdReader;
 use sps2_errors::{Error, PackageError, StorageError};
 use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent};
 use sps2_platform::core::PlatformContext;
-use sps2_platform::Platform;
+use sps2_platform::PlatformManager;
 use std::path::Path;
 use tar::Archive;
 use tokio::io::{AsyncWriteExt, BufReader};
 
 /// Create a platform context for filesystem operations
-fn create_platform_context() -> (Platform, PlatformContext) {
-    let platform = Platform::current();
+fn create_platform_context() -> (&'static sps2_platform::Platform, PlatformContext) {
+    let platform = PlatformManager::instance().platform();
     let context = platform.create_context(None);
     (platform, context)
 }

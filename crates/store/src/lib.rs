@@ -20,7 +20,7 @@ pub use package::StoredPackage;
 
 use sps2_errors::{Error, StorageError};
 use sps2_hash::Hash;
-use sps2_platform::Platform;
+use sps2_platform::PlatformManager;
 use sps2_root::set_compression;
 use std::path::{Path, PathBuf};
 
@@ -58,8 +58,11 @@ impl PackageStore {
     }
 
     /// Create a platform context for filesystem operations
-    fn create_platform_context() -> (Platform, sps2_platform::core::PlatformContext) {
-        let platform = Platform::current();
+    fn create_platform_context() -> (
+        &'static sps2_platform::Platform,
+        sps2_platform::core::PlatformContext,
+    ) {
+        let platform = PlatformManager::instance().platform();
         let context = platform.create_context(None);
         (platform, context)
     }

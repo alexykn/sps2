@@ -7,7 +7,7 @@ use sha2::{Digest as Sha2Digest, Sha256};
 use sps2_errors::{BuildError, Error};
 use sps2_hash::Hash;
 use sps2_net::{NetClient, NetConfig};
-use sps2_platform::{Platform, PlatformContext};
+use sps2_platform::{PlatformContext, PlatformManager};
 use sps2_types::RpathStyle;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -266,7 +266,7 @@ impl BuilderApi {
         let clone_path = self.working_dir.join(repo_name);
 
         // Use platform abstraction for process execution
-        let platform = Platform::current();
+        let platform = PlatformManager::instance().platform();
         let context = PlatformContext::new(None);
 
         // Clone using git command (better compatibility than git2 crate)

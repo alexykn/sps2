@@ -4,7 +4,7 @@ use sps2_errors::{Error, PackageError, StorageError};
 use sps2_hash::FileHashResult;
 use sps2_manifest::Manifest;
 use sps2_platform::core::PlatformContext;
-use sps2_platform::Platform;
+use sps2_platform::PlatformManager;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
@@ -30,7 +30,7 @@ impl StoredPackage {
 
         // Try to load file hashes if available
         let files_json_path = path.join("files.json");
-        let platform = Platform::current();
+        let platform = PlatformManager::instance().platform();
         let ctx = platform.create_context(None);
         let file_hashes = if platform.filesystem().exists(&ctx, &files_json_path).await {
             let content = fs::read_to_string(&files_json_path).await?;
@@ -47,8 +47,8 @@ impl StoredPackage {
     }
 
     /// Create a platform context for filesystem operations
-    fn create_platform_context() -> (Platform, PlatformContext) {
-        let platform = Platform::current();
+    fn create_platform_context() -> (&'static sps2_platform::Platform, PlatformContext) {
+        let platform = PlatformManager::instance().platform();
         let context = platform.create_context(None);
         (platform, context)
     }

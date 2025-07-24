@@ -10,7 +10,7 @@ use sps2_errors::{Error, PackageError};
 use sps2_events::{EventEmitter, EventSender};
 use sps2_index::{IndexManager, VersionEntry};
 use sps2_manifest::Manifest;
-use sps2_platform::{Platform, PlatformContext};
+use sps2_platform::{PlatformContext, PlatformManager};
 use sps2_types::package::PackageSpec;
 use sps2_types::version::VersionConstraint;
 use std::collections::{HashMap, HashSet};
@@ -524,7 +524,7 @@ impl Resolver {
         let tar_path = temp_dir.join("package.tar");
 
         // Use platform abstraction for process execution
-        let platform = Platform::current();
+        let platform = PlatformManager::instance().platform();
         let context = PlatformContext::new(None);
 
         let mut zstd_cmd = platform.process().create_command("zstd");
@@ -562,7 +562,7 @@ impl Resolver {
     /// Extract manifest.toml content from tar archive
     async fn extract_manifest_from_tar(tar_path: &Path) -> Result<String, Error> {
         // Use platform abstraction for process execution
-        let platform = Platform::current();
+        let platform = PlatformManager::instance().platform();
         let context = PlatformContext::new(None);
 
         // Use tar to extract just the manifest.toml file and output to stdout

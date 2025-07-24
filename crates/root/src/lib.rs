@@ -7,7 +7,7 @@
 //! atomic renames, clonefile support, and directory management.
 
 use sps2_errors::StorageError;
-use sps2_platform::Platform;
+use sps2_platform::PlatformManager;
 use std::path::Path;
 use tokio::fs;
 
@@ -17,11 +17,12 @@ type Result<T> = std::result::Result<T, sps2_errors::Error>;
 /// APFS clonefile support
 #[cfg(target_os = "macos")]
 mod apfs {
-    use super::{Path, Platform, Result, StorageError};
+    use super::{Path, Result, StorageError};
+    use sps2_platform::PlatformManager;
 
     /// Clone a file or directory using APFS clonefile with security flags
     pub async fn clone_path(src: &Path, dst: &Path) -> Result<()> {
-        let platform = Platform::current();
+        let platform = PlatformManager::instance().platform();
         let context = platform.create_context(None);
 
         // Use clone_directory for directories, clone_file for files
@@ -66,7 +67,7 @@ mod apfs {
 /// - The atomic rename operation fails (permissions, file not found, etc.)
 /// - The blocking task panics
 pub async fn atomic_rename(src: &Path, dst: &Path) -> Result<()> {
-    let platform = Platform::current();
+    let platform = PlatformManager::instance().platform();
     let context = platform.create_context(None);
 
     platform
@@ -99,7 +100,7 @@ pub async fn atomic_rename(src: &Path, dst: &Path) -> Result<()> {
 /// - Either path doesn't exist
 /// - The atomic swap operation fails
 pub async fn atomic_swap(path1: &Path, path2: &Path) -> Result<()> {
-    let platform = Platform::current();
+    let platform = PlatformManager::instance().platform();
     let context = platform.create_context(None);
 
     platform
@@ -179,7 +180,7 @@ pub async fn copy_directory(src: &Path, dst: &Path) -> Result<()> {
 /// - Permission is denied
 /// - Any I/O operation fails during directory creation
 pub async fn create_dir_all(path: &Path) -> Result<()> {
-    let platform = Platform::current();
+    let platform = PlatformManager::instance().platform();
     let context = platform.create_context(None);
 
     platform
@@ -207,7 +208,7 @@ pub async fn create_dir_all(path: &Path) -> Result<()> {
 /// Returns an error if:
 /// - The directory removal operation fails (permissions, non-empty directory, etc.)
 pub async fn remove_dir_all(path: &Path) -> Result<()> {
-    let platform = Platform::current();
+    let platform = PlatformManager::instance().platform();
     let context = platform.create_context(None);
 
     platform
@@ -237,7 +238,7 @@ pub async fn remove_dir_all(path: &Path) -> Result<()> {
 /// - The destination already exists
 /// - The hard link operation fails (cross-device link, permissions, etc.)
 pub async fn hard_link(src: &Path, dst: &Path) -> Result<()> {
-    let platform = Platform::current();
+    let platform = PlatformManager::instance().platform();
     let context = platform.create_context(None);
 
     platform
@@ -308,7 +309,7 @@ pub async fn rename(src: &Path, dst: &Path) -> Result<()> {
 
 /// Check if a path exists
 pub async fn exists(path: &Path) -> bool {
-    let platform = Platform::current();
+    let platform = PlatformManager::instance().platform();
     let context = platform.create_context(None);
 
     platform.filesystem().exists(&context, path).await
@@ -323,7 +324,7 @@ pub async fn exists(path: &Path) -> bool {
 /// - Reading directory contents fails
 /// - Any I/O operation fails during recursive directory traversal
 pub async fn size(path: &Path) -> Result<u64> {
-    let platform = Platform::current();
+    let platform = PlatformManager::instance().platform();
     let context = platform.create_context(None);
 
     platform
@@ -388,7 +389,7 @@ pub fn set_compression(_path: &Path) -> Result<()> {
 /// Returns an error if:
 /// - The file removal operation fails (permissions, file not found, etc.)
 pub async fn remove_file(path: &Path) -> Result<()> {
-    let platform = Platform::current();
+    let platform = PlatformManager::instance().platform();
     let context = platform.create_context(None);
 
     platform

@@ -124,4 +124,32 @@ pub enum PlatformEvent {
         /// Additional details about the capability
         details: HashMap<String, String>,
     },
+
+    /// Tool discovery started
+    ToolDiscoveryStarted {
+        /// Name of the tool being discovered
+        tool: String,
+        /// Paths being searched for the tool
+        search_paths: Vec<std::path::PathBuf>,
+    },
+
+    /// Tool discovered successfully
+    ToolDiscovered {
+        /// Name of the tool that was discovered
+        tool: String,
+        /// Full path to the discovered tool
+        path: std::path::PathBuf,
+        /// Tool version if detectable
+        version: Option<String>,
+    },
+
+    /// Tool not found after searching
+    ToolNotFound {
+        /// Name of the tool that was not found
+        tool: String,
+        /// Paths that were searched
+        searched_paths: Vec<std::path::PathBuf>,
+        /// Installation suggestion for the tool
+        suggestion: String,
+    },
 }

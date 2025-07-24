@@ -4,7 +4,7 @@ use crate::types::HealingContext;
 use sps2_errors::{Error, OpsError};
 use sps2_events::{EventEmitter, EventSender};
 use sps2_hash::Hash;
-use sps2_platform::Platform;
+use sps2_platform::PlatformManager;
 use sps2_state::queries;
 use sps2_store::StoredPackage;
 
@@ -180,7 +180,7 @@ async fn restore_missing_file_impl(
             })?;
     } else {
         // Regular file - use platform abstraction for cross-platform support
-        let platform = Platform::current();
+        let platform = PlatformManager::instance().platform();
         let ctx = platform.create_context(None);
 
         // Check if source is a file or directory and use appropriate platform method
@@ -383,7 +383,7 @@ pub async fn heal_corrupted_file(
             })?;
     } else {
         // Regular file - use platform abstraction for cross-platform support
-        let platform = Platform::current();
+        let platform = PlatformManager::instance().platform();
         let ctx = platform.create_context(None);
 
         // Check if source is a file or directory and use appropriate platform method

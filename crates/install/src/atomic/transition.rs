@@ -2,7 +2,7 @@
 
 use sps2_events::EventSender;
 use sps2_hash::FileHashResult;
-use sps2_platform::{core::PlatformContext, Platform};
+use sps2_platform::{core::PlatformContext, PlatformManager};
 use sps2_state::{FileReference, PackageRef, StateManager};
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -64,8 +64,8 @@ impl StateTransition {
     }
 
     /// Create a platform context for filesystem operations
-    fn create_platform_context(&self) -> (Platform, PlatformContext) {
-        let platform = Platform::current();
+    fn create_platform_context(&self) -> (&'static sps2_platform::Platform, PlatformContext) {
+        let platform = PlatformManager::instance().platform();
         let context = platform.create_context(None);
         (platform, context)
     }

@@ -51,6 +51,9 @@ impl SystemSetup {
         self.init_resolver().await?;
         self.init_builder().await?;
 
+        // Initialize platform cache for optimized tool discovery
+        self.init_platform_cache().await?;
+
         // Perform startup maintenance
         self.startup_maintenance().await?;
 
@@ -226,6 +229,21 @@ impl SystemSetup {
         let builder = Builder::new().with_net(net);
 
         self.builder = Some(builder);
+        Ok(())
+    }
+
+    /// Initialize platform cache
+    async fn init_platform_cache(&mut self) -> Result<(), CliError> {
+        debug!("Initializing platform cache");
+
+        // Initialize the platform manager's cache from persistent storage
+        let platform_manager = sps2_platform::core::PlatformManager::instance();
+        platform_manager
+            .initialize_cache()
+            .await
+            .map_err(|e| CliError::Setup(format!("Failed to initialize platform cache: {e}")))?;
+
+        debug!("Platform cache initialized successfully");
         Ok(())
     }
 

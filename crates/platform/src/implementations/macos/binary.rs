@@ -46,9 +46,11 @@ impl BinaryOperations for MacOSBinaryOperations {
         }))
         .await;
 
-        // Use the proven otool -D implementation from RPathPatcher
+        // Use tool registry to get otool path
         let result: Result<Option<String>, PlatformError> = async {
-            let out = Command::new("otool")
+            let otool_path = ctx.platform_manager().get_tool("otool").await?;
+
+            let out = Command::new(&otool_path)
                 .args(["-D", &binary.to_string_lossy()])
                 .output()
                 .await
@@ -120,9 +122,12 @@ impl BinaryOperations for MacOSBinaryOperations {
         }))
         .await;
 
-        // Use the proven install_name_tool implementation from RPathPatcher
+        // Use tool registry to get install_name_tool path
         let result = async {
-            let output = Command::new("install_name_tool")
+            let install_name_tool_path =
+                ctx.platform_manager().get_tool("install_name_tool").await?;
+
+            let output = Command::new(&install_name_tool_path)
                 .args(["-id", name, &binary.to_string_lossy()])
                 .output()
                 .await
@@ -199,9 +204,11 @@ impl BinaryOperations for MacOSBinaryOperations {
         }))
         .await;
 
-        // Use the proven otool -L implementation from RPathPatcher
+        // Use tool registry to get otool path
         let result = async {
-            let output = Command::new("otool")
+            let otool_path = ctx.platform_manager().get_tool("otool").await?;
+
+            let output = Command::new(&otool_path)
                 .args(["-L", &binary.to_string_lossy()])
                 .output()
                 .await
@@ -286,7 +293,9 @@ impl BinaryOperations for MacOSBinaryOperations {
 
         // Use the proven install_name_tool -change implementation from RPathPatcher
         let result = async {
-            let change_output = Command::new("install_name_tool")
+            let install_name_tool_path =
+                ctx.platform_manager().get_tool("install_name_tool").await?;
+            let change_output = Command::new(&install_name_tool_path)
                 .args(["-change", old, new, &binary.to_string_lossy()])
                 .output()
                 .await
@@ -356,7 +365,9 @@ impl BinaryOperations for MacOSBinaryOperations {
 
         // Use the proven install_name_tool -add_rpath implementation from RPathPatcher
         let result = async {
-            let output = Command::new("install_name_tool")
+            let install_name_tool_path =
+                ctx.platform_manager().get_tool("install_name_tool").await?;
+            let output = Command::new(&install_name_tool_path)
                 .args(["-add_rpath", rpath, &binary.to_string_lossy()])
                 .output()
                 .await
@@ -426,7 +437,9 @@ impl BinaryOperations for MacOSBinaryOperations {
 
         // Use the proven install_name_tool -delete_rpath implementation from RPathPatcher
         let result = async {
-            let output = Command::new("install_name_tool")
+            let install_name_tool_path =
+                ctx.platform_manager().get_tool("install_name_tool").await?;
+            let output = Command::new(&install_name_tool_path)
                 .args(["-delete_rpath", rpath, &binary.to_string_lossy()])
                 .output()
                 .await
@@ -495,7 +508,8 @@ impl BinaryOperations for MacOSBinaryOperations {
 
         // Use the proven otool -l implementation from RPathPatcher
         let result = async {
-            let out = Command::new("otool")
+            let otool_path = ctx.platform_manager().get_tool("otool").await?;
+            let out = Command::new(&otool_path)
                 .args(["-l", &binary.to_string_lossy()])
                 .output()
                 .await
@@ -580,7 +594,8 @@ impl BinaryOperations for MacOSBinaryOperations {
 
         // Use the proven codesign verification implementation from CodeSigner
         let result: Result<bool, PlatformError> = async {
-            let check = Command::new("codesign")
+            let codesign_path = ctx.platform_manager().get_tool("codesign").await?;
+            let check = Command::new(&codesign_path)
                 .args(["-vvv", &binary.to_string_lossy()])
                 .output()
                 .await
@@ -642,7 +657,8 @@ impl BinaryOperations for MacOSBinaryOperations {
 
         // Use the proven codesign implementation from CodeSigner
         let result = async {
-            let output = Command::new("codesign")
+            let codesign_path = ctx.platform_manager().get_tool("codesign").await?;
+            let output = Command::new(&codesign_path)
                 .args(["-f", "-s", identity_str, &binary.to_string_lossy()])
                 .output()
                 .await

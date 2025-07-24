@@ -6,7 +6,7 @@
 use sps2_errors::{Error, StorageError};
 use sps2_hash::{calculate_file_storage_path, FileHashResult, FileHasher, FileHasherConfig, Hash};
 use sps2_platform::core::PlatformContext;
-use sps2_platform::Platform;
+use sps2_platform::PlatformManager;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use uuid::Uuid;
@@ -34,8 +34,8 @@ impl FileStore {
     }
 
     /// Create a platform context for filesystem operations
-    fn create_platform_context() -> (Platform, PlatformContext) {
-        let platform = Platform::current();
+    fn create_platform_context() -> (&'static sps2_platform::Platform, PlatformContext) {
+        let platform = PlatformManager::instance().platform();
         let context = platform.create_context(None);
         (platform, context)
     }

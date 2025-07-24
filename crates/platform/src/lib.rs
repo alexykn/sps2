@@ -14,7 +14,9 @@ pub mod filesystem;
 pub mod implementations;
 pub mod process;
 
-pub use core::{Platform, PlatformContext};
+pub use core::{
+    Platform, PlatformCapabilities, PlatformContext, PlatformManager, ToolInfo, ToolRegistry,
+};
 pub use implementations::macos::MacOSPlatform;
 
 /// Re-export commonly used types

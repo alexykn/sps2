@@ -4,7 +4,7 @@ use crate::artifact_qa::{macho_utils, reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
 use sps2_events::{AppEvent, GeneralEvent, QaEvent};
-use sps2_platform::{Platform, PlatformContext};
+use sps2_platform::{PlatformContext, PlatformManager};
 use sps2_types::RpathStyle;
 
 use ignore::WalkBuilder;
@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 pub struct RPathPatcher {
     style: RpathStyle,
-    platform: Platform,
+    platform: &'static sps2_platform::Platform,
 }
 
 impl RPathPatcher {
@@ -24,7 +24,7 @@ impl RPathPatcher {
     pub fn new(style: RpathStyle) -> Self {
         Self {
             style,
-            platform: Platform::current(),
+            platform: PlatformManager::instance().platform(),
         }
     }
 

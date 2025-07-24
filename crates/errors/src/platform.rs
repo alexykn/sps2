@@ -37,6 +37,25 @@ pub enum PlatformError {
 
     #[error("permission denied: {operation} - {message}")]
     PermissionDenied { operation: String, message: String },
+
+    #[error("tool '{tool}' not found. {suggestion}")]
+    ToolNotFound {
+        tool: String,
+        suggestion: String,
+        searched_paths: Vec<std::path::PathBuf>,
+    },
+
+    #[error("multiple tools not found: {}", .tools.join(", "))]
+    MultipleToolsNotFound {
+        tools: Vec<String>,
+        suggestions: Vec<String>,
+    },
+
+    #[error("command failed: {command} - {error}")]
+    CommandFailed { command: String, error: String },
+
+    #[error("configuration error: {message}")]
+    ConfigError { message: String },
 }
 
 impl From<PlatformError> for BuildError {

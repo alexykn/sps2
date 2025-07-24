@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::{InstallContext, InstallResult, PreparedPackage, StagingManager};
 use sps2_errors::{Error, InstallError};
 use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent, StateEvent};
-use sps2_platform::{core::PlatformContext, Platform};
+use sps2_platform::{core::PlatformContext, PlatformManager};
 
 use sps2_resolver::{PackageId, ResolvedNode};
 use sps2_state::{PackageRef, StateManager};
@@ -46,8 +46,8 @@ pub struct AtomicInstaller {
 
 impl AtomicInstaller {
     /// Create a platform context for filesystem operations
-    fn create_platform_context(&self) -> (Platform, PlatformContext) {
-        let platform = Platform::current();
+    fn create_platform_context(&self) -> (&'static sps2_platform::Platform, PlatformContext) {
+        let platform = PlatformManager::instance().platform();
         let context = platform.create_context(None);
         (platform, context)
     }
