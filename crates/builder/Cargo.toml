@@ -20,6 +20,7 @@ sps2-net = { path = "../net" }
 sps2-install = { path = "../install" }
 sps2-state = { path = "../state" }
 sps2-config = { path = "../config" }
+sps2-platform = { path = "../platform" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["fs", "process"] }

@@ -4,6 +4,7 @@ use crate::artifact_qa::{macho_utils, reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
 use sps2_events::{AppEvent, GeneralEvent, QaEvent};
+use sps2_platform::{Platform, PlatformContext};
 use sps2_types::RpathStyle;
 
 use ignore::WalkBuilder;
@@ -13,6 +14,7 @@ use tokio::process::Command;
 
 pub struct RPathPatcher {
     style: RpathStyle,
+    platform: Platform,
 }
 
 impl RPathPatcher {
@@ -21,7 +23,15 @@ impl RPathPatcher {
     /// The patcher will fix install names and RPATHs according to the given style.
     #[must_use]
     pub fn new(style: RpathStyle) -> Self {
-        Self { style }
+        Self { 
+            style,
+            platform: Platform::current(),
+        }
+    }
+
+    /// Create a platform context for this patcher
+    pub fn create_platform_context(&self, event_sender: Option<tokio::sync::mpsc::UnboundedSender<sps2_events::AppEvent>>) -> PlatformContext {
+        self.platform.create_context(event_sender)
     }
 
     /// Check if a file is a dylib based on its name pattern
@@ -58,27 +68,15 @@ impl RPathPatcher {
         macho_utils::is_macho_file(path)
     }
 
-    /// Get the install name of a Mach-O file using otool -D
-    async fn get_install_name(path: &Path) -> Option<String> {
-        let out = Command::new("otool")
-            .args(["-D", &path.to_string_lossy()])
-            .output()
-            .await
-            .ok()?;
-
-        if !out.status.success() {
-            return None;
-        }
-
-        let text = String::from_utf8_lossy(&out.stdout);
-        // otool -D outputs:
-        // /path/to/file:
-        // install_name
-        let lines: Vec<&str> = text.lines().collect();
-        if lines.len() >= 2 {
-            Some(lines[1].trim().to_string())
-        } else {
-            None
+    /// Get the install name of a Mach-O file using platform abstraction
+    async fn get_install_name(
+        &self,
+        ctx: &PlatformContext,
+        path: &Path,
+    ) -> Option<String> {
+        match self.platform.binary().get_install_name(ctx, path).await {
+            Ok(name) => name,
+            Err(_) => None,
         }
     }
 
@@ -116,36 +114,30 @@ impl RPathPatcher {
     }
 
     /// Fix the install name of a dylib to use absolute path
-    async fn fix_install_name(path: &Path, new_install_name: &str) -> Result<bool, String> {
-        let output = Command::new("install_name_tool")
-            .args(["-id", new_install_name, &path.to_string_lossy()])
-            .output()
-            .await
-            .map_err(|e| format!("Failed to run install_name_tool: {e}"))?;
-
-        if output.status.success() {
-            Ok(true)
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-
-            // Check if this is a headerpad error
-            if stderr.contains("larger updated load commands do not fit") {
-                // This is a headerpad error - the binary needs more space in its header
-                // We'll return a special error message that the caller can handle
-                Err(format!("HEADERPAD_ERROR: {}", path.display()))
-            } else {
-                // Return generic error details for warning event
-                Err(format!(
-                    "install_name_tool failed on {}: {}",
-                    path.display(),
-                    stderr.trim()
-                ))
+    async fn fix_install_name(
+        &self,
+        ctx: &PlatformContext,
+        path: &Path,
+        new_install_name: &str,
+    ) -> Result<bool, String> {
+        match self.platform.binary().set_install_name(ctx, path, new_install_name).await {
+            Ok(()) => Ok(true),
+            Err(platform_err) => {
+                let err_msg = platform_err.to_string();
+                // Check if this is a headerpad error
+                if err_msg.contains("larger updated load commands do not fit") {
+                    Err(format!("HEADERPAD_ERROR: {}", path.display()))
+                } else {
+                    Err(format!("install_name_tool failed on {}: {}", path.display(), err_msg))
+                }
             }
         }
     }
 
     /// Find all executables that link to a dylib and update their references
     async fn update_dylib_references(
+        &self,
+        ctx: &PlatformContext,
         staging_dir: &Path,
         old_dylib_name: &str,
         new_dylib_path: &str,
@@ -171,32 +163,20 @@ impl RPathPatcher {
             }
 
             // Check if this file references the old dylib
-            let output = Command::new("otool")
-                .args(["-L", &path.to_string_lossy()])
-                .output()
-                .await
-                .map_err(|e| format!("Failed to run otool: {e}"))?;
+            let deps = match self.platform.binary().get_dependencies(ctx, &path).await {
+                Ok(deps) => deps,
+                Err(_) => continue,
+            };
 
-            if !output.status.success() {
-                continue;
-            }
-
-            let deps = String::from_utf8_lossy(&output.stdout);
-            if deps.contains(old_dylib_name) {
+            if deps.iter().any(|dep| dep.contains(old_dylib_name)) {
                 // This file references our dylib - update the reference
-                let change_output = Command::new("install_name_tool")
-                    .args([
-                        "-change",
-                        old_dylib_name,
-                        new_dylib_path,
-                        &path.to_string_lossy(),
-                    ])
-                    .output()
-                    .await
-                    .map_err(|e| format!("Failed to run install_name_tool: {e}"))?;
-
-                if change_output.status.success() {
-                    updated_files.push(path);
+                match self.platform.binary().change_dependency(ctx, &path, old_dylib_name, new_dylib_path).await {
+                    Ok(()) => {
+                        updated_files.push(path);
+                    }
+                    Err(_) => {
+                        // Silently continue on error
+                    }
                 }
             }
         }
@@ -207,6 +187,7 @@ impl RPathPatcher {
     /// Fix dependencies that use @rpath by converting them to absolute paths (Absolute style)
     async fn fix_rpath_dependencies(
         &self,
+        ctx: &PlatformContext,
         path: &Path,
         lib_path: &str,
     ) -> Result<Vec<(String, String)>, String> {
@@ -217,42 +198,27 @@ impl RPathPatcher {
             return Ok(fixed_deps);
         }
 
-        // Get all dependencies using otool
-        let output = Command::new("otool")
-            .args(["-L", &path.to_string_lossy()])
-            .output()
-            .await
-            .map_err(|e| format!("Failed to run otool: {e}"))?;
+        // Get all dependencies using platform abstraction
+        let deps = match self.platform.binary().get_dependencies(ctx, path).await {
+            Ok(deps) => deps,
+            Err(_) => return Ok(fixed_deps),
+        };
 
-        if !output.status.success() {
-            return Ok(fixed_deps);
-        }
-
-        let deps = String::from_utf8_lossy(&output.stdout);
-
-        // Process each dependency line
-        for line in deps.lines().skip(1) {
-            // Skip the first line (file name)
-            let dep = line.trim();
+        // Process each dependency
+        for dep in deps {
             if dep.starts_with("@rpath/") {
                 // Extract the library name after @rpath/
-                let lib_name = &dep[7..dep.find(" (").unwrap_or(dep.len())];
+                let lib_name = &dep[7..];
                 let new_path = format!("{lib_path}/{lib_name}");
 
                 // Update the dependency reference
-                let change_output = Command::new("install_name_tool")
-                    .args([
-                        "-change",
-                        dep.split_whitespace().next().unwrap(),
-                        &new_path,
-                        &path.to_string_lossy(),
-                    ])
-                    .output()
-                    .await
-                    .map_err(|e| format!("Failed to run install_name_tool: {e}"))?;
-
-                if change_output.status.success() {
-                    fixed_deps.push((dep.to_string(), new_path));
+                match self.platform.binary().change_dependency(ctx, path, &dep, &new_path).await {
+                    Ok(()) => {
+                        fixed_deps.push((dep, new_path));
+                    }
+                    Err(_) => {
+                        // Continue on error - some dependencies might fail to update
+                    }
                 }
             }
         }
@@ -263,6 +229,7 @@ impl RPathPatcher {
     /// Process a single file for RPATH and install name fixes
     pub async fn process_file(
         &self,
+        ctx: &PlatformContext,
         path: &Path,
         lib_path: &str,
         build_paths: &[String],
@@ -272,61 +239,54 @@ impl RPathPatcher {
         let mut need_good = false;
         let mut install_name_was_fixed = false;
 
-        // Use otool to inspect
-        let out = Command::new("otool").args(["-l", &path_s]).output().await;
-        let Ok(out) = out else {
-            return (false, false, bad_rpaths, None);
+        // Get RPATH entries using platform abstraction
+        let rpath_entries = match self.platform.binary().get_rpath_entries(ctx, path).await {
+            Ok(entries) => entries,
+            Err(_) => return (false, false, bad_rpaths, None),
         };
-        if !out.status.success() {
-            return (false, false, bad_rpaths, None);
-        }
-        let text = String::from_utf8_lossy(&out.stdout);
 
-        // gather bad rpaths
-        let mut lines = text.lines();
-        while let Some(l) = lines.next() {
-            if l.contains("LC_RPATH") {
-                let _ = lines.next(); // skip cmdsize
-                if let Some(p) = lines.next() {
-                    if let Some(idx) = p.find("path ") {
-                        let r = &p[idx + 5..p.find(" (").unwrap_or(p.len())];
-                        if r == lib_path {
-                            need_good = false;
-                        } else if build_paths.iter().any(|bp| r.contains(bp)) {
-                            // Flag any build paths as bad
-                            bad_rpaths.push(r.to_owned());
-                        }
-                    }
-                }
-            } else if l.contains("@rpath/") {
+        // Check RPATH entries and gather bad ones
+        let mut has_good_rpath = false;
+        for rpath in &rpath_entries {
+            if rpath == lib_path {
+                has_good_rpath = true;
+            } else if build_paths.iter().any(|bp| rpath.contains(bp)) {
+                // Flag any build paths as bad
+                bad_rpaths.push(rpath.clone());
+            }
+        }
+
+        // Check if binary needs @rpath by examining dependencies
+        let deps = match self.platform.binary().get_dependencies(ctx, path).await {
+            Ok(deps) => deps,
+            Err(_) => return (false, false, bad_rpaths, None),
+        };
+        
+        for dep in &deps {
+            if dep.contains("@rpath/") {
                 need_good = true;
+                break;
             }
         }
 
         // Fix RPATHs
         // Only add RPATH for Modern style (for Absolute style, we convert @rpath to absolute paths)
-        if need_good && self.style == RpathStyle::Modern {
-            let _ = Command::new("install_name_tool")
-                .args(["-add_rpath", lib_path, &path_s])
-                .output()
-                .await;
+        if need_good && self.style == RpathStyle::Modern && !has_good_rpath {
+            let _ = self.platform.binary().add_rpath(ctx, path, lib_path).await;
         }
         for bad in &bad_rpaths {
-            let _ = Command::new("install_name_tool")
-                .args(["-delete_rpath", bad, &path_s])
-                .output()
-                .await;
+            let _ = self.platform.binary().delete_rpath(ctx, path, bad).await;
         }
 
         // Check and fix install names for dylibs
         if Self::is_dylib(path) {
-            if let Some(install_name) = Self::get_install_name(path).await {
+            if let Some(install_name) = self.get_install_name(ctx, path).await {
                 if self.needs_install_name_fix(&install_name, path) {
                     // Fix the install name to absolute path
                     let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                     let new_install_name = format!("{lib_path}/{file_name}");
 
-                    match Self::fix_install_name(path, &new_install_name).await {
+                    match self.fix_install_name(ctx, path, &new_install_name).await {
                         Ok(true) => install_name_was_fixed = true,
                         Ok(false) => {} // Should not happen with current implementation
                         Err(msg) => {
@@ -345,7 +305,7 @@ impl RPathPatcher {
 
         // Fix @rpath dependencies if using Absolute style
         if self.style == RpathStyle::Absolute {
-            match self.fix_rpath_dependencies(path, lib_path).await {
+            match self.fix_rpath_dependencies(ctx, path, lib_path).await {
                 Ok(fixed_deps) => {
                     if !fixed_deps.is_empty() {
                         // Dependencies were fixed
@@ -375,10 +335,11 @@ impl RPathPatcher {
     /// Handle headerpad errors by updating references in dependent binaries
     async fn handle_headerpad_errors(
         patcher: &RPathPatcher,
+        platform_ctx: &PlatformContext,
         headerpad_errors: &[PathBuf],
         lib_path: &str,
         staging_dir: &Path,
-        ctx: &BuildContext,
+        build_ctx: &BuildContext,
     ) -> (Vec<PathBuf>, Vec<String>) {
         let mut fixed_files = Vec::new();
         let mut warnings = Vec::new();
@@ -388,7 +349,7 @@ impl RPathPatcher {
         }
 
         crate::utils::events::send_event(
-            ctx,
+            build_ctx,
             AppEvent::Qa(QaEvent::FindingReported {
                 check_type: "patcher".to_string(),
                 severity: "warning".to_string(),
@@ -404,13 +365,14 @@ impl RPathPatcher {
         for dylib_path in headerpad_errors {
             if let Some(file_name) = dylib_path.file_name().and_then(|n| n.to_str()) {
                 // Get the current install name that may need fixing
-                if let Some(current_install_name) = Self::get_install_name(dylib_path).await {
+                if let Some(current_install_name) = patcher.get_install_name(platform_ctx, dylib_path).await {
                     if patcher.needs_install_name_fix(&current_install_name, dylib_path) {
                         // The desired new install name
                         let new_install_name = format!("{lib_path}/{file_name}");
 
                         // Update all binaries that reference this dylib
-                        match Self::update_dylib_references(
+                        match patcher.update_dylib_references(
+                            platform_ctx,
                             staging_dir,
                             &current_install_name,
                             &new_install_name,
@@ -420,7 +382,7 @@ impl RPathPatcher {
                             Ok(updated_files) => {
                                 if !updated_files.is_empty() {
                                     crate::utils::events::send_event(
-                                        ctx,
+                                        build_ctx,
                                         AppEvent::Qa(QaEvent::CheckCompleted {
                                             check_type: "patcher".to_string(),
                                             check_name: "rpath_headerpad_workaround".to_string(),
@@ -453,7 +415,8 @@ impl RPathPatcher {
         files: Vec<PathBuf>,
         lib_path: &str,
         build_paths: &[String],
-        ctx: &BuildContext,
+        platform_ctx: &PlatformContext,
+        build_ctx: &BuildContext,
     ) -> (Vec<PathBuf>, usize, usize, Vec<PathBuf>, Vec<String>) {
         let mut changed = Vec::new();
         let mut install_name_fixes = 0;
@@ -463,14 +426,14 @@ impl RPathPatcher {
 
         for path in files {
             let (rpath_changed, name_was_fixed, _, error_msg) =
-                self.process_file(&path, lib_path, build_paths).await;
+                self.process_file(platform_ctx, &path, lib_path, build_paths).await;
 
             if let Some(msg) = &error_msg {
                 if msg.starts_with("HEADERPAD_ERROR:") {
                     headerpad_errors.push(path.clone());
                 } else {
                     crate::utils::events::send_event(
-                        ctx,
+                        build_ctx,
                         AppEvent::General(GeneralEvent::warning("Install name fix failed")),
                     );
                     warnings.push(format!("{}: install name fix failed", path.display()));
@@ -508,6 +471,10 @@ impl crate::artifact_qa::traits::Action for RPathPatcher {
         findings: Option<&crate::artifact_qa::diagnostics::DiagnosticCollector>,
     ) -> Result<Report, Error> {
         let patcher = Self::new(RpathStyle::Modern);
+        
+        // Create platform context from build context
+        let platform_ctx = patcher.platform.create_context(ctx.event_sender.clone());
+        
         let mut files_to_process = HashSet::new();
 
         // Collect files from validator findings
@@ -542,12 +509,13 @@ impl crate::artifact_qa::traits::Action for RPathPatcher {
         // Process all files
         let (mut changed, rpath_fixes, install_name_fixes, headerpad_errors, mut warnings) =
             patcher
-                .process_files(files, lib_path, &build_paths, ctx)
+                .process_files(files, lib_path, &build_paths, &platform_ctx, ctx)
                 .await;
 
         // Handle headerpad errors
         let (headerpad_fixed, headerpad_warnings) = Self::handle_headerpad_errors(
             &patcher,
+            &platform_ctx,
             &headerpad_errors,
             lib_path,
             env.staging_dir(),

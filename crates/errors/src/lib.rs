@@ -14,6 +14,7 @@ pub mod install;
 pub mod network;
 pub mod ops;
 pub mod package;
+pub mod platform;
 pub mod state;
 pub mod storage;
 pub mod version;
@@ -29,6 +30,7 @@ pub use install::InstallError;
 pub use network::NetworkError;
 pub use ops::OpsError;
 pub use package::PackageError;
+pub use platform::PlatformError;
 pub use state::StateError;
 pub use storage::StorageError;
 pub use version::VersionError;
@@ -71,6 +73,9 @@ pub enum Error {
 
     #[error("guard error: {0}")]
     Guard(#[from] GuardError),
+
+    #[error("platform error: {0}")]
+    Platform(#[from] PlatformError),
 
     #[error("internal error: {0}")]
     Internal(String),

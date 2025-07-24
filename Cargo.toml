@@ -15,6 +15,7 @@ members = [
     "crates/manifest",
     "crates/net",
     "crates/ops",
+    "crates/platform",
     "crates/resolver",
     "crates/resources",
     "crates/root",

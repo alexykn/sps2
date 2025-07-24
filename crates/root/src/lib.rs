@@ -7,8 +7,7 @@
 //! atomic renames, clonefile support, and directory management.
 
 use sps2_errors::{Error, StorageError};
-use std::ffi::CString;
-use std::os::unix::ffi::OsStrExt;
+use sps2_platform::Platform;
 use std::path::Path;
 use tokio::fs;
 
@@ -18,49 +17,26 @@ type Result<T> = std::result::Result<T, Error>;
 /// APFS clonefile support
 #[cfg(target_os = "macos")]
 mod apfs {
-    use super::{CString, Error, OsStrExt, Path, Result, StorageError};
-
-    // macOS clonefile flags for security and proper ownership handling
-    const CLONE_NOFOLLOW: u32 = 0x0001; // Don't follow symbolic links
-    const CLONE_NOOWNERCOPY: u32 = 0x0002; // Don't copy owner information
+    use super::{Error, Path, Platform, Result, StorageError};
 
     /// Clone a file or directory using APFS clonefile with security flags
-    #[allow(unsafe_code)]
     pub async fn clone_path(src: &Path, dst: &Path) -> Result<()> {
-        let src_cstring =
-            CString::new(src.as_os_str().as_bytes()).map_err(|_| StorageError::InvalidPath {
-                path: src.display().to_string(),
-            })?;
-
-        let dst_cstring =
-            CString::new(dst.as_os_str().as_bytes()).map_err(|_| StorageError::InvalidPath {
-                path: dst.display().to_string(),
-            })?;
-
-        tokio::task::spawn_blocking(move || {
-            // SAFETY: clonefile is available on macOS and we're passing valid C strings
-            unsafe {
-                let result = libc::clonefile(
-                    src_cstring.as_ptr(),
-                    dst_cstring.as_ptr(),
-                    CLONE_NOFOLLOW | CLONE_NOOWNERCOPY,
-                );
-
-                if result != 0 {
-                    let errno = *libc::__error();
-                    return Err(StorageError::ApfsCloneFailed {
-                        message: format!(
-                            "clonefile failed with code {result}, errno: {errno} ({})",
-                            std::io::Error::from_raw_os_error(errno)
-                        ),
+        let platform = Platform::current();
+        let context = platform.create_context(None);
+        
+        platform.filesystem().clone_file(&context, src, dst)
+            .await
+            .map_err(|platform_err| {
+                // Convert PlatformError back to StorageError for backward compatibility
+                match platform_err {
+                    sps2_errors::PlatformError::FilesystemOperationFailed { message, .. } => {
+                        StorageError::ApfsCloneFailed { message }.into()
                     }
-                    .into());
+                    _ => StorageError::ApfsCloneFailed {
+                        message: platform_err.to_string(),
+                    }.into()
                 }
-            }
-            Ok(())
-        })
-        .await
-        .map_err(|e| Error::internal(format!("clone task failed: {e}")))?
+            })
     }
 }
 
@@ -144,94 +120,31 @@ pub async fn atomic_rename(src: &Path, dst: &Path) -> Result<()> {
 /// True atomic swap that requires both paths to exist
 ///
 /// This function guarantees atomic exchange of two directories/files using
-/// macOS `renamex_np` with `RENAME_SWAP`. This is critical for rollback operations
+/// platform abstraction. This is critical for rollback operations
 /// where we need to swap live and backup directories atomically.
 ///
 /// # Errors
 ///
 /// Returns an error if:
 /// - Either path doesn't exist
-/// - Path conversion to C string fails  
 /// - The atomic swap operation fails
-/// - The blocking task panics
 pub async fn atomic_swap(path1: &Path, path2: &Path) -> Result<()> {
-    #[cfg(target_os = "macos")]
-    {
-        use libc::{c_uint, renamex_np, RENAME_SWAP};
-
-        // Verify both paths exist before attempting swap
-        if !path1.exists() {
-            return Err(StorageError::PathNotFound {
-                path: path1.display().to_string(),
-            }
-            .into());
-        }
-        if !path2.exists() {
-            return Err(StorageError::PathNotFound {
-                path: path2.display().to_string(),
-            }
-            .into());
-        }
-
-        let path1_cstring =
-            CString::new(path1.as_os_str().as_bytes()).map_err(|_| StorageError::InvalidPath {
-                path: path1.display().to_string(),
-            })?;
-
-        let path2_cstring =
-            CString::new(path2.as_os_str().as_bytes()).map_err(|_| StorageError::InvalidPath {
-                path: path2.display().to_string(),
-            })?;
-
-        tokio::task::spawn_blocking(move || {
-            #[allow(unsafe_code)]
-            // SAFETY: renamex_np is available on macOS and we're passing valid C strings
-            unsafe {
-                if renamex_np(
-                    path1_cstring.as_ptr(),
-                    path2_cstring.as_ptr(),
-                    RENAME_SWAP as c_uint,
-                ) != 0
-                {
-                    let err = std::io::Error::last_os_error();
-                    return Err(StorageError::AtomicRenameFailed {
-                        message: format!("atomic swap failed: {err}"),
-                    }
-                    .into());
-                }
-            }
-            Ok(())
-        })
+    let platform = Platform::current();
+    let context = platform.create_context(None);
+    
+    platform.filesystem().atomic_swap(&context, path1, path2)
         .await
-        .map_err(|e| Error::internal(format!("swap task failed: {e}")))?
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        // No true atomic swap available on non-macOS platforms
-        // This is a potentially unsafe fallback using temporary file
-        let temp_path = path1.with_extension("tmp_swap");
-
-        fs::rename(path1, &temp_path)
-            .await
-            .map_err(|e| StorageError::AtomicRenameFailed {
-                message: format!("temp rename failed: {e}"),
-            })?;
-
-        fs::rename(path2, path1)
-            .await
-            .map_err(|e| StorageError::AtomicRenameFailed {
-                message: format!("second rename failed: {e}"),
-            })?;
-
-        fs::rename(&temp_path, path2)
-            .await
-            .map_err(|e| StorageError::AtomicRenameFailed {
-                message: format!("final rename failed: {e}"),
-            })?;
-
-        Ok(())
-    }
+        .map_err(|platform_err| {
+            // Convert PlatformError back to StorageError for backward compatibility
+            match platform_err {
+                sps2_errors::PlatformError::FilesystemOperationFailed { message, .. } => {
+                    StorageError::AtomicRenameFailed { message }.into()
+                }
+                _ => StorageError::AtomicRenameFailed {
+                    message: platform_err.to_string(),
+                }.into()
+            }
+        })
 }
 
 /// Clone a directory tree using APFS clonefile
@@ -332,45 +245,22 @@ pub async fn remove_dir_all(path: &Path) -> Result<()> {
 /// - The destination already exists
 /// - The hard link operation fails (cross-device link, permissions, etc.)
 pub async fn hard_link(src: &Path, dst: &Path) -> Result<()> {
-    #[cfg(target_os = "macos")]
-    {
-        let src_cstring =
-            CString::new(src.as_os_str().as_bytes()).map_err(|_| StorageError::InvalidPath {
-                path: src.display().to_string(),
-            })?;
-
-        let dst_cstring =
-            CString::new(dst.as_os_str().as_bytes()).map_err(|_| StorageError::InvalidPath {
-                path: dst.display().to_string(),
-            })?;
-
-        tokio::task::spawn_blocking(move || {
-            let result = unsafe { libc::link(src_cstring.as_ptr(), dst_cstring.as_ptr()) };
-            if result != 0 {
-                let errno = unsafe { *libc::__error() };
-                return Err(StorageError::IoError {
-                    message: format!(
-                        "hard link failed with code {result}, errno: {errno} ({})",
-                        std::io::Error::from_raw_os_error(errno)
-                    ),
-                }
-                .into());
-            }
-            Ok(())
-        })
+    let platform = Platform::current();
+    let context = platform.create_context(None);
+    
+    platform.filesystem().hard_link(&context, src, dst)
         .await
-        .map_err(|e| Error::internal(format!("hard link task failed: {e}")))?
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        fs::hard_link(src, dst).await.map_err(|e| {
-            StorageError::IoError {
-                message: format!("hard link failed: {e}"),
+        .map_err(|platform_err| {
+            // Convert PlatformError back to StorageError for backward compatibility
+            match platform_err {
+                sps2_errors::PlatformError::FilesystemOperationFailed { message, .. } => {
+                    StorageError::IoError { message }.into()
+                }
+                _ => StorageError::IoError {
+                    message: platform_err.to_string(),
+                }.into()
             }
-            .into()
         })
-    }
 }
 
 /// Create staging directory using platform-optimized methods

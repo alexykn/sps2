@@ -130,7 +130,7 @@ pub fn get_patchers_for_profile(profile: BuildSystemProfile) -> Vec<PatcherActio
                 PatcherAction::LaFileCleaner(LaFileCleaner),
                 PatcherAction::ObjectFileCleaner(ObjectFileCleaner),
                 // CodeSigner MUST run last
-                PatcherAction::CodeSigner(CodeSigner),
+                PatcherAction::CodeSigner(CodeSigner::new()),
             ]
         }
         BuildSystemProfile::RustMinimal => {
@@ -147,7 +147,7 @@ pub fn get_patchers_for_profile(profile: BuildSystemProfile) -> Vec<PatcherActio
                 PatcherAction::PlaceholderPatcher(PlaceholderPatcher),
                 // Skip rpath patching (Go uses static linking mostly)
                 // Minimal code signing if needed
-                PatcherAction::CodeSigner(CodeSigner),
+                PatcherAction::CodeSigner(CodeSigner::new()),
             ]
         }
         BuildSystemProfile::ScriptLight => {

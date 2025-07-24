@@ -3326,6 +3326,7 @@ dependencies = [
  "sps2-install",
  "sps2-manifest",
  "sps2-net",
+ "sps2-platform",
  "sps2-resolver",
  "sps2-resources",
  "sps2-state",
@@ -3563,6 +3564,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "sps2-platform"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures",
+ "libc",
+ "serde",
+ "sps2-errors",
+ "sps2-events",
+ "tempfile",
+ "thiserror 2.0.12",
+ "tokio",
+]
+
+[[package]]
 name = "sps2-resolver"
 version = "0.1.0"
 dependencies = [
@@ -3596,6 +3612,7 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "sps2-errors",
+ "sps2-platform",
  "sps2-types",
  "tempfile",
  "tokio",

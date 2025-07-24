@@ -958,6 +958,7 @@ impl EventHandler {
                 AppEvent::State(_) => "State",
                 AppEvent::Uninstall(_) => "Uninstall",
                 AppEvent::Update(_) => "Update",
+                AppEvent::Platform(_) => "Platform",
             };
             self.show_message(
                 &format!("Unhandled event in domain \"{event_name}\": {event:?}"),

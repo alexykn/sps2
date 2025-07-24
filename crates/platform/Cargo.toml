@@ -1,5 +1,5 @@
 [package]
-name = "sps2-root"
+name = "sps2-platform"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -9,10 +9,17 @@ repository.workspace = true
 
 [dependencies]
 sps2-errors = { path = "../errors" }
-sps2-types = { path = "../types" }
-sps2-platform = { path = "../platform" }
-tokio = { workspace = true, features = ["fs", "process"] }
-libc = "0.2.174"
+sps2-events = { path = "../events" }
+
+async-trait = "0.1.88"
+tokio = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+futures = { workspace = true }
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = { workspace = true }
+
+[features]
+default = []

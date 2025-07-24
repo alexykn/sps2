@@ -1205,6 +1205,9 @@ impl BuilderApi {
 
         // Create a custom RPathPatcher with the specified style
         let patcher = RPathPatcher::new(style);
+        
+        // Create platform context for the patcher
+        let platform_ctx = patcher.create_platform_context(None);
 
         // If specific paths are provided, patch only those
         // Otherwise, patch all binaries and libraries in staging
@@ -1227,7 +1230,7 @@ impl BuilderApi {
                 let path = entry.into_path();
                 if RPathPatcher::should_process_file(&path) {
                     let (_, was_fixed, _, error) =
-                        patcher.process_file(&path, lib_path, &build_paths).await;
+                        patcher.process_file(&platform_ctx, &path, lib_path, &build_paths).await;
                     if was_fixed {
                         patched_count += 1;
                     }
@@ -1242,7 +1245,7 @@ impl BuilderApi {
                 let path = staging_dir.join(path_str);
                 if path.exists() && RPathPatcher::should_process_file(&path) {
                     let (_, was_fixed, _, error) =
-                        patcher.process_file(&path, lib_path, &build_paths).await;
+                        patcher.process_file(&platform_ctx, &path, lib_path, &build_paths).await;
                     if was_fixed {
                         patched_count += 1;
                     }

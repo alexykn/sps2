@@ -9,6 +9,7 @@ pub mod general;
 pub mod guard;
 pub mod install;
 pub mod package;
+pub mod platform;
 pub mod progress;
 pub mod python;
 pub mod qa;
@@ -27,6 +28,7 @@ pub use general::*;
 pub use guard::*;
 pub use install::*;
 pub use package::*;
+pub use platform::*;
 pub use progress::*;
 pub use python::*;
 pub use qa::*;
@@ -87,6 +89,9 @@ pub enum AppEvent {
 
     /// Package operation events (high-level package operations)
     Package(PackageEvent),
+
+    /// Platform-specific operation events (binary, filesystem, process operations)
+    Platform(PlatformEvent),
 }
 
 impl AppEvent {
@@ -113,7 +118,12 @@ impl AppEvent {
             | AppEvent::Guard(
                 GuardEvent::VerificationFailed { .. } | GuardEvent::HealingFailed { .. },
             )
-            | AppEvent::Qa(QaEvent::CheckFailed { .. }) => Level::ERROR,
+            | AppEvent::Qa(QaEvent::CheckFailed { .. })
+            | AppEvent::Platform(
+                PlatformEvent::BinaryOperationFailed { .. }
+                | PlatformEvent::FilesystemOperationFailed { .. }
+                | PlatformEvent::ProcessExecutionFailed { .. },
+            ) => Level::ERROR,
 
             // Warning-level events
             AppEvent::General(GeneralEvent::Warning { .. })
@@ -159,6 +169,7 @@ impl AppEvent {
             AppEvent::Audit(_) => "sps2::events::audit",
             AppEvent::Python(_) => "sps2::events::python",
             AppEvent::Package(_) => "sps2::events::package",
+            AppEvent::Platform(_) => "sps2::events::platform",
         }
     }
 

@@ -4,12 +4,21 @@ use crate::artifact_qa::{macho_utils, reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
 use sps2_events::{AppEvent, QaEvent};
+use sps2_platform::{Platform, PlatformContext};
 use std::path::Path;
-use tokio::process::Command;
 
-pub struct CodeSigner;
+pub struct CodeSigner {
+    platform: Platform,
+}
 
 impl CodeSigner {
+    /// Create a new CodeSigner with platform abstraction
+    pub fn new() -> Self {
+        Self {
+            platform: Platform::current(),
+        }
+    }
+
     /// Check if a file is a Mach-O binary (executable or dylib)
     fn is_macho_binary(path: &Path) -> bool {
         // Check if it's a dynamic library (including versioned ones)
@@ -24,23 +33,26 @@ impl CodeSigner {
     }
 
     /// Re-sign a binary with ad-hoc signature
-    async fn resign_binary(path: &Path) -> Result<bool, std::io::Error> {
+    async fn resign_binary(
+        &self,
+        ctx: &PlatformContext,
+        path: &Path,
+    ) -> Result<bool, sps2_errors::Error> {
         // First check if the signature is valid
-        let check = Command::new("codesign")
-            .args(["-vvv", &path.to_string_lossy()])
-            .output()
-            .await?;
+        let is_valid = match self.platform.binary().verify_signature(ctx, path).await {
+            Ok(valid) => valid,
+            Err(_) => false, // Assume invalid if we can't check
+        };
 
         // If signature is invalid or modified, re-sign it
-        if check.status.success() {
+        if is_valid {
             Ok(false) // No re-signing needed
         } else {
-            let output = Command::new("codesign")
-                .args(["-f", "-s", "-", &path.to_string_lossy()])
-                .output()
-                .await?;
-
-            Ok(output.status.success())
+            // Re-sign with ad-hoc signature (identity = None)
+            match self.platform.binary().sign_binary(ctx, path, None).await {
+                Ok(()) => Ok(true),
+                Err(e) => Err(e.into()),
+            }
         }
     }
 }
@@ -58,6 +70,11 @@ impl crate::artifact_qa::traits::Action for CodeSigner {
             return Ok(Report::ok());
         }
 
+        let signer = Self::new();
+        
+        // Create platform context from build context
+        let platform_ctx = signer.platform.create_context(ctx.event_sender.clone());
+
         let mut resigned_count = 0;
         let mut errors = Vec::new();
 
@@ -73,7 +90,7 @@ impl crate::artifact_qa::traits::Action for CodeSigner {
                 continue;
             }
 
-            match Self::resign_binary(&path).await {
+            match signer.resign_binary(&platform_ctx, &path).await {
                 Ok(true) => resigned_count += 1,
                 Ok(false) => {} // No re-signing needed
                 Err(e) => {
