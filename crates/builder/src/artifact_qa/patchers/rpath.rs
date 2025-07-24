@@ -10,7 +10,6 @@ use sps2_types::RpathStyle;
 use ignore::WalkBuilder;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use tokio::process::Command;
 
 pub struct RPathPatcher {
     style: RpathStyle,
@@ -30,6 +29,7 @@ impl RPathPatcher {
     }
 
     /// Create a platform context for this patcher
+    #[must_use]
     pub fn create_platform_context(&self, event_sender: Option<tokio::sync::mpsc::UnboundedSender<sps2_events::AppEvent>>) -> PlatformContext {
         self.platform.create_context(event_sender)
     }
@@ -74,10 +74,7 @@ impl RPathPatcher {
         ctx: &PlatformContext,
         path: &Path,
     ) -> Option<String> {
-        match self.platform.binary().get_install_name(ctx, path).await {
-            Ok(name) => name,
-            Err(_) => None,
-        }
+        (self.platform.binary().get_install_name(ctx, path).await).unwrap_or_default()
     }
 
     /// Check if an install name needs fixing based on the style
@@ -163,20 +160,14 @@ impl RPathPatcher {
             }
 
             // Check if this file references the old dylib
-            let deps = match self.platform.binary().get_dependencies(ctx, &path).await {
-                Ok(deps) => deps,
-                Err(_) => continue,
-            };
+            let Ok(deps) = self.platform.binary().get_dependencies(ctx, &path).await else { continue };
 
             if deps.iter().any(|dep| dep.contains(old_dylib_name)) {
                 // This file references our dylib - update the reference
-                match self.platform.binary().change_dependency(ctx, &path, old_dylib_name, new_dylib_path).await {
-                    Ok(()) => {
-                        updated_files.push(path);
-                    }
-                    Err(_) => {
-                        // Silently continue on error
-                    }
+                if let Ok(()) = self.platform.binary().change_dependency(ctx, &path, old_dylib_name, new_dylib_path).await {
+                    updated_files.push(path);
+                } else {
+                    // Silently continue on error
                 }
             }
         }
@@ -199,26 +190,19 @@ impl RPathPatcher {
         }
 
         // Get all dependencies using platform abstraction
-        let deps = match self.platform.binary().get_dependencies(ctx, path).await {
-            Ok(deps) => deps,
-            Err(_) => return Ok(fixed_deps),
-        };
+        let Ok(deps) = self.platform.binary().get_dependencies(ctx, path).await else { return Ok(fixed_deps) };
 
         // Process each dependency
         for dep in deps {
-            if dep.starts_with("@rpath/") {
-                // Extract the library name after @rpath/
-                let lib_name = &dep[7..];
+            // Extract the library name after @rpath/
+            if let Some(lib_name) = dep.strip_prefix("@rpath/") {
                 let new_path = format!("{lib_path}/{lib_name}");
 
                 // Update the dependency reference
-                match self.platform.binary().change_dependency(ctx, path, &dep, &new_path).await {
-                    Ok(()) => {
-                        fixed_deps.push((dep, new_path));
-                    }
-                    Err(_) => {
-                        // Continue on error - some dependencies might fail to update
-                    }
+                if let Ok(()) = self.platform.binary().change_dependency(ctx, path, &dep, &new_path).await {
+                    fixed_deps.push((dep, new_path));
+                } else {
+                    // Continue on error - some dependencies might fail to update
                 }
             }
         }
@@ -234,16 +218,13 @@ impl RPathPatcher {
         lib_path: &str,
         build_paths: &[String],
     ) -> (bool, bool, Vec<String>, Option<String>) {
-        let path_s = path.to_string_lossy().into_owned();
+        let _path_s = path.to_string_lossy().into_owned();
         let mut bad_rpaths = Vec::new();
         let mut need_good = false;
         let mut install_name_was_fixed = false;
 
         // Get RPATH entries using platform abstraction
-        let rpath_entries = match self.platform.binary().get_rpath_entries(ctx, path).await {
-            Ok(entries) => entries,
-            Err(_) => return (false, false, bad_rpaths, None),
-        };
+        let Ok(rpath_entries) = self.platform.binary().get_rpath_entries(ctx, path).await else { return (false, false, bad_rpaths, None) };
 
         // Check RPATH entries and gather bad ones
         let mut has_good_rpath = false;
@@ -257,10 +238,7 @@ impl RPathPatcher {
         }
 
         // Check if binary needs @rpath by examining dependencies
-        let deps = match self.platform.binary().get_dependencies(ctx, path).await {
-            Ok(deps) => deps,
-            Err(_) => return (false, false, bad_rpaths, None),
-        };
+        let Ok(deps) = self.platform.binary().get_dependencies(ctx, path).await else { return (false, false, bad_rpaths, None) };
         
         for dep in &deps {
             if dep.contains("@rpath/") {

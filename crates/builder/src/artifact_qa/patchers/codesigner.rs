@@ -12,7 +12,8 @@ pub struct CodeSigner {
 }
 
 impl CodeSigner {
-    /// Create a new CodeSigner with platform abstraction
+    /// Create a new `CodeSigner` with platform abstraction
+    #[must_use]
     pub fn new() -> Self {
         Self {
             platform: Platform::current(),
@@ -39,10 +40,7 @@ impl CodeSigner {
         path: &Path,
     ) -> Result<bool, sps2_errors::Error> {
         // First check if the signature is valid
-        let is_valid = match self.platform.binary().verify_signature(ctx, path).await {
-            Ok(valid) => valid,
-            Err(_) => false, // Assume invalid if we can't check
-        };
+        let is_valid = (self.platform.binary().verify_signature(ctx, path).await).unwrap_or_default();
 
         // If signature is invalid or modified, re-sign it
         if is_valid {
@@ -115,6 +113,12 @@ impl crate::artifact_qa::traits::Action for CodeSigner {
             errors,
             ..Default::default()
         })
+    }
+}
+
+impl Default for CodeSigner {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

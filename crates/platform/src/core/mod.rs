@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::time::Instant;
 use std::future::Future;
 use tokio::sync::mpsc;
-use serde::{Deserialize, Serialize};
 use sps2_events::AppEvent;
 use sps2_errors::PlatformError;
 

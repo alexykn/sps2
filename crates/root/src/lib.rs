@@ -6,18 +6,18 @@
 //! This crate provides APFS-optimized filesystem operations including
 //! atomic renames, clonefile support, and directory management.
 
-use sps2_errors::{Error, StorageError};
+use sps2_errors::StorageError;
 use sps2_platform::Platform;
 use std::path::Path;
 use tokio::fs;
 
 /// Result type for filesystem operations
-type Result<T> = std::result::Result<T, Error>;
+type Result<T> = std::result::Result<T, sps2_errors::Error>;
 
 /// APFS clonefile support
 #[cfg(target_os = "macos")]
 mod apfs {
-    use super::{Error, Path, Platform, Result, StorageError};
+    use super::{Path, Platform, Result, StorageError};
 
     /// Clone a file or directory using APFS clonefile with security flags
     pub async fn clone_path(src: &Path, dst: &Path) -> Result<()> {
