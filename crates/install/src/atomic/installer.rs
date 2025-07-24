@@ -6,6 +6,7 @@ use std::sync::Arc;
 use crate::{InstallContext, InstallResult, PreparedPackage, StagingManager};
 use sps2_errors::{Error, InstallError};
 use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent, StateEvent};
+use sps2_platform::{core::PlatformContext, Platform};
 
 use sps2_resolver::{PackageId, ResolvedNode};
 use sps2_state::{PackageRef, StateManager};
@@ -44,6 +45,75 @@ pub struct AtomicInstaller {
 }
 
 impl AtomicInstaller {
+    /// Create a platform context for filesystem operations
+    fn create_platform_context(&self) -> (Platform, PlatformContext) {
+        let platform = Platform::current();
+        let context = platform.create_context(None);
+        (platform, context)
+    }
+
+    /// Create staging directory using platform abstraction
+    async fn create_staging_directory(
+        &self,
+        live_path: &Path,
+        staging_path: &Path,
+    ) -> Result<(), Error> {
+        let (platform, ctx) = self.create_platform_context();
+
+        if platform.filesystem().exists(&ctx, live_path).await {
+            // Live directory exists - clone it to staging
+
+            // Ensure parent directory exists for staging path
+            if let Some(parent) = staging_path.parent() {
+                platform
+                    .filesystem()
+                    .create_dir_all(&ctx, parent)
+                    .await
+                    .map_err(|e| InstallError::FilesystemError {
+                        operation: "create_dir_all".to_string(),
+                        path: parent.display().to_string(),
+                        message: e.to_string(),
+                    })?;
+            }
+
+            // Remove existing staging directory if it exists (required for APFS clonefile)
+            if platform.filesystem().exists(&ctx, staging_path).await {
+                platform
+                    .filesystem()
+                    .remove_dir_all(&ctx, staging_path)
+                    .await
+                    .map_err(|e| InstallError::FilesystemError {
+                        operation: "remove_dir_all".to_string(),
+                        path: staging_path.display().to_string(),
+                        message: e.to_string(),
+                    })?;
+            }
+
+            // Clone the live directory to staging using APFS clonefile
+            platform
+                .filesystem()
+                .clone_directory(&ctx, live_path, staging_path)
+                .await
+                .map_err(|e| InstallError::FilesystemError {
+                    operation: "clone_directory".to_string(),
+                    path: format!("{} -> {}", live_path.display(), staging_path.display()),
+                    message: e.to_string(),
+                })?;
+        } else {
+            // No live directory exists - create empty staging directory for fresh installation
+            platform
+                .filesystem()
+                .create_dir_all(&ctx, staging_path)
+                .await
+                .map_err(|e| InstallError::FilesystemError {
+                    operation: "create_dir_all".to_string(),
+                    path: staging_path.display().to_string(),
+                    message: e.to_string(),
+                })?;
+        }
+
+        Ok(())
+    }
     /// Execute two-phase commit flow for a transition
     async fn execute_two_phase_commit<T: EventEmitter>(
         &self,
@@ -224,7 +294,8 @@ impl AtomicInstaller {
         }));
 
         // Clone current state to staging directory
-        sps2_root::create_staging_directory(&self.live_path, &transition.staging_path).await?;
+        self.create_staging_directory(&self.live_path, &transition.staging_path)
+            .await?;
 
         context.emit_debug(format!(
             "Created staging directory at: {}",

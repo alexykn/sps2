@@ -5,10 +5,18 @@
 use async_compression::tokio::bufread::ZstdDecoder as AsyncZstdReader;
 use sps2_errors::{Error, PackageError, StorageError};
 use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent};
-use sps2_root::{create_dir_all, exists};
+use sps2_platform::core::PlatformContext;
+use sps2_platform::Platform;
 use std::path::Path;
 use tar::Archive;
 use tokio::io::{AsyncWriteExt, BufReader};
+
+/// Create a platform context for filesystem operations
+fn create_platform_context() -> (Platform, PlatformContext) {
+    let platform = Platform::current();
+    let context = platform.create_context(None);
+    (platform, context)
+}
 
 /// Extract a .sp package file to a directory
 ///
@@ -46,7 +54,8 @@ pub async fn extract_package_with_events(
 
     // Verify manifest exists
     let manifest_path = dest.join("manifest.toml");
-    if !exists(&manifest_path).await {
+    let (platform, ctx) = create_platform_context();
+    if !platform.filesystem().exists(&ctx, &manifest_path).await {
         return Err(PackageError::InvalidFormat {
             message: "missing manifest.toml in package".to_string(),
         }
@@ -83,7 +92,9 @@ pub async fn list_package_contents(sp_file: &Path) -> Result<Vec<String>, Error>
 pub async fn create_package(src: &Path, sp_file: &Path) -> Result<(), Error> {
     // Verify source has required structure
     let manifest_path = src.join("manifest.toml");
-    if !exists(&manifest_path).await {
+    let (platform, ctx) = create_platform_context();
+
+    if !platform.filesystem().exists(&ctx, &manifest_path).await {
         return Err(PackageError::InvalidFormat {
             message: "source directory missing manifest.toml".to_string(),
         }
@@ -92,7 +103,7 @@ pub async fn create_package(src: &Path, sp_file: &Path) -> Result<(), Error> {
 
     // Create parent directory if needed
     if let Some(parent) = sp_file.parent() {
-        create_dir_all(parent).await?;
+        platform.filesystem().create_dir_all(&ctx, parent).await?;
     }
 
     // Create archive using blocking operations
@@ -153,7 +164,8 @@ async fn extract_zstd_tar_file(
     event_sender: Option<&EventSender>,
 ) -> Result<(), Error> {
     // Create destination directory
-    create_dir_all(dest).await?;
+    let (platform, ctx) = create_platform_context();
+    platform.filesystem().create_dir_all(&ctx, dest).await?;
 
     // Create a temporary file to decompress to, then extract with tar
     let temp_file = tempfile::NamedTempFile::new().map_err(|e| StorageError::IoError {
@@ -250,7 +262,8 @@ async fn extract_plain_tar_file(
     event_sender: Option<&EventSender>,
 ) -> Result<(), Error> {
     // Create destination directory
-    create_dir_all(dest).await?;
+    let (platform, ctx) = create_platform_context();
+    platform.filesystem().create_dir_all(&ctx, dest).await?;
 
     let file_path = file_path.to_path_buf();
     let dest = dest.to_path_buf();

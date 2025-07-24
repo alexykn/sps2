@@ -5,9 +5,8 @@
 
 use sps2_errors::{Error, StorageError};
 use sps2_hash::{calculate_file_storage_path, FileHashResult, FileHasher, FileHasherConfig, Hash};
-#[cfg(not(target_os = "macos"))]
-use sps2_root::hard_link;
-use sps2_root::{create_dir_all, exists, remove_file};
+use sps2_platform::core::PlatformContext;
+use sps2_platform::Platform;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use uuid::Uuid;
@@ -34,23 +33,40 @@ impl FileStore {
         }
     }
 
+    /// Create a platform context for filesystem operations
+    fn create_platform_context() -> (Platform, PlatformContext) {
+        let platform = Platform::current();
+        let context = platform.create_context(None);
+        (platform, context)
+    }
+
     /// Initialize the file store directory structure
     ///
     /// # Errors
     /// Returns an error if directory creation fails
     pub async fn initialize(&self) -> Result<(), Error> {
         // Create the objects directory
-        create_dir_all(&self.objects_path).await?;
+        let (platform, ctx) = Self::create_platform_context();
+        platform
+            .filesystem()
+            .create_dir_all(&ctx, &self.objects_path)
+            .await?;
 
         // Create prefix directories (00-ff)
         for i in 0..256 {
             let prefix1 = format!("{i:02x}");
             let prefix1_path = self.objects_path.join(&prefix1);
-            create_dir_all(&prefix1_path).await?;
+            platform
+                .filesystem()
+                .create_dir_all(&ctx, &prefix1_path)
+                .await?;
             for j in 0..256 {
                 let prefix2 = format!("{j:02x}");
                 let prefix2_path = prefix1_path.join(&prefix2);
-                create_dir_all(&prefix2_path).await?;
+                platform
+                    .filesystem()
+                    .create_dir_all(&ctx, &prefix2_path)
+                    .await?;
             }
         }
 
@@ -67,7 +83,8 @@ impl FileStore {
     /// Check if a file exists in the store
     pub async fn has_file(&self, hash: &Hash) -> bool {
         let path = self.file_path(hash);
-        exists(&path).await
+        let (platform, ctx) = Self::create_platform_context();
+        platform.filesystem().exists(&ctx, &path).await
     }
 
     /// Store a file by its content hash
@@ -78,8 +95,9 @@ impl FileStore {
     /// Returns an error if file operations fail
     pub async fn store_file(&self, source_path: &Path, hash: &Hash) -> Result<bool, Error> {
         let dest_path = self.file_path(hash);
+        let (platform, ctx) = Self::create_platform_context();
 
-        if dest_path.exists() {
+        if platform.filesystem().exists(&ctx, &dest_path).await {
             return Ok(false);
         }
 
@@ -87,7 +105,10 @@ impl FileStore {
         let parent_dir = dest_path.parent().ok_or_else(|| StorageError::IoError {
             message: "failed to get parent directory".to_string(),
         })?;
-        create_dir_all(parent_dir).await?;
+        platform
+            .filesystem()
+            .create_dir_all(&ctx, parent_dir)
+            .await?;
 
         // Create a unique temporary file path
         let temp_file_name = format!("{}.tmp", Uuid::new_v4());
@@ -96,7 +117,7 @@ impl FileStore {
         // Copy to temporary file
         if let Err(e) = fs::copy(source_path, &temp_path).await {
             // Clean up temp file on failure
-            let _ = remove_file(&temp_path).await;
+            let _ = platform.filesystem().remove_file(&ctx, &temp_path).await;
             return Err(StorageError::IoError {
                 message: format!("failed to copy file to temp: {e}"),
             }
@@ -120,7 +141,7 @@ impl FileStore {
             }
             Err(e) => {
                 // Clean up the temporary file
-                let _ = remove_file(&temp_path).await;
+                let _ = platform.filesystem().remove_file(&ctx, &temp_path).await;
 
                 // If the error is because the file exists, another process/thread beat us to it.
                 // This is not an error condition for us.
@@ -156,8 +177,9 @@ impl FileStore {
     /// Returns an error if the file doesn't exist or linking fails
     pub async fn link_file(&self, hash: &Hash, dest_path: &Path) -> Result<(), Error> {
         let source_path = self.file_path(hash);
+        let (platform, ctx) = Self::create_platform_context();
 
-        if !exists(&source_path).await {
+        if !platform.filesystem().exists(&ctx, &source_path).await {
             return Err(StorageError::PathNotFound {
                 path: source_path.display().to_string(),
             }
@@ -166,17 +188,20 @@ impl FileStore {
 
         // Ensure parent directory exists
         if let Some(parent) = dest_path.parent() {
-            create_dir_all(parent).await?;
+            platform.filesystem().create_dir_all(&ctx, parent).await?;
         }
 
         // Remove existing file if it exists
-        if exists(dest_path).await {
-            remove_file(dest_path).await?;
+        if platform.filesystem().exists(&ctx, dest_path).await {
+            platform.filesystem().remove_file(&ctx, dest_path).await?;
         }
 
         // Use APFS clonefile on macOS for copy-on-write semantics
         // This prevents corruption of the store when files are modified in place
-        sps2_root::clone_directory(&source_path, dest_path).await?;
+        platform
+            .filesystem()
+            .clone_file(&ctx, &source_path, dest_path)
+            .await?;
 
         Ok(())
     }
@@ -236,6 +261,8 @@ impl FileStore {
         source_base: &Path,
         dest_base: &Path,
     ) -> Result<(), Error> {
+        let (platform, ctx) = Self::create_platform_context();
+
         for result in hash_results {
             // Skip manifest.toml and sbom files - they should only exist in store
             if result.relative_path == "manifest.toml"
@@ -249,19 +276,22 @@ impl FileStore {
 
             if result.is_directory {
                 // Create directory
-                create_dir_all(&dest_path).await?;
+                platform
+                    .filesystem()
+                    .create_dir_all(&ctx, &dest_path)
+                    .await?;
             } else if result.is_symlink {
                 // Recreate symlink
                 let source_path = source_base.join(&result.relative_path);
                 if let Ok(target) = fs::read_link(&source_path).await {
                     // Ensure parent directory exists
                     if let Some(parent) = dest_path.parent() {
-                        create_dir_all(parent).await?;
+                        platform.filesystem().create_dir_all(&ctx, parent).await?;
                     }
 
                     // Remove existing symlink if it exists
-                    if exists(&dest_path).await {
-                        remove_file(&dest_path).await?;
+                    if platform.filesystem().exists(&ctx, &dest_path).await {
+                        platform.filesystem().remove_file(&ctx, &dest_path).await?;
                     }
 
                     // Create symlink
@@ -286,8 +316,10 @@ impl FileStore {
     /// Returns an error if file removal fails
     pub async fn remove_file(&self, hash: &Hash) -> Result<(), Error> {
         let path = self.file_path(hash);
-        if exists(&path).await {
-            remove_file(&path).await?;
+        let (platform, ctx) = Self::create_platform_context();
+
+        if platform.filesystem().exists(&ctx, &path).await {
+            platform.filesystem().remove_file(&ctx, &path).await?;
         }
         Ok(())
     }
@@ -298,12 +330,14 @@ impl FileStore {
     /// Returns an error if the file doesn't exist or metadata cannot be read
     pub async fn file_size(&self, hash: &Hash) -> Result<u64, Error> {
         let path = self.file_path(hash);
-        let metadata = fs::metadata(&path)
-            .await
-            .map_err(|_| StorageError::PathNotFound {
+        let (platform, ctx) = Self::create_platform_context();
+
+        platform.filesystem().size(&ctx, &path).await.map_err(|_| {
+            StorageError::PathNotFound {
                 path: path.display().to_string(),
-            })?;
-        Ok(metadata.len())
+            }
+            .into()
+        })
     }
 
     /// Verify that a stored file matches its expected hash
@@ -312,7 +346,9 @@ impl FileStore {
     /// Returns an error if the file doesn't exist or hashing fails
     pub async fn verify_file(&self, hash: &Hash) -> Result<bool, Error> {
         let path = self.file_path(hash);
-        if !exists(&path).await {
+        let (platform, ctx) = Self::create_platform_context();
+
+        if !platform.filesystem().exists(&ctx, &path).await {
             return Ok(false);
         }
 

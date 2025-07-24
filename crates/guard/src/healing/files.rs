@@ -4,6 +4,7 @@ use crate::types::HealingContext;
 use sps2_errors::{Error, OpsError};
 use sps2_events::{EventEmitter, EventSender};
 use sps2_hash::Hash;
+use sps2_platform::Platform;
 use sps2_state::queries;
 use sps2_store::StoredPackage;
 
@@ -178,22 +179,27 @@ async fn restore_missing_file_impl(
                 message: format!("Failed to create symlink {}: {e}", target_path.display()),
             })?;
     } else {
-        // Regular file - use APFS clonefile for efficiency on macOS
-        #[cfg(target_os = "macos")]
-        {
-            sps2_root::clone_directory(&source_file, &target_path)
+        // Regular file - use platform abstraction for cross-platform support
+        let platform = Platform::current();
+        let ctx = platform.create_context(None);
+
+        // Check if source is a file or directory and use appropriate platform method
+        let metadata = tokio::fs::metadata(&source_file).await?;
+        if metadata.is_dir() {
+            platform
+                .filesystem()
+                .clone_directory(&ctx, &source_file, &target_path)
+                .await
+                .map_err(|e| OpsError::OperationFailed {
+                    message: format!("Failed to clone directory {}: {e}", target_path.display()),
+                })?;
+        } else {
+            platform
+                .filesystem()
+                .clone_file(&ctx, &source_file, &target_path)
                 .await
                 .map_err(|e| OpsError::OperationFailed {
                     message: format!("Failed to clone file {}: {e}", target_path.display()),
-                })?;
-        }
-
-        #[cfg(not(target_os = "macos"))]
-        {
-            tokio::fs::copy(&source_file, &target_path)
-                .await
-                .map_err(|e| OpsError::OperationFailed {
-                    message: format!("Failed to copy file {}: {e}", target_path.display()),
                 })?;
         }
     }
@@ -376,19 +382,24 @@ pub async fn heal_corrupted_file(
                 message: format!("Failed to restore symlink {}: {e}", full_path.display()),
             })?;
     } else {
-        // Regular file - use APFS clonefile for efficiency on macOS
-        #[cfg(target_os = "macos")]
-        {
-            sps2_root::clone_directory(&source_file, &full_path)
+        // Regular file - use platform abstraction for cross-platform support
+        let platform = Platform::current();
+        let ctx = platform.create_context(None);
+
+        // Check if source is a file or directory and use appropriate platform method
+        let metadata = tokio::fs::metadata(&source_file).await?;
+        if metadata.is_dir() {
+            platform
+                .filesystem()
+                .clone_directory(&ctx, &source_file, &full_path)
                 .await
                 .map_err(|e| OpsError::OperationFailed {
-                    message: format!("Failed to restore file {}: {e}", full_path.display()),
+                    message: format!("Failed to restore directory {}: {e}", full_path.display()),
                 })?;
-        }
-
-        #[cfg(not(target_os = "macos"))]
-        {
-            tokio::fs::copy(&source_file, &full_path)
+        } else {
+            platform
+                .filesystem()
+                .clone_file(&ctx, &source_file, &full_path)
                 .await
                 .map_err(|e| OpsError::OperationFailed {
                     message: format!("Failed to restore file {}: {e}", full_path.display()),

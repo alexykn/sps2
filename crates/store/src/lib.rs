@@ -20,7 +20,8 @@ pub use package::StoredPackage;
 
 use sps2_errors::{Error, StorageError};
 use sps2_hash::Hash;
-use sps2_root::{create_dir_all, exists, remove_dir_all, set_compression, size};
+use sps2_platform::Platform;
+use sps2_root::set_compression;
 use std::path::{Path, PathBuf};
 
 /// Store manager for content-addressed packages
@@ -56,6 +57,13 @@ impl PackageStore {
         }
     }
 
+    /// Create a platform context for filesystem operations
+    fn create_platform_context() -> (Platform, sps2_platform::core::PlatformContext) {
+        let platform = Platform::current();
+        let context = platform.create_context(None);
+        (platform, context)
+    }
+
     /// Get the path for a package hash
     #[must_use]
     pub fn package_path(&self, hash: &Hash) -> PathBuf {
@@ -77,7 +85,8 @@ impl PackageStore {
     /// Check if a package exists in the store
     pub async fn has_package(&self, hash: &Hash) -> bool {
         let path = self.package_path(hash);
-        exists(&path).await
+        let (platform, ctx) = Self::create_platform_context();
+        platform.filesystem().exists(&ctx, &path).await
     }
 
     /// Add a package to the store from a .sp file
@@ -125,7 +134,9 @@ impl PackageStore {
 
         // Check if package already exists
         let package_path = self.base_path.join("packages").join(package_hash.to_hex());
-        if exists(&package_path).await {
+        let (platform, ctx) = Self::create_platform_context();
+
+        if platform.filesystem().exists(&ctx, &package_path).await {
             // Package already stored, just return it
             return StoredPackage::load(&package_path).await;
         }
@@ -137,7 +148,10 @@ impl PackageStore {
         let file_results = self.file_store.store_directory(temp_dir.path()).await?;
 
         // Create package directory
-        create_dir_all(&package_path).await?;
+        platform
+            .filesystem()
+            .create_dir_all(&ctx, &package_path)
+            .await?;
 
         // Copy manifest to package directory
         let manifest_src = temp_dir.path().join("manifest.toml");
@@ -147,7 +161,7 @@ impl PackageStore {
         // Copy SBOM if it exists
         for sbom_name in &["sbom.spdx.json", "sbom.cdx.json"] {
             let sbom_src = temp_dir.path().join(sbom_name);
-            if exists(&sbom_src).await {
+            if platform.filesystem().exists(&ctx, &sbom_src).await {
                 let sbom_dest = package_path.join(sbom_name);
                 tokio::fs::copy(&sbom_src, &sbom_dest).await?;
             }
@@ -174,8 +188,10 @@ impl PackageStore {
     /// Returns an error if directory removal fails
     pub async fn remove_package(&self, hash: &Hash) -> Result<(), Error> {
         let path = self.package_path(hash);
-        if exists(&path).await {
-            remove_dir_all(&path).await?;
+        let (platform, ctx) = Self::create_platform_context();
+
+        if platform.filesystem().exists(&ctx, &path).await {
+            platform.filesystem().remove_dir_all(&ctx, &path).await?;
         }
         Ok(())
     }
@@ -187,7 +203,13 @@ impl PackageStore {
     /// Returns an error if the package path doesn't exist or size calculation fails
     pub async fn package_size(&self, hash: &Hash) -> Result<u64, Error> {
         let path = self.package_path(hash);
-        size(&path).await
+        let (platform, ctx) = Self::create_platform_context();
+        platform.filesystem().size(&ctx, &path).await.map_err(|e| {
+            StorageError::IoError {
+                message: e.to_string(),
+            }
+            .into()
+        })
     }
 
     /// Link package contents into a destination
@@ -212,10 +234,11 @@ impl PackageStore {
     pub async fn get_package_sbom(&self, hash: &Hash) -> Result<Vec<u8>, Error> {
         // Get the package path using the hash
         let package_path = self.package_path(hash);
+        let (platform, ctx) = Self::create_platform_context();
 
         // Try to read SPDX SBOM first
         let spdx_path = package_path.join("sbom.spdx.json");
-        if exists(&spdx_path).await {
+        if platform.filesystem().exists(&ctx, &spdx_path).await {
             return tokio::fs::read(&spdx_path).await.map_err(|e| {
                 StorageError::IoError {
                     message: format!("failed to read SBOM file: {e}"),
@@ -226,7 +249,7 @@ impl PackageStore {
 
         // Fall back to CycloneDX SBOM
         let cdx_path = package_path.join("sbom.cdx.json");
-        if exists(&cdx_path).await {
+        if platform.filesystem().exists(&ctx, &cdx_path).await {
             return tokio::fs::read(&cdx_path).await.map_err(|e| {
                 StorageError::IoError {
                     message: format!("failed to read SBOM file: {e}"),
@@ -325,12 +348,14 @@ impl PackageStore {
     pub async fn verify(&self) -> Result<Vec<(Hash, String)>, Error> {
         let mut errors = Vec::new();
 
+        let (platform, ctx) = Self::create_platform_context();
+
         for hash in self.list_packages().await? {
             let path = self.package_path(&hash);
 
             // Check manifest exists
             let manifest_path = path.join("manifest.toml");
-            if !exists(&manifest_path).await {
+            if !platform.filesystem().exists(&ctx, &manifest_path).await {
                 errors.push((hash, "missing manifest.toml".to_string()));
             }
 
@@ -391,7 +416,9 @@ impl PackageStore {
         hash: &Hash,
     ) -> Result<PackageFormatInfo, Error> {
         let package_path = self.package_path(hash);
-        if !exists(&package_path).await {
+        let (platform, ctx) = Self::create_platform_context();
+
+        if !platform.filesystem().exists(&ctx, &package_path).await {
             return Err(StorageError::PackageNotFound {
                 hash: hash.to_hex(),
             }
@@ -479,7 +506,9 @@ impl PackageStore {
 
         // Check if package already exists
         let package_path = self.base_path.join("packages").join(package_hash.to_hex());
-        if exists(&package_path).await {
+        let (platform, ctx) = Self::create_platform_context();
+
+        if platform.filesystem().exists(&ctx, &package_path).await {
             return StoredPackage::load(&package_path).await;
         }
 
@@ -490,7 +519,10 @@ impl PackageStore {
         let file_results = self.file_store.store_directory(staging_path).await?;
 
         // Create package directory
-        create_dir_all(&package_path).await?;
+        platform
+            .filesystem()
+            .create_dir_all(&ctx, &package_path)
+            .await?;
 
         // Copy manifest to package directory
         let manifest_dest = package_path.join("manifest.toml");
@@ -499,7 +531,7 @@ impl PackageStore {
         // Copy SBOM if it exists
         for sbom_name in &["sbom.spdx.json", "sbom.cdx.json"] {
             let sbom_src = staging_path.join(sbom_name);
-            if exists(&sbom_src).await {
+            if platform.filesystem().exists(&ctx, &sbom_src).await {
                 let sbom_dest = package_path.join(sbom_name);
                 tokio::fs::copy(&sbom_src, &sbom_dest).await?;
             }

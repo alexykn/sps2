@@ -6,6 +6,7 @@
 use async_trait::async_trait;
 use sps2_errors::PlatformError;
 use sps2_events::{events::PlatformEvent, AppEvent};
+use std::collections::HashMap;
 use std::ffi::CString;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
@@ -21,6 +22,27 @@ pub struct MacOSFilesystemOperations;
 impl MacOSFilesystemOperations {
     pub fn new() -> Self {
         Self
+    }
+
+    /// Calculate the size of a file or directory recursively
+    async fn calculate_size(&self, path: &Path) -> Result<u64, std::io::Error> {
+        let metadata = tokio::fs::metadata(path).await?;
+
+        if metadata.is_file() {
+            Ok(metadata.len())
+        } else if metadata.is_dir() {
+            let mut total = 0u64;
+            let mut entries = tokio::fs::read_dir(path).await?;
+
+            while let Some(entry) = entries.next_entry().await? {
+                let entry_path = entry.path();
+                total += Box::pin(self.calculate_size(&entry_path)).await?;
+            }
+
+            Ok(total)
+        } else {
+            Ok(0) // Symlinks, devices, etc.
+        }
     }
 }
 
@@ -121,6 +143,107 @@ impl FilesystemOperations for MacOSFilesystemOperations {
                 ctx.emit_event(AppEvent::Platform(
                     PlatformEvent::FilesystemOperationFailed {
                         operation: "clone_file".to_string(),
+                        paths_involved: vec![src_path, dst_path],
+                        error_message: e.to_string(),
+                        duration_ms: duration.as_millis() as u64,
+                    },
+                ))
+                .await;
+            }
+        }
+
+        result
+    }
+
+    async fn clone_directory(
+        &self,
+        ctx: &PlatformContext,
+        src: &Path,
+        dst: &Path,
+    ) -> Result<(), PlatformError> {
+        let start = Instant::now();
+        let src_path = src.to_string_lossy().to_string();
+        let dst_path = dst.to_string_lossy().to_string();
+
+        // Emit operation started event
+        ctx.emit_event(AppEvent::Platform(
+            PlatformEvent::FilesystemOperationStarted {
+                operation: "clone_directory".to_string(),
+                source_path: Some(src_path.clone()),
+                target_path: dst_path.clone(),
+                context: std::collections::HashMap::new(),
+            },
+        ))
+        .await;
+
+        // Use the same clonefile implementation as clone_file since APFS clonefile handles directories
+        let result = async {
+            // APFS clonefile constants
+            const CLONE_NOFOLLOW: u32 = 0x0001;
+            const CLONE_NOOWNERCOPY: u32 = 0x0002;
+
+            let src_cstring = CString::new(src.as_os_str().as_bytes()).map_err(|_| {
+                PlatformError::FilesystemOperationFailed {
+                    operation: "clone_directory".to_string(),
+                    message: format!("Invalid source path: {}", src.display()),
+                }
+            })?;
+
+            let dst_cstring = CString::new(dst.as_os_str().as_bytes()).map_err(|_| {
+                PlatformError::FilesystemOperationFailed {
+                    operation: "clone_directory".to_string(),
+                    message: format!("Invalid destination path: {}", dst.display()),
+                }
+            })?;
+
+            tokio::task::spawn_blocking(move || {
+                // SAFETY: clonefile is available on macOS and we're passing valid C strings
+                unsafe {
+                    let result = libc::clonefile(
+                        src_cstring.as_ptr(),
+                        dst_cstring.as_ptr(),
+                        CLONE_NOFOLLOW | CLONE_NOOWNERCOPY,
+                    );
+
+                    if result != 0 {
+                        let errno = *libc::__error();
+                        return Err(PlatformError::FilesystemOperationFailed {
+                            operation: "clone_directory".to_string(),
+                            message: format!(
+                                "clonefile failed with code {result}, errno: {errno} ({})",
+                                std::io::Error::from_raw_os_error(errno)
+                            ),
+                        });
+                    }
+                }
+                Ok(())
+            })
+            .await
+            .map_err(|e| PlatformError::FilesystemOperationFailed {
+                operation: "clone_directory".to_string(),
+                message: format!("clone task failed: {e}"),
+            })?
+        }
+        .await;
+
+        let duration = start.elapsed();
+
+        // Emit completion event
+        match &result {
+            Ok(_) => {
+                ctx.emit_event(AppEvent::Platform(
+                    PlatformEvent::FilesystemOperationCompleted {
+                        operation: "clone_directory".to_string(),
+                        paths_affected: vec![src_path, dst_path],
+                        duration_ms: duration.as_millis() as u64,
+                    },
+                ))
+                .await;
+            }
+            Err(e) => {
+                ctx.emit_event(AppEvent::Platform(
+                    PlatformEvent::FilesystemOperationFailed {
+                        operation: "clone_directory".to_string(),
                         paths_involved: vec![src_path, dst_path],
                         error_message: e.to_string(),
                         duration_ms: duration.as_millis() as u64,
@@ -601,6 +724,114 @@ impl FilesystemOperations for MacOSFilesystemOperations {
                 ctx.emit_event(AppEvent::Platform(
                     PlatformEvent::FilesystemOperationFailed {
                         operation: "remove_dir_all".to_string(),
+                        paths_involved: vec![path_str],
+                        error_message: e.to_string(),
+                        duration_ms: duration.as_millis() as u64,
+                    },
+                ))
+                .await;
+            }
+        }
+
+        result
+    }
+
+    /// Check if a path exists
+    async fn exists(&self, _ctx: &PlatformContext, path: &Path) -> bool {
+        tokio::fs::metadata(path).await.is_ok()
+    }
+
+    /// Remove a single file
+    async fn remove_file(&self, ctx: &PlatformContext, path: &Path) -> Result<(), PlatformError> {
+        let start = Instant::now();
+        let path_str = path.display().to_string();
+
+        ctx.emit_event(AppEvent::Platform(
+            PlatformEvent::FilesystemOperationStarted {
+                operation: "remove_file".to_string(),
+                source_path: None,
+                target_path: path_str.clone(),
+                context: HashMap::new(),
+            },
+        ))
+        .await;
+
+        let result = tokio::fs::remove_file(path).await.map_err(|e| {
+            PlatformError::FilesystemOperationFailed {
+                operation: "remove_file".to_string(),
+                message: e.to_string(),
+            }
+        });
+
+        let duration = start.elapsed();
+
+        match &result {
+            Ok(_) => {
+                ctx.emit_event(AppEvent::Platform(
+                    PlatformEvent::FilesystemOperationCompleted {
+                        operation: "remove_file".to_string(),
+                        paths_affected: vec![path_str],
+                        duration_ms: duration.as_millis() as u64,
+                    },
+                ))
+                .await;
+            }
+            Err(e) => {
+                ctx.emit_event(AppEvent::Platform(
+                    PlatformEvent::FilesystemOperationFailed {
+                        operation: "remove_file".to_string(),
+                        paths_involved: vec![path_str],
+                        error_message: e.to_string(),
+                        duration_ms: duration.as_millis() as u64,
+                    },
+                ))
+                .await;
+            }
+        }
+
+        result
+    }
+
+    /// Get the size of a file or directory
+    async fn size(&self, ctx: &PlatformContext, path: &Path) -> Result<u64, PlatformError> {
+        let start = Instant::now();
+        let path_str = path.display().to_string();
+
+        ctx.emit_event(AppEvent::Platform(
+            PlatformEvent::FilesystemOperationStarted {
+                operation: "size".to_string(),
+                source_path: None,
+                target_path: path_str.clone(),
+                context: HashMap::new(),
+            },
+        ))
+        .await;
+
+        let result =
+            self.calculate_size(path)
+                .await
+                .map_err(|e| PlatformError::FilesystemOperationFailed {
+                    operation: "size".to_string(),
+                    message: e.to_string(),
+                });
+
+        let duration = start.elapsed();
+
+        match &result {
+            Ok(_) => {
+                ctx.emit_event(AppEvent::Platform(
+                    PlatformEvent::FilesystemOperationCompleted {
+                        operation: "size".to_string(),
+                        paths_affected: vec![path_str],
+                        duration_ms: duration.as_millis() as u64,
+                    },
+                ))
+                .await;
+            }
+            Err(e) => {
+                ctx.emit_event(AppEvent::Platform(
+                    PlatformEvent::FilesystemOperationFailed {
+                        operation: "size".to_string(),
                         paths_involved: vec![path_str],
                         error_message: e.to_string(),
                         duration_ms: duration.as_millis() as u64,

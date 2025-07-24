@@ -1,9 +1,10 @@
 //! Stored package representation and operations
 
-use sps2_errors::{Error, PackageError};
+use sps2_errors::{Error, PackageError, StorageError};
 use sps2_hash::FileHashResult;
 use sps2_manifest::Manifest;
-use sps2_root::{create_dir_all, exists, hard_link, size};
+use sps2_platform::core::PlatformContext;
+use sps2_platform::Platform;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
@@ -29,7 +30,9 @@ impl StoredPackage {
 
         // Try to load file hashes if available
         let files_json_path = path.join("files.json");
-        let file_hashes = if exists(&files_json_path).await {
+        let platform = Platform::current();
+        let ctx = platform.create_context(None);
+        let file_hashes = if platform.filesystem().exists(&ctx, &files_json_path).await {
             let content = fs::read_to_string(&files_json_path).await?;
             serde_json::from_str(&content).ok()
         } else {
@@ -41,6 +44,13 @@ impl StoredPackage {
             manifest,
             file_hashes,
         })
+    }
+
+    /// Create a platform context for filesystem operations
+    fn create_platform_context() -> (Platform, PlatformContext) {
+        let platform = Platform::current();
+        let context = platform.create_context(None);
+        (platform, context)
     }
 
     /// Get the package manifest
@@ -133,8 +143,9 @@ impl StoredPackage {
         } else {
             // Legacy package - link from package directory
             let files_dir = self.files_path();
+            let (platform, ctx) = Self::create_platform_context();
 
-            if !exists(&files_dir).await {
+            if !platform.filesystem().exists(&ctx, &files_dir).await {
                 return Err(PackageError::Corrupted {
                     message: "missing files directory".to_string(),
                 }
@@ -147,8 +158,10 @@ impl StoredPackage {
     }
 
     async fn link_dir(&self, src: &Path, dest: &Path) -> Result<(), Error> {
+        let (platform, ctx) = Self::create_platform_context();
+
         // Create destination directory
-        create_dir_all(dest).await?;
+        platform.filesystem().create_dir_all(&ctx, dest).await?;
 
         let mut entries = fs::read_dir(src).await?;
         while let Some(entry) = entries.next_entry().await? {
@@ -173,17 +186,20 @@ impl StoredPackage {
                 Box::pin(self.link_dir(&src_path, &dest_path)).await?;
             } else if metadata.is_file() {
                 // Hard link the file
-                if exists(&dest_path).await {
+                if platform.filesystem().exists(&ctx, &dest_path).await {
                     // Remove existing file/link
-                    fs::remove_file(&dest_path).await?;
+                    platform.filesystem().remove_file(&ctx, &dest_path).await?;
                 }
-                hard_link(&src_path, &dest_path).await?;
+                platform
+                    .filesystem()
+                    .hard_link(&ctx, &src_path, &dest_path)
+                    .await?;
             } else if metadata.is_symlink() {
                 // Copy symlinks
                 let target = fs::read_link(&src_path).await?;
 
-                if exists(&dest_path).await {
-                    fs::remove_file(&dest_path).await?;
+                if platform.filesystem().exists(&ctx, &dest_path).await {
+                    platform.filesystem().remove_file(&ctx, &dest_path).await?;
                 }
 
                 #[cfg(unix)]
@@ -203,7 +219,17 @@ impl StoredPackage {
     ///
     /// Returns an error if size calculation fails due to I/O issues
     pub async fn size(&self) -> Result<u64, Error> {
-        size(&self.path).await
+        let (platform, ctx) = Self::create_platform_context();
+        platform
+            .filesystem()
+            .size(&ctx, &self.path)
+            .await
+            .map_err(|e| {
+                StorageError::IoError {
+                    message: e.to_string(),
+                }
+                .into()
+            })
     }
 
     /// List all files in the package
@@ -213,7 +239,9 @@ impl StoredPackage {
     /// Returns an error if directory traversal fails or I/O operations fail
     pub async fn list_files(&self) -> Result<Vec<PathBuf>, Error> {
         let files_dir = self.files_path();
-        if !exists(&files_dir).await {
+        let (platform, ctx) = Self::create_platform_context();
+
+        if !platform.filesystem().exists(&ctx, &files_dir).await {
             return Ok(Vec::new());
         }
 
@@ -257,8 +285,10 @@ impl StoredPackage {
     /// - Manifest validation fails
     /// - Package structure is corrupted
     pub async fn verify(&self) -> Result<(), Error> {
+        let (platform, ctx) = Self::create_platform_context();
+
         // Check required directories exist
-        if !exists(&self.files_path()).await {
+        if !platform.filesystem().exists(&ctx, &self.files_path()).await {
             return Err(PackageError::Corrupted {
                 message: "missing files directory".to_string(),
             }

@@ -17,6 +17,14 @@ pub trait FilesystemOperations: Send + Sync {
         dst: &Path,
     ) -> Result<(), PlatformError>;
 
+    /// Clone a directory using APFS clonefile for efficient copy-on-write
+    async fn clone_directory(
+        &self,
+        ctx: &PlatformContext,
+        src: &Path,
+        dst: &Path,
+    ) -> Result<(), PlatformError>;
+
     /// Atomically rename a file
     async fn atomic_rename(
         &self,
@@ -48,4 +56,13 @@ pub trait FilesystemOperations: Send + Sync {
     /// Remove directory and all contents
     async fn remove_dir_all(&self, ctx: &PlatformContext, path: &Path)
         -> Result<(), PlatformError>;
+
+    /// Check if a path exists
+    async fn exists(&self, ctx: &PlatformContext, path: &Path) -> bool;
+
+    /// Remove a single file
+    async fn remove_file(&self, ctx: &PlatformContext, path: &Path) -> Result<(), PlatformError>;
+
+    /// Get the size of a file or directory
+    async fn size(&self, ctx: &PlatformContext, path: &Path) -> Result<u64, PlatformError>;
 }

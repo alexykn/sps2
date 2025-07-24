@@ -12,6 +12,7 @@ sps2-errors = { path = "../errors" }
 sps2-types = { path = "../types" }
 sps2-hash = { path = "../hash" }
 sps2-root = { path = "../root" }
+sps2-platform = { path = "../platform" }
 sps2-manifest = { path = "../manifest" }
 sps2-events = { path = "../events" }
 sps2-resolver = { path = "../resolver" }

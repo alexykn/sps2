@@ -2,6 +2,7 @@
 
 use sps2_events::EventSender;
 use sps2_hash::FileHashResult;
+use sps2_platform::{core::PlatformContext, Platform};
 use sps2_state::{FileReference, PackageRef, StateManager};
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -62,16 +63,33 @@ impl StateTransition {
         })
     }
 
+    /// Create a platform context for filesystem operations
+    fn create_platform_context(&self) -> (Platform, PlatformContext) {
+        let platform = Platform::current();
+        let context = platform.create_context(None);
+        (platform, context)
+    }
+
     /// Clean up staging directory
     ///
     /// # Errors
     ///
     /// Returns an error if directory removal fails.
     pub async fn cleanup(&self, state_manager: &StateManager) -> Result<(), sps2_errors::Error> {
-        if sps2_root::exists(&self.staging_path).await {
+        let (platform, ctx) = self.create_platform_context();
+
+        if platform.filesystem().exists(&ctx, &self.staging_path).await {
             // Check if staging directory can be safely removed
             if state_manager.can_remove_staging(&self.staging_id).await? {
-                sps2_root::remove_dir_all(&self.staging_path).await?;
+                platform
+                    .filesystem()
+                    .remove_dir_all(&ctx, &self.staging_path)
+                    .await
+                    .map_err(|e| sps2_errors::InstallError::FilesystemError {
+                        operation: "remove_dir_all".to_string(),
+                        path: self.staging_path.display().to_string(),
+                        message: e.to_string(),
+                    })?;
             }
         }
         Ok(())

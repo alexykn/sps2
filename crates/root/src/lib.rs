@@ -24,22 +24,32 @@ mod apfs {
         let platform = Platform::current();
         let context = platform.create_context(None);
 
-        platform
-            .filesystem()
-            .clone_file(&context, src, dst)
-            .await
-            .map_err(|platform_err| {
-                // Convert PlatformError back to StorageError for backward compatibility
-                match platform_err {
-                    sps2_errors::PlatformError::FilesystemOperationFailed { message, .. } => {
-                        StorageError::ApfsCloneFailed { message }.into()
-                    }
-                    _ => StorageError::ApfsCloneFailed {
-                        message: platform_err.to_string(),
-                    }
-                    .into(),
+        // Use clone_directory for directories, clone_file for files
+        let metadata = std::fs::metadata(src).map_err(|e| StorageError::IoError {
+            message: e.to_string(),
+        })?;
+
+        let result = if metadata.is_dir() {
+            platform
+                .filesystem()
+                .clone_directory(&context, src, dst)
+                .await
+        } else {
+            platform.filesystem().clone_file(&context, src, dst).await
+        };
+
+        result.map_err(|platform_err| {
+            // Convert PlatformError back to StorageError for backward compatibility
+            match platform_err {
+                sps2_errors::PlatformError::FilesystemOperationFailed { message, .. } => {
+                    StorageError::ApfsCloneFailed { message }.into()
                 }
-            })
+                _ => StorageError::ApfsCloneFailed {
+                    message: platform_err.to_string(),
+                }
+                .into(),
+            }
+        })
     }
 }
 
@@ -56,68 +66,25 @@ mod apfs {
 /// - The atomic rename operation fails (permissions, file not found, etc.)
 /// - The blocking task panics
 pub async fn atomic_rename(src: &Path, dst: &Path) -> Result<()> {
-    #[cfg(target_os = "macos")]
-    {
-        // Use async filesystem operations for proper directory handling
-        if dst.exists() {
-            if dst.is_dir() {
-                // For directories, we need to remove the destination first
-                // Create a temporary backup location
-                let temp_dst = dst.with_extension("old");
+    let platform = Platform::current();
+    let context = platform.create_context(None);
 
-                // Move destination to temp location
-                tokio::fs::rename(dst, &temp_dst).await.map_err(|e| {
-                    StorageError::AtomicRenameFailed {
-                        message: format!("failed to backup destination: {e}"),
-                    }
-                })?;
-
-                // Move source to destination
-                match tokio::fs::rename(src, dst).await {
-                    Ok(()) => {
-                        // Success! Remove the old destination
-                        let _ = tokio::fs::remove_dir_all(&temp_dst).await;
-                        Ok(())
-                    }
-                    Err(e) => {
-                        // Failed! Restore the original destination
-                        let _ = tokio::fs::rename(&temp_dst, dst).await;
-                        Err(StorageError::AtomicRenameFailed {
-                            message: format!("rename failed: {e}"),
-                        }
-                        .into())
-                    }
+    platform
+        .filesystem()
+        .atomic_rename(&context, src, dst)
+        .await
+        .map_err(|platform_err| {
+            // Convert PlatformError back to StorageError for backward compatibility
+            match platform_err {
+                sps2_errors::PlatformError::FilesystemOperationFailed { message, .. } => {
+                    StorageError::AtomicRenameFailed { message }.into()
                 }
-            } else {
-                // For files, regular rename should work
-                tokio::fs::rename(src, dst).await.map_err(|e| {
-                    StorageError::AtomicRenameFailed {
-                        message: format!("rename failed: {e}"),
-                    }
-                    .into()
-                })
+                _ => StorageError::AtomicRenameFailed {
+                    message: platform_err.to_string(),
+                }
+                .into(),
             }
-        } else {
-            // Destination doesn't exist, regular rename
-            tokio::fs::rename(src, dst).await.map_err(|e| {
-                StorageError::AtomicRenameFailed {
-                    message: format!("rename failed: {e}"),
-                }
-                .into()
-            })
-        }
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        // Fallback to regular rename (not truly atomic swap)
-        fs::rename(src, dst)
-            .await
-            .map_err(|e| StorageError::AtomicRenameFailed {
-                message: e.to_string(),
-            })?;
-        Ok(())
-    }
+        })
 }
 
 /// True atomic swap that requires both paths to exist
@@ -212,17 +179,25 @@ pub async fn copy_directory(src: &Path, dst: &Path) -> Result<()> {
 /// - Permission is denied
 /// - Any I/O operation fails during directory creation
 pub async fn create_dir_all(path: &Path) -> Result<()> {
-    fs::create_dir_all(path).await.map_err(|e| {
-        match e.kind() {
-            std::io::ErrorKind::PermissionDenied => StorageError::PermissionDenied {
-                path: path.display().to_string(),
-            },
-            _ => StorageError::IoError {
-                message: e.to_string(),
-            },
-        }
-        .into()
-    })
+    let platform = Platform::current();
+    let context = platform.create_context(None);
+
+    platform
+        .filesystem()
+        .create_dir_all(&context, path)
+        .await
+        .map_err(|platform_err| {
+            // Convert PlatformError back to StorageError for backward compatibility
+            match platform_err {
+                sps2_errors::PlatformError::FilesystemOperationFailed { message, .. } => {
+                    StorageError::IoError { message }.into()
+                }
+                _ => StorageError::IoError {
+                    message: platform_err.to_string(),
+                }
+                .into(),
+            }
+        })
 }
 
 /// Remove a directory and all its contents
@@ -232,14 +207,25 @@ pub async fn create_dir_all(path: &Path) -> Result<()> {
 /// Returns an error if:
 /// - The directory removal operation fails (permissions, non-empty directory, etc.)
 pub async fn remove_dir_all(path: &Path) -> Result<()> {
-    if path.exists() {
-        fs::remove_dir_all(path)
-            .await
-            .map_err(|e| StorageError::IoError {
-                message: e.to_string(),
-            })?;
-    }
-    Ok(())
+    let platform = Platform::current();
+    let context = platform.create_context(None);
+
+    platform
+        .filesystem()
+        .remove_dir_all(&context, path)
+        .await
+        .map_err(|platform_err| {
+            // Convert PlatformError back to StorageError for backward compatibility
+            match platform_err {
+                sps2_errors::PlatformError::FilesystemOperationFailed { message, .. } => {
+                    StorageError::IoError { message }.into()
+                }
+                _ => StorageError::IoError {
+                    message: platform_err.to_string(),
+                }
+                .into(),
+            }
+        })
 }
 
 /// Create a hard link with platform optimization
@@ -322,7 +308,10 @@ pub async fn rename(src: &Path, dst: &Path) -> Result<()> {
 
 /// Check if a path exists
 pub async fn exists(path: &Path) -> bool {
-    fs::metadata(path).await.is_ok()
+    let platform = Platform::current();
+    let context = platform.create_context(None);
+
+    platform.filesystem().exists(&context, path).await
 }
 
 /// Get the size of a file or directory
@@ -334,26 +323,25 @@ pub async fn exists(path: &Path) -> bool {
 /// - Reading directory contents fails
 /// - Any I/O operation fails during recursive directory traversal
 pub async fn size(path: &Path) -> Result<u64> {
-    if path.is_file() {
-        let metadata = fs::metadata(path).await?;
-        Ok(metadata.len())
-    } else {
-        // Calculate directory size recursively
-        let mut total = 0u64;
-        let mut entries = fs::read_dir(path).await?;
+    let platform = Platform::current();
+    let context = platform.create_context(None);
 
-        while let Some(entry) = entries.next_entry().await? {
-            let path = entry.path();
-            if path.is_dir() {
-                total += Box::pin(size(&path)).await?;
-            } else {
-                let metadata = entry.metadata().await?;
-                total += metadata.len();
+    platform
+        .filesystem()
+        .size(&context, path)
+        .await
+        .map_err(|platform_err| {
+            // Convert PlatformError back to StorageError for backward compatibility
+            match platform_err {
+                sps2_errors::PlatformError::FilesystemOperationFailed { message, .. } => {
+                    StorageError::IoError { message }.into()
+                }
+                _ => StorageError::IoError {
+                    message: platform_err.to_string(),
+                }
+                .into(),
             }
-        }
-
-        Ok(total)
-    }
+        })
 }
 
 /// Ensure a directory exists and is empty
@@ -393,23 +381,30 @@ pub fn set_compression(_path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Remove a file
+/// Remove a single file
 ///
 /// # Errors
 ///
 /// Returns an error if:
 /// - The file removal operation fails (permissions, file not found, etc.)
 pub async fn remove_file(path: &Path) -> Result<()> {
-    fs::remove_file(path).await.map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            StorageError::PathNotFound {
-                path: path.display().to_string(),
+    let platform = Platform::current();
+    let context = platform.create_context(None);
+
+    platform
+        .filesystem()
+        .remove_file(&context, path)
+        .await
+        .map_err(|platform_err| {
+            // Convert PlatformError back to StorageError for backward compatibility
+            match platform_err {
+                sps2_errors::PlatformError::FilesystemOperationFailed { message, .. } => {
+                    StorageError::IoError { message }.into()
+                }
+                _ => StorageError::IoError {
+                    message: platform_err.to_string(),
+                }
+                .into(),
             }
-        } else {
-            StorageError::IoError {
-                message: format!("failed to remove file: {e}"),
-            }
-        }
-        .into()
-    })
+        })
 }

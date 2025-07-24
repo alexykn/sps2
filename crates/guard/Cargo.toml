@@ -18,6 +18,7 @@ sps2-hash = { path = "../hash" }
 sps2-store = { path = "../store" }
 sps2-config = { path = "../config" }
 sps2-root = { path = "../root" }
+sps2-platform = { path = "../platform" }
 serde = { workspace = true }
 tokio = { workspace = true, features = ["fs"] }
 futures = "0.3.31"
