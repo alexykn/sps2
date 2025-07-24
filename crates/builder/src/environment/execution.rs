@@ -85,12 +85,12 @@ impl BuildEnvironment {
 
         let stdout_lines: Vec<String> = String::from_utf8_lossy(&output.stdout)
             .lines()
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .collect();
 
         let stderr_lines: Vec<String> = String::from_utf8_lossy(&output.stderr)
             .lines()
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .collect();
 
         let result = BuildCommandResult {
@@ -177,12 +177,12 @@ impl BuildEnvironment {
 
         let stdout_lines: Vec<String> = String::from_utf8_lossy(&output.stdout)
             .lines()
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .collect();
 
         let stderr_lines: Vec<String> = String::from_utf8_lossy(&output.stderr)
             .lines()
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .collect();
 
         Ok(BuildCommandResult {

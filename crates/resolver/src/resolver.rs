@@ -590,19 +590,19 @@ impl Resolver {
             .into());
         }
 
-        let content =
+        let manifest_content =
             String::from_utf8(tar_output.stdout).map_err(|_| PackageError::InvalidFormat {
                 message: "manifest.toml contains invalid UTF-8".to_string(),
             })?;
 
-        if content.trim().is_empty() {
+        if manifest_content.trim().is_empty() {
             return Err(PackageError::InvalidFormat {
                 message: "manifest.toml is empty or missing".to_string(),
             }
             .into());
         }
 
-        Ok(content)
+        Ok(manifest_content)
     }
 
     /// Get available versions for a package
