@@ -350,17 +350,6 @@ impl UninstallOperation {
             }
         }
 
-        if context.dry_run {
-            // Return what would be removed without actually doing it
-            let mut result = InstallResult::new(uuid::Uuid::new_v4());
-            for package in &packages_to_remove {
-                let package_id =
-                    sps2_resolver::PackageId::new(package.name.clone(), package.version());
-                result.add_removed(package_id);
-            }
-            return Ok(result);
-        }
-
         // Perform atomic uninstallation using AtomicInstaller
         let package_ids: Vec<sps2_resolver::PackageId> = packages_to_remove
             .iter()
@@ -468,7 +457,7 @@ impl UpdateOperation {
 
         install_context = install_context
             .with_force(true) // Force reinstallation for updates
-            .with_dry_run(context.dry_run);
+;
 
         if let Some(sender) = &context.event_sender {
             install_context = install_context.with_event_sender(sender.clone());

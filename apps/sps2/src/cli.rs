@@ -41,6 +41,10 @@ pub struct GlobalArgs {
     /// Use alternate builder config file
     #[arg(long, global = true, value_name = "PATH")]
     pub builder_config: Option<PathBuf>,
+
+    /// Show what would be done without executing (like ansible --check)
+    #[arg(long, global = true)]
+    pub check: bool,
 }
 
 /// Draft command source arguments

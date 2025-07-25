@@ -360,12 +360,6 @@ impl AtomicInstaller {
             .await?;
         }
 
-        if context.dry_run {
-            // Clean up staging and return result without committing
-            transition.cleanup(&self.state_manager).await?;
-            return Ok(result);
-        }
-
         // Execute two-phase commit
         self.execute_two_phase_commit(&transition, context).await?;
 
@@ -560,12 +554,6 @@ impl AtomicInstaller {
         // Carry forward packages that are not being removed
         self.carry_forward_packages(&mut transition, packages_to_remove)
             .await?;
-
-        if context.dry_run {
-            // Clean up staging and return result without committing
-            transition.cleanup(&self.state_manager).await?;
-            return Ok(result);
-        }
 
         // Execute two-phase commit
         self.execute_two_phase_commit(&transition, context).await?;

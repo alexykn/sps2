@@ -89,8 +89,7 @@ pub struct InstallContext {
     pub local_files: Vec<PathBuf>,
     /// Force reinstallation
     pub force: bool,
-    /// Dry run mode
-    pub dry_run: bool,
+
     /// Event sender for progress reporting
     pub event_sender: Option<EventSender>,
 }
@@ -100,7 +99,7 @@ context_builder! {
         packages: Vec<PackageSpec>,
         local_files: Vec<PathBuf>,
         force: bool,
-        dry_run: bool
+
     }
 }
 context_add_package_method!(InstallContext, PackageSpec);
@@ -161,8 +160,7 @@ pub struct UninstallContext {
     pub autoremove: bool,
     /// Force removal even with dependents
     pub force: bool,
-    /// Dry run mode
-    pub dry_run: bool,
+
     /// Event sender for progress reporting
     pub event_sender: Option<EventSender>,
 }
@@ -172,7 +170,7 @@ context_builder! {
         packages: Vec<String>,
         autoremove: bool,
         force: bool,
-        dry_run: bool
+
     }
 }
 context_add_package_method!(UninstallContext, String);
@@ -184,8 +182,7 @@ pub struct UpdateContext {
     pub packages: Vec<String>,
     /// Upgrade mode (ignore upper bounds)
     pub upgrade: bool,
-    /// Dry run mode
-    pub dry_run: bool,
+
     /// Event sender for progress reporting
     pub event_sender: Option<EventSender>,
 }
@@ -194,7 +191,7 @@ context_builder! {
     UpdateContext {
         packages: Vec<String>,
         upgrade: bool,
-        dry_run: bool
+
     }
 }
 context_add_package_method!(UpdateContext, String);

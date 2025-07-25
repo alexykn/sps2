@@ -319,34 +319,46 @@ impl OutputRenderer {
             for change in &info.changes {
                 match change.change_type {
                     sps2_ops::ChangeType::Install => {
-                        println!(
-                            "  + {} {}",
-                            change.package,
-                            change.new_version.as_ref().unwrap()
-                        );
+                        let version = change
+                            .new_version
+                            .as_ref()
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        println!("  + {} {}", change.package, version);
                     }
                     sps2_ops::ChangeType::Update => {
-                        println!(
-                            "  ~ {} {} → {}",
-                            change.package,
-                            change.old_version.as_ref().unwrap(),
-                            change.new_version.as_ref().unwrap()
-                        );
+                        let old_version = change
+                            .old_version
+                            .as_ref()
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        let new_version = change
+                            .new_version
+                            .as_ref()
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        println!("  ~ {} {} → {}", change.package, old_version, new_version);
                     }
                     sps2_ops::ChangeType::Remove => {
-                        println!(
-                            "  - {} {}",
-                            change.package,
-                            change.old_version.as_ref().unwrap()
-                        );
+                        let old_version = change
+                            .old_version
+                            .as_ref()
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        println!("  - {} {}", change.package, old_version);
                     }
                     sps2_ops::ChangeType::Downgrade => {
-                        println!(
-                            "  ↓ {} {} → {}",
-                            change.package,
-                            change.old_version.as_ref().unwrap(),
-                            change.new_version.as_ref().unwrap()
-                        );
+                        let old_version = change
+                            .old_version
+                            .as_ref()
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        let new_version = change
+                            .new_version
+                            .as_ref()
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        println!("  ↓ {} {} → {}", change.package, old_version, new_version);
                     }
                 }
             }
@@ -497,34 +509,46 @@ impl OutputRenderer {
             for change in &report.changes {
                 match change.change_type {
                     sps2_ops::ChangeType::Install => {
-                        println!(
-                            "  + {} {}",
-                            change.package,
-                            change.new_version.as_ref().unwrap()
-                        );
+                        let version = change
+                            .new_version
+                            .as_ref()
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        println!("  + {} {}", change.package, version);
                     }
                     sps2_ops::ChangeType::Update => {
-                        println!(
-                            "  ~ {} {} → {}",
-                            change.package,
-                            change.old_version.as_ref().unwrap(),
-                            change.new_version.as_ref().unwrap()
-                        );
+                        let old_version = change
+                            .old_version
+                            .as_ref()
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        let new_version = change
+                            .new_version
+                            .as_ref()
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        println!("  ~ {} {} → {}", change.package, old_version, new_version);
                     }
                     sps2_ops::ChangeType::Remove => {
-                        println!(
-                            "  - {} {}",
-                            change.package,
-                            change.old_version.as_ref().unwrap()
-                        );
+                        let old_version = change
+                            .old_version
+                            .as_ref()
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        println!("  - {} {}", change.package, old_version);
                     }
                     sps2_ops::ChangeType::Downgrade => {
-                        println!(
-                            "  ↓ {} {} → {}",
-                            change.package,
-                            change.old_version.as_ref().unwrap(),
-                            change.new_version.as_ref().unwrap()
-                        );
+                        let old_version = change
+                            .old_version
+                            .as_ref()
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        let new_version = change
+                            .new_version
+                            .as_ref()
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        println!("  ↓ {} {} → {}", change.package, old_version, new_version);
                     }
                 }
             }

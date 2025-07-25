@@ -84,6 +84,20 @@ pub enum GeneralEvent {
         delay_ms: u64,
         reason: String,
     },
+
+    /// Check mode preview of planned action
+    CheckModePreview {
+        operation: String,
+        action: String,
+        details: std::collections::HashMap<String, String>,
+    },
+
+    /// Check mode summary of all planned changes
+    CheckModeSummary {
+        operation: String,
+        total_changes: usize,
+        categories: std::collections::HashMap<String, usize>,
+    },
 }
 
 impl GeneralEvent {

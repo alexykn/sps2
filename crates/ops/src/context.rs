@@ -37,6 +37,8 @@ pub struct OpsCtx {
     pub config: Config,
     /// State verification guard (optional)
     pub guard: RefCell<Option<StateVerificationGuard>>,
+    /// Whether to run in check mode (preview only)
+    pub check_mode: bool,
 }
 
 impl EventEmitter for OpsCtx {
@@ -567,6 +569,7 @@ pub struct OpsContextBuilder {
     builder: Option<Builder>,
     tx: Option<EventSender>,
     config: Option<Config>,
+    check_mode: Option<bool>,
 }
 
 impl OpsContextBuilder {
@@ -582,6 +585,7 @@ impl OpsContextBuilder {
             builder: None,
             tx: None,
             config: None,
+            check_mode: None,
         }
     }
 
@@ -638,6 +642,13 @@ impl OpsContextBuilder {
     #[must_use]
     pub fn with_config(mut self, config: Config) -> Self {
         self.config = Some(config);
+        self
+    }
+
+    /// Set check mode
+    #[must_use]
+    pub fn with_check_mode(mut self, check_mode: bool) -> Self {
+        self.check_mode = Some(check_mode);
         self
     }
 
@@ -705,6 +716,7 @@ impl OpsContextBuilder {
             tx,
             config,
             guard: RefCell::new(None), // Guard will be initialized separately
+            check_mode: self.check_mode.unwrap_or(false),
         })
     }
 }

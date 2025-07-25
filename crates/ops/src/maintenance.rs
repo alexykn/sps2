@@ -2,7 +2,7 @@
 
 use crate::{ChangeType, OpChange, OpsCtx, StateInfo};
 use sps2_errors::{Error, OpsError};
-use sps2_events::{AppEvent, EventEmitter, PackageEvent, StateEvent};
+use sps2_events::{AppEvent, EventEmitter, GeneralEvent, PackageEvent, StateEvent};
 use std::time::Instant;
 use uuid::Uuid;
 
@@ -56,6 +56,11 @@ pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
 pub async fn rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<StateInfo, Error> {
     let start = Instant::now();
 
+    // Check mode: preview what would be rolled back
+    if ctx.check_mode {
+        return preview_rollback(ctx, target_state).await;
+    }
+
     // If no target specified, rollback to previous state
     let target_id = if let Some(id) = target_state {
         id
@@ -91,14 +96,18 @@ pub async fn rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<StateI
         .into());
     }
 
+    // Calculate changes BEFORE rollback (current -> target)
+    let current_id = ctx.state.get_current_state_id().await?;
+    let rollback_changes = calculate_state_changes(ctx, &current_id, &target_id).await?;
+
     // Perform rollback using atomic installer
     let mut atomic_installer =
         sps2_install::AtomicInstaller::new(ctx.state.clone(), ctx.store.clone()).await?;
 
     atomic_installer.rollback(target_id).await?;
 
-    // Get state information
-    let state_info = get_state_info(ctx, target_id).await?;
+    // Get state information with pre-calculated changes
+    let state_info = get_rollback_state_info_with_changes(ctx, target_id, rollback_changes).await?;
 
     let _ = ctx.tx.send(AppEvent::State(StateEvent::RollbackCompleted {
         from: ctx.state.get_current_state_id().await?,
@@ -106,6 +115,163 @@ pub async fn rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<StateI
         duration: start.elapsed(),
         packages_reverted: 0, // TODO: Track actual packages reverted
     }));
+
+    Ok(state_info)
+}
+
+/// Preview what would be rolled back without executing
+#[allow(clippy::too_many_lines)]
+async fn preview_rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<StateInfo, Error> {
+    use std::collections::HashMap;
+
+    // Resolve target state (same logic as main rollback)
+    let target_id = if let Some(id) = target_state {
+        id
+    } else {
+        let current_id = ctx.state.get_current_state_id().await?;
+        ctx.state
+            .get_parent_state_id(&current_id)
+            .await?
+            .ok_or(OpsError::NoPreviousState)?
+    };
+
+    // Validate target state exists (same validation as main rollback)
+    if !ctx.state.state_exists(&target_id).await? {
+        return Err(OpsError::StateNotFound {
+            state_id: target_id,
+        }
+        .into());
+    }
+
+    let state_path = ctx.state.state_path().join(target_id.to_string());
+    if !state_path.exists() {
+        return Err(OpsError::StateNotFound {
+            state_id: target_id,
+        }
+        .into());
+    }
+
+    // Calculate changes (current -> target)
+    let current_id = ctx.state.get_current_state_id().await?;
+    let changes = calculate_state_changes(ctx, &current_id, &target_id).await?;
+
+    // Emit preview events for each change
+    let mut added_count = 0;
+    let mut removed_count = 0;
+    let mut updated_count = 0;
+
+    for change in &changes {
+        let (action, change_type, details) = match change.change_type {
+            ChangeType::Install => {
+                added_count += 1;
+                let version = change
+                    .new_version
+                    .as_ref()
+                    .map_or_else(|| "unknown".to_string(), ToString::to_string);
+                (
+                    format!("Would add {} {}", change.package, version),
+                    "add",
+                    HashMap::from([
+                        ("package".to_string(), change.package.clone()),
+                        ("new_version".to_string(), version),
+                    ]),
+                )
+            }
+            ChangeType::Remove => {
+                removed_count += 1;
+                let version = change
+                    .old_version
+                    .as_ref()
+                    .map_or_else(|| "unknown".to_string(), ToString::to_string);
+                (
+                    format!("Would remove {} {}", change.package, version),
+                    "remove",
+                    HashMap::from([
+                        ("package".to_string(), change.package.clone()),
+                        ("current_version".to_string(), version),
+                    ]),
+                )
+            }
+            ChangeType::Update => {
+                updated_count += 1;
+                let old_version = change
+                    .old_version
+                    .as_ref()
+                    .map_or_else(|| "unknown".to_string(), ToString::to_string);
+                let new_version = change
+                    .new_version
+                    .as_ref()
+                    .map_or_else(|| "unknown".to_string(), ToString::to_string);
+                (
+                    format!(
+                        "Would update {} {} → {}",
+                        change.package, old_version, new_version
+                    ),
+                    "update",
+                    HashMap::from([
+                        ("package".to_string(), change.package.clone()),
+                        ("current_version".to_string(), old_version),
+                        ("target_version".to_string(), new_version),
+                    ]),
+                )
+            }
+            ChangeType::Downgrade => {
+                updated_count += 1;
+                let old_version = change
+                    .old_version
+                    .as_ref()
+                    .map_or_else(|| "unknown".to_string(), ToString::to_string);
+                let new_version = change
+                    .new_version
+                    .as_ref()
+                    .map_or_else(|| "unknown".to_string(), ToString::to_string);
+                (
+                    format!(
+                        "Would downgrade {} {} → {}",
+                        change.package, old_version, new_version
+                    ),
+                    "downgrade",
+                    HashMap::from([
+                        ("package".to_string(), change.package.clone()),
+                        ("current_version".to_string(), old_version),
+                        ("target_version".to_string(), new_version),
+                    ]),
+                )
+            }
+        };
+
+        let mut event_details = details;
+        event_details.insert("target_state".to_string(), target_id.to_string());
+        event_details.insert("change_type".to_string(), change_type.to_string());
+
+        ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {
+            operation: "rollback".to_string(),
+            action,
+            details: event_details,
+        }));
+    }
+
+    // Emit summary
+    let total_changes = changes.len();
+    let mut categories = HashMap::new();
+    if added_count > 0 {
+        categories.insert("packages_added".to_string(), added_count);
+    }
+    if removed_count > 0 {
+        categories.insert("packages_removed".to_string(), removed_count);
+    }
+    if updated_count > 0 {
+        categories.insert("packages_updated".to_string(), updated_count);
+    }
+
+    ctx.emit(AppEvent::General(GeneralEvent::CheckModeSummary {
+        operation: "rollback".to_string(),
+        total_changes,
+        categories,
+    }));
+
+    // Get target state info for preview (reuse existing function)
+    let state_info = get_rollback_state_info_with_changes(ctx, target_id, changes).await?;
 
     Ok(state_info)
 }
@@ -160,42 +326,41 @@ pub async fn history(ctx: &OpsCtx) -> Result<Vec<StateInfo>, Error> {
     Ok(state_infos)
 }
 
-/// Get state information by ID
-async fn get_state_info(ctx: &OpsCtx, state_id: Uuid) -> Result<StateInfo, Error> {
+/// Get rollback state information with pre-calculated changes
+async fn get_rollback_state_info_with_changes(
+    ctx: &OpsCtx,
+    target_id: Uuid,
+    changes: Vec<OpChange>,
+) -> Result<StateInfo, Error> {
     let states = ctx.state.list_states_detailed().await?;
     let current_id = ctx.state.get_current_state_id().await?;
 
-    let state = states
-        .iter()
-        .find(|s| s.state_id() == state_id)
-        .ok_or(OpsError::StateNotFound { state_id })?;
+    let state =
+        states
+            .iter()
+            .find(|s| s.state_id() == target_id)
+            .ok_or(OpsError::StateNotFound {
+                state_id: target_id,
+            })?;
 
     let parent_id = state
         .parent_id
         .as_ref()
         .and_then(|p| uuid::Uuid::parse_str(p).ok());
 
-    // Get actual package count for this state
-    let package_count = get_state_package_count(ctx, &state_id).await?;
-
-    // Calculate changes from parent state
-    let changes = if let Some(parent_id) = parent_id {
-        calculate_state_changes(ctx, &parent_id, &state_id).await?
-    } else {
-        // Root state - all packages are installs
-        get_initial_state_changes(ctx, &state_id).await?
-    };
+    // Get actual package count for target state
+    let package_count = get_state_package_count(ctx, &target_id).await?;
 
     Ok(StateInfo {
-        id: state_id,
+        id: target_id,
         parent: parent_id,
         parent_id,
         timestamp: state.timestamp(),
         operation: state.operation.clone(),
-        current: Some(current_id) == Some(state_id),
+        current: Some(current_id) == Some(target_id),
         package_count,
         total_size: 0, // TODO: Calculate actual size
-        changes,
+        changes,       // Use pre-calculated changes
     })
 }
 
@@ -211,43 +376,55 @@ async fn calculate_state_changes(
     parent_id: &Uuid,
     child_id: &Uuid,
 ) -> Result<Vec<OpChange>, Error> {
-    let parent_packages = ctx.state.get_state_packages(parent_id).await?;
-    let child_packages = ctx.state.get_state_packages(child_id).await?;
+    let parent_packages = ctx.state.get_installed_packages_in_state(parent_id).await?;
+    let child_packages = ctx.state.get_installed_packages_in_state(child_id).await?;
 
     let mut changes = Vec::new();
 
-    // Convert to sets for easier comparison
-    let parent_set: std::collections::HashSet<&String> = parent_packages.iter().collect();
-    let child_set: std::collections::HashSet<&String> = child_packages.iter().collect();
+    // Convert to maps for easier comparison (name -> version)
+    let parent_map: std::collections::HashMap<String, String> = parent_packages
+        .iter()
+        .map(|p| (p.name.clone(), p.version.clone()))
+        .collect();
+    let child_map: std::collections::HashMap<String, String> = child_packages
+        .iter()
+        .map(|p| (p.name.clone(), p.version.clone()))
+        .collect();
 
     // Find packages that were added (in child but not parent)
-    for package in &child_packages {
-        if !parent_set.contains(package) {
-            // For now, we can't get version info from package names only
-            // In a real implementation, we'd need to get full Package objects
+    for (package_name, version) in &child_map {
+        if !parent_map.contains_key(package_name) {
             changes.push(OpChange {
                 change_type: ChangeType::Install,
-                package: package.clone(),
+                package: package_name.clone(),
                 old_version: None,
-                new_version: None, // Would need actual Package data
+                new_version: version.parse().ok(),
             });
+        } else if let Some(parent_version) = parent_map.get(package_name) {
+            // Check for version changes
+            if version != parent_version {
+                // For now, we'll just detect differences, not direction of change
+                changes.push(OpChange {
+                    change_type: ChangeType::Update,
+                    package: package_name.clone(),
+                    old_version: parent_version.parse().ok(),
+                    new_version: version.parse().ok(),
+                });
+            }
         }
     }
 
     // Find packages that were removed (in parent but not child)
-    for package in &parent_packages {
-        if !child_set.contains(package) {
+    for (package_name, version) in &parent_map {
+        if !child_map.contains_key(package_name) {
             changes.push(OpChange {
                 change_type: ChangeType::Remove,
-                package: package.clone(),
-                old_version: None, // Would need actual Package data
+                package: package_name.clone(),
+                old_version: version.parse().ok(),
                 new_version: None,
             });
         }
     }
-
-    // Note: Updates/downgrades would require version comparison
-    // which needs full Package objects, not just names
 
     Ok(changes)
 }

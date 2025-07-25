@@ -11,6 +11,7 @@ use sps2_install::{InstallConfig, InstallContext, Installer, PipelineConfig, Pip
 use sps2_types::{PackageSpec, Version};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
+use uuid::Uuid;
 
 /// Install packages using the high-performance parallel pipeline
 ///
@@ -29,6 +30,11 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
 
     if package_specs.is_empty() {
         return Err(OpsError::NoPackagesSpecified.into());
+    }
+
+    // Check mode: preview what would be installed
+    if ctx.check_mode {
+        return preview_install(ctx, package_specs).await;
     }
 
     // Event emission moved to operations layer where actual work happens
@@ -76,16 +82,10 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
                 ctx.emit(AppEvent::General(GeneralEvent::error_with_details(
                     format!("Failed to install {} local packages", local_files.len()),
                     format!(
-                        "Error: {e}. 
-
-Suggested solutions:
-\
-                        • Verify file paths are correct and files exist
-\
-                        • Check file permissions (must be readable)
-\
-                        • Ensure .sp files are not corrupted
-\
+                        "Error: {e}. \n\nSuggested solutions:\n\
+                        • Verify file paths are correct and files exist\n\
+                        • Check file permissions (must be readable)\n\
+                        • Ensure .sp files are not corrupted\n\
                         • Use absolute paths or './' prefix for current directory"
                     ),
                 )));
@@ -105,16 +105,10 @@ Suggested solutions:
                         local_files.len()
                     ),
                     format!(
-                        "Error: {e}. 
-
-Suggested solutions:
-\
-                        • Verify file paths are correct and files exist
-\
-                        • Check file permissions (must be readable)
-\
-                        • Ensure .sp files are not corrupted
-\
+                        "Error: {e}. \n\nSuggested solutions:\n\
+                        • Verify file paths are correct and files exist\n\
+                        • Check file permissions (must be readable)\n\
+                        • Ensure .sp files are not corrupted\n\
                         • Use absolute paths or './' prefix for current directory"
                     ),
                 )));
@@ -164,6 +158,182 @@ Suggested solutions:
     // Event emission moved to operations layer where actual work happens
 
     Ok(report)
+}
+
+/// Preview what would be installed without executing
+#[allow(clippy::too_many_lines)]
+async fn preview_install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallReport, Error> {
+    use std::collections::HashMap;
+
+    // Parse install requests
+    let install_requests = parse_install_requests(package_specs)?;
+    let mut remote_specs = Vec::new();
+    let mut local_files = Vec::new();
+
+    for request in install_requests {
+        match request {
+            InstallRequest::Remote(spec) => {
+                remote_specs.push(spec);
+            }
+            InstallRequest::LocalFile(path) => {
+                local_files.push(path);
+            }
+        }
+    }
+
+    // Get currently installed packages to check for updates
+    let installed_before = ctx.state.get_installed_packages().await?;
+    let installed_map: HashMap<String, Version> = installed_before
+        .iter()
+        .map(|pkg| (pkg.name.clone(), pkg.version()))
+        .collect();
+
+    let mut preview_installed = Vec::new();
+    let mut preview_updated = Vec::new();
+    let mut new_packages_count = 0;
+    let mut dependencies_added_count = 0;
+
+    // Handle remote packages
+    if !remote_specs.is_empty() {
+        // Create resolution context
+        let mut resolution_context = sps2_resolver::ResolutionContext::new();
+        for spec in &remote_specs {
+            resolution_context = resolution_context.add_runtime_dep(spec.clone());
+        }
+
+        // Resolve dependencies
+        let resolution_result = ctx.resolver.resolve_with_sat(resolution_context).await?;
+
+        // Process resolved packages
+        for (package_id, node) in &resolution_result.nodes {
+            let is_requested = remote_specs.iter().any(|spec| spec.name == package_id.name);
+            let is_dependency = !is_requested;
+
+            if let Some(existing_version) = installed_map.get(&package_id.name) {
+                if existing_version != &package_id.version {
+                    // Package would be updated
+                    ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {
+                        operation: "install".to_string(),
+                        action: format!(
+                            "Would update {} {} → {}",
+                            package_id.name, existing_version, package_id.version
+                        ),
+                        details: HashMap::from([
+                            ("current_version".to_string(), existing_version.to_string()),
+                            ("new_version".to_string(), package_id.version.to_string()),
+                            (
+                                "source".to_string(),
+                                match node.action {
+                                    sps2_resolver::NodeAction::Download => "repository".to_string(),
+                                    sps2_resolver::NodeAction::Local => "local file".to_string(),
+                                },
+                            ),
+                        ]),
+                    }));
+
+                    preview_updated.push(crate::PackageChange {
+                        name: package_id.name.clone(),
+                        from_version: Some(existing_version.clone()),
+                        to_version: Some(package_id.version.clone()),
+                        size: None,
+                    });
+                }
+            } else {
+                // Package would be newly installed
+                let action_text = if is_dependency {
+                    format!("Would install {package_id} (dependency)")
+                } else {
+                    format!("Would install {package_id}")
+                };
+
+                ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {
+                    operation: "install".to_string(),
+                    action: action_text,
+                    details: HashMap::from([
+                        ("version".to_string(), package_id.version.to_string()),
+                        (
+                            "source".to_string(),
+                            match node.action {
+                                sps2_resolver::NodeAction::Download => "repository".to_string(),
+                                sps2_resolver::NodeAction::Local => "local file".to_string(),
+                            },
+                        ),
+                        (
+                            "type".to_string(),
+                            if is_dependency {
+                                "dependency".to_string()
+                            } else {
+                                "requested".to_string()
+                            },
+                        ),
+                    ]),
+                }));
+
+                preview_installed.push(crate::PackageChange {
+                    name: package_id.name.clone(),
+                    from_version: None,
+                    to_version: Some(package_id.version.clone()),
+                    size: None,
+                });
+
+                if is_dependency {
+                    dependencies_added_count += 1;
+                } else {
+                    new_packages_count += 1;
+                }
+            }
+        }
+    }
+
+    // Handle local files
+    for local_file in &local_files {
+        // For local files, we can't easily resolve without reading the file
+        // So we'll show a basic preview
+        ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {
+            operation: "install".to_string(),
+            action: format!("Would install from local file: {}", local_file.display()),
+            details: HashMap::from([
+                ("source".to_string(), "local file".to_string()),
+                ("path".to_string(), local_file.display().to_string()),
+            ]),
+        }));
+
+        // Add to preview (we don't know the exact package name/version without reading)
+        preview_installed.push(crate::PackageChange {
+            name: format!(
+                "local-{}",
+                local_file.file_stem().unwrap_or_default().to_string_lossy()
+            ),
+            from_version: None,
+            to_version: Some(Version::new(0, 0, 0)), // Placeholder
+            size: None,
+        });
+        new_packages_count += 1;
+    }
+
+    // Emit summary
+    let total_changes = preview_installed.len() + preview_updated.len();
+    let mut categories = HashMap::new();
+    categories.insert("new_packages".to_string(), new_packages_count);
+    categories.insert("updated_packages".to_string(), preview_updated.len());
+    if dependencies_added_count > 0 {
+        categories.insert("dependencies_added".to_string(), dependencies_added_count);
+    }
+
+    ctx.emit(AppEvent::General(GeneralEvent::CheckModeSummary {
+        operation: "install".to_string(),
+        total_changes,
+        categories,
+    }));
+
+    // Return preview report (no actual state changes)
+    Ok(InstallReport {
+        installed: preview_installed,
+        updated: preview_updated,
+        removed: Vec::new(),
+        state_id: Uuid::nil(), // No state change in preview
+        duration_ms: 0,
+    })
 }
 
 /// Install remote packages using the high-performance parallel pipeline

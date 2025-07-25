@@ -5,10 +5,11 @@
 
 use crate::{InstallReport, OpsCtx};
 use sps2_errors::{Error, OpsError};
-// Event emission moved to operations layer
+use sps2_events::{AppEvent, EventEmitter, GeneralEvent};
 use sps2_guard::{OperationResult as GuardOperationResult, PackageChange as GuardPackageChange};
 use sps2_install::{InstallConfig, Installer, UninstallContext};
 use std::time::Instant;
+use uuid::Uuid;
 
 /// Uninstall packages (delegates to install crate)
 ///
@@ -23,6 +24,11 @@ pub async fn uninstall(ctx: &OpsCtx, package_names: &[String]) -> Result<Install
 
     if package_names.is_empty() {
         return Err(OpsError::NoPackagesSpecified.into());
+    }
+
+    // Check mode: preview what would be uninstalled
+    if ctx.check_mode {
+        return preview_uninstall(ctx, package_names).await;
     }
 
     // Event emission moved to operations layer where actual work happens
@@ -67,6 +73,137 @@ pub async fn uninstall(ctx: &OpsCtx, package_names: &[String]) -> Result<Install
     // Event emission moved to operations layer where actual work happens
 
     Ok(report)
+}
+
+/// Preview what would be uninstalled without executing
+#[allow(clippy::too_many_lines)]
+async fn preview_uninstall(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallReport, Error> {
+    use std::collections::HashMap;
+
+    // Get currently installed packages
+    let current_packages = ctx.state.get_installed_packages().await?;
+
+    // Find packages to remove
+    let mut packages_to_remove = Vec::new();
+    let mut not_found_packages = Vec::new();
+
+    for package_name in package_names {
+        if let Some(package_id) = current_packages
+            .iter()
+            .find(|pkg| &pkg.name == package_name)
+        {
+            packages_to_remove.push(package_id.clone());
+        } else {
+            not_found_packages.push(package_name.clone());
+        }
+    }
+
+    // Report packages that would not be found
+    for package_name in &not_found_packages {
+        ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {
+            operation: "uninstall".to_string(),
+            action: format!("Package {package_name} is not installed"),
+            details: HashMap::from([
+                ("status".to_string(), "not_installed".to_string()),
+                ("action".to_string(), "skip".to_string()),
+            ]),
+        }));
+    }
+
+    let mut preview_removed = Vec::new();
+    let mut broken_dependencies = Vec::new();
+
+    // Check each package for dependents
+    for package in &packages_to_remove {
+        let package_id = sps2_resolver::PackageId::new(package.name.clone(), package.version());
+
+        // Check for dependents
+        let dependents = ctx.state.get_package_dependents(&package_id).await?;
+
+        if dependents.is_empty() {
+            // Safe to remove
+            ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {
+                operation: "uninstall".to_string(),
+                action: format!("Would remove {package_id}"),
+                details: HashMap::from([
+                    ("version".to_string(), package.version().to_string()),
+                    ("dependents".to_string(), "0".to_string()),
+                    ("status".to_string(), "safe_to_remove".to_string()),
+                ]),
+            }));
+        } else {
+            // Has dependents - would break dependencies
+            let dependent_names: Vec<String> = dependents
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect();
+
+            ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {
+                operation: "uninstall".to_string(),
+                action: format!("Would remove {package_id} (breaks dependencies)"),
+                details: HashMap::from([
+                    ("version".to_string(), package.version().to_string()),
+                    ("dependents".to_string(), dependents.len().to_string()),
+                    ("dependent_packages".to_string(), dependent_names.join(", ")),
+                    ("status".to_string(), "breaks_dependencies".to_string()),
+                ]),
+            }));
+
+            broken_dependencies.extend(dependent_names);
+        }
+
+        preview_removed.push(crate::PackageChange {
+            name: package.name.clone(),
+            from_version: Some(package.version()),
+            to_version: None,
+            size: None,
+        });
+    }
+
+    // Show warning for broken dependencies
+    if !broken_dependencies.is_empty() {
+        ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {
+            operation: "uninstall".to_string(),
+            action: "WARNING: This would break dependencies for:".to_string(),
+            details: HashMap::from([
+                (
+                    "affected_packages".to_string(),
+                    broken_dependencies.join(", "),
+                ),
+                ("severity".to_string(), "error".to_string()),
+                (
+                    "suggestion".to_string(),
+                    "Use --force to override dependency checks".to_string(),
+                ),
+            ]),
+        }));
+    }
+
+    // Emit summary
+    let total_changes = packages_to_remove.len();
+    let mut categories = HashMap::new();
+    categories.insert("packages_removed".to_string(), packages_to_remove.len());
+    if !broken_dependencies.is_empty() {
+        categories.insert("broken_dependencies".to_string(), broken_dependencies.len());
+    }
+    if !not_found_packages.is_empty() {
+        categories.insert("packages_not_found".to_string(), not_found_packages.len());
+    }
+
+    ctx.emit(AppEvent::General(GeneralEvent::CheckModeSummary {
+        operation: "uninstall".to_string(),
+        total_changes,
+        categories,
+    }));
+
+    // Return preview report (no actual state changes)
+    Ok(InstallReport {
+        installed: Vec::new(),
+        updated: Vec::new(),
+        removed: preview_removed,
+        state_id: Uuid::nil(), // No state change in preview
+        duration_ms: 0,
+    })
 }
 
 /// Convert `InstallReport` to `GuardOperationResult` for uninstall operations

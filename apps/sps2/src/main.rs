@@ -82,7 +82,13 @@ async fn run(cli: Cli) -> Result<(), CliError> {
     let (event_sender, event_receiver) = tokio::sync::mpsc::unbounded_channel();
 
     // Build operations context
-    let ops_ctx = build_ops_context(&setup, event_sender.clone(), config.clone()).await?;
+    let ops_ctx = build_ops_context(
+        &setup,
+        event_sender.clone(),
+        config.clone(),
+        cli.global.check,
+    )
+    .await?;
 
     // Create output renderer
     let renderer = OutputRenderer::new(
@@ -343,6 +349,7 @@ async fn build_ops_context(
     setup: &SystemSetup,
     event_sender: EventSender,
     config: Config,
+    check_mode: bool,
 ) -> Result<sps2_ops::OpsCtx, CliError> {
     let mut ctx = OpsContextBuilder::new()
         .with_store(setup.store().clone())
@@ -353,6 +360,7 @@ async fn build_ops_context(
         .with_builder(setup.builder())
         .with_event_sender(event_sender)
         .with_config(config)
+        .with_check_mode(check_mode)
         .build()?;
 
     // Initialize the state verification guard if enabled

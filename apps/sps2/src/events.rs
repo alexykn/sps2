@@ -679,6 +679,20 @@ impl EventHandler {
                             }
                         }
                     }
+                    GeneralEvent::CheckModePreview {
+                        operation,
+                        action,
+                        details,
+                    } => {
+                        self.show_check_preview(&operation, &action, &details);
+                    }
+                    GeneralEvent::CheckModeSummary {
+                        operation,
+                        total_changes,
+                        categories,
+                    } => {
+                        self.show_check_summary(&operation, &total_changes, &categories);
+                    }
                     _ => {
                         // Handle other general events with debug output
                         if self.debug_enabled {
@@ -1033,6 +1047,57 @@ impl EventHandler {
     }
 
     /// Format bytes for display
+    /// Show check mode preview
+    fn show_check_preview(
+        &mut self,
+        _operation: &str,
+        action: &str,
+        details: &std::collections::HashMap<String, String>,
+    ) {
+        if self.ui_style.colors_enabled {
+            println!("  {} {}", style("PREVIEW:").blue().bold(), action);
+        } else {
+            println!("  PREVIEW: {action}");
+        }
+
+        // Show relevant details
+        for (key, value) in details {
+            println!("    {key}: {value}");
+        }
+    }
+
+    /// Show check mode summary
+    fn show_check_summary(
+        &mut self,
+        operation: &str,
+        total_changes: &usize,
+        categories: &std::collections::HashMap<String, usize>,
+    ) {
+        if self.ui_style.colors_enabled {
+            println!(
+                "
+{} Summary for {}:",
+                style("CHECK MODE").yellow().bold(),
+                operation
+            );
+        } else {
+            println!(
+                "
+CHECK MODE Summary for {operation}:"
+            );
+        }
+        println!("  Total changes: {total_changes}");
+
+        for (category, count) in categories {
+            println!("  {category}: {count}");
+        }
+
+        println!(
+            "
+No changes were made. Use without --check to execute."
+        );
+    }
+
     fn format_bytes(&self, bytes: u64) -> String {
         const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
         let mut size = bytes as f64;
