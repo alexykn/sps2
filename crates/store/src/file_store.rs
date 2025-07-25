@@ -11,6 +11,19 @@ use std::path::{Path, PathBuf};
 use tokio::fs;
 use uuid::Uuid;
 
+/// Result of file verification operation
+#[derive(Debug, Clone, PartialEq)]
+pub enum FileVerificationResult {
+    /// File is valid and matches expected hash
+    Valid,
+    /// File is missing from store
+    Missing,
+    /// File exists but hash doesn't match
+    HashMismatch { expected: Hash, actual: Hash },
+    /// Verification failed due to error
+    Error { message: String },
+}
+
 /// File store for content-addressed file storage
 #[derive(Clone, Debug)]
 pub struct FileStore {
@@ -355,6 +368,39 @@ impl FileStore {
         // Use the same algorithm as the expected hash for verification
         let actual_hash = Hash::hash_file_with_algorithm(&path, hash.algorithm()).await?;
         Ok(actual_hash == *hash)
+    }
+
+    /// Verify a stored file and return detailed result
+    ///
+    /// This function performs verification and returns a detailed result
+    /// that can be used by higher-level verification systems.
+    ///
+    /// # Errors
+    /// Returns an error if verification fails due to I/O issues
+    pub async fn verify_file_detailed(&self, hash: &Hash) -> Result<FileVerificationResult, Error> {
+        let path = self.file_path(hash);
+        let (platform, ctx) = Self::create_platform_context();
+
+        if !platform.filesystem().exists(&ctx, &path).await {
+            return Ok(FileVerificationResult::Missing);
+        }
+
+        // Use the same algorithm as the expected hash for verification
+        match Hash::hash_file_with_algorithm(&path, hash.algorithm()).await {
+            Ok(actual_hash) => {
+                if actual_hash == *hash {
+                    Ok(FileVerificationResult::Valid)
+                } else {
+                    Ok(FileVerificationResult::HashMismatch {
+                        expected: hash.clone(),
+                        actual: actual_hash,
+                    })
+                }
+            }
+            Err(e) => Ok(FileVerificationResult::Error {
+                message: e.to_string(),
+            }),
+        }
     }
 
     /// Clean up empty prefix directories

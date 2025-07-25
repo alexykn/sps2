@@ -260,6 +260,10 @@ pub enum Commands {
         /// Verification level (quick, standard, full)
         #[arg(long, default_value = "standard")]
         level: String,
+
+        /// Verification scope (live, store, all)
+        #[arg(long, default_value = "live")]
+        scope: String,
     },
 }
 

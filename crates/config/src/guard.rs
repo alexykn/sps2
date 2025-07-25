@@ -194,6 +194,36 @@ pub struct GuardDirectoryConfig {
     pub path: PathBuf,
 }
 
+/// Store verification configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoreVerificationConfig {
+    #[serde(default = "default_store_verification_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_store_max_age_days")]
+    pub max_age_days: u32,
+    #[serde(default = "default_store_max_attempts")]
+    pub max_attempts: u32,
+    #[serde(default = "default_store_batch_size")]
+    pub batch_size: u32,
+    #[serde(default = "default_store_max_concurrency")]
+    pub max_concurrency: usize,
+    #[serde(default = "default_store_enable_quarantine")]
+    pub enable_quarantine: bool,
+}
+
+impl Default for StoreVerificationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_store_verification_enabled(),
+            max_age_days: default_store_max_age_days(),
+            max_attempts: default_store_max_attempts(),
+            batch_size: default_store_batch_size(),
+            max_concurrency: default_store_max_concurrency(),
+            enable_quarantine: default_store_enable_quarantine(),
+        }
+    }
+}
+
 /// Top-level guard configuration (alternative to verification.guard approach)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GuardConfiguration {
@@ -215,6 +245,8 @@ pub struct GuardConfiguration {
     // Nested configuration sections
     #[serde(default)]
     pub performance: GuardPerformanceConfig,
+    #[serde(default)]
+    pub store_verification: StoreVerificationConfig,
     #[serde(default = "default_guard_lenient_symlink_directories")]
     pub lenient_symlink_directories: Vec<GuardDirectoryConfig>,
 
@@ -238,6 +270,7 @@ impl Default for GuardConfiguration {
             orphaned_backup_dir: default_orphaned_backup_dir(),
             user_file_policy: UserFilePolicy::default(),
             performance: GuardPerformanceConfig::default(),
+            store_verification: StoreVerificationConfig::default(),
             lenient_symlink_directories: default_guard_lenient_symlink_directories(),
             auto_heal: None,
             fail_on_discrepancy: None,
@@ -395,4 +428,28 @@ fn default_orphaned_file_action() -> String {
 
 fn default_orphaned_backup_dir() -> PathBuf {
     PathBuf::from("/opt/pm/orphaned-backup")
+}
+
+fn default_store_verification_enabled() -> bool {
+    true
+}
+
+fn default_store_max_age_days() -> u32 {
+    30
+}
+
+fn default_store_max_attempts() -> u32 {
+    3
+}
+
+fn default_store_batch_size() -> u32 {
+    100
+}
+
+fn default_store_max_concurrency() -> usize {
+    4
+}
+
+fn default_store_enable_quarantine() -> bool {
+    true
 }

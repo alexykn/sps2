@@ -331,8 +331,8 @@ async fn execute_command(
             ))
         }
 
-        Commands::Verify { heal, level } => {
-            let result = sps2_ops::verify(&ctx, heal, &level).await?;
+        Commands::Verify { heal, level, scope } => {
+            let result = sps2_ops::verify(&ctx, heal, &level, &scope).await?;
             Ok(OperationResult::VerificationResult(result))
         }
     }

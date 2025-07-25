@@ -64,30 +64,97 @@ pub use upgrade::{upgrade, upgrade_with_verification};
 pub use sps2_audit::{AuditReport, Severity};
 
 use sps2_errors::Error;
+use sps2_guard::{StoreVerificationConfig, StoreVerifier};
+use std::sync::Arc;
 
 /// Verify the integrity of the current state
 ///
 /// # Errors
 ///
 /// Returns an error if verification fails.
-pub async fn verify(ctx: &OpsCtx, heal: bool, level: &str) -> Result<VerificationResult, Error> {
+#[allow(clippy::cast_possible_truncation)]
+pub async fn verify(
+    ctx: &OpsCtx,
+    heal: bool,
+    level: &str,
+    scope: &str,
+) -> Result<VerificationResult, Error> {
     let verification_level = match level {
         "quick" => VerificationLevel::Quick,
         "full" => VerificationLevel::Full,
         _ => VerificationLevel::Standard,
     };
 
-    let mut guard = StateVerificationGuard::builder()
-        .with_state_manager(ctx.state.clone())
-        .with_store(ctx.store.clone())
-        .with_event_sender(ctx.tx.clone())
-        .with_level(verification_level)
-        .build()?;
+    match scope {
+        "store" => {
+            // Store-only verification using StoreVerifier
 
-    if heal {
-        guard.verify_and_heal(&ctx.config).await
-    } else {
-        guard.verify_only().await
+            let config = StoreVerificationConfig::default();
+            let verifier = StoreVerifier::new(
+                Arc::new(ctx.state.clone()),
+                Arc::new(ctx.store.file_store().clone()),
+                config,
+            );
+
+            let stats = verifier.verify_with_progress(&ctx.tx).await?;
+
+            // Convert store verification stats to VerificationResult
+            // For store verification, we create a synthetic result
+            let state_id = ctx.state.get_active_state().await?;
+            let discrepancies = Vec::new(); // Store verification doesn't use discrepancies
+            let duration_ms = stats.duration.as_millis() as u64;
+
+            Ok(VerificationResult::new(
+                state_id,
+                discrepancies,
+                duration_ms,
+            ))
+        }
+        "all" => {
+            // Both live and store verification
+            // First verify live files
+            let mut guard = StateVerificationGuard::builder()
+                .with_state_manager(ctx.state.clone())
+                .with_store(ctx.store.clone())
+                .with_event_sender(ctx.tx.clone())
+                .with_level(verification_level)
+                .build()?;
+
+            let live_result = if heal {
+                guard.verify_and_heal(&ctx.config).await?
+            } else {
+                guard.verify_only().await?
+            };
+
+            // Then verify store
+
+            let config = StoreVerificationConfig::default();
+            let verifier = StoreVerifier::new(
+                Arc::new(ctx.state.clone()),
+                Arc::new(ctx.store.file_store().clone()),
+                config,
+            );
+
+            let _store_stats = verifier.verify_with_progress(&ctx.tx).await?;
+
+            // Return the live verification result (store verification is reported via events)
+            Ok(live_result)
+        }
+        _ => {
+            // Default: live files only (existing behavior)
+            let mut guard = StateVerificationGuard::builder()
+                .with_state_manager(ctx.state.clone())
+                .with_store(ctx.store.clone())
+                .with_event_sender(ctx.tx.clone())
+                .with_level(verification_level)
+                .build()?;
+
+            if heal {
+                guard.verify_and_heal(&ctx.config).await
+            } else {
+                guard.verify_only().await
+            }
+        }
     }
 }
 /// Operation result that can be serialized for CLI output

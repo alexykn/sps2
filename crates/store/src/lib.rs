@@ -14,7 +14,7 @@ mod package;
 pub use archive::{
     create_package, extract_package, extract_package_with_events, list_package_contents,
 };
-pub use file_store::FileStore;
+pub use file_store::{FileStore, FileVerificationResult};
 pub use format_detection::{PackageFormatDetector, PackageFormatInfo, StoreFormatValidator};
 pub use package::StoredPackage;
 
