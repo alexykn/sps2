@@ -8,6 +8,7 @@ pub mod object_cleaner;
 pub mod permissions;
 pub mod pkgconfig;
 pub mod placeholder;
+pub mod python_bytecode_cleanup;
 pub mod python_isolation;
 pub mod rpath;
 
@@ -21,5 +22,6 @@ pub use object_cleaner::ObjectFileCleaner;
 pub use permissions::PermissionsFixer;
 pub use pkgconfig::PkgConfigPatcher;
 pub use placeholder::PlaceholderPatcher;
+pub use python_bytecode_cleanup::PythonBytecodeCleanupPatcher;
 pub use python_isolation::PythonIsolationPatcher;
 pub use rpath::RPathPatcher;

@@ -8,7 +8,8 @@ use super::{PatcherAction, ValidatorAction};
 use crate::artifact_qa::patchers::{
     binary_string::BinaryStringPatcher, codesigner::CodeSigner, headers::HeaderPatcher,
     la_cleaner::LaFileCleaner, object_cleaner::ObjectFileCleaner, pkgconfig::PkgConfigPatcher,
-    placeholder::PlaceholderPatcher, python_isolation::PythonIsolationPatcher, rpath::RPathPatcher,
+    placeholder::PlaceholderPatcher, python_bytecode_cleanup::PythonBytecodeCleanupPatcher,
+    python_isolation::PythonIsolationPatcher, rpath::RPathPatcher,
 };
 use crate::artifact_qa::scanners::{
     archive::ArchiveScanner, hardcoded::HardcodedScanner, macho::MachOScanner,
@@ -156,6 +157,8 @@ pub fn get_patchers_for_profile(profile: BuildSystemProfile) -> Vec<PatcherActio
                 // PermissionsFixer removed - only runs when explicitly called
                 PatcherAction::HeaderPatcher(HeaderPatcher),
                 PatcherAction::PkgConfigPatcher(PkgConfigPatcher),
+                // Clean up Python bytecode before creating wrapper scripts
+                PatcherAction::PythonBytecodeCleanupPatcher(PythonBytecodeCleanupPatcher),
                 PatcherAction::PythonIsolationPatcher(PythonIsolationPatcher),
                 // Skip binary patchers for script packages
             ]

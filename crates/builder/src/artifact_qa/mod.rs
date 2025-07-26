@@ -33,6 +33,7 @@ pub enum PatcherAction {
     BinaryStringPatcher(patchers::binary_string::BinaryStringPatcher),
     LaFileCleaner(patchers::la_cleaner::LaFileCleaner),
     ObjectFileCleaner(patchers::object_cleaner::ObjectFileCleaner),
+    PythonBytecodeCleanupPatcher(patchers::python_bytecode_cleanup::PythonBytecodeCleanupPatcher),
     PythonIsolationPatcher(patchers::python_isolation::PythonIsolationPatcher),
     CodeSigner(patchers::codesigner::CodeSigner),
 }
@@ -79,6 +80,9 @@ impl PatcherAction {
             Self::BinaryStringPatcher(_) => patchers::binary_string::BinaryStringPatcher::NAME,
             Self::LaFileCleaner(_) => patchers::la_cleaner::LaFileCleaner::NAME,
             Self::ObjectFileCleaner(_) => patchers::object_cleaner::ObjectFileCleaner::NAME,
+            Self::PythonBytecodeCleanupPatcher(_) => {
+                patchers::python_bytecode_cleanup::PythonBytecodeCleanupPatcher::NAME
+            }
             Self::PythonIsolationPatcher(_) => {
                 patchers::python_isolation::PythonIsolationPatcher::NAME
             }
@@ -114,6 +118,12 @@ impl PatcherAction {
             }
             Self::ObjectFileCleaner(_) => {
                 patchers::object_cleaner::ObjectFileCleaner::run(ctx, env, findings).await
+            }
+            Self::PythonBytecodeCleanupPatcher(_) => {
+                patchers::python_bytecode_cleanup::PythonBytecodeCleanupPatcher::run(
+                    ctx, env, findings,
+                )
+                .await
             }
             Self::PythonIsolationPatcher(_) => {
                 patchers::python_isolation::PythonIsolationPatcher::run(ctx, env, findings).await
