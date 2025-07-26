@@ -581,6 +581,10 @@ impl AtomicInstaller {
                 .await?;
         tx.commit().await?;
 
+        // Detect if this is a Python package for later cleanup
+        let python_package_dir = self.detect_python_package_directory(&file_paths);
+
+        // Always do file-by-file removal first to remove all tracked files (including wrapper scripts)
         // Group files by type for proper removal order
         let mut symlinks = Vec::new();
         let mut regular_files = Vec::new();
@@ -653,7 +657,50 @@ impl AtomicInstaller {
             }
         }
 
+        // After removing all tracked files, clean up any remaining Python runtime artifacts
+        if let Some(python_dir) = python_package_dir {
+            let python_staging_dir = transition.staging_path.join(&python_dir);
+
+            if python_staging_dir.exists() {
+                // Check if directory still has content (runtime artifacts)
+                if let Ok(mut entries) = tokio::fs::read_dir(&python_staging_dir).await {
+                    if entries.next_entry().await?.is_some() {
+                        // Directory is not empty, remove remaining runtime artifacts
+                        tokio::fs::remove_dir_all(&python_staging_dir)
+                            .await
+                            .map_err(|e| InstallError::FilesystemError {
+                                operation: "cleanup_python_runtime_artifacts".to_string(),
+                                path: python_staging_dir.display().to_string(),
+                                message: e.to_string(),
+                            })?;
+                    }
+                }
+            }
+        }
+
         Ok(())
+    }
+
+    /// Detect if this is a Python package and return the directory to remove
+    ///
+    /// Python packages are isolated in `/opt/pm/live/python/<package_name>/` directories.
+    /// This method examines file paths to find the Python package directory.
+    fn detect_python_package_directory(&self, file_paths: &[String]) -> Option<String> {
+        for file_path in file_paths {
+            // Look for files under python/ directory structure
+            if let Some(stripped) = file_path.strip_prefix("python/") {
+                // Extract the package directory (e.g., "ansible/" from "python/ansible/lib/...")
+                if let Some(slash_pos) = stripped.find('/') {
+                    let package_dir = format!("python/{}", &stripped[..slash_pos]);
+                    return Some(package_dir);
+                } else if !stripped.is_empty() {
+                    // Handle case where the path is just "python/package_name"
+                    let package_dir = format!("python/{}", stripped);
+                    return Some(package_dir);
+                }
+            }
+        }
+        None
     }
 
     // Removed remove_package_venv - Python packages are now handled like regular packages

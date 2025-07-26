@@ -35,8 +35,11 @@ pub fn find_orphaned_files(
                 // Categorize the orphaned file
                 let category = categorize_orphaned_file(&path_str, path);
 
-                // Skip system files that should always be preserved
-                if matches!(category, OrphanedFileCategory::System) {
+                // Skip files that should be ignored during verification
+                if matches!(
+                    category,
+                    OrphanedFileCategory::System | OrphanedFileCategory::RuntimeGenerated
+                ) {
                     continue;
                 }
 

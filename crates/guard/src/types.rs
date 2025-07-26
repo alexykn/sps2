@@ -120,6 +120,8 @@ pub enum OrphanedFileCategory {
     Temporary,
     /// System file that should be preserved
     System,
+    /// Runtime-generated file that should be ignored during verification
+    RuntimeGenerated,
     /// Unknown category - needs investigation
     Unknown,
 }
@@ -338,6 +340,11 @@ impl Discrepancy {
                         DiscrepancySeverity::Low,
                         RecommendedAction::Ignore,
                         format!("System file '{file_path}' detected in package directory. Preserving.")
+                    ),
+                    OrphanedFileCategory::RuntimeGenerated => (
+                        DiscrepancySeverity::Low,
+                        RecommendedAction::Ignore,
+                        format!("Runtime-generated file '{file_path}' (Python bytecode, caches, etc.). Ignoring during verification.")
                     ),
                     OrphanedFileCategory::Unknown => (
                         DiscrepancySeverity::Medium,

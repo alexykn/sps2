@@ -115,7 +115,8 @@ impl PythonBytecodeCleanupPatcher {
                 continue;
             };
 
-            // Remove common build artifacts and development directories
+            // Remove only clearly safe build artifacts and development directories
+            // Be conservative - don't remove "test" or "tests" dirs as they might be runtime modules
             let should_remove = matches!(
                 name,
                 "build"
@@ -126,22 +127,13 @@ impl PythonBytecodeCleanupPatcher {
                     | ".mypy_cache"
                     | ".ruff_cache"
                     | "htmlcov"
-                    | "tests"
-                    | "test"
-                    | "docs"
-                    | "examples"
                     | ".DS_Store"
                     | "Thumbs.db"
                     | ".vscode"
                     | ".idea"
             ) || name.ends_with(".egg-info")
                 || name.starts_with("pip-build-env-")
-                || name.starts_with("pip-req-build-")
-                || name.contains("pip-")
-                || name.starts_with("test_")
-                || name.ends_with("_test.py")
-                || name.ends_with("_tests.py")
-                || name == "conftest.py";
+                || name.starts_with("pip-req-build-");
 
             if should_remove {
                 let remove_result = if path.is_dir() {
