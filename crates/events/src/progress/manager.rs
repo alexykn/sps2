@@ -54,6 +54,12 @@ impl ProgressManager {
         id
     }
 
+    /// Get a tracker by its ID
+    pub fn get_tracker(&self, id: &str) -> Option<ProgressTracker> {
+        let trackers = self.trackers.lock().unwrap();
+        trackers.get(id).cloned()
+    }
+
     /// Update a tracker's progress
     pub fn update(&self, id: &str, progress: u64) -> Option<ProgressUpdate> {
         let mut trackers = self.trackers.lock().unwrap();
@@ -158,6 +164,23 @@ impl ProgressManager {
                     phase_name: format!("Phase {}", new_phase),
                 },
             ));
+        }
+    }
+
+    /// Change to a specific phase by name and mark it as done
+    pub fn update_phase_to_done(&self, id: &str, phase_name: &str, tx: &crate::EventSender) {
+        let mut trackers = self.trackers.lock().unwrap();
+        if let Some(tracker) = trackers.get_mut(id) {
+            if let Some(phase_index) = tracker.phases().iter().position(|p| p.name == phase_name) {
+                tracker.current_phase = phase_index;
+                let _ = tx.send(crate::AppEvent::Progress(
+                    crate::events::ProgressEvent::PhaseChanged {
+                        id: id.to_string(),
+                        phase: phase_index,
+                        phase_name: phase_name.to_string(),
+                    },
+                ));
+            }
         }
     }
 

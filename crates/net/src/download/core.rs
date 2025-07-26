@@ -22,6 +22,7 @@ use tokio::fs as tokio_fs;
 pub struct PackageDownloader {
     config: PackageDownloadConfig,
     client: NetClient,
+    progress_manager: sps2_events::ProgressManager,
 }
 
 impl PackageDownloader {
@@ -30,7 +31,10 @@ impl PackageDownloader {
     /// # Errors
     ///
     /// Returns an error if the HTTP client cannot be initialized.
-    pub fn new(config: PackageDownloadConfig) -> Result<Self, Error> {
+    pub fn new(
+        config: PackageDownloadConfig,
+        progress_manager: sps2_events::ProgressManager,
+    ) -> Result<Self, Error> {
         let net_config = NetConfig {
             timeout: Duration::from_secs(600), // 10 minutes for large files
             connect_timeout: Duration::from_secs(30),
@@ -41,7 +45,11 @@ impl PackageDownloader {
 
         let client = NetClient::new(net_config)?;
 
-        Ok(Self { config, client })
+        Ok(Self {
+            config,
+            client,
+            progress_manager,
+        })
     }
 
     /// Create with default configuration
@@ -49,8 +57,8 @@ impl PackageDownloader {
     /// # Errors
     ///
     /// Returns an error if the HTTP client cannot be initialized.
-    pub fn with_defaults() -> Result<Self, Error> {
-        Self::new(PackageDownloadConfig::default())
+    pub fn with_defaults(progress_manager: sps2_events::ProgressManager) -> Result<Self, Error> {
+        Self::new(PackageDownloadConfig::default(), progress_manager)
     }
 
     /// Download a .sp package file with concurrent signature download
@@ -68,6 +76,7 @@ impl PackageDownloader {
         signature_url: Option<&str>,
         dest_dir: &Path,
         expected_hash: Option<&Hash>,
+        progress_id: Option<String>,
         tx: &EventSender,
     ) -> Result<PackageDownloadResult, Error> {
         let start_time = Instant::now();
@@ -88,8 +97,13 @@ impl PackageDownloader {
         tokio_fs::create_dir_all(dest_dir).await?;
 
         // Download package and signature concurrently
-        let package_fut =
-            self.download_with_resume(package_url, &package_path, expected_hash, tx.clone());
+        let package_fut = self.download_with_resume(
+            package_url,
+            &package_path,
+            expected_hash,
+            progress_id,
+            tx.clone(),
+        );
 
         let signature_fut = async {
             match (signature_url, &signature_path) {
@@ -171,6 +185,7 @@ impl PackageDownloader {
                         request.signature_url.as_deref(),
                         &dest_dir,
                         request.expected_hash.as_ref(),
+                        None,
                         &tx,
                     )
                     .await
@@ -198,6 +213,7 @@ impl PackageDownloader {
         url: &str,
         dest_path: &Path,
         expected_hash: Option<&Hash>,
+        progress_id: Option<String>,
         tx: EventSender,
     ) -> Result<DownloadResult, Error> {
         let url = validate_url(url)?;
@@ -207,7 +223,7 @@ impl PackageDownloader {
 
         loop {
             match self
-                .try_download_with_resume(&url, dest_path, expected_hash, &tx)
+                .try_download_with_resume(&url, dest_path, expected_hash, progress_id.clone(), &tx)
                 .await
             {
                 Ok(result) => return Ok(result),
@@ -246,6 +262,7 @@ impl PackageDownloader {
         url: &str,
         dest_path: &Path,
         expected_hash: Option<&Hash>,
+        progress_id: Option<String>,
         tx: &EventSender,
     ) -> Result<DownloadResult, Error> {
         // Check if partial file exists
@@ -318,6 +335,8 @@ impl PackageDownloader {
             expected_hash,
             event_sender: tx,
             url,
+            progress_id,
+            progress_manager: Some(&self.progress_manager),
         };
         let result =
             stream_download(&self.config, response, dest_path, resume_offset, &params).await?;
@@ -340,6 +359,7 @@ impl Clone for PackageDownloader {
         Self {
             config: self.config.clone(),
             client: self.client.clone(),
+            progress_manager: self.progress_manager.clone(),
         }
     }
 }

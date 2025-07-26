@@ -3,7 +3,7 @@
 use crossbeam::queue::SegQueue;
 use dashmap::DashMap;
 use sps2_errors::{Error, InstallError};
-use sps2_events::{EventSender, ProgressManager};
+use sps2_events::{patterns::DownloadProgressConfig, EventSender, ProgressManager};
 use sps2_hash::Hash;
 use sps2_net::PackageDownloader;
 use sps2_resolver::{ExecutionPlan, NodeAction, PackageId, ResolvedNode};
@@ -127,6 +127,7 @@ impl DownloadPipeline {
     ) -> JoinHandle<Result<DownloadResult, Error>> {
         let downloader = self.downloader.clone();
         let resources = self.resources.clone();
+        let progress_manager = self.progress_manager.clone();
         let timeout = self.operation_timeout;
 
         tokio::spawn(async move {
@@ -141,7 +142,13 @@ impl DownloadPipeline {
 
             let result = tokio::time::timeout(
                 timeout,
-                Self::download_package_with_progress(&downloader, &package_id, &node, &tx),
+                Self::download_package_with_progress(
+                    &downloader,
+                    &package_id,
+                    &node,
+                    &progress_manager,
+                    &tx,
+                ),
             )
             .await;
 
@@ -169,6 +176,7 @@ impl DownloadPipeline {
         downloader: &PackageDownloader,
         package_id: &PackageId,
         node: &ResolvedNode,
+        progress_manager: &ProgressManager,
         tx: &EventSender,
     ) -> Result<DownloadResult, Error> {
         match &node.action {
@@ -179,6 +187,14 @@ impl DownloadPipeline {
                             message: format!("failed to create temp dir: {e}"),
                         })?;
 
+                    let download_config = DownloadProgressConfig {
+                        operation_name: format!("Downloading {}", package_id.name),
+                        total_bytes: None, // We don't know the total size yet
+                        package_name: Some(package_id.name.clone()),
+                        url: url.clone(),
+                    };
+                    let progress_id = progress_manager.create_download_tracker(&download_config);
+
                     let result = downloader
                         .download_package(
                             &package_id.name,
@@ -187,9 +203,12 @@ impl DownloadPipeline {
                             None, // No signature URL for now
                             temp_dir.path(),
                             None, // No expected hash for now
+                            Some(progress_id.clone()),
                             tx,
                         )
                         .await?;
+
+                    progress_manager.complete_operation(&progress_id, tx);
 
                     Ok(DownloadResult {
                         package_id: package_id.clone(),

@@ -342,58 +342,23 @@ async fn install_remote_packages_parallel(
     ctx: &OpsCtx,
     specs: &[PackageSpec],
 ) -> Result<sps2_install::InstallResult, Error> {
-    use sps2_events::{config::ProgressPhase, ProgressManager};
+    use sps2_events::{patterns::InstallProgressConfig, ProgressManager};
     use sps2_state::PackageRef;
     use std::time::Instant;
 
     let start = Instant::now();
 
-    // Create unified progress tracker for the entire install operation
+    // Create unified progress tracker using standardized patterns
     let progress_manager = ProgressManager::new();
-    let install_phases = vec![
-        ProgressPhase {
-            name: "resolve".to_string(),
-            weight: 0.1,
-            estimated_duration: None,
-        },
-        ProgressPhase {
-            name: "download".to_string(),
-            weight: 0.5,
-            estimated_duration: None,
-        },
-        ProgressPhase {
-            name: "validate".to_string(),
-            weight: 0.15,
-            estimated_duration: None,
-        },
-        ProgressPhase {
-            name: "stage".to_string(),
-            weight: 0.15,
-            estimated_duration: None,
-        },
-        ProgressPhase {
-            name: "commit".to_string(),
-            weight: 0.1,
-            estimated_duration: None,
-        },
-    ];
+    let install_config = InstallProgressConfig {
+        operation_name: format!("Installing {} packages", specs.len()),
+        package_count: specs.len() as u64,
+        include_dependency_resolution: true,
+    };
 
-    let progress_id = progress_manager.start_operation(
-        "install",
-        "Installing packages",
-        Some(specs.len() as u64),
-        install_phases,
-        ctx.tx.clone(),
-    );
+    let progress_id = progress_manager.create_install_tracker(install_config);
 
-    // Send overall progress start event
-    ctx.emit(AppEvent::Progress(ProgressEvent::Started {
-        id: "install".to_string(),
-        operation: format!("Installing {} packages", specs.len()),
-        total: Some(specs.len() as u64),
-        phases: vec![],
-        parent_id: None,
-    }));
+    // The new standardized progress tracker handles the initial event emission.
 
     // Phase 1: Dependency resolution
     ctx.emit(AppEvent::Resolver(ResolverEvent::ResolutionStarted {
@@ -431,9 +396,7 @@ async fn install_remote_packages_parallel(
     let execution_plan = resolution_result.execution_plan;
     let resolved_packages = resolution_result.nodes;
 
-    // Update progress - resolution complete
-    progress_manager.update_progress(&progress_id, 1, Some(specs.len() as u64), &ctx.tx);
-    progress_manager.change_phase(&progress_id, 1, &ctx.tx);
+    progress_manager.update_phase_to_done(&progress_id, "Resolve", &ctx.tx);
 
     // Phase 2-4: Pipeline execution (download, validate, stage)
     let pipeline_config = PipelineConfig {
@@ -479,8 +442,7 @@ async fn install_remote_packages_parallel(
         }
     };
 
-    // Phase 5: State management integration
-    progress_manager.change_phase(&progress_id, 4, &ctx.tx);
+    progress_manager.update_phase_to_done(&progress_id, "Commit", &ctx.tx);
 
     ctx.emit_debug("DEBUG: Starting state management integration");
 

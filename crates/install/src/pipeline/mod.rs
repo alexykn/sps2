@@ -71,11 +71,13 @@ impl PipelineMaster {
 
         let resources = Arc::new(ResourceManager::new(config.clone().into_resource_limits()));
 
-        let downloader = PackageDownloader::new(download_config)?;
-        let staging_manager = Arc::new(
-            StagingManager::new(store.clone(), staging_base_path, resources.clone()).await?,
-        );
         let progress_manager = Arc::new(ProgressManager::new());
+
+        let downloader = PackageDownloader::new(download_config, (*progress_manager).clone())?;
+        let staging_manager = Arc::new(
+            StagingManager::new(store.clone(), staging_base_path.clone(), resources.clone())
+                .await?,
+        );
 
         // Initialize pipeline stages
         let download_pipeline = DownloadPipeline::new(

@@ -95,6 +95,8 @@ pub(super) struct StreamParams<'a> {
     pub expected_hash: Option<&'a Hash>,
     pub event_sender: &'a sps2_events::EventSender,
     pub url: &'a str,
+    pub progress_id: Option<String>,
+    pub progress_manager: Option<&'a sps2_events::ProgressManager>,
 }
 
 /// Result of a download operation

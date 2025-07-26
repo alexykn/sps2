@@ -104,7 +104,186 @@ pub mod tracker;
 pub mod update;
 
 // Public re-exports for main API
-pub use config::{ProgressConfig, TrendDirection};
+pub use config::{ProgressConfig, ProgressPhase, TrendDirection};
 pub use manager::ProgressManager;
 pub use tracker::ProgressTracker;
 pub use update::ProgressUpdate;
+
+/// Standardized progress patterns for user-facing operations
+pub mod patterns {
+    use super::config::ProgressPhase;
+    use super::ProgressManager;
+    use std::time::Duration;
+
+    /// Configuration for download progress tracking
+    #[derive(Debug, Clone)]
+    pub struct DownloadProgressConfig {
+        pub operation_name: String,
+        pub total_bytes: Option<u64>,
+        pub package_name: Option<String>,
+        pub url: String,
+    }
+
+    /// Configuration for install progress tracking  
+    #[derive(Debug, Clone)]
+    pub struct InstallProgressConfig {
+        pub operation_name: String,
+        pub package_count: u64,
+        pub include_dependency_resolution: bool,
+    }
+
+    /// Configuration for update/upgrade progress tracking
+    #[derive(Debug, Clone)]
+    pub struct UpdateProgressConfig {
+        pub operation_name: String,
+        pub package_count: u64,
+        pub is_upgrade: bool, // true for upgrade, false for update
+    }
+
+    /// Configuration for uninstall progress tracking
+    #[derive(Debug, Clone)]
+    pub struct UninstallProgressConfig {
+        pub operation_name: String,
+        pub package_count: u64,
+    }
+
+    impl ProgressManager {
+        /// Create standardized download progress tracker
+        pub fn create_download_tracker(&self, config: &DownloadProgressConfig) -> String {
+            let id = format!("download_{}", uuid::Uuid::new_v4());
+            let operation = format!(
+                "Downloading {}",
+                config.package_name.as_deref().unwrap_or("package")
+            );
+
+            let phases = vec![
+                ProgressPhase {
+                    name: "Connect".to_string(),
+                    weight: 0.05,
+                    estimated_duration: Some(Duration::from_secs(2)),
+                },
+                ProgressPhase {
+                    name: "Download".to_string(),
+                    weight: 0.9,
+                    estimated_duration: None, // Calculated based on speed
+                },
+                ProgressPhase {
+                    name: "Verify".to_string(),
+                    weight: 0.05,
+                    estimated_duration: Some(Duration::from_secs(1)),
+                },
+            ];
+
+            self.create_tracker_with_phases(id.clone(), operation, config.total_bytes, phases);
+            id
+        }
+
+        /// Create standardized install progress tracker
+        pub fn create_install_tracker(&self, config: InstallProgressConfig) -> String {
+            let id = format!("install_{}", uuid::Uuid::new_v4());
+
+            let mut phases = Vec::new();
+
+            if config.include_dependency_resolution {
+                phases.push(ProgressPhase {
+                    name: "Resolve".to_string(),
+                    weight: 0.1,
+                    estimated_duration: Some(Duration::from_secs(5)),
+                });
+            }
+
+            phases.extend_from_slice(&[
+                ProgressPhase {
+                    name: "Download".to_string(),
+                    weight: 0.5,
+                    estimated_duration: None,
+                },
+                ProgressPhase {
+                    name: "Validate".to_string(),
+                    weight: 0.15,
+                    estimated_duration: None,
+                },
+                ProgressPhase {
+                    name: "Stage".to_string(),
+                    weight: 0.15,
+                    estimated_duration: None,
+                },
+                ProgressPhase {
+                    name: "Commit".to_string(),
+                    weight: 0.1,
+                    estimated_duration: Some(Duration::from_secs(2)),
+                },
+            ]);
+
+            self.create_tracker_with_phases(
+                id.clone(),
+                config.operation_name,
+                Some(config.package_count),
+                phases,
+            );
+            id
+        }
+
+        /// Create standardized update/upgrade progress tracker
+        pub fn create_update_tracker(&self, config: UpdateProgressConfig) -> String {
+            let id = format!("update_{}", uuid::Uuid::new_v4());
+
+            let phases = vec![
+                ProgressPhase {
+                    name: "Check".to_string(),
+                    weight: 0.1,
+                    estimated_duration: Some(Duration::from_secs(3)),
+                },
+                ProgressPhase {
+                    name: "Download".to_string(),
+                    weight: 0.6,
+                    estimated_duration: None,
+                },
+                ProgressPhase {
+                    name: "Install".to_string(),
+                    weight: 0.3,
+                    estimated_duration: None,
+                },
+            ];
+
+            self.create_tracker_with_phases(
+                id.clone(),
+                config.operation_name,
+                Some(config.package_count),
+                phases,
+            );
+            id
+        }
+
+        /// Create standardized uninstall progress tracker
+        pub fn create_uninstall_tracker(&self, config: UninstallProgressConfig) -> String {
+            let id = format!("uninstall_{}", uuid::Uuid::new_v4());
+
+            let phases = vec![
+                ProgressPhase {
+                    name: "Analyze".to_string(),
+                    weight: 0.2,
+                    estimated_duration: Some(Duration::from_secs(2)),
+                },
+                ProgressPhase {
+                    name: "Remove".to_string(),
+                    weight: 0.7,
+                    estimated_duration: None,
+                },
+                ProgressPhase {
+                    name: "Cleanup".to_string(),
+                    weight: 0.1,
+                    estimated_duration: Some(Duration::from_secs(1)),
+                },
+            ];
+
+            self.create_tracker_with_phases(
+                id.clone(),
+                config.operation_name,
+                Some(config.package_count),
+                phases,
+            );
+            id
+        }
+    }
+}

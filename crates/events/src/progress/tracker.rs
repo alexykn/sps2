@@ -18,7 +18,7 @@ use super::update::ProgressUpdate;
 use std::time::{Duration, Instant};
 
 /// Core progress tracker with sophisticated algorithms
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ProgressTracker {
     /// Unique identifier for this tracker
     id: String,
@@ -29,9 +29,9 @@ pub struct ProgressTracker {
     /// Current progress
     current: u64,
     /// Phases for multi-stage operations
-    phases: Vec<ProgressPhase>,
+    pub phases: Vec<ProgressPhase>,
     /// Current active phase
-    current_phase: usize,
+    pub current_phase: usize,
     /// Speed calculation buffer
     speed_buffer: SpeedBuffer,
     /// Configuration for algorithms

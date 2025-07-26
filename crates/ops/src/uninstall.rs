@@ -5,7 +5,9 @@
 
 use crate::{InstallReport, OpsCtx};
 use sps2_errors::{Error, OpsError};
-use sps2_events::{AppEvent, EventEmitter, GeneralEvent};
+use sps2_events::{
+    patterns::UninstallProgressConfig, AppEvent, EventEmitter, GeneralEvent, ProgressManager,
+};
 use sps2_guard::{OperationResult as GuardOperationResult, PackageChange as GuardPackageChange};
 use sps2_install::{InstallConfig, Installer, UninstallContext};
 use std::time::Instant;
@@ -31,7 +33,12 @@ pub async fn uninstall(ctx: &OpsCtx, package_names: &[String]) -> Result<Install
         return preview_uninstall(ctx, package_names).await;
     }
 
-    // Event emission moved to operations layer where actual work happens
+    let progress_manager = ProgressManager::new();
+    let uninstall_config = UninstallProgressConfig {
+        operation_name: "Uninstalling packages".to_string(),
+        package_count: package_names.len() as u64,
+    };
+    let progress_id = progress_manager.create_uninstall_tracker(uninstall_config);
 
     // Create installer
     let config = InstallConfig::default();
@@ -70,7 +77,7 @@ pub async fn uninstall(ctx: &OpsCtx, package_names: &[String]) -> Result<Install
         duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
     };
 
-    // Event emission moved to operations layer where actual work happens
+    progress_manager.complete_operation(&progress_id, &ctx.tx);
 
     Ok(report)
 }

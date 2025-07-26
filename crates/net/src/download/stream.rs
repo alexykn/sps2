@@ -70,6 +70,11 @@ pub(super) async fn stream_download(
 
         // Emit progress events (throttled to avoid spam, but always emit first chunk)
         if first_chunk || last_progress_update.elapsed() >= Duration::from_millis(50) {
+            if let (Some(progress_id), Some(progress_manager)) =
+                (params.progress_id.as_ref(), params.progress_manager)
+            {
+                progress_manager.update(progress_id, current_downloaded);
+            }
             params
                 .event_sender
                 .emit(AppEvent::Download(DownloadEvent::Progress {

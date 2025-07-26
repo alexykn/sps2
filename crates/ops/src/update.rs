@@ -7,7 +7,8 @@ use crate::{InstallReport, OpsCtx};
 use sps2_errors::Error;
 use sps2_events::{
     events::{UpdateOperationType, UpdateResult},
-    AppEvent, EventEmitter, GeneralEvent, UpdateEvent,
+    patterns::UpdateProgressConfig,
+    AppEvent, EventEmitter, GeneralEvent, ProgressManager, UpdateEvent,
 };
 use sps2_install::{InstallConfig, Installer, UpdateContext};
 use sps2_types::{PackageSpec, Version};
@@ -29,6 +30,14 @@ pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRep
     if ctx.check_mode {
         return preview_update(ctx, package_names).await;
     }
+
+    let progress_manager = ProgressManager::new();
+    let update_config = UpdateProgressConfig {
+        operation_name: "Updating packages".to_string(),
+        package_count: package_names.len() as u64,
+        is_upgrade: false,
+    };
+    let progress_id = progress_manager.create_update_tracker(update_config);
 
     ctx.emit(AppEvent::Update(UpdateEvent::Started {
         operation_type: UpdateOperationType::Update,
@@ -69,6 +78,25 @@ pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRep
     // Execute update
     let result = installer.update(update_context).await?;
 
+    let report = create_update_report(
+        &result,
+        &installed_map,
+        start,
+        ctx,
+        &progress_id,
+        &progress_manager,
+    );
+    Ok(report)
+}
+
+fn create_update_report(
+    result: &sps2_install::InstallResult,
+    installed_map: &std::collections::HashMap<String, sps2_types::Version>,
+    start: std::time::Instant,
+    ctx: &OpsCtx,
+    progress_id: &str,
+    progress_manager: &ProgressManager,
+) -> InstallReport {
     // Convert to report format
     let report = InstallReport {
         installed: result
@@ -105,6 +133,8 @@ pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRep
         duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
     };
 
+    progress_manager.complete_operation(progress_id, &ctx.tx);
+
     ctx.emit(AppEvent::Update(UpdateEvent::Completed {
         operation_type: UpdateOperationType::Update,
         packages_updated: result
@@ -131,7 +161,7 @@ pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRep
         space_difference: 0, // TODO: Calculate actual space difference
     }));
 
-    Ok(report)
+    report
 }
 
 /// Preview what would be updated without executing

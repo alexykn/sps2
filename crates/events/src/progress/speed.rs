@@ -33,7 +33,8 @@ pub(crate) struct SpeedSample {
 }
 
 /// Efficient ring buffer for speed samples with automatic pruning
-#[derive(Debug)]
+
+#[derive(Debug, Clone)]
 pub(crate) struct SpeedBuffer {
     /// Fixed-size ring buffer for recent samples
     pub samples: VecDeque<SpeedSample>,
