@@ -15,6 +15,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
 
+use sps2_events::EventEmitter;
+
 /// Result of package download operation
 #[derive(Debug)]
 pub struct DownloadResult {
@@ -187,6 +189,14 @@ impl DownloadPipeline {
                             message: format!("failed to create temp dir: {e}"),
                         })?;
 
+                    tx.emit(sps2_events::AppEvent::Download(
+                        sps2_events::DownloadEvent::PackageStarted {
+                            name: package_id.name.clone(),
+                            version: package_id.version.clone(),
+                            url: url.clone(),
+                        },
+                    ));
+
                     let download_config = DownloadProgressConfig {
                         operation_name: format!("Downloading {}", package_id.name),
                         total_bytes: None, // We don't know the total size yet
@@ -209,6 +219,13 @@ impl DownloadPipeline {
                         .await?;
 
                     progress_manager.complete_operation(&progress_id, tx);
+
+                    tx.emit(sps2_events::AppEvent::Download(
+                        sps2_events::DownloadEvent::PackageCompleted {
+                            name: package_id.name.clone(),
+                            version: package_id.version.clone(),
+                        },
+                    ));
 
                     Ok(DownloadResult {
                         package_id: package_id.clone(),
