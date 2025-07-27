@@ -74,6 +74,135 @@
 //! manager.cleanup_completed();
 //! ```
 //!
+//! ## Standardized Progress Patterns
+//!
+//! The progress system provides pre-configured patterns for common operations:
+//!
+//! ### Download Operations
+//! ```rust
+//! use sps2_events::{ProgressManager, patterns::DownloadProgressConfig};
+//!
+//! let manager = ProgressManager::new();
+//! let config = DownloadProgressConfig {
+//!     operation_name: "Downloading package".to_string(),
+//!     total_bytes: Some(1024 * 1024), // 1MB
+//!     package_name: Some("jq".to_string()),
+//!     url: "https://example.com/jq.tar.gz".to_string(),
+//! };
+//! let progress_id = manager.create_download_tracker(&config);
+//!
+//! // Progress through phases automatically:
+//! // 1. Connect (5%) - Network connection establishment
+//! // 2. Download (90%) - File transfer with speed/ETA calculation  
+//! // 3. Verify (5%) - Hash verification
+//! ```
+//!
+//! ### Install Operations
+//! ```rust
+//! use sps2_events::{ProgressManager, patterns::InstallProgressConfig};
+//!
+//! let config = InstallProgressConfig {
+//!     operation_name: "Installing packages".to_string(),
+//!     package_count: 5,
+//!     include_dependency_resolution: true,
+//! };
+//! let progress_id = manager.create_install_tracker(config);
+//!
+//! // Phases: Resolve (10%) → Download (50%) → Validate (15%) → Stage (15%) → Commit (10%)
+//! ```
+//!
+//! ### Update/Upgrade Operations
+//! ```rust
+//! use sps2_events::{ProgressManager, patterns::UpdateProgressConfig};
+//!
+//! let config = UpdateProgressConfig {
+//!     operation_name: "Updating packages".to_string(),
+//!     package_count: 3,
+//!     is_upgrade: false, // true for upgrade, false for update
+//! };
+//! let progress_id = manager.create_update_tracker(config);
+//!
+//! // Phases: Check (10%) → Download (60%) → Install (30%)
+//! ```
+//!
+//! ### Uninstall Operations
+//! ```rust
+//! use sps2_events::{ProgressManager, patterns::UninstallProgressConfig};
+//!
+//! let config = UninstallProgressConfig {
+//!     operation_name: "Uninstalling packages".to_string(),
+//!     package_count: 2,
+//! };
+//! let progress_id = manager.create_uninstall_tracker(config);
+//!
+//! // Phases: Analyze (20%) → Remove (70%) → Cleanup (10%)
+//! ```
+//!
+//! ### Parent-Child Progress Coordination
+//! ```rust
+//! // Create parent tracker for batch operation
+//! let parent_id = manager.create_batch_tracker(
+//!     "Installing multiple packages".to_string(),
+//!     5, // total packages
+//!     vec![], // phases handled by children
+//! );
+//!
+//! // Register child trackers
+//! for (i, package) in packages.iter().enumerate() {
+//!     let child_id = format!("{parent_id}-package-{i}");
+//!     let weight = 1.0 / packages.len() as f64; // Equal weight
+//!     
+//!     manager.register_child_tracker(
+//!         &parent_id, &child_id,
+//!         format!("Installing {}", package.name),
+//!         weight, &tx
+//!     )?;
+//! }
+//! ```
+//!
+//! ## Best Practices
+//!
+//! ### Progress ID Generation
+//! - IDs are automatically generated with UUIDs for uniqueness
+//! - Use descriptive prefixes: `download_`, `install_`, `update_`, `vulndb_`, etc.
+//! - For parent-child relationships: `{parent_id}-{operation}-{index}`
+//!
+//! ### Memory Management
+//! - Trackers use <1KB memory each with fixed-size ring buffers
+//! - Call `manager.cleanup_completed()` periodically to free memory
+//! - Automatic cleanup removes trackers after completion
+//! - Use `manager.total_memory_usage()` to monitor memory consumption
+//!
+//! ### Phase Weight Guidelines
+//! - Weights should sum to 1.0 for accurate progress calculation
+//! - Network operations: Connect (5%), Transfer (90%), Verify (5%)
+//! - Install operations: Download (50%), Process (35%), Commit (15%)
+//! - Use `None` for `estimated_duration` when time varies significantly
+//! - Heavier phases should have proportionally larger weights
+//!
+//! ### Error Handling
+//! ```rust
+//! // Always complete or fail trackers to prevent memory leaks
+//! match operation_result {
+//!     Ok(_) => manager.complete_operation(&progress_id, &tx),
+//!     Err(e) => {
+//!         tx.emit(AppEvent::Progress(ProgressEvent::Failed {
+//!             id: progress_id,
+//!             error: e.to_string(),
+//!             completed_items: current_progress,
+//!             partial_duration: start_time.elapsed(),
+//!         }));
+//!     }
+//! }
+//! ```
+//!
+//! ### Integration Guidelines
+//! - Use standardized patterns (`create_*_tracker`) for consistency
+//! - Emit domain-specific events alongside progress events
+//! - Update progress regularly during long operations
+//! - Clean up trackers after completion to prevent memory leaks
+//! - Use parent-child coordination for complex multi-step operations
+//!
 //! ## Algorithm Details
 //!
 //! ### Speed Calculation
@@ -118,33 +247,67 @@ pub mod patterns {
     /// Configuration for download progress tracking
     #[derive(Debug, Clone)]
     pub struct DownloadProgressConfig {
+        /// Human-readable operation description (e.g., "Downloading jq package")
         pub operation_name: String,
+
+        /// Total bytes to download (enables percentage calculation and ETA)
+        /// Set to None for unknown size downloads
         pub total_bytes: Option<u64>,
+
+        /// Package name for display purposes (optional)
+        /// Used in progress messages: "Downloading {`package_name`}"
         pub package_name: Option<String>,
+
+        /// Source URL for debugging and logging
         pub url: String,
     }
 
     /// Configuration for install progress tracking  
     #[derive(Debug, Clone)]
     pub struct InstallProgressConfig {
+        /// Human-readable operation description (e.g., "Installing packages")
         pub operation_name: String,
+
+        /// Number of packages to install (used for progress calculation)
         pub package_count: u64,
+
+        /// Whether to include dependency resolution phase (adds 10% weight)
+        /// Set to true for fresh installs, false for pre-resolved packages
         pub include_dependency_resolution: bool,
     }
 
     /// Configuration for update/upgrade progress tracking
     #[derive(Debug, Clone)]
     pub struct UpdateProgressConfig {
+        /// Human-readable operation description (e.g., "Updating packages")
         pub operation_name: String,
+
+        /// Number of packages to update/upgrade (used for progress calculation)
         pub package_count: u64,
-        pub is_upgrade: bool, // true for upgrade, false for update
+
+        /// Whether this is an upgrade (true) or update (false)
+        /// Affects progress messaging and phase weights
+        pub is_upgrade: bool,
     }
 
     /// Configuration for uninstall progress tracking
     #[derive(Debug, Clone)]
     pub struct UninstallProgressConfig {
+        /// Human-readable operation description (e.g., "Uninstalling packages")
         pub operation_name: String,
+
+        /// Number of packages to uninstall (used for progress calculation)
         pub package_count: u64,
+    }
+
+    /// Configuration for vulnerability database update progress tracking
+    #[derive(Debug, Clone)]
+    pub struct VulnDbUpdateProgressConfig {
+        /// Human-readable operation description (e.g., "Updating vulnerability database")
+        pub operation_name: String,
+
+        /// Number of vulnerability sources to update (e.g., NVD, OSV, GitHub = 3)
+        pub sources_count: u64,
     }
 
     impl ProgressManager {
@@ -281,6 +444,37 @@ pub mod patterns {
                 id.clone(),
                 config.operation_name,
                 Some(config.package_count),
+                phases,
+            );
+            id
+        }
+
+        /// Create standardized vulnerability database update progress tracker
+        pub fn create_vulndb_tracker(&self, config: VulnDbUpdateProgressConfig) -> String {
+            let id = format!("vulndb_{}", uuid::Uuid::new_v4());
+
+            let phases = vec![
+                ProgressPhase {
+                    name: "Initialize".to_string(),
+                    weight: 0.1,
+                    estimated_duration: Some(Duration::from_secs(2)),
+                },
+                ProgressPhase {
+                    name: "Download".to_string(),
+                    weight: 0.8,
+                    estimated_duration: None, // Depends on network speed
+                },
+                ProgressPhase {
+                    name: "Process".to_string(),
+                    weight: 0.1,
+                    estimated_duration: Some(Duration::from_secs(5)),
+                },
+            ];
+
+            self.create_tracker_with_phases(
+                id.clone(),
+                config.operation_name,
+                Some(config.sources_count),
                 phases,
             );
             id

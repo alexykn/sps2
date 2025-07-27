@@ -9,16 +9,26 @@ use sps2_events::{AppEvent, AuditEvent, EventEmitter};
 /// # Errors
 ///
 /// Returns an error if the vulnerability database update fails.
-pub async fn update_vulndb(_ctx: &OpsCtx) -> Result<String, Error> {
+pub async fn update_vulndb(ctx: &OpsCtx) -> Result<String, Error> {
+    use sps2_events::{patterns::VulnDbUpdateProgressConfig, ProgressManager};
+
+    let progress_manager = ProgressManager::new();
+    let vulndb_config = VulnDbUpdateProgressConfig {
+        operation_name: "Updating vulnerability database".to_string(),
+        sources_count: 3, // NVD, OSV, GitHub
+    };
+    let progress_id = progress_manager.create_vulndb_tracker(vulndb_config);
+
     // Initialize vulnerability database manager
     let mut vulndb = sps2_audit::VulnDbManager::new(sps2_audit::VulnDbManager::default_path())?;
 
     // Initialize if needed
     vulndb.initialize().await?;
 
-    // Update the database from all sources
-    vulndb.update().await?;
+    // Update the database from all sources with event reporting
+    vulndb.update_with_events(Some(&ctx.tx)).await?;
 
+    progress_manager.complete_operation(&progress_id, &ctx.tx);
     Ok("Vulnerability database updated successfully".to_string())
 }
 
