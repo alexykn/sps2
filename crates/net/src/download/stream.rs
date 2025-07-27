@@ -4,7 +4,7 @@ use super::config::{DownloadResult, StreamParams};
 use super::resume::calculate_existing_file_hash;
 use futures::StreamExt;
 use sps2_errors::{Error, NetworkError};
-use sps2_events::{AppEvent, DownloadEvent, EventEmitter};
+
 use sps2_hash::Hash;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -70,21 +70,15 @@ pub(super) async fn stream_download(
 
         // Emit progress events (throttled to avoid spam, but always emit first chunk)
         if first_chunk || last_progress_update.elapsed() >= Duration::from_millis(50) {
-            if let (Some(progress_id), Some(progress_manager)) =
-                (params.progress_id.as_ref(), params.progress_manager)
-            {
-                progress_manager.update(progress_id, current_downloaded);
+            if let Some(progress_manager) = params.progress_manager {
+                // Use unified progress tracking system
+                progress_manager.update_progress(
+                    &params.progress_tracker_id,
+                    current_downloaded,
+                    Some(params.total_size),
+                    params.event_sender,
+                );
             }
-            params
-                .event_sender
-                .emit(AppEvent::Download(DownloadEvent::Progress {
-                    url: params.url.to_string(),
-                    bytes_downloaded: current_downloaded,
-                    total_bytes: params.total_size,
-                    current_speed: 0.0, // TODO: Calculate actual speed
-                    average_speed: 0.0, // TODO: Calculate actual speed
-                    eta: None,          // TODO: Calculate ETA
-                }));
             last_progress_update = Instant::now();
             first_chunk = false;
         }
@@ -97,16 +91,15 @@ pub(super) async fn stream_download(
     let final_downloaded = downloaded.load(Ordering::Relaxed);
 
     // Emit final progress event to ensure 100% completion is reported
-    params
-        .event_sender
-        .emit(AppEvent::Download(DownloadEvent::Progress {
-            url: params.url.to_string(),
-            bytes_downloaded: final_downloaded,
-            total_bytes: params.total_size,
-            current_speed: 0.0, // TODO: Calculate actual speed
-            average_speed: 0.0, // TODO: Calculate actual speed
-            eta: None,          // TODO: Calculate ETA
-        }));
+    if let Some(progress_manager) = params.progress_manager {
+        // Use unified progress tracking system for final update
+        progress_manager.update_progress(
+            &params.progress_tracker_id,
+            final_downloaded,
+            Some(params.total_size),
+            params.event_sender,
+        );
+    }
 
     let final_hash = Hash::from_blake3_bytes(*hasher.finalize().as_bytes());
 

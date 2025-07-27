@@ -197,8 +197,74 @@ impl ProgressManager {
             ));
         }
     }
-}
 
+    /// Create a parent progress tracker for batch operations
+    pub fn create_batch_tracker(
+        &self,
+        operation_name: String,
+        total_items: u64,
+        phases: Vec<ProgressPhase>,
+    ) -> String {
+        let id = format!("batch_{}", uuid::Uuid::new_v4());
+        self.create_tracker_with_phases(id.clone(), operation_name, Some(total_items), phases);
+        id
+    }
+
+    /// Register a child tracker with its parent
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the event cannot be sent to the event channel.
+    pub fn register_child_tracker(
+        &self,
+        parent_id: &str,
+        child_id: &str,
+        operation_name: String,
+        weight: f64,
+        tx: &crate::EventSender,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Emit child started event
+        let _ = tx.send(crate::AppEvent::Progress(
+            crate::events::ProgressEvent::ChildStarted {
+                parent_id: parent_id.to_string(),
+                child_id: child_id.to_string(),
+                operation: operation_name,
+                weight,
+            },
+        ));
+
+        // Store parent-child relationship in tracker metadata
+        // For now, we'll track this through the event system
+        // Future enhancement: store relationships in tracker structure
+        Ok(())
+    }
+
+    /// Complete a child tracker and update parent progress
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the event cannot be sent to the event channel.
+    pub fn complete_child_tracker(
+        &self,
+        parent_id: &str,
+        child_id: &str,
+        success: bool,
+        tx: &crate::EventSender,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let _ = tx.send(crate::AppEvent::Progress(
+            crate::events::ProgressEvent::ChildCompleted {
+                parent_id: parent_id.to_string(),
+                child_id: child_id.to_string(),
+                success,
+            },
+        ));
+
+        // Update parent progress based on child completion
+        // For now, we'll let the UI handle aggregation
+        // Future enhancement: automatically update parent progress
+        Ok(())
+    }
+}
 impl Default for ProgressManager {
     fn default() -> Self {
         Self::new()

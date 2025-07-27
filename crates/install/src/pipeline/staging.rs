@@ -75,15 +75,21 @@ impl StagingPipeline {
     fn spawn_staging_install_task(
         &self,
         decompress_result: DecompressResult,
-        _progress_id: String,
+        progress_id: String,
         tx: EventSender,
     ) -> JoinHandle<Result<PackageId, (PackageId, Error)>> {
         let staging_manager = self.staging_manager.clone();
         let store = self.store.clone();
 
         tokio::spawn(async move {
-            match Self::stage_and_install_package(&decompress_result, &staging_manager, &store, &tx)
-                .await
+            match Self::stage_and_install_package(
+                &decompress_result,
+                &staging_manager,
+                &store,
+                &tx,
+                &progress_id,
+            )
+            .await
             {
                 Ok(package_id) => Ok(package_id),
                 Err(e) => Err((decompress_result.package_id, e)),
@@ -97,6 +103,7 @@ impl StagingPipeline {
         staging_manager: &StagingManager,
         store: &PackageStore,
         tx: &EventSender,
+        progress_id: &str,
     ) -> Result<PackageId, Error> {
         tx.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: format!(
@@ -106,7 +113,7 @@ impl StagingPipeline {
             context: std::collections::HashMap::new(),
         }));
 
-        // Extract to staging directory
+        // Extract to staging directory with progress tracking
         tx.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: format!(
                 "DEBUG: Extracting to staging directory from: {}",
@@ -124,6 +131,7 @@ impl StagingPipeline {
                 &decompress_result.decompressed_path,
                 &decompress_result.package_id,
                 &staging_context,
+                Some(progress_id), // Pass progress ID for child progress tracking
             )
             .await?;
 

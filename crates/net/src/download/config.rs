@@ -89,13 +89,16 @@ pub struct PackageDownloadResult {
     pub signature_verified: bool,
 }
 
-/// Parameters for streaming download
+/// Parameters for streaming download with unified progress tracking
 pub(super) struct StreamParams<'a> {
     pub total_size: u64,
     pub expected_hash: Option<&'a Hash>,
     pub event_sender: &'a sps2_events::EventSender,
+    #[allow(dead_code)] // Used for error reporting and debugging
     pub url: &'a str,
-    pub progress_id: Option<String>,
+    pub progress_tracker_id: String,
+    #[allow(dead_code)] // Reserved for future parent-child coordination features
+    pub parent_progress_id: Option<String>,
     pub progress_manager: Option<&'a sps2_events::ProgressManager>,
 }
 

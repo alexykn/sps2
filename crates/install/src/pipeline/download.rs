@@ -1,11 +1,9 @@
 //! Download pipeline stage implementation
 
-use crossbeam::queue::SegQueue;
-use dashmap::DashMap;
 use sps2_errors::{Error, InstallError};
 use sps2_events::{patterns::DownloadProgressConfig, EventSender, ProgressManager};
 use sps2_hash::Hash;
-use sps2_net::PackageDownloader;
+use sps2_net::{PackageDownloadRequest, PackageDownloader};
 use sps2_resolver::{ExecutionPlan, NodeAction, PackageId, ResolvedNode};
 use sps2_resources::ResourceManager;
 use std::collections::HashMap;
@@ -31,8 +29,10 @@ pub struct DownloadResult {
 /// Download pipeline stage coordinator
 pub struct DownloadPipeline {
     downloader: PackageDownloader,
+    #[allow(dead_code)] // Reserved for future resource management features
     resources: Arc<ResourceManager>,
     progress_manager: Arc<ProgressManager>,
+    #[allow(dead_code)] // Reserved for future timeout handling features
     operation_timeout: Duration,
 }
 
@@ -55,71 +55,92 @@ impl DownloadPipeline {
     /// Execute parallel downloads with dependency ordering
     pub async fn execute_parallel_downloads(
         &self,
-        execution_plan: &ExecutionPlan,
+        _execution_plan: &ExecutionPlan,
         resolved_packages: &HashMap<PackageId, ResolvedNode>,
-        progress_id: &str,
+        parent_progress_id: &str,
         tx: &EventSender,
     ) -> Result<Vec<DownloadResult>, Error> {
+        // Create batch progress tracker for downloads phase
+        let download_config = sps2_events::patterns::DownloadProgressConfig {
+            operation_name: format!("Downloading {} packages", resolved_packages.len()),
+            total_bytes: None,
+            package_name: None,
+            url: "batch".to_string(),
+        };
+
+        let batch_progress_id = self
+            .progress_manager
+            .create_download_tracker(&download_config);
+
+        // Register as child of parent operation (e.g., install operation)
+        let _ = self.progress_manager.register_child_tracker(
+            parent_progress_id,
+            &batch_progress_id,
+            "Download Phase".to_string(),
+            0.5, // Downloads are 50% of install operation
+            tx,
+        );
+
+        // Convert resolved packages to download requests
+        let download_requests: Vec<PackageDownloadRequest> = resolved_packages
+            .iter()
+            .filter_map(|(package_id, node)| {
+                if let Some(url) = &node.url {
+                    Some(PackageDownloadRequest {
+                        name: package_id.name.clone(),
+                        version: package_id.version.clone(),
+                        package_url: url.clone(),
+                        signature_url: None,
+                        expected_hash: None,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let temp_dir = tempfile::tempdir().map_err(|e| InstallError::TempFileError {
+            message: format!("failed to create temp dir: {e}"),
+        })?;
+
+        // Use the updated batch download method
+        let download_results = self
+            .downloader
+            .download_packages_batch(
+                download_requests,
+                temp_dir.path(),
+                Some(batch_progress_id.clone()),
+                tx,
+            )
+            .await?;
+
+        // Complete batch progress
+        let _ = self.progress_manager.complete_child_tracker(
+            parent_progress_id,
+            &batch_progress_id,
+            true,
+            tx,
+        );
+
+        // Convert to DownloadResult format
         let mut results = Vec::new();
-        let ready_queue = Arc::new(SegQueue::new());
-        let completed = Arc::new(DashMap::<PackageId, bool>::new());
-
-        // Initialize with packages that have no dependencies
-        for package_id in execution_plan.ready_packages() {
-            ready_queue.push(package_id);
-        }
-
-        // Process downloads with dependency ordering
-        while completed.len() < resolved_packages.len() {
-            // Start downloads for ready packages
-            let mut handles = Vec::new();
-
-            while let Some(package_id) = ready_queue.pop() {
-                if completed.contains_key(&package_id) {
-                    continue;
-                }
-
-                if let Some(node) = resolved_packages.get(&package_id) {
-                    let handle = self.spawn_download_task(
-                        package_id.clone(),
-                        node.clone(),
-                        progress_id.to_string(),
-                        tx.clone(),
-                    );
-                    handles.push((package_id, handle));
-                }
-            }
-
-            // Wait for at least one download to complete
-            if !handles.is_empty() {
-                let (completed_package, result) =
-                    self.wait_for_download_completion(handles).await?;
-                completed.insert(completed_package.clone(), true);
-                results.push(result);
-
-                // Check if new packages became ready
-                let newly_ready = execution_plan.complete_package(&completed_package);
-                for pkg in newly_ready {
-                    ready_queue.push(pkg);
-                }
-
-                // Update progress
-                self.progress_manager.update_progress(
-                    progress_id,
-                    completed.len() as u64,
-                    Some(resolved_packages.len() as u64),
-                    tx,
-                );
-            }
-
-            // Small delay to prevent busy waiting
-            tokio::time::sleep(Duration::from_millis(10)).await;
+        for (package_download_result, (package_id, node)) in
+            download_results.iter().zip(resolved_packages.iter())
+        {
+            results.push(DownloadResult {
+                package_id: package_id.clone(),
+                downloaded_path: package_download_result.package_path.clone(),
+                hash: package_download_result.hash.clone(),
+                temp_dir: None, // Temp dir ownership handled by batch operation
+                node: node.clone(),
+            });
         }
 
         Ok(results)
     }
 
     /// Spawn a download task for a single package
+    #[allow(dead_code)] // Legacy method kept for compatibility
     pub fn spawn_download_task(
         &self,
         package_id: PackageId,
@@ -174,6 +195,7 @@ impl DownloadPipeline {
     }
 
     /// Download a package with progress reporting
+    #[allow(dead_code)] // Legacy method kept for compatibility
     async fn download_package_with_progress(
         downloader: &PackageDownloader,
         package_id: &PackageId,
@@ -213,7 +235,8 @@ impl DownloadPipeline {
                             None, // No signature URL for now
                             temp_dir.path(),
                             None, // No expected hash for now
-                            Some(progress_id.clone()),
+                            progress_id.clone(),
+                            None, // No parent progress ID
                             tx,
                         )
                         .await?;
@@ -264,6 +287,7 @@ impl DownloadPipeline {
     }
 
     /// Wait for at least one download to complete
+    #[allow(dead_code)] // Legacy method kept for compatibility
     async fn wait_for_download_completion(
         &self,
         mut handles: Vec<(PackageId, JoinHandle<Result<DownloadResult, Error>>)>,

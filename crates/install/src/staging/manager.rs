@@ -5,7 +5,7 @@
 
 use crate::{validate_sp_file, ValidationResult};
 use sps2_errors::{Error, InstallError};
-use sps2_events::{AppEvent, EventEmitter, InstallEvent};
+use sps2_events::{AppEvent, EventEmitter, InstallEvent, ProgressEvent};
 use sps2_resolver::PackageId;
 use sps2_resources::ResourceManager;
 use sps2_store::{extract_package_with_events, PackageStore};
@@ -125,8 +125,9 @@ impl StagingManager {
         sp_file: &Path,
         package_id: &PackageId,
         context: &T,
+        progress_id: Option<&str>,
     ) -> Result<StagingDirectory, Error> {
-        self.extract_to_staging_internal(sp_file, package_id, context, true)
+        self.extract_to_staging_internal(sp_file, package_id, context, true, progress_id)
             .await
     }
 
@@ -143,8 +144,9 @@ impl StagingManager {
         tar_file: &Path,
         package_id: &PackageId,
         context: &T,
+        progress_id: Option<&str>,
     ) -> Result<StagingDirectory, Error> {
-        self.extract_to_staging_internal(tar_file, package_id, context, false)
+        self.extract_to_staging_internal(tar_file, package_id, context, false, progress_id)
             .await
     }
 
@@ -155,11 +157,47 @@ impl StagingManager {
         package_id: &PackageId,
         context: &T,
         validate_as_sp: bool,
+        progress_id: Option<&str>,
     ) -> Result<StagingDirectory, Error> {
-        // Validate the file if required (only for .sp files, not pre-validated tar files)
+        // Create child progress tracker for staging if parent progress ID provided
+        let staging_progress_id = if let Some(parent_id) = progress_id {
+            let child_id = format!("{}-staging-{}", parent_id, package_id.name);
+            context.emit(AppEvent::Progress(ProgressEvent::Started {
+                id: child_id.clone(),
+                operation: format!("Staging {}", package_id.name),
+                total: Some(3), // validation, extraction, post-validation
+                phases: vec![],
+                parent_id: Some(parent_id.to_string()),
+            }));
+            Some(child_id)
+        } else {
+            None
+        };
+
+        // Phase 1: Validate the file if required (only for .sp files, not pre-validated tar files)
         let validation_result = if validate_as_sp {
+            if let Some(ref progress_id) = staging_progress_id {
+                context.emit(AppEvent::Progress(ProgressEvent::Updated {
+                    id: progress_id.clone(),
+                    current: 1,
+                    total: Some(3),
+                    phase: Some(0), // Phase index instead of string
+                    speed: None,
+                    eta: None,
+                    efficiency: None,
+                }));
+            }
+
             let result = validate_sp_file(file_path, context.event_sender()).await?;
             if !result.is_valid {
+                if let Some(ref progress_id) = staging_progress_id {
+                    context.emit(AppEvent::Progress(ProgressEvent::Failed {
+                        id: progress_id.clone(),
+                        error: "Package validation failed".to_string(),
+                        completed_items: 1,
+                        partial_duration: std::time::Duration::from_secs(0),
+                    }));
+                }
                 return Err(InstallError::InvalidPackageFile {
                     path: file_path.display().to_string(),
                     message: "package validation failed".to_string(),
@@ -187,11 +225,33 @@ impl StagingManager {
             staging_path: staging_dir.path.clone(),
         }));
 
-        // Extract package to staging directory
+        // Phase 2: Extract package to staging directory
+        if let Some(ref progress_id) = staging_progress_id {
+            context.emit(AppEvent::Progress(ProgressEvent::Updated {
+                id: progress_id.clone(),
+                current: 2,
+                total: Some(3),
+                phase: Some(1), // Phase index instead of string
+                speed: None,
+                eta: None,
+                efficiency: None,
+            }));
+        }
+
         extract_package_with_events(file_path, &staging_dir.path, context.event_sender())
             .await
-            .map_err(|e| InstallError::ExtractionFailed {
-                message: format!("failed to extract to staging: {e}"),
+            .map_err(|e| {
+                if let Some(ref progress_id) = staging_progress_id {
+                    context.emit(AppEvent::Progress(ProgressEvent::Failed {
+                        id: progress_id.clone(),
+                        error: format!("Extraction failed: {e}"),
+                        completed_items: 2,
+                        partial_duration: std::time::Duration::from_secs(0),
+                    }));
+                }
+                InstallError::ExtractionFailed {
+                    message: format!("failed to extract to staging: {e}"),
+                }
             })?;
 
         context.emit_debug(format!(
@@ -217,8 +277,42 @@ impl StagingManager {
             adjusted_validation_result.file_count = count_files(&staging_dir.path).await?;
         }
 
+        // Phase 3: Post-extraction validation
+        if let Some(ref progress_id) = staging_progress_id {
+            context.emit(AppEvent::Progress(ProgressEvent::Updated {
+                id: progress_id.clone(),
+                current: 3,
+                total: Some(3),
+                phase: Some(2), // Phase index instead of string
+                speed: None,
+                eta: None,
+                efficiency: None,
+            }));
+        }
+
         self.validate_extracted_content(&mut staging_dir, &adjusted_validation_result, context)
-            .await?;
+            .await
+            .map_err(|e| {
+                if let Some(ref progress_id) = staging_progress_id {
+                    context.emit(AppEvent::Progress(ProgressEvent::Failed {
+                        id: progress_id.clone(),
+                        error: format!("Post-validation failed: {e}"),
+                        completed_items: 3,
+                        partial_duration: std::time::Duration::from_secs(0),
+                    }));
+                }
+                e
+            })?;
+
+        // Complete staging progress
+        if let Some(ref progress_id) = staging_progress_id {
+            context.emit(AppEvent::Progress(ProgressEvent::Completed {
+                id: progress_id.clone(),
+                duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
+                final_speed: None,
+                total_processed: 3,
+            }));
+        }
 
         context.emit(AppEvent::Install(InstallEvent::StagingCompleted {
             package: package_id.name.clone(),

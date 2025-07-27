@@ -42,15 +42,6 @@ pub enum InstallEvent {
         staging_path: PathBuf,
     },
 
-    /// Package staging progress update
-    StagingProgress {
-        package: String,
-        files_extracted: usize,
-        total_files: Option<usize>,
-        current_file: Option<String>,
-        bytes_extracted: u64,
-    },
-
     /// Package staging completed
     StagingCompleted {
         package: String,
@@ -93,15 +84,6 @@ pub enum InstallEvent {
         estimated_size: u64,
     },
 
-    /// File installation progress
-    FileInstallationProgress {
-        package: String,
-        files_installed: usize,
-        total_files: usize,
-        current_file: Option<String>,
-        bytes_written: u64,
-    },
-
     /// File installation completed
     FileInstallationCompleted {
         package: String,
@@ -131,14 +113,6 @@ pub enum InstallEvent {
         validation_checks: Vec<String>,
     },
 
-    /// Post-installation validation progress
-    ValidationProgress {
-        package: String,
-        checks_completed: usize,
-        total_checks: usize,
-        current_check: String,
-    },
-
     /// Post-installation validation completed
     ValidationCompleted {
         package: String,
@@ -163,16 +137,6 @@ pub enum InstallEvent {
         operation_id: String,
         concurrent_limit: usize,
         estimated_duration: Option<Duration>,
-    },
-
-    /// Batch installation progress
-    BatchProgress {
-        operation_id: String,
-        completed_packages: usize,
-        failed_packages: usize,
-        in_progress_packages: usize,
-        remaining_packages: usize,
-        current_package: Option<String>,
     },
 
     /// Batch installation completed

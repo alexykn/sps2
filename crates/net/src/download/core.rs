@@ -76,7 +76,8 @@ impl PackageDownloader {
         signature_url: Option<&str>,
         dest_dir: &Path,
         expected_hash: Option<&Hash>,
-        progress_id: Option<String>,
+        progress_tracker_id: String,
+        parent_progress_id: Option<String>,
         tx: &EventSender,
     ) -> Result<PackageDownloadResult, Error> {
         let start_time = Instant::now();
@@ -97,11 +98,25 @@ impl PackageDownloader {
         tokio_fs::create_dir_all(dest_dir).await?;
 
         // Download package and signature concurrently
+        // Create progress tracker if not provided
+        let tracker_id = if progress_tracker_id.is_empty() {
+            let config = sps2_events::patterns::DownloadProgressConfig {
+                operation_name: format!("Downloading {package_name}"),
+                total_bytes: None,
+                package_name: Some(package_name.to_string()),
+                url: package_url.to_string(),
+            };
+            self.progress_manager.create_download_tracker(&config)
+        } else {
+            progress_tracker_id
+        };
+
         let package_fut = self.download_with_resume(
             package_url,
             &package_path,
             expected_hash,
-            progress_id,
+            tracker_id,
+            parent_progress_id.clone(),
             tx.clone(),
         );
 
@@ -160,16 +175,19 @@ impl PackageDownloader {
         &self,
         packages: Vec<PackageDownloadRequest>,
         dest_dir: &Path,
+        batch_progress_id: Option<String>,
         tx: &EventSender,
     ) -> Result<Vec<PackageDownloadResult>, Error> {
         use futures::stream::{FuturesUnordered, StreamExt};
 
         let mut futures = FuturesUnordered::new();
+        let total_packages = packages.len();
 
         for request in packages {
             let downloader = self.clone();
             let dest_dir = dest_dir.to_path_buf();
             let tx = tx.clone();
+            let batch_progress_id_clone = batch_progress_id.clone();
 
             let fut = async move {
                 let _permit = downloader
@@ -177,7 +195,34 @@ impl PackageDownloader {
                     .resources
                     .acquire_download_permit()
                     .await?;
-                downloader
+
+                // Create individual progress tracker for this download
+                let child_config = sps2_events::patterns::DownloadProgressConfig {
+                    operation_name: format!("Downloading {}", request.name),
+                    total_bytes: None, // Will be determined during download
+                    package_name: Some(request.name.clone()),
+                    url: request.package_url.clone(),
+                };
+
+                let child_id = downloader
+                    .progress_manager
+                    .create_download_tracker(&child_config);
+
+                // Register as child of batch operation if we have a parent
+                if let Some(ref parent_id) = batch_progress_id_clone {
+                    #[allow(clippy::cast_precision_loss)]
+                    // Acceptable precision loss for progress weights
+                    let weight = 1.0 / total_packages as f64; // Equal weight for each package
+                    let _ = downloader.progress_manager.register_child_tracker(
+                        parent_id,
+                        &child_id,
+                        format!("Downloading {}", request.name),
+                        weight,
+                        &tx,
+                    );
+                }
+
+                let result = downloader
                     .download_package(
                         &request.name,
                         &request.version,
@@ -185,10 +230,21 @@ impl PackageDownloader {
                         request.signature_url.as_deref(),
                         &dest_dir,
                         request.expected_hash.as_ref(),
-                        None,
+                        child_id.clone(), // Individual progress tracker ID
+                        batch_progress_id_clone.clone(), // Parent progress ID
                         &tx,
                     )
-                    .await
+                    .await;
+
+                // Complete child tracker
+                if let Some(ref parent_id) = batch_progress_id_clone {
+                    let success = result.is_ok();
+                    let _ = downloader
+                        .progress_manager
+                        .complete_child_tracker(parent_id, &child_id, success, &tx);
+                }
+
+                result
             };
 
             futures.push(fut);
@@ -213,7 +269,8 @@ impl PackageDownloader {
         url: &str,
         dest_path: &Path,
         expected_hash: Option<&Hash>,
-        progress_id: Option<String>,
+        progress_tracker_id: String,
+        parent_progress_id: Option<String>,
         tx: EventSender,
     ) -> Result<DownloadResult, Error> {
         let url = validate_url(url)?;
@@ -223,7 +280,14 @@ impl PackageDownloader {
 
         loop {
             match self
-                .try_download_with_resume(&url, dest_path, expected_hash, progress_id.clone(), &tx)
+                .try_download_with_resume(
+                    &url,
+                    dest_path,
+                    expected_hash,
+                    progress_tracker_id.clone(),
+                    parent_progress_id.clone(),
+                    &tx,
+                )
                 .await
             {
                 Ok(result) => return Ok(result),
@@ -238,6 +302,26 @@ impl PackageDownloader {
                     // Calculate backoff delay with jitter
                     let delay = calculate_backoff_delay(&self.config.retry_config, retry_count);
 
+                    // Emit retry event with progress preservation
+                    {
+                        // Get current progress from partial download
+                        let accumulated_bytes =
+                            if let Ok(metadata) = tokio::fs::metadata(dest_path).await {
+                                metadata.len()
+                            } else {
+                                0
+                            };
+
+                        tx.emit(AppEvent::Progress(sps2_events::ProgressEvent::Paused {
+                            id: progress_tracker_id.clone(),
+                            reason: format!(
+                                "Retry attempt {}/{}",
+                                retry_count, self.config.retry_config.max_retries
+                            ),
+                            items_completed: accumulated_bytes,
+                        }));
+                    }
+
                     tx.emit(AppEvent::General(GeneralEvent::DebugLog {
                         message: format!(
                             "Download failed, retrying in {delay:?} (attempt {retry_count}/{})...",
@@ -247,6 +331,12 @@ impl PackageDownloader {
                     }));
 
                     tokio::time::sleep(delay).await;
+
+                    // Resume progress tracking
+                    tx.emit(AppEvent::Progress(sps2_events::ProgressEvent::Resumed {
+                        id: progress_tracker_id.clone(),
+                        pause_duration: delay,
+                    }));
                 }
             }
         }
@@ -262,7 +352,8 @@ impl PackageDownloader {
         url: &str,
         dest_path: &Path,
         expected_hash: Option<&Hash>,
-        progress_id: Option<String>,
+        progress_tracker_id: String,
+        parent_progress_id: Option<String>,
         tx: &EventSender,
     ) -> Result<DownloadResult, Error> {
         // Check if partial file exists
@@ -335,7 +426,8 @@ impl PackageDownloader {
             expected_hash,
             event_sender: tx,
             url,
-            progress_id,
+            progress_tracker_id,
+            parent_progress_id,
             progress_manager: Some(&self.progress_manager),
         };
         let result =

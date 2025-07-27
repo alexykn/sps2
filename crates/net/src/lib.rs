@@ -36,7 +36,14 @@ pub async fn download_file(
 ) -> Result<(Hash, u64), Error> {
     let downloader = PackageDownloader::with_defaults(sps2_events::ProgressManager::new())?;
     let result = downloader
-        .download_with_resume(url, dest, expected_hash, None, tx.clone())
+        .download_with_resume(
+            url,
+            dest,
+            expected_hash,
+            "simple_download".to_string(),
+            None,
+            tx.clone(),
+        )
         .await?;
     Ok((result.hash, result.size))
 }
