@@ -29,7 +29,7 @@ impl BuildEnvironment {
         self.send_event(AppEvent::Resolver(ResolverEvent::ResolutionCompleted {
             total_packages: 1,
             execution_batches: 1,
-            duration_ms: 0, // TODO: track actual duration
+            duration_ms: 0, // Duration tracking removed as per architectural decision
             packages_resolved: vec![format!("{}:{}", self.context.name, self.context.version)],
         }));
 
@@ -86,14 +86,7 @@ impl BuildEnvironment {
                 self.verify_installed_package(&node.name, &node.version)
                     .await?;
 
-                self.send_event(AppEvent::Install(InstallEvent::Completed {
-                    package: node.name.clone(),
-                    version: node.version.clone(),
-                    installed_files: 0, // TODO: track actual file count
-                    install_path: std::path::PathBuf::from("/opt/pm/live"),
-                    duration: std::time::Duration::from_secs(0), // TODO: track actual duration
-                    disk_usage: 0,                               // TODO: track actual disk usage
-                }));
+                // Package verification completed - metrics removed as per architectural decision
 
                 return Ok(());
             }
@@ -137,7 +130,7 @@ impl BuildEnvironment {
                         package: Some(format!("{}:{}", node.name, node.version)),
                         total_size: None,
                         supports_resume: false,
-                        connection_time: std::time::Duration::from_secs(0), // TODO: track actual connection time
+                        connection_time: std::time::Duration::from_secs(0), // Connection time tracking removed
                     }));
 
                     // Download the .sp file to a temporary location

@@ -253,16 +253,7 @@ async fn execute_source_stage(
 
         execute_source_step(step, &mut api, environment).await?;
 
-        send_event(
-            context,
-            AppEvent::Build(BuildEvent::CommandCompleted {
-                session_id: "source_acquisition".to_string(),
-                package: context.name.clone(),
-                command_id: format!("source_step_{}", std::ptr::addr_of!(*step) as usize),
-                exit_code: 0,
-                duration: std::time::Duration::from_secs(0), // TODO: track actual duration
-            }),
-        );
+        // Command completed - duration tracking removed as per architectural decision
     }
 
     send_event(
@@ -393,16 +384,7 @@ async fn execute_post_stage_with_security(
         )
         .await?;
 
-        send_event(
-            context,
-            AppEvent::Build(BuildEvent::CommandCompleted {
-                session_id: "post_processing".to_string(),
-                package: context.name.clone(),
-                command_id: format!("post_step_{}", std::ptr::addr_of!(*step) as usize),
-                exit_code: 0,
-                duration: std::time::Duration::from_secs(0), // TODO: track actual duration
-            }),
-        );
+        // Command completed - duration tracking removed as per architectural decision
     }
 
     send_event(

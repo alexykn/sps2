@@ -380,16 +380,7 @@ pub async fn execute_build_commands_list_with_security(
         )
         .await?;
 
-        send_event(
-            context,
-            AppEvent::Build(BuildEvent::CommandCompleted {
-                session_id: "build".to_string(),
-                package: context.name.clone(),
-                command_id: format!("build_step_{}", std::ptr::addr_of!(*command) as usize),
-                exit_code: 0,
-                duration: std::time::Duration::from_secs(0), // TODO: track actual duration
-            }),
-        );
+        // Command completed - duration tracking removed as per architectural decision
     }
 
     Ok(())

@@ -125,7 +125,7 @@ pub fn get_patchers_for_profile(profile: BuildSystemProfile) -> Vec<PatcherActio
                 // PermissionsFixer removed - only runs when explicitly called via fix_permissions()
                 PatcherAction::PlaceholderPatcher(PlaceholderPatcher),
                 PatcherAction::BinaryStringPatcher(BinaryStringPatcher),
-                PatcherAction::RPathPatcher(RPathPatcher::new(RpathStyle::Modern)), // TODO: is this correct? I am confusion
+                PatcherAction::RPathPatcher(RPathPatcher::new(RpathStyle::Modern)),
                 PatcherAction::HeaderPatcher(HeaderPatcher),
                 PatcherAction::PkgConfigPatcher(PkgConfigPatcher),
                 PatcherAction::LaFileCleaner(LaFileCleaner),

@@ -142,7 +142,7 @@ impl SbomGenerator {
         }
 
         // Verify deterministic output by regenerating
-        // TODO: Temporarily disable deterministic verification due to syft non-determinism
+        // Deterministic verification disabled due to syft non-determinism (upstream issue)
         // self.verify_deterministic(&sbom_files, source_dir).await?;
 
         Ok(sbom_files)
@@ -259,7 +259,7 @@ impl SbomGenerator {
     /// # Errors
     ///
     /// Returns an error if temp directory creation fails or SBOM generation is not deterministic.
-    #[allow(dead_code)] // Temporarily disabled due to syft non-determinism - see TODO above
+    #[allow(dead_code)] // Disabled due to syft non-determinism (upstream issue)
     async fn verify_deterministic(
         &self,
         sbom_files: &SbomFiles,

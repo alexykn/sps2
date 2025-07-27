@@ -54,10 +54,10 @@ impl BuildEnvironment {
         }
 
         self.emit(AppEvent::Build(BuildEvent::CommandStarted {
-            session_id: "unknown".to_string(), // TODO: should come from build context
+            session_id: format!("build-{}", self.context.name),
             package: self.context.name.clone(),
-            command_id: "unknown".to_string(), // TODO: generate unique ID
-            build_system: sps2_events::BuildSystem::Custom, // TODO: detect actual build system
+            command_id: format!("cmd-{}", std::process::id()),
+            build_system: sps2_events::BuildSystem::Custom,
             command: format!("{program} {}", converted_args.join(" ")),
             working_dir: self.build_prefix.clone(),
             timeout: None,
