@@ -7,7 +7,6 @@
 
 use sps2_errors::Error;
 use sps2_events::{AppEvent, BuildEvent, EventEmitter, EventSender};
-use sps2_hash::Hash;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -15,12 +14,11 @@ use std::time::SystemTime;
 use tokio::fs;
 use tokio::sync::RwLock;
 
-/// Build cache for storing and retrieving build artifacts
+/// Build cache for compiler caching and source downloads
 #[derive(Debug, Clone)]
 pub struct BuildCache {
     cache_root: PathBuf,
-    store: Arc<ContentAddressedStore>,
-    artifact_cache: Arc<ArtifactCache>,
+    source_cache: Arc<SourceCache>,
     compiler_cache: Arc<CompilerCache>,
     stats: Arc<RwLock<CacheStatistics>>,
     event_sender: Option<sps2_events::EventSender>,
@@ -31,7 +29,6 @@ impl EventEmitter for BuildCache {
         self.event_sender.as_ref()
     }
 }
-
 impl BuildCache {
     /// Create a new build cache
     ///
@@ -39,157 +36,29 @@ impl BuildCache {
     ///
     /// Returns an error if:
     /// - Failed to create the cache directory
-    /// - Failed to initialize the content-addressed store
-    /// - Failed to initialize the artifact or compiler caches
+    /// - Failed to initialize the source or compiler caches
     pub async fn new(
         cache_root: PathBuf,
         event_sender: Option<EventSender>,
     ) -> Result<Self, Error> {
         fs::create_dir_all(&cache_root).await?;
 
-        let store = Arc::new(ContentAddressedStore::new(cache_root.join("store")).await?);
-        let artifact_cache = Arc::new(ArtifactCache::new(cache_root.join("artifacts")).await?);
+        let source_cache = Arc::new(SourceCache::new(cache_root.join("sources")).await?);
         let compiler_cache = Arc::new(CompilerCache::new(cache_root.join("compiler")).await?);
         let stats = Arc::new(RwLock::new(CacheStatistics::default()));
 
         Ok(Self {
             cache_root,
-            store,
-            artifact_cache,
+            source_cache,
             compiler_cache,
             stats,
             event_sender,
         })
     }
 
-    /// Cache build artifacts with proper invalidation
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - Failed to store artifacts in the artifact cache
-    /// - I/O operations fail while writing to cache
-    pub async fn cache_artifacts(
-        &self,
-        artifacts: Vec<Artifact>,
-        cache_key: &CacheKey,
-    ) -> Result<(), Error> {
-        let mut stats = self.stats.write().await;
-
-        for artifact in artifacts {
-            // Store artifact with content addressing
-            let hash = artifact.compute_hash().await?;
-            self.store.store(&artifact.path, &hash).await?;
-
-            // Track artifact in cache
-            self.artifact_cache
-                .store_artifact(cache_key, artifact, hash)
-                .await?;
-
-            stats.artifacts_cached += 1;
-        }
-
-        // Send cache event
-        self.emit(AppEvent::Build(BuildEvent::CacheUpdated {
-            cache_key: cache_key.to_string(),
-            artifacts_count: stats.artifacts_cached.try_into().unwrap_or(usize::MAX),
-        }));
-
-        Ok(())
-    }
-
-    /// Retrieve cached artifacts if valid
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - Failed to read from the artifact cache
-    /// - Cache metadata is corrupted
-    /// - I/O operations fail while accessing cache
-    pub async fn get_cached_artifacts(
-        &self,
-        cache_key: &CacheKey,
-    ) -> Result<Option<Vec<Artifact>>, Error> {
-        let mut stats = self.stats.write().await;
-
-        // Check if cache entry exists
-        if let Some(artifacts) = self.artifact_cache.get_artifacts(cache_key).await? {
-            // Verify all artifacts are still valid
-            let mut valid_artifacts = Vec::new();
-
-            for artifact in artifacts {
-                if self.store.exists(&artifact.hash).await? {
-                    valid_artifacts.push(artifact);
-                } else {
-                    // Cache entry is stale
-                    stats.cache_misses += 1;
-                    self.emit(AppEvent::Build(BuildEvent::CacheMiss {
-                        cache_key: cache_key.to_string(),
-                        reason: "Artifact missing from store".to_string(),
-                    }));
-                    return Ok(None);
-                }
-            }
-
-            stats.cache_hits += 1;
-            self.emit(AppEvent::Build(BuildEvent::CacheHit {
-                cache_key: cache_key.to_string(),
-                artifacts_count: valid_artifacts.len(),
-            }));
-
-            Ok(Some(valid_artifacts))
-        } else {
-            stats.cache_misses += 1;
-            self.emit(AppEvent::Build(BuildEvent::CacheMiss {
-                cache_key: cache_key.to_string(),
-                reason: "No cache entry found".to_string(),
-            }));
-            Ok(None)
-        }
-    }
-
-    /// Generate cache key from inputs
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - Failed to compute hash for build inputs
-    /// - Failed to read source files for hashing
-    pub async fn generate_cache_key(&self, inputs: &BuildInputs) -> Result<CacheKey, Error> {
-        CacheKey::generate(inputs).await
-    }
-
     /// Get cache statistics
     pub async fn get_statistics(&self) -> CacheStatistics {
         self.stats.read().await.clone()
-    }
-
-    /// Clean cache based on LRU policy
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - Failed to get cache size information
-    /// - Failed to remove cache entries
-    /// - I/O operations fail during cleanup
-    pub async fn clean_cache(&self, max_size: u64) -> Result<(), Error> {
-        let mut stats = self.stats.write().await;
-
-        // Get current cache size
-        let current_size = self.store.get_total_size().await?;
-
-        if current_size > max_size {
-            // Remove least recently used items
-            let removed = self.store.evict_lru(current_size - max_size).await?;
-            stats.evictions += removed as u64;
-
-            self.emit(AppEvent::Build(BuildEvent::CacheCleaned {
-                removed_items: removed,
-                freed_bytes: current_size - self.store.get_total_size().await?,
-            }));
-        }
-
-        Ok(())
     }
 
     /// Get the cache root directory
@@ -203,282 +72,88 @@ impl BuildCache {
     pub fn compiler_cache(&self) -> &CompilerCache {
         &self.compiler_cache
     }
-}
 
-/// Cache key for identifying build artifacts
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct CacheKey {
-    /// Hash of source files
-    source_hash: Hash,
-    /// Compiler version
-    compiler_version: String,
-    /// Build flags
-    flags: Vec<String>,
-    /// Environment variables that affect build
-    env_hash: Hash,
-    /// Platform triple
-    platform: String,
-    /// Dependency versions
-    deps_hash: Hash,
-}
+    /// Get the source cache instance
+    #[must_use]
+    pub fn source_cache(&self) -> &SourceCache {
+        &self.source_cache
+    }
 
-impl CacheKey {
-    /// Generate cache key from build inputs
+    /// Clear all caches
     ///
     /// # Errors
     ///
-    /// Returns an error if:
-    /// - Failed to read source files for hashing
-    /// - Failed to compute hash for inputs
-    /// - I/O errors occur while accessing files
-    pub async fn generate(inputs: &BuildInputs) -> Result<Self, Error> {
-        // Hash source files
-        let mut source_data = Vec::new();
-        for path in &inputs.source_files {
-            if path.exists() {
-                let content = fs::read(path).await?;
-                source_data.extend_from_slice(&content);
-            }
-        }
-        let source_hash = Hash::from_data(&source_data);
+    /// Returns an error if cache cleanup fails.
+    pub async fn clear_all(&self) -> Result<(), Error> {
+        self.source_cache.clear().await;
 
-        // Hash environment variables
-        let mut env_data = Vec::new();
-        for (key, value) in &inputs.env_vars {
-            env_data.extend_from_slice(key.as_bytes());
-            env_data.extend_from_slice(b"=");
-            env_data.extend_from_slice(value.as_bytes());
-            env_data.extend_from_slice(b"\n");
-        }
-        let env_hash = Hash::from_data(&env_data);
+        // Reset statistics
+        let mut stats = self.stats.write().await;
+        *stats = CacheStatistics::default();
 
-        // Hash dependencies
-        let mut deps_data = Vec::new();
-        for (name, version) in &inputs.dependencies {
-            deps_data.extend_from_slice(name.as_bytes());
-            deps_data.extend_from_slice(b"@");
-            deps_data.extend_from_slice(version.as_bytes());
-            deps_data.extend_from_slice(b"\n");
-        }
-        let deps_hash = Hash::from_data(&deps_data);
+        self.emit(AppEvent::Build(BuildEvent::CacheCleaned {
+            removed_items: 0,
+            freed_bytes: 0,
+        }));
 
-        Ok(Self {
-            source_hash,
-            compiler_version: inputs.compiler_version.clone(),
-            flags: inputs.flags.clone(),
-            env_hash,
-            platform: inputs.platform.clone(),
-            deps_hash,
-        })
+        Ok(())
     }
 }
 
-impl std::fmt::Display for CacheKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}-{}-{}",
-            self.source_hash
-                .to_string()
-                .chars()
-                .take(8)
-                .collect::<String>(),
-            self.compiler_version,
-            self.platform
-        )
-    }
+/// Simple source cache for downloads and git repositories
+#[derive(Debug)]
+pub struct SourceCache {
+    #[allow(dead_code)] // Stored for potential future cache operations
+    cache_dir: PathBuf,
+    downloads: RwLock<HashMap<String, PathBuf>>,
+    git_repos: RwLock<HashMap<String, PathBuf>>,
 }
 
-/// Build inputs for cache key generation
-#[derive(Debug, Clone)]
-pub struct BuildInputs {
-    /// Source files to hash
-    pub source_files: Vec<PathBuf>,
-    /// Compiler version
-    pub compiler_version: String,
-    /// Build flags
-    pub flags: Vec<String>,
-    /// Environment variables
-    pub env_vars: HashMap<String, String>,
-    /// Platform triple
-    pub platform: String,
-    /// Dependencies with versions
-    pub dependencies: HashMap<String, String>,
-}
-
-/// Artifact representing a cached build result
-#[derive(Debug, Clone)]
-pub struct Artifact {
-    /// Path to the artifact
-    pub path: PathBuf,
-    /// Type of artifact
-    pub artifact_type: ArtifactType,
-    /// Hash of the artifact
-    pub hash: Hash,
-    /// Size in bytes
-    pub size: u64,
-    /// Last access time
-    pub last_accessed: SystemTime,
-}
-
-impl Artifact {
-    /// Compute hash of the artifact file
+impl SourceCache {
+    /// Create new source cache
     ///
     /// # Errors
     ///
-    /// Returns an error if:
-    /// - The artifact file cannot be read
-    /// - I/O errors occur while reading the file
-    pub async fn compute_hash(&self) -> Result<Hash, Error> {
-        Hash::hash_file(&self.path).await
-    }
-}
-
-/// Type of build artifact
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ArtifactType {
-    /// Compiled object file
-    Object,
-    /// Static library
-    StaticLibrary,
-    /// Dynamic library
-    DynamicLibrary,
-    /// Executable
-    Executable,
-    /// Test results
-    TestResults,
-    /// SBOM file
-    Sbom,
-    /// Other artifact
-    Other(String),
-}
-
-/// Content-addressed storage for artifacts
-#[derive(Debug)]
-struct ContentAddressedStore {
-    root: PathBuf,
-    index: RwLock<HashMap<Hash, StoreEntry>>,
-}
-
-#[derive(Debug, Clone)]
-struct StoreEntry {
-    path: PathBuf,
-    size: u64,
-    last_accessed: SystemTime,
-}
-
-impl ContentAddressedStore {
-    async fn new(root: PathBuf) -> Result<Self, Error> {
-        fs::create_dir_all(&root).await?;
+    /// Returns an error if the cache directory cannot be created.
+    pub async fn new(cache_dir: PathBuf) -> Result<Self, Error> {
+        fs::create_dir_all(&cache_dir).await?;
         Ok(Self {
-            root,
-            index: RwLock::new(HashMap::new()),
+            cache_dir,
+            downloads: RwLock::new(HashMap::new()),
+            git_repos: RwLock::new(HashMap::new()),
         })
     }
 
-    async fn store(&self, source: &Path, hash: &Hash) -> Result<(), Error> {
-        let dest = self.root.join(hash.to_string());
-        if !dest.exists() {
-            fs::copy(source, &dest).await?;
-        }
-
-        let metadata = fs::metadata(&dest).await?;
-        let mut index = self.index.write().await;
-        index.insert(
-            hash.clone(),
-            StoreEntry {
-                path: dest,
-                size: metadata.len(),
-                last_accessed: SystemTime::now(),
-            },
-        );
-
-        Ok(())
+    /// Cache a downloaded file
+    pub async fn cache_download(&self, url: String, path: PathBuf) {
+        let mut downloads = self.downloads.write().await;
+        downloads.insert(url, path);
     }
 
-    async fn exists(&self, hash: &Hash) -> Result<bool, Error> {
-        let index = self.index.read().await;
-        if let Some(entry) = index.get(hash) {
-            Ok(entry.path.exists())
-        } else {
-            Ok(false)
-        }
+    /// Get cached download path
+    pub async fn get_download(&self, url: &str) -> Option<PathBuf> {
+        let downloads = self.downloads.read().await;
+        downloads.get(url).cloned()
     }
 
-    async fn get_total_size(&self) -> Result<u64, Error> {
-        let index = self.index.read().await;
-        Ok(index.values().map(|e| e.size).sum())
+    /// Cache a git repository
+    pub async fn cache_git_repo(&self, url: String, path: PathBuf) {
+        let mut repos = self.git_repos.write().await;
+        repos.insert(url, path);
     }
 
-    async fn evict_lru(&self, bytes_to_free: u64) -> Result<usize, Error> {
-        let mut index = self.index.write().await;
-        let mut entries: Vec<_> = index.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-        entries.sort_by_key(|(_, e)| e.last_accessed);
-
-        let mut freed = 0u64;
-        let mut removed = 0;
-        let mut to_remove = Vec::new();
-
-        for (hash, entry) in entries {
-            if freed >= bytes_to_free {
-                break;
-            }
-
-            if entry.path.exists() {
-                fs::remove_file(&entry.path).await?;
-                freed += entry.size;
-                removed += 1;
-                to_remove.push(hash);
-            }
-        }
-
-        for hash in to_remove {
-            index.remove(&hash);
-        }
-
-        Ok(removed)
-    }
-}
-
-/// Artifact cache for quick lookups
-#[derive(Debug)]
-struct ArtifactCache {
-    #[allow(dead_code)] // Root stored for potential future cache operations
-    root: PathBuf,
-    index: RwLock<HashMap<CacheKey, Vec<Artifact>>>,
-}
-
-impl ArtifactCache {
-    async fn new(root: PathBuf) -> Result<Self, Error> {
-        fs::create_dir_all(&root).await?;
-        Ok(Self {
-            root,
-            index: RwLock::new(HashMap::new()),
-        })
+    /// Get cached git repository path
+    pub async fn get_git_repo(&self, url: &str) -> Option<PathBuf> {
+        let repos = self.git_repos.read().await;
+        repos.get(url).cloned()
     }
 
-    async fn store_artifact(
-        &self,
-        key: &CacheKey,
-        artifact: Artifact,
-        _hash: Hash,
-    ) -> Result<(), Error> {
-        let mut index = self.index.write().await;
-        index.entry(key.clone()).or_default().push(artifact);
-        Ok(())
-    }
-
-    async fn get_artifacts(&self, key: &CacheKey) -> Result<Option<Vec<Artifact>>, Error> {
-        let mut index = self.index.write().await;
-        if let Some(artifacts) = index.get_mut(key) {
-            // Update last accessed time
-            for artifact in artifacts.iter_mut() {
-                artifact.last_accessed = SystemTime::now();
-            }
-            Ok(Some(artifacts.clone()))
-        } else {
-            Ok(None)
-        }
+    /// Clear all cached entries
+    pub async fn clear(&self) {
+        let mut downloads = self.downloads.write().await;
+        let mut repos = self.git_repos.write().await;
+        downloads.clear();
+        repos.clear();
     }
 }
 

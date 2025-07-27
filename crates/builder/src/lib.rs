@@ -25,8 +25,8 @@ pub use build_systems::{
     NodeJsBuildSystem, PythonBuildSystem, TestFailure, TestResults,
 };
 pub use cache::{
-    Artifact, ArtifactType, BuildCache, BuildInputs, CacheKey, CacheStatistics, CompilerCache,
-    CompilerCacheType, IncrementalBuildTracker,
+    BuildCache, CacheStatistics, CompilerCache, CompilerCacheType, IncrementalBuildTracker,
+    SourceCache,
 };
 pub use config::BuildConfig;
 pub use core::api::BuilderApi;
