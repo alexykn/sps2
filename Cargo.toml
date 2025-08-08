@@ -12,7 +12,7 @@ members = [
     "crates/hash",
     "crates/index",
     "crates/install",
-    "crates/manifest",
+
     "crates/net",
     "crates/ops",
     "crates/platform",

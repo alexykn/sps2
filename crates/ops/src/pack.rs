@@ -11,7 +11,6 @@ use sps2_builder::{
 };
 use sps2_errors::{Error, OpsError};
 use sps2_events::{events::BuildPhase, AppEvent, BuildEvent, EventEmitter};
-use sps2_manifest::Manifest;
 use sps2_types::{BuildReport, Version};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -85,7 +84,7 @@ pub async fn pack_from_directory(
     validate_staging_directory(directory, "directory", &Version::new(0, 0, 0))?;
 
     // Load the manifest to get package metadata
-    let manifest = Manifest::from_file(manifest_path).await?;
+    let manifest = sps2_store::manifest_io::read_manifest(manifest_path).await?;
     let package_name = manifest.package.name.clone();
     let package_version = manifest.version()?;
 

@@ -10,7 +10,6 @@ repository.workspace = true
 [dependencies]
 sps2-errors = { path = "../errors" }
 sps2-types = { path = "../types" }
-sps2-manifest = { path = "../manifest" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }

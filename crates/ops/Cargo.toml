@@ -18,7 +18,6 @@ sps2-state = { path = "../state" }
 sps2-store = { path = "../store" }
 sps2-install = { path = "../install" }
 sps2-builder = { path = "../builder" }
-sps2-manifest = { path = "../manifest" }
 sps2-index = { path = "../index" }
 sps2-audit = { path = "../audit" }
 sps2-config = { path = "../config" }

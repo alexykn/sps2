@@ -5,7 +5,7 @@ use crate::yaml::RecipeMetadata;
 use crate::{BuildContext, BuildEnvironment, SbomFiles, SbomGenerator};
 use sps2_errors::Error;
 use sps2_events::{AppEvent, GeneralEvent};
-use sps2_manifest::Manifest;
+use sps2_types::Manifest;
 use tokio::fs;
 
 /// Generate SBOM and create package manifest
@@ -101,7 +101,7 @@ pub fn create_manifest(
     recipe_metadata: &RecipeMetadata,
     environment: &BuildEnvironment,
 ) -> Manifest {
-    use sps2_manifest::{CompressionInfo, Dependencies, PackageInfo, SbomInfo};
+    use sps2_types::{ManifestCompressionInfo as CompressionInfo, ManifestDependencies as Dependencies, ManifestPackageInfo as PackageInfo, SbomInfo};
     use sps2_types::format::CompressionFormatType;
 
     // Create SBOM info if files are available

@@ -12,7 +12,6 @@ sps2-errors = { path = "../errors" }
 sps2-events = { path = "../events" }
 sps2-types = { path = "../types" }
 sps2-index = { path = "../index" }
-sps2-manifest = { path = "../manifest" }
 sps2-platform = { path = "../platform" }
 serde = { workspace = true }
 semver = { workspace = true }

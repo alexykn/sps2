@@ -15,7 +15,7 @@ use crate::utils::fileops::copy_directory_strip_live_prefix;
 use crate::{BuildConfig, BuildContext, BuildEnvironment};
 use sps2_errors::{BuildError, Error};
 use sps2_events::{AppEvent, GeneralEvent};
-use sps2_manifest::Manifest;
+use sps2_types::Manifest;
 use sps2_types::PythonPackageMetadata;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -121,7 +121,7 @@ pub async fn create_package(
     // Handle Python packages specially
     if environment.is_python_package() {
         let python_metadata = create_python_package_structure(environment, &manifest).await?;
-        manifest.set_python_metadata(python_metadata);
+        manifest.python = Some(python_metadata);
     }
 
     // Create package using the real manifest data

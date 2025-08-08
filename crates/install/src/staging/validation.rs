@@ -6,7 +6,7 @@
 use crate::ValidationResult;
 use sps2_errors::{Error, InstallError};
 use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent};
-use sps2_manifest::Manifest;
+use sps2_types::Manifest;
 use std::path::Path;
 use tokio::fs;
 
@@ -68,7 +68,7 @@ pub async fn verify_and_parse_manifest(
         }));
     }
 
-    let manifest = Manifest::from_file(&manifest_path).await.map_err(|e| {
+    let manifest = sps2_store::manifest_io::read_manifest(&manifest_path).await.map_err(|e| {
         if let Some(sender) = event_sender {
             sender.emit(AppEvent::General(GeneralEvent::DebugLog {
                 message: format!("DEBUG: Manifest parsing failed: {e}"),

@@ -4,7 +4,7 @@
 //! the proper manifest structure defined in the manifest crate.
 
 use sps2_errors::Error;
-use sps2_manifest::Manifest;
+use sps2_types::Manifest;
 
 /// Validates manifest.toml content
 ///

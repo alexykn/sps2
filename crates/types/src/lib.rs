@@ -8,6 +8,7 @@
 
 pub mod format;
 pub mod package;
+pub mod manifest;
 pub mod recipe;
 pub mod reports;
 pub mod state;
@@ -23,6 +24,7 @@ pub use package::{
     DepEdge, DepKind, PackageId, PackageInfo, PackageSpec, PackageStatus, PythonPackageMetadata,
     SearchResult,
 };
+pub use manifest::{CompressionInfo as ManifestCompressionInfo, Dependencies as ManifestDependencies, Manifest, ManifestBuilder, PackageInfo as ManifestPackageInfo, SbomInfo};
 pub use recipe::{
     Build, BuildSystem, Checksum, ChecksumAlgorithm, Dependencies, Environment, FetchSource,
     GitSource, Install, IsolationLevel, LocalSource, Metadata, NamedSource, ParsedStep, Post,

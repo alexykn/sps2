@@ -134,7 +134,7 @@ impl PackageFormatDetector {
 
         // Read and parse the manifest
         let manifest_path = temp_dir.path().join("manifest.toml");
-        let manifest = sps2_manifest::Manifest::from_file(&manifest_path).await?;
+        let manifest = crate::manifest_io::read_manifest(&manifest_path).await?;
 
         Ok(manifest.format_version().clone())
     }
@@ -279,7 +279,7 @@ impl StoreFormatValidator {
     ) -> Result<PackageFormatInfo, Error> {
         // For stored packages, read the manifest directly
         let manifest_path = package_path.join("manifest.toml");
-        let manifest = sps2_manifest::Manifest::from_file(&manifest_path).await?;
+        let manifest = crate::manifest_io::read_manifest(&manifest_path).await?;
 
         let version = manifest.format_version().clone();
         let validation = self.detector.checker.validate_version(&version);

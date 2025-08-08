@@ -2,7 +2,7 @@
 
 use sps2_errors::{Error, PackageError, StorageError};
 use sps2_hash::FileHashResult;
-use sps2_manifest::Manifest;
+use sps2_types::Manifest;
 use sps2_platform::core::PlatformContext;
 use sps2_platform::PlatformManager;
 use std::path::{Path, PathBuf};
@@ -26,7 +26,7 @@ impl StoredPackage {
     /// - The manifest file is invalid
     pub async fn load(path: &Path) -> Result<Self, Error> {
         let manifest_path = path.join("manifest.toml");
-        let manifest = Manifest::from_file(&manifest_path).await?;
+        let manifest = crate::manifest_io::read_manifest(&manifest_path).await?;
 
         // Try to load file hashes if available
         let files_json_path = path.join("files.json");

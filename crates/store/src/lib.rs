@@ -10,6 +10,7 @@ mod archive;
 mod file_store;
 mod format_detection;
 mod package;
+pub mod manifest_io;
 
 pub use archive::{
     create_package, extract_package, extract_package_with_events, list_package_contents,
