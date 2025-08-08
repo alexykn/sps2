@@ -879,7 +879,10 @@ impl PythonBuildSystem {
     ) -> Result<(), Error> {
         // Detect the Python version used during build
         let python_version = self.detect_python_version(prefix_in_staging).await?;
-        let target_shebang = format!("#!{}/bin/{python_version}", sps2_config::fixed_paths::LIVE_DIR);
+        let target_shebang = format!(
+            "#!{}/bin/{python_version}",
+            sps2_config::fixed_paths::LIVE_DIR
+        );
 
         let mut entries = fs::read_dir(scripts_dir).await?;
         while let Some(entry) = entries.next_entry().await? {

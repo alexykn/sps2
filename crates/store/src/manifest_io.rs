@@ -12,11 +12,12 @@ use std::path::Path;
 /// # Errors
 /// Returns an error if reading or parsing the manifest fails.
 pub async fn read_manifest(path: &Path) -> Result<Manifest, Error> {
-    let content = tokio::fs::read_to_string(path)
-        .await
-        .map_err(|e| PackageError::InvalidManifest {
-            message: format!("failed to read manifest: {e}"),
-        })?;
+    let content =
+        tokio::fs::read_to_string(path)
+            .await
+            .map_err(|e| PackageError::InvalidManifest {
+                message: format!("failed to read manifest: {e}"),
+            })?;
     Manifest::from_toml(&content)
 }
 

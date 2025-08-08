@@ -152,8 +152,8 @@ impl BuildEnvironment {
     /// Execute libtool --finish for the given directory
     async fn execute_libtool_finish(&self, dir: &str) -> Result<BuildCommandResult, Error> {
         // Use GNU libtool from fixed bin dir if it exists, otherwise try system libtool
-        let libtool_candidate = std::path::Path::new(sps2_config::fixed_paths::BIN_DIR)
-            .join("libtool");
+        let libtool_candidate =
+            std::path::Path::new(sps2_config::fixed_paths::BIN_DIR).join("libtool");
         let libtool_path = if libtool_candidate.exists() {
             libtool_candidate.display().to_string()
         } else {

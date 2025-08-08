@@ -655,7 +655,10 @@ impl BuilderApi {
 
         // Add prefix if not already specified
         let mut configure_args = args.to_vec();
-        if !configure_args.iter().any(|arg| arg.starts_with("--prefix=")) {
+        if !configure_args
+            .iter()
+            .any(|arg| arg.starts_with("--prefix="))
+        {
             configure_args.insert(
                 0,
                 format!("--prefix={}", sps2_config::fixed_paths::LIVE_DIR),

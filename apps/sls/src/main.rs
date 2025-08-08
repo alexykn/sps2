@@ -5,8 +5,8 @@
 use clap::Parser;
 use colored::Colorize;
 use humansize::{format_size, BINARY};
-use sps2_state::create_pool;
 use sps2_config::fixed_paths;
+use sps2_state::create_pool;
 use sqlx::Acquire;
 
 use std::collections::HashMap;

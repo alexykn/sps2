@@ -440,6 +440,8 @@ mod tests {
         assert!(!guard_result.install_triggered); // Uninstall never triggers install
         assert!(guard_result
             .modified_directories
-            .contains(&std::path::PathBuf::from(sps2_config::fixed_paths::LIVE_DIR)));
+            .contains(&std::path::PathBuf::from(
+                sps2_config::fixed_paths::LIVE_DIR
+            )));
     }
 }

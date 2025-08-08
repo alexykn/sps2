@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
+use sps2_config;
 use sps2_types::Version;
 use std::path::PathBuf;
 use std::time::Duration;
-use sps2_config;
 
 /// Installation domain events - maps to install crate and `sps2 install` command
 #[derive(Debug, Clone, Serialize, Deserialize)]

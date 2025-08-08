@@ -11,8 +11,8 @@
 pub mod binary;
 pub mod core;
 pub mod filesystem;
-pub mod implementations;
 pub mod fs;
+pub mod implementations;
 pub mod process;
 
 pub use core::{

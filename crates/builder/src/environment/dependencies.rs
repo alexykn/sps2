@@ -77,12 +77,12 @@ impl BuildEnvironment {
 
             if is_empty_or_none {
                 // Already installed - just verify it exists
-                    self.send_event(AppEvent::General(GeneralEvent::debug(format!(
-                        "{} {} is already installed in {}",
-                        node.name,
-                        node.version,
-                        sps2_config::fixed_paths::LIVE_DIR
-                    ))));
+                self.send_event(AppEvent::General(GeneralEvent::debug(format!(
+                    "{} {} is already installed in {}",
+                    node.name,
+                    node.version,
+                    sps2_config::fixed_paths::LIVE_DIR
+                ))));
 
                 // Verify the package is installed
                 self.verify_installed_package(&node.name, &node.version)

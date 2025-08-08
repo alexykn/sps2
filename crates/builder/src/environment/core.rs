@@ -62,7 +62,10 @@ impl BuildEnvironment {
         let staging_dir = build_prefix.join("stage");
 
         let mut env_vars = HashMap::new();
-        env_vars.insert("PREFIX".to_string(), sps2_config::fixed_paths::LIVE_DIR.to_string());
+        env_vars.insert(
+            "PREFIX".to_string(),
+            sps2_config::fixed_paths::LIVE_DIR.to_string(),
+        );
         env_vars.insert("DESTDIR".to_string(), staging_dir.display().to_string());
         env_vars.insert("JOBS".to_string(), Self::cpu_count().to_string());
 

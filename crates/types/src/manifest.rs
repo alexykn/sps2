@@ -5,12 +5,12 @@
 //! This module defines the `manifest.toml` format and provides
 //! serialization/deserialization and validation for package metadata.
 
+use crate::{
+    format::CompressionFormatType, package::PackageSpec, Arch, PackageFormatVersion,
+    PythonPackageMetadata, Version,
+};
 use serde::{Deserialize, Serialize};
 use sps2_errors::{Error, PackageError};
-use crate::{
-    format::CompressionFormatType, package::PackageSpec, Arch, PackageFormatVersion, PythonPackageMetadata,
-    Version,
-};
 
 /// Package manifest (manifest.toml contents)
 #[derive(Debug, Clone, Serialize, Deserialize)]

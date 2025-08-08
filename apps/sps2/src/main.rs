@@ -16,7 +16,7 @@ use crate::error::CliError;
 use crate::events::EventHandler;
 use crate::setup::SystemSetup;
 use clap::Parser;
-use sps2_config::{Config, fixed_paths};
+use sps2_config::{fixed_paths, Config};
 use sps2_events::{EventReceiver, EventSender};
 use sps2_ops::{OperationResult, OpsContextBuilder};
 use sps2_state::StateManager;
@@ -252,7 +252,9 @@ async fn execute_command(
             let report = if let Some(dir) = directory {
                 // The manifest is required with --directory, so we can unwrap it.
                 let Some(manifest_path) = manifest else {
-                    return Err(CliError::InvalidArguments("--manifest is required with --directory".to_string()));
+                    return Err(CliError::InvalidArguments(
+                        "--manifest is required with --directory".to_string(),
+                    ));
                 };
                 sps2_ops::pack_from_directory(
                     &ctx,
@@ -391,7 +393,15 @@ fn init_tracing(json_mode: bool, debug_enabled_flag: bool) {
                     tracing_subscriber::fmt()
                         .json()
                         .with_writer(file)
-                        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,sps2=debug,sps2_ops=info")))
+                        .with_env_filter(
+                            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(
+                                |_| {
+                                    tracing_subscriber::EnvFilter::new(
+                                        "info,sps2=debug,sps2_ops=info",
+                                    )
+                                },
+                            ),
+                        )
                         .init();
                     return;
                 }
@@ -419,7 +429,11 @@ fn init_tracing(json_mode: bool, debug_enabled_flag: bool) {
                 tracing_subscriber::fmt()
                     .json()
                     .with_writer(file)
-                    .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,sps2=debug,sps2_ops=info")))
+                    .with_env_filter(
+                        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(
+                            |_| tracing_subscriber::EnvFilter::new("info,sps2=debug,sps2_ops=info"),
+                        ),
+                    )
                     .init();
 
                 eprintln!("Debug logging enabled: {}", log_file.display());
@@ -428,14 +442,22 @@ fn init_tracing(json_mode: bool, debug_enabled_flag: bool) {
                 eprintln!("Warning: Failed to create log file: {e}");
                 // Fallback to stderr
                 tracing_subscriber::fmt()
-                    .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,sps2=info,sps2_ops=info")))
+                    .with_env_filter(
+                        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(
+                            |_| tracing_subscriber::EnvFilter::new("info,sps2=info,sps2_ops=info"),
+                        ),
+                    )
                     .init();
             }
         }
     } else {
         // Normal mode: minimal logging to stderr
         tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,sps2=warn,sps2_ops=warn")))
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                    tracing_subscriber::EnvFilter::new("warn,sps2=warn,sps2_ops=warn")
+                }),
+            )
             .init();
     }
 }
@@ -445,7 +467,10 @@ fn show_path_reminder_if_needed() {
     let path = std::env::var("PATH").unwrap_or_default();
     if !path.contains(fixed_paths::BIN_DIR) {
         eprintln!();
-        eprintln!("Add {} to your PATH to use installed packages:", fixed_paths::BIN_DIR);
+        eprintln!(
+            "Add {} to your PATH to use installed packages:",
+            fixed_paths::BIN_DIR
+        );
         eprintln!(
             "   echo 'export PATH=\"{}:$PATH\"' >> ~/.zshrc",
             fixed_paths::BIN_DIR

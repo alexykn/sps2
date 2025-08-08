@@ -51,8 +51,10 @@ impl BuildEnvironment {
         );
 
         // Set build prefix to final installation location (not staging dir)
-        self.env_vars
-            .insert("PREFIX".to_string(), sps2_config::fixed_paths::LIVE_DIR.to_string());
+        self.env_vars.insert(
+            "PREFIX".to_string(),
+            sps2_config::fixed_paths::LIVE_DIR.to_string(),
+        );
 
         // Set BUILD_PREFIX to package-specific prefix (e.g., /hello-1.0.0)
         // This is used for staging directory structure, not for build system --prefix arguments

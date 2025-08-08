@@ -2,9 +2,9 @@
 
 use sps2_errors::{Error, PackageError, StorageError};
 use sps2_hash::FileHashResult;
-use sps2_types::Manifest;
 use sps2_platform::core::PlatformContext;
 use sps2_platform::PlatformManager;
+use sps2_types::Manifest;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 

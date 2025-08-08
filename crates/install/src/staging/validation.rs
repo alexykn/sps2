@@ -68,18 +68,20 @@ pub async fn verify_and_parse_manifest(
         }));
     }
 
-    let manifest = sps2_store::manifest_io::read_manifest(&manifest_path).await.map_err(|e| {
-        if let Some(sender) = event_sender {
-            sender.emit(AppEvent::General(GeneralEvent::DebugLog {
-                message: format!("DEBUG: Manifest parsing failed: {e}"),
-                context: std::collections::HashMap::new(),
-            }));
-        }
-        InstallError::InvalidPackageFile {
-            path: manifest_path.display().to_string(),
-            message: format!("invalid manifest.toml: {e}"),
-        }
-    })?;
+    let manifest = sps2_store::manifest_io::read_manifest(&manifest_path)
+        .await
+        .map_err(|e| {
+            if let Some(sender) = event_sender {
+                sender.emit(AppEvent::General(GeneralEvent::DebugLog {
+                    message: format!("DEBUG: Manifest parsing failed: {e}"),
+                    context: std::collections::HashMap::new(),
+                }));
+            }
+            InstallError::InvalidPackageFile {
+                path: manifest_path.display().to_string(),
+                message: format!("invalid manifest.toml: {e}"),
+            }
+        })?;
 
     if let Some(sender) = event_sender {
         sender.emit(AppEvent::General(GeneralEvent::DebugLog {

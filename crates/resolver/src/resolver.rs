@@ -9,10 +9,10 @@ use semver::Version;
 use sps2_errors::{Error, PackageError};
 use sps2_events::{EventEmitter, EventSender};
 use sps2_index::{IndexManager, VersionEntry};
-use sps2_types::Manifest;
 use sps2_platform::{PlatformContext, PlatformManager};
 use sps2_types::package::PackageSpec;
 use sps2_types::version::VersionConstraint;
+use sps2_types::Manifest;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 

@@ -11,14 +11,14 @@
 //! - CLI flags
 
 pub mod builder;
-pub mod core;
 pub mod constants;
+pub mod core;
 pub mod guard;
 
 // Re-export main types for convenience
 pub use builder::BuilderConfig;
-pub use core::{GeneralConfig, NetworkConfig, PathConfig, SecurityConfig, StateConfig};
 pub use constants as fixed_paths;
+pub use core::{GeneralConfig, NetworkConfig, PathConfig, SecurityConfig, StateConfig};
 pub use guard::{
     DiscrepancyHandling, GuardConfiguration, GuardDirectoryConfig, GuardPerformanceConfig,
     GuardSymlinkPolicy, PerformanceConfigToml, SymlinkPolicyConfig, UserFilePolicy,

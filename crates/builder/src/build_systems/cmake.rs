@@ -83,7 +83,10 @@ impl CMakeBuildSystem {
                 .iter()
                 .any(|arg| arg.starts_with("-DCMAKE_INSTALL_NAME_DIR="))
         {
-            args.push(format!("-DCMAKE_INSTALL_NAME_DIR={}/lib", sps2_config::fixed_paths::LIVE_DIR));
+            args.push(format!(
+                "-DCMAKE_INSTALL_NAME_DIR={}/lib",
+                sps2_config::fixed_paths::LIVE_DIR
+            ));
         }
     }
 

@@ -9,8 +9,8 @@
 mod archive;
 mod file_store;
 mod format_detection;
-mod package;
 pub mod manifest_io;
+mod package;
 
 pub use archive::{
     create_package, extract_package, extract_package_with_events, list_package_contents,
@@ -21,8 +21,8 @@ pub use package::StoredPackage;
 
 use sps2_errors::{Error, StorageError};
 use sps2_hash::Hash;
-use sps2_platform::PlatformManager;
 use sps2_platform::filesystem_helpers::set_compression;
+use sps2_platform::PlatformManager;
 use std::path::{Path, PathBuf};
 
 /// Store manager for content-addressed packages

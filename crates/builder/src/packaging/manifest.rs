@@ -101,8 +101,11 @@ pub fn create_manifest(
     recipe_metadata: &RecipeMetadata,
     environment: &BuildEnvironment,
 ) -> Manifest {
-    use sps2_types::{ManifestCompressionInfo as CompressionInfo, ManifestDependencies as Dependencies, ManifestPackageInfo as PackageInfo, SbomInfo};
     use sps2_types::format::CompressionFormatType;
+    use sps2_types::{
+        ManifestCompressionInfo as CompressionInfo, ManifestDependencies as Dependencies,
+        ManifestPackageInfo as PackageInfo, SbomInfo,
+    };
 
     // Create SBOM info if files are available
     let sbom_info = sbom_files.spdx_hash.as_ref().map(|spdx_hash| SbomInfo {

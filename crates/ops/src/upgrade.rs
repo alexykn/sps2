@@ -606,15 +606,23 @@ mod tests {
         assert!(!guard_result.install_triggered); // Standard upgrade operation
         assert!(guard_result
             .modified_directories
-            .contains(&std::path::PathBuf::from(sps2_config::fixed_paths::LIVE_DIR)));
+            .contains(&std::path::PathBuf::from(
+                sps2_config::fixed_paths::LIVE_DIR
+            )));
         assert!(guard_result
             .modified_directories
             .contains(&std::path::PathBuf::from(sps2_config::fixed_paths::BIN_DIR)));
-        assert!(guard_result.modified_directories.contains(
-            &std::path::PathBuf::from(format!("{}/lib", sps2_config::fixed_paths::LIVE_DIR))
-        ));
-        assert!(guard_result.modified_directories.contains(
-            &std::path::PathBuf::from(format!("{}/share", sps2_config::fixed_paths::LIVE_DIR))
-        ));
+        assert!(guard_result
+            .modified_directories
+            .contains(&std::path::PathBuf::from(format!(
+                "{}/lib",
+                sps2_config::fixed_paths::LIVE_DIR
+            ))));
+        assert!(guard_result
+            .modified_directories
+            .contains(&std::path::PathBuf::from(format!(
+                "{}/share",
+                sps2_config::fixed_paths::LIVE_DIR
+            ))));
     }
 }

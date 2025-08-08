@@ -2,7 +2,7 @@
 
 use crate::error::CliError;
 use sps2_builder::Builder;
-use sps2_config::{Config, fixed_paths};
+use sps2_config::{fixed_paths, Config};
 use sps2_index::IndexManager;
 use sps2_net::NetClient;
 use sps2_resolver::Resolver;
@@ -123,7 +123,12 @@ impl SystemSetup {
 
     /// Check permissions on system directories
     async fn check_permissions(&self) -> Result<(), CliError> {
-        let paths_to_check = [fixed_paths::PREFIX, fixed_paths::STORE_DIR, fixed_paths::STATES_DIR, fixed_paths::LIVE_DIR];
+        let paths_to_check = [
+            fixed_paths::PREFIX,
+            fixed_paths::STORE_DIR,
+            fixed_paths::STATES_DIR,
+            fixed_paths::LIVE_DIR,
+        ];
 
         for path in &paths_to_check {
             let metadata = tokio::fs::metadata(path)

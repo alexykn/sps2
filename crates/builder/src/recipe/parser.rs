@@ -91,7 +91,10 @@ fn expand_variables(recipe: &mut YamlRecipe) {
     // Add built-in variables
     context.insert("NAME".to_string(), recipe.metadata.name.clone());
     context.insert("VERSION".to_string(), recipe.metadata.version.clone());
-    context.insert("PREFIX".to_string(), sps2_config::fixed_paths::LIVE_DIR.to_string());
+    context.insert(
+        "PREFIX".to_string(),
+        sps2_config::fixed_paths::LIVE_DIR.to_string(),
+    );
     context.insert("JOBS".to_string(), num_cpus::get().to_string());
 
     // Add user-defined facts

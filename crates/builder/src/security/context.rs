@@ -292,8 +292,12 @@ impl SecurityContext {
 
     /// Check if a path is safe to execute
     fn is_safe_executable(&self, path: &Path) -> bool {
-        const SAFE_EXEC_PATHS: &[&str] =
-            &["/usr/bin", "/usr/local/bin", "/bin", sps2_config::fixed_paths::BIN_DIR];
+        const SAFE_EXEC_PATHS: &[&str] = &[
+            "/usr/bin",
+            "/usr/local/bin",
+            "/bin",
+            sps2_config::fixed_paths::BIN_DIR,
+        ];
 
         // Allow execution of:
         // 1. Anything within build root
