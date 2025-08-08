@@ -11,8 +11,7 @@ pub enum CliError {
     Ops(sps2_errors::Error),
     /// System setup error
     Setup(String),
-    /// Event channel closed unexpectedly
-    EventChannelClosed,
+
     /// Invalid command arguments
     InvalidArguments(String),
     /// I/O error
@@ -27,7 +26,7 @@ impl fmt::Display for CliError {
             CliError::Config(e) => write!(f, "Configuration error: {e}"),
             CliError::Ops(e) => write!(f, "{e}"),
             CliError::Setup(msg) => write!(f, "System setup error: {msg}"),
-            CliError::EventChannelClosed => write!(f, "Internal communication error"),
+
             CliError::InvalidArguments(msg) => write!(f, "Invalid arguments: {msg}"),
             CliError::Io(e) => write!(f, "I/O error: {e}"),
             CliError::RecoveryError(msg) => write!(f, "Recovery error: {msg}"),

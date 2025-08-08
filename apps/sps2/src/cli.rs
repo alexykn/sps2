@@ -20,7 +20,7 @@ pub struct Cli {
 }
 
 /// Global arguments available for all commands
-#[derive(Parser)]
+#[derive(clap::Args)]
 pub struct GlobalArgs {
     /// Output in JSON format
     #[arg(long, global = true)]
@@ -143,6 +143,11 @@ pub enum Commands {
         clap::ArgGroup::new("pack_source")
             .required(true)
             .args(&["recipe", "directory"]),
+    ))]
+    #[command(group(
+        clap::ArgGroup::new("dir_requires_manifest")
+            .args(&["directory", "manifest"]) 
+            .requires_all(&["directory", "manifest"]),
     ))]
     Pack {
         /// Path to recipe file (.yaml or .yml)

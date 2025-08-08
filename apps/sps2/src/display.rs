@@ -398,7 +398,7 @@ impl OutputRenderer {
             };
 
             // Check if state directory exists to determine type
-            let state_dir = std::path::Path::new("/opt/pm/states").join(state.id.to_string());
+            let state_dir = std::path::Path::new(sps2_config::fixed_paths::STATES_DIR).join(state.id.to_string());
             let (type_text, type_color) = if state.current {
                 ("live", Color::Green)
             } else if state_dir.exists() {

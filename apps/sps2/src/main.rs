@@ -16,7 +16,7 @@ use crate::error::CliError;
 use crate::events::EventHandler;
 use crate::setup::SystemSetup;
 use clap::Parser;
-use sps2_config::Config;
+use sps2_config::{Config, fixed_paths};
 use sps2_events::{EventReceiver, EventSender};
 use sps2_ops::{OperationResult, OpsContextBuilder};
 use sps2_state::StateManager;
@@ -32,7 +32,7 @@ async fn main() {
     let json_mode = cli.global.json;
 
     // Initialize tracing with JSON awareness
-    init_tracing(json_mode);
+    init_tracing(json_mode, cli.global.debug);
 
     // Run the application and handle errors
     if let Err(e) = run(cli).await {
@@ -146,13 +146,11 @@ async fn execute_command_with_events(
             event = event_receiver.recv() => {
                 match event {
                     Some(event) => event_handler.handle_event(event),
-                    None => break, // Channel closed
+                    None => { /* Channel closed: keep waiting for command to finish */ }
                 }
             }
         }
     }
-
-    Err(CliError::EventChannelClosed)
 }
 
 /// Execute the specified command
@@ -253,7 +251,9 @@ async fn execute_command(
             let output_path = output_dir.as_deref();
             let report = if let Some(dir) = directory {
                 // The manifest is required with --directory, so we can unwrap it.
-                let manifest_path = manifest.unwrap();
+                let Some(manifest_path) = manifest else {
+                    return Err(CliError::InvalidArguments("--manifest is required with --directory".to_string()));
+                };
                 sps2_ops::pack_from_directory(
                     &ctx,
                     &dir,
@@ -372,16 +372,15 @@ async fn build_ops_context(
 }
 
 /// Initialize tracing/logging
-fn init_tracing(json_mode: bool) {
+fn init_tracing(json_mode: bool, debug_enabled_flag: bool) {
     // Check if debug logging is enabled
-    let debug_enabled =
-        std::env::var("RUST_LOG").is_ok() || std::env::args().any(|arg| arg == "--debug");
+    let debug_enabled = std::env::var("RUST_LOG").is_ok() || debug_enabled_flag;
 
     if json_mode {
         // JSON mode: suppress all console output to avoid contaminating JSON
         if debug_enabled {
             // In debug mode with JSON, still log to file
-            let log_dir = std::path::Path::new("/opt/pm/logs");
+            let log_dir = std::path::Path::new(fixed_paths::LOGS_DIR);
             if std::fs::create_dir_all(log_dir).is_ok() {
                 let log_file = log_dir.join(format!(
                     "sps2-{}.log",
@@ -392,7 +391,7 @@ fn init_tracing(json_mode: bool) {
                     tracing_subscriber::fmt()
                         .json()
                         .with_writer(file)
-                        .with_env_filter("sps2=debug,sps2=debug")
+                        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,sps2=debug,sps2_ops=info")))
                         .init();
                     return;
                 }
@@ -405,7 +404,7 @@ fn init_tracing(json_mode: bool) {
             .init();
     } else if debug_enabled {
         // Debug mode: structured JSON logs to file
-        let log_dir = std::path::Path::new("/opt/pm/logs");
+        let log_dir = std::path::Path::new(fixed_paths::LOGS_DIR);
         if let Err(e) = std::fs::create_dir_all(log_dir) {
             eprintln!("Warning: Failed to create log directory: {e}");
         }
@@ -420,7 +419,7 @@ fn init_tracing(json_mode: bool) {
                 tracing_subscriber::fmt()
                     .json()
                     .with_writer(file)
-                    .with_env_filter("sps2=debug,sps2=debug")
+                    .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,sps2=debug,sps2_ops=info")))
                     .init();
 
                 eprintln!("Debug logging enabled: {}", log_file.display());
@@ -429,14 +428,14 @@ fn init_tracing(json_mode: bool) {
                 eprintln!("Warning: Failed to create log file: {e}");
                 // Fallback to stderr
                 tracing_subscriber::fmt()
-                    .with_env_filter("sps2=info,sps2=info")
+                    .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,sps2=info,sps2_ops=info")))
                     .init();
             }
         }
     } else {
         // Normal mode: minimal logging to stderr
         tracing_subscriber::fmt()
-            .with_env_filter("sps2=warn,sps2=warn")
+            .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,sps2=warn,sps2_ops=warn")))
             .init();
     }
 }
@@ -444,9 +443,9 @@ fn init_tracing(json_mode: bool) {
 /// Show PATH reminder if needed
 fn show_path_reminder_if_needed() {
     let path = std::env::var("PATH").unwrap_or_default();
-    if !path.contains("/opt/pm/live/bin") {
+    if !path.contains(fixed_paths::BIN_DIR) {
         eprintln!();
-        eprintln!("Add /opt/pm/live/bin to your PATH to use installed packages:");
+        eprintln!("Add {} to your PATH to use installed packages:", fixed_paths::BIN_DIR);
         eprintln!("   echo 'export PATH=\"/opt/pm/live/bin:$PATH\"' >> ~/.zshrc");
         eprintln!("   source ~/.zshrc");
         eprintln!();

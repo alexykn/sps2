@@ -131,38 +131,22 @@ impl UiStyle {
 
     /// Get operation icon
     pub fn get_operation_icon(&self, operation: &str) -> &'static str {
-        if !self.colors_enabled || !self.term.features().colors_supported() {
-            return match operation.to_lowercase().as_str() {
-                op if op.contains("install") => "→",
-                op if op.contains("uninstall") || op.contains("remove") => "←",
-                op if op.contains("update") || op.contains("upgrade") => "↑",
-                op if op.contains("build") => "⚙",
-                op if op.contains("download") => "↓",
-                op if op.contains("search") => "?",
-                op if op.contains("sync") => "↺",
-                op if op.contains("verify") || op.contains("guard") => "✓",
-                op if op.contains("heal") => "+",
-                op if op.contains("qa") || op.contains("audit") => "?",
-                op if op.contains("2pc") => "•",
-                _ => "•",
-            };
-        }
-
+        // Same icons regardless of color; color affects styling only
         match operation.to_lowercase().as_str() {
-            op if op.contains("install") => "•",
-            op if op.contains("uninstall") || op.contains("remove") => "•",
-            op if op.contains("update") || op.contains("upgrade") => "•",
-            op if op.contains("build") => "•",
-            op if op.contains("download") => "•",
-            op if op.contains("search") => "•",
-            op if op.contains("sync") => "•",
-            op if op.contains("clean") => "•",
-            op if op.contains("rollback") => "•",
-            op if op.contains("health") => "•",
-            op if op.contains("verify") || op.contains("guard") => "•",
-            op if op.contains("heal") => "•",
-            op if op.contains("cache") => "•",
-            op if op.contains("qa") || op.contains("audit") => "•",
+            op if op.contains("install") => "→",
+            op if op.contains("uninstall") || op.contains("remove") => "←",
+            op if op.contains("update") || op.contains("upgrade") => "↑",
+            op if op.contains("build") => "⚙",
+            op if op.contains("download") => "↓",
+            op if op.contains("search") => "?",
+            op if op.contains("sync") => "↺",
+            op if op.contains("verify") || op.contains("guard") => "✓",
+            op if op.contains("heal") => "+",
+            op if op.contains("clean") => "✗",
+            op if op.contains("rollback") => "↩",
+            op if op.contains("health") => "♥",
+            op if op.contains("cache") => "∞",
+            op if op.contains("qa") || op.contains("audit") => "?",
             op if op.contains("2pc") => "•",
             _ => "•",
         }

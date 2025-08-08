@@ -12,11 +12,13 @@
 
 pub mod builder;
 pub mod core;
+pub mod constants;
 pub mod guard;
 
 // Re-export main types for convenience
 pub use builder::BuilderConfig;
 pub use core::{GeneralConfig, NetworkConfig, PathConfig, SecurityConfig, StateConfig};
+pub use constants as fixed_paths;
 pub use guard::{
     DiscrepancyHandling, GuardConfiguration, GuardDirectoryConfig, GuardPerformanceConfig,
     GuardSymlinkPolicy, PerformanceConfigToml, SymlinkPolicyConfig, UserFilePolicy,
@@ -267,7 +269,7 @@ impl Config {
         self.paths
             .store_path
             .clone()
-            .unwrap_or_else(|| PathBuf::from("/opt/pm/store"))
+            .unwrap_or_else(|| PathBuf::from(crate::constants::STORE_DIR))
     }
 
     /// Get the state path (with default)
@@ -276,7 +278,7 @@ impl Config {
         self.paths
             .state_path
             .clone()
-            .unwrap_or_else(|| PathBuf::from("/opt/pm/states"))
+            .unwrap_or_else(|| PathBuf::from(crate::constants::STATES_DIR))
     }
 
     /// Get the build path (with default)
@@ -291,13 +293,13 @@ impl Config {
     /// Get the live root path
     #[must_use]
     pub fn live_path(&self) -> PathBuf {
-        PathBuf::from("/opt/pm/live")
+        PathBuf::from(crate::constants::LIVE_DIR)
     }
 
     /// Get the database path
     #[must_use]
     pub fn db_path(&self) -> PathBuf {
-        PathBuf::from("/opt/pm/state.sqlite")
+        PathBuf::from(crate::constants::DB_PATH)
     }
 
     /// Save configuration to the default location

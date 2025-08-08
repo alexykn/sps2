@@ -36,12 +36,13 @@ pub fn log_event_with_tracing(event: &AppEvent) {
                     total_bytes,
                     ..
                 } => {
+                    let progress_percent = if *total_bytes == 0 { None } else { Some((*bytes_downloaded as f64 / *total_bytes as f64) * 100.0) };
                     debug!(
                         target: "sps2",
                         url = %url,
                         bytes_downloaded = bytes_downloaded,
                         total_bytes = ?total_bytes,
-                        progress_percent = (*bytes_downloaded as f64 / *total_bytes as f64) * 100.0,
+                        progress_percent = ?progress_percent,
                         "Download progress"
                     );
                 }

@@ -2,7 +2,7 @@
 
 use crate::error::CliError;
 use sps2_builder::Builder;
-use sps2_config::Config;
+use sps2_config::{Config, fixed_paths};
 use sps2_index::IndexManager;
 use sps2_net::NetClient;
 use sps2_resolver::Resolver;
@@ -97,12 +97,12 @@ impl SystemSetup {
     /// Ensure required system directories exist
     async fn ensure_system_directories(&self) -> Result<(), CliError> {
         let required_dirs = [
-            "/opt/pm",
-            "/opt/pm/store",
-            "/opt/pm/states",
-            "/opt/pm/live",
-            "/opt/pm/logs",
-            "/opt/pm/keys",
+            fixed_paths::PREFIX,
+            fixed_paths::STORE_DIR,
+            fixed_paths::STATES_DIR,
+            fixed_paths::LIVE_DIR,
+            fixed_paths::LOGS_DIR,
+            fixed_paths::KEYS_DIR,
         ];
 
         for dir in &required_dirs {
@@ -123,7 +123,7 @@ impl SystemSetup {
 
     /// Check permissions on system directories
     async fn check_permissions(&self) -> Result<(), CliError> {
-        let paths_to_check = ["/opt/pm", "/opt/pm/store", "/opt/pm/states", "/opt/pm/live"];
+        let paths_to_check = [fixed_paths::PREFIX, fixed_paths::STORE_DIR, fixed_paths::STATES_DIR, fixed_paths::LIVE_DIR];
 
         for path in &paths_to_check {
             let metadata = tokio::fs::metadata(path)
@@ -142,7 +142,7 @@ impl SystemSetup {
     /// Initialize package store
     async fn init_store(&mut self) -> Result<(), CliError> {
         debug!("Initializing package store");
-        let store_path = Path::new("/opt/pm/store");
+        let store_path = Path::new(fixed_paths::STORE_DIR);
         let store = PackageStore::new(store_path.to_path_buf());
 
         self.store = Some(store);
@@ -152,7 +152,7 @@ impl SystemSetup {
     /// Initialize state manager
     async fn init_state(&mut self) -> Result<(), CliError> {
         debug!("Initializing state manager");
-        let state_path = Path::new("/opt/pm");
+        let state_path = Path::new(fixed_paths::PREFIX);
         let state = StateManager::new(state_path)
             .await
             .map_err(|e| CliError::Setup(format!("Failed to initialize state: {e}")))?;
@@ -164,7 +164,7 @@ impl SystemSetup {
     /// Initialize index manager
     async fn init_index(&mut self) -> Result<(), CliError> {
         debug!("Initializing index manager");
-        let cache_path = Path::new("/opt/pm");
+        let cache_path = Path::new(fixed_paths::PREFIX);
         let mut index = IndexManager::new(cache_path);
 
         // Try to load cached index
@@ -396,12 +396,12 @@ impl SystemSetup {
 
     /// Get the path to the GC timestamp file
     fn gc_timestamp_path(&self) -> PathBuf {
-        Path::new("/opt/pm/.last_gc_timestamp").to_path_buf()
+        Path::new(fixed_paths::LAST_GC_TIMESTAMP).to_path_buf()
     }
 
     /// Update GC timestamp - public static method for ops crate
     pub async fn update_gc_timestamp_static() -> Result<(), CliError> {
-        let timestamp_path = std::path::Path::new("/opt/pm/.last_gc_timestamp");
+        let timestamp_path = std::path::Path::new(fixed_paths::LAST_GC_TIMESTAMP);
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
