@@ -267,9 +267,9 @@ fn create_guard_operation_result_for_uninstall(report: &InstallReport) -> GuardO
         state_id: report.state_id,
         duration_ms: report.duration_ms,
         modified_directories: vec![
-            std::path::PathBuf::from("/opt/pm/live"),
-            std::path::PathBuf::from("/opt/pm/live/bin"),
-            std::path::PathBuf::from("/opt/pm/live/lib"),
+            std::path::PathBuf::from(sps2_config::fixed_paths::LIVE_DIR),
+            std::path::PathBuf::from(sps2_config::fixed_paths::BIN_DIR),
+            std::path::PathBuf::from(format!("{}/lib", sps2_config::fixed_paths::LIVE_DIR)),
         ],
         install_triggered: false, // Uninstall operations never trigger installs
     }
@@ -440,6 +440,6 @@ mod tests {
         assert!(!guard_result.install_triggered); // Uninstall never triggers install
         assert!(guard_result
             .modified_directories
-            .contains(&std::path::PathBuf::from("/opt/pm/live")));
+            .contains(&std::path::PathBuf::from(sps2_config::fixed_paths::LIVE_DIR)));
     }
 }

@@ -6,6 +6,7 @@ use clap::Parser;
 use colored::Colorize;
 use humansize::{format_size, BINARY};
 use sps2_state::create_pool;
+use sps2_config::fixed_paths;
 use sqlx::Acquire;
 
 use std::collections::HashMap;
@@ -56,10 +57,12 @@ struct Cli {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
-    let store_path = cli.store.unwrap_or_else(|| PathBuf::from("/opt/pm/store"));
+    let store_path = cli
+        .store
+        .unwrap_or_else(|| PathBuf::from(fixed_paths::STORE_DIR));
     let db_path = cli
         .db
-        .unwrap_or_else(|| PathBuf::from("/opt/pm/state.sqlite"));
+        .unwrap_or_else(|| PathBuf::from(fixed_paths::DB_PATH));
     let use_color = !cli.no_color && atty::is(atty::Stream::Stdout);
 
     if cli.packages {

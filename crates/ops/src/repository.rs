@@ -157,7 +157,7 @@ async fn fetch_and_verify_keys(
     tx: &sps2_events::EventSender,
 ) -> Result<Vec<String>, Error> {
     // Initialize key manager
-    let mut key_manager = KeyManager::new("/opt/pm/keys");
+    let mut key_manager = KeyManager::new(sps2_config::fixed_paths::KEYS_DIR);
 
     // Load existing trusted keys from disk
     key_manager.load_trusted_keys().await?;

@@ -507,7 +507,7 @@ impl crate::artifact_qa::traits::Action for RPathPatcher {
         }
 
         let files: Vec<_> = files_to_process.into_iter().collect();
-        let lib_path = "/opt/pm/live/lib";
+        let lib_path = &format!("{}/lib", sps2_config::fixed_paths::LIVE_DIR);
         let build_paths = vec![
             "/opt/pm/build".to_string(),
             env.build_prefix().to_string_lossy().into_owned(),

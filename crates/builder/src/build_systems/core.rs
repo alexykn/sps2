@@ -32,7 +32,7 @@ impl BuildSystemContext {
     /// The returned context should be used to configure and execute build operations.
     #[must_use]
     pub fn new(env: BuildEnvironment, source_dir: PathBuf) -> Self {
-        let prefix = PathBuf::from("/opt/pm/live");
+        let prefix = PathBuf::from(sps2_config::fixed_paths::LIVE_DIR);
         let jobs = env
             .env_vars()
             .get("JOBS")

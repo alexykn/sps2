@@ -309,7 +309,7 @@ impl SystemSetup {
 
     /// Clean up orphaned staging directories (only safe to remove)
     async fn clean_orphaned_staging(&self) -> Result<(), CliError> {
-        let states_dir = Path::new("/opt/pm/states");
+        let states_dir = Path::new(fixed_paths::STATES_DIR);
         if !states_dir.exists() {
             return Ok(());
         }

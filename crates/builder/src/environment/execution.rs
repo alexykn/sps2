@@ -151,18 +151,20 @@ impl BuildEnvironment {
 
     /// Execute libtool --finish for the given directory
     async fn execute_libtool_finish(&self, dir: &str) -> Result<BuildCommandResult, Error> {
-        // Use GNU libtool from /opt/pm/live/bin if it exists, otherwise try system libtool
-        let libtool_path = if std::path::Path::new("/opt/pm/live/bin/libtool").exists() {
-            "/opt/pm/live/bin/libtool"
+        // Use GNU libtool from fixed bin dir if it exists, otherwise try system libtool
+        let libtool_candidate = std::path::Path::new(sps2_config::fixed_paths::BIN_DIR)
+            .join("libtool");
+        let libtool_path = if libtool_candidate.exists() {
+            libtool_candidate.display().to_string()
         } else {
-            "libtool"
+            "libtool".to_string()
         };
 
         // Use platform abstraction for process execution
         let platform = PlatformManager::instance().platform();
         let context = PlatformContext::new(self.context.event_sender.clone());
 
-        let mut cmd = platform.process().create_command(libtool_path);
+        let mut cmd = platform.process().create_command(&libtool_path);
         cmd.args(["--finish", dir]);
         cmd.envs(&self.env_vars);
         cmd.current_dir(&self.build_prefix);

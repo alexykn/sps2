@@ -655,11 +655,11 @@ impl BuilderApi {
 
         // Add prefix if not already specified
         let mut configure_args = args.to_vec();
-        if !configure_args
-            .iter()
-            .any(|arg| arg.starts_with("--prefix="))
-        {
-            configure_args.insert(0, "--prefix=/opt/pm/live".to_string());
+        if !configure_args.iter().any(|arg| arg.starts_with("--prefix=")) {
+            configure_args.insert(
+                0,
+                format!("--prefix={}", sps2_config::fixed_paths::LIVE_DIR),
+            );
         }
 
         env.execute_command(
@@ -1215,7 +1215,7 @@ impl BuilderApi {
         // If specific paths are provided, patch only those
         // Otherwise, patch all binaries and libraries in staging
         let staging_dir = env.staging_dir();
-        let lib_path = "/opt/pm/live/lib";
+        let lib_path = &format!("{}/lib", sps2_config::fixed_paths::LIVE_DIR);
         let build_paths = vec!["/opt/pm/build".to_string(), "/private/".to_string()];
 
         let mut patched_count = 0;

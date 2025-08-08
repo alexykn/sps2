@@ -635,9 +635,9 @@ fn create_guard_operation_result(report: &InstallReport) -> GuardOperationResult
         state_id: report.state_id,
         duration_ms: report.duration_ms,
         modified_directories: vec![
-            std::path::PathBuf::from("/opt/pm/live"),
-            std::path::PathBuf::from("/opt/pm/live/bin"),
-            std::path::PathBuf::from("/opt/pm/live/lib"),
+            std::path::PathBuf::from(sps2_config::fixed_paths::LIVE_DIR),
+            std::path::PathBuf::from(sps2_config::fixed_paths::BIN_DIR),
+            std::path::PathBuf::from(format!("{}/lib", sps2_config::fixed_paths::LIVE_DIR)),
         ],
         install_triggered: false, // Standard install operation
     }

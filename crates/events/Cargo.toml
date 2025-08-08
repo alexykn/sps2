@@ -10,6 +10,7 @@ repository.workspace = true
 [dependencies]
 sps2-errors = { path = "../errors" }
 sps2-types = { path = "../types" }
+sps2-config = { path = "../config" }
 tokio = { workspace = true, features = ["sync"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -21,7 +21,7 @@ impl crate::artifact_qa::traits::Action for PlaceholderPatcher {
         use std::fs::{self, File};
         use std::io::{BufWriter, Read, Write};
 
-        let actual_prefix = "/opt/pm/live";
+        let actual_prefix = sps2_config::fixed_paths::LIVE_DIR;
         let build_prefix = env.build_prefix().to_string_lossy().into_owned();
         let build_src = format!("{build_prefix}/src");
         let build_base = "/opt/pm/build";

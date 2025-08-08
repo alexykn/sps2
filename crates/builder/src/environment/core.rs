@@ -12,7 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// Live prefix where packages are installed at runtime
-pub const LIVE_PREFIX: &str = "/opt/pm/live";
+pub const LIVE_PREFIX: &str = sps2_config::fixed_paths::LIVE_DIR;
 
 /// Build environment for isolated package building
 #[derive(Clone, Debug)]
@@ -62,7 +62,7 @@ impl BuildEnvironment {
         let staging_dir = build_prefix.join("stage");
 
         let mut env_vars = HashMap::new();
-        env_vars.insert("PREFIX".to_string(), "/opt/pm/live".to_string());
+        env_vars.insert("PREFIX".to_string(), sps2_config::fixed_paths::LIVE_DIR.to_string());
         env_vars.insert("DESTDIR".to_string(), staging_dir.display().to_string());
         env_vars.insert("JOBS".to_string(), Self::cpu_count().to_string());
 
@@ -293,8 +293,10 @@ impl BuildEnvironment {
                     "DESTDIR".to_string(),
                     self.staging_dir().display().to_string(),
                 );
-                self.env_vars
-                    .insert("PREFIX".to_string(), "/opt/pm/live".to_string());
+                self.env_vars.insert(
+                    "PREFIX".to_string(),
+                    sps2_config::fixed_paths::LIVE_DIR.to_string(),
+                );
                 self.env_vars
                     .insert("JOBS".to_string(), Self::cpu_count().to_string());
                 self.env_vars

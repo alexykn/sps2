@@ -142,7 +142,7 @@ impl BuildEnvironment {
             "/bin".to_string(),
             "/usr/sbin".to_string(),
             "/sbin".to_string(),
-            "/opt/pm/live/bin".to_string(),
+            sps2_config::fixed_paths::BIN_DIR.to_string(),
         ]
         .join(":");
 

@@ -52,11 +52,11 @@ impl BuildEnvironment {
 
         // Set build prefix to final installation location (not staging dir)
         self.env_vars
-            .insert("PREFIX".to_string(), "/opt/pm/live".to_string());
+            .insert("PREFIX".to_string(), sps2_config::fixed_paths::LIVE_DIR.to_string());
 
         // Set BUILD_PREFIX to package-specific prefix (e.g., /hello-1.0.0)
         // This is used for staging directory structure, not for build system --prefix arguments
-        // Build systems now use LIVE_PREFIX (/opt/pm/live) for --prefix arguments
+        // Build systems now use LIVE_PREFIX for --prefix arguments
         self.env_vars.insert(
             "BUILD_PREFIX".to_string(),
             format!("/{}-{}", self.context.name, self.context.version),
@@ -69,8 +69,8 @@ impl BuildEnvironment {
             .insert("MAKEFLAGS".to_string(), format!("-j{}", Self::cpu_count()));
 
         // Compiler flags pointing to /opt/pm/live where dependencies are installed
-        let live_include = "/opt/pm/live/include";
-        let live_lib = "/opt/pm/live/lib";
+        let live_include = &format!("{}/include", sps2_config::fixed_paths::LIVE_DIR);
+        let live_lib = &format!("{}/lib", sps2_config::fixed_paths::LIVE_DIR);
         self.env_vars
             .insert("CFLAGS".to_string(), format!("-I{live_include}"));
         self.env_vars
@@ -103,7 +103,13 @@ impl BuildEnvironment {
 
         // Start with a minimal PATH containing only system essentials
         // Then add /opt/pm/live/bin for sps2-installed tools
-        let path_components = ["/usr/bin", "/bin", "/usr/sbin", "/sbin", "/opt/pm/live/bin"];
+        let path_components = [
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin",
+            sps2_config::fixed_paths::BIN_DIR,
+        ];
 
         self.env_vars
             .insert("PATH".to_string(), path_components.join(":"));
@@ -137,17 +143,19 @@ impl BuildEnvironment {
         // PKG_CONFIG_PATH for dependency discovery
         self.env_vars.insert(
             "PKG_CONFIG_PATH".to_string(),
-            "/opt/pm/live/lib/pkgconfig".to_string(),
+            format!("{}/lib/pkgconfig", sps2_config::fixed_paths::LIVE_DIR),
         );
 
         // CMAKE_PREFIX_PATH for CMake-based builds
-        self.env_vars
-            .insert("CMAKE_PREFIX_PATH".to_string(), "/opt/pm/live".to_string());
+        self.env_vars.insert(
+            "CMAKE_PREFIX_PATH".to_string(),
+            sps2_config::fixed_paths::LIVE_DIR.to_string(),
+        );
 
         // Autotools-specific paths
         self.env_vars.insert(
             "ACLOCAL_PATH".to_string(),
-            "/opt/pm/live/share/aclocal".to_string(),
+            format!("{}/share/aclocal", sps2_config::fixed_paths::LIVE_DIR),
         );
 
         // CFLAGS, LDFLAGS, and LIBRARY_PATH are already set to /opt/pm/live in setup_environment()

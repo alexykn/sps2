@@ -446,7 +446,10 @@ fn show_path_reminder_if_needed() {
     if !path.contains(fixed_paths::BIN_DIR) {
         eprintln!();
         eprintln!("Add {} to your PATH to use installed packages:", fixed_paths::BIN_DIR);
-        eprintln!("   echo 'export PATH=\"/opt/pm/live/bin:$PATH\"' >> ~/.zshrc");
+        eprintln!(
+            "   echo 'export PATH=\"{}:$PATH\"' >> ~/.zshrc",
+            fixed_paths::BIN_DIR
+        );
         eprintln!("   source ~/.zshrc");
         eprintln!();
     }

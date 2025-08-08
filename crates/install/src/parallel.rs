@@ -353,7 +353,7 @@ impl ParallelExecutor {
         context.emit(AppEvent::Install(InstallEvent::Started {
             package: package_id.name.clone(),
             version: package_id.version.clone(),
-            install_path: std::path::PathBuf::from("/opt/pm/live"), // Default path
+            install_path: std::path::PathBuf::from(sps2_config::fixed_paths::LIVE_DIR), // Default path
             force_reinstall: false,
         }));
 

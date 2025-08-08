@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 sps2-hash = { path = "../../crates/hash" }
 sps2-state = { path = "../../crates/state" }
+sps2-config = { path = "../../crates/config" }
 
 clap = { version = "4.5.41", features = ["derive"] }
 tokio = { version = "1.46.0", features = ["full"] }

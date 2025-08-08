@@ -83,7 +83,7 @@ impl crate::artifact_qa::traits::Action for BinaryStringPatcher {
         let build_prefix = env.build_prefix().to_string_lossy().into_owned();
         let build_src = format!("{build_prefix}/src");
         let build_base = "/opt/pm/build".to_string();
-        let install_prefix = "/opt/pm/live".to_string(); // Actual runtime installation prefix
+        let install_prefix = sps2_config::fixed_paths::LIVE_DIR.to_string(); // Actual runtime installation prefix
 
         // Prepare replacements map - order matters! Most specific first
         let mut replacements = HashMap::new();

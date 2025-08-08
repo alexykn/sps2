@@ -17,7 +17,7 @@ impl crate::artifact_qa::traits::Action for PkgConfigPatcher {
         let build_prefix = env.build_prefix().to_string_lossy().into_owned();
         let build_src = format!("{build_prefix}/src");
         let build_base = "/opt/pm/build";
-        let actual = "/opt/pm/live";
+        let actual = sps2_config::fixed_paths::LIVE_DIR;
 
         let pat = WalkBuilder::new(env.staging_dir())
             .build()

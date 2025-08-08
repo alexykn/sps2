@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use sps2_types::Version;
 use std::path::PathBuf;
 use std::time::Duration;
+use sps2_config;
 
 /// Installation domain events - maps to install crate and `sps2 install` command
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -251,7 +252,7 @@ impl InstallEvent {
         Self::Started {
             package: package.into(),
             version,
-            install_path: PathBuf::from("/opt/pm/live"), // Default install path
+            install_path: PathBuf::from(sps2_config::fixed_paths::LIVE_DIR), // Default install path
             force_reinstall: false,
         }
     }
@@ -262,7 +263,7 @@ impl InstallEvent {
             package: package.into(),
             version,
             installed_files: files,
-            install_path: PathBuf::from("/opt/pm/live"),
+            install_path: PathBuf::from(sps2_config::fixed_paths::LIVE_DIR),
             duration: Duration::from_secs(0),
             disk_usage: 0,
         }

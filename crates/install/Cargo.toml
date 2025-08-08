@@ -20,6 +20,7 @@ sps2-state = { path = "../state" }
 sps2-store = { path = "../store" }
 sps2-audit = { path = "../audit" }
 sps2-resources = { path = "../resources" }
+sps2-config = { path = "../config" }
 serde = { workspace = true }
 tokio = { workspace = true, features = ["fs", "process", "io-util", "time"] }
 uuid = { workspace = true }

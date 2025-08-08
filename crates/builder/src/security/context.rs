@@ -40,7 +40,10 @@ impl SecurityContext {
             "DESTDIR".to_string(),
             build_root.join("destdir").display().to_string(),
         );
-        environment.insert("PREFIX".to_string(), "/opt/pm/live".to_string());
+        environment.insert(
+            "PREFIX".to_string(),
+            sps2_config::fixed_paths::LIVE_DIR.to_string(),
+        );
 
         // Merge with provided variables
         environment.extend(initial_vars);
@@ -279,7 +282,7 @@ impl SecurityContext {
             "/usr/lib",
             "/usr/local/include",
             "/usr/local/lib",
-            "/opt/pm/live", // When accessing installed packages
+            sps2_config::fixed_paths::LIVE_DIR, // When accessing installed packages
         ];
 
         SAFE_READ_PREFIXES
@@ -290,7 +293,7 @@ impl SecurityContext {
     /// Check if a path is safe to execute
     fn is_safe_executable(&self, path: &Path) -> bool {
         const SAFE_EXEC_PATHS: &[&str] =
-            &["/usr/bin", "/usr/local/bin", "/bin", "/opt/pm/live/bin"];
+            &["/usr/bin", "/usr/local/bin", "/bin", sps2_config::fixed_paths::BIN_DIR];
 
         // Allow execution of:
         // 1. Anything within build root

@@ -749,8 +749,8 @@ impl Default for GuardConfig {
             symlink_policy: SymlinkPolicy::Lenient,
             performance: PerformanceConfig::default(),
             lenient_symlink_directories: vec![
-                PathBuf::from("/opt/pm/live/bin"),
-                PathBuf::from("/opt/pm/live/sbin"),
+                PathBuf::from(sps2_config::fixed_paths::BIN_DIR),
+                PathBuf::from(format!("{}/sbin", sps2_config::fixed_paths::LIVE_DIR)),
             ],
         }
     }
@@ -920,7 +920,7 @@ pub fn derive_pre_operation_scope(operation: &OperationType) -> VerificationScop
             if package_specs.len() == 1 {
                 // Single package install - can be scoped to related directories
                 VerificationScope::Directory {
-                    path: PathBuf::from("/opt/pm/live"),
+                    path: PathBuf::from(sps2_config::fixed_paths::LIVE_DIR),
                 }
             } else {
                 // Multiple packages - full verification for safety
@@ -1012,7 +1012,7 @@ pub fn derive_post_operation_scope(
             // Verify newly installed packages and their dependencies
             if affected_packages.is_empty() {
                 VerificationScope::Directory {
-                    path: PathBuf::from("/opt/pm/live"),
+                    path: PathBuf::from(sps2_config::fixed_paths::LIVE_DIR),
                 }
             } else {
                 VerificationScope::Packages {
@@ -1023,7 +1023,7 @@ pub fn derive_post_operation_scope(
         OperationType::Uninstall { .. } => {
             // Verify packages are removed and check for orphaned files
             if modified_directories.is_empty() {
-                modified_directories.push(PathBuf::from("/opt/pm/live"));
+                modified_directories.push(PathBuf::from(sps2_config::fixed_paths::LIVE_DIR));
             }
 
             if removed_packages.is_empty() && affected_packages.is_empty() {
@@ -1052,7 +1052,7 @@ pub fn derive_post_operation_scope(
                 // This follows the same logic as Install operations
                 if affected_packages.is_empty() {
                     VerificationScope::Directory {
-                        path: PathBuf::from("/opt/pm/live"),
+                        path: PathBuf::from(sps2_config::fixed_paths::LIVE_DIR),
                     }
                 } else {
                     VerificationScope::Packages {
@@ -1100,7 +1100,7 @@ pub fn select_smart_scope(
             OperationType::Install { package_specs } => {
                 if package_specs.len() == 1 {
                     VerificationScope::Directory {
-                        path: PathBuf::from("/opt/pm/live"),
+                        path: PathBuf::from(sps2_config::fixed_paths::LIVE_DIR),
                     }
                 } else {
                     VerificationScope::Full
@@ -1130,7 +1130,7 @@ pub fn select_smart_scope(
             // for medium-impact operations
             if operation.impact_level() == OperationImpact::Medium {
                 VerificationScope::Directory {
-                    path: PathBuf::from("/opt/pm/live"),
+                    path: PathBuf::from(sps2_config::fixed_paths::LIVE_DIR),
                 }
             } else {
                 base_scope

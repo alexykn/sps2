@@ -77,10 +77,12 @@ impl BuildEnvironment {
 
             if is_empty_or_none {
                 // Already installed - just verify it exists
-                self.send_event(AppEvent::General(GeneralEvent::debug(format!(
-                    "{} {} is already installed in /opt/pm/live",
-                    node.name, node.version
-                ))));
+                    self.send_event(AppEvent::General(GeneralEvent::debug(format!(
+                        "{} {} is already installed in {}",
+                        node.name,
+                        node.version,
+                        sps2_config::fixed_paths::LIVE_DIR
+                    ))));
 
                 // Verify the package is installed
                 self.verify_installed_package(&node.name, &node.version)
@@ -116,7 +118,7 @@ impl BuildEnvironment {
         self.send_event(AppEvent::Install(InstallEvent::Started {
             package: node.name.clone(),
             version: node.version.clone(),
-            install_path: std::path::PathBuf::from("/opt/pm/live"),
+            install_path: std::path::PathBuf::from(sps2_config::fixed_paths::LIVE_DIR),
             force_reinstall: false,
         }));
 
@@ -185,7 +187,7 @@ impl BuildEnvironment {
     /// Get currently installed packages from system state
     async fn get_installed_packages() -> Result<Vec<InstalledPackage>, Error> {
         // Create a minimal state manager to check installed packages
-        let base_path = std::path::Path::new("/opt/pm");
+        let base_path = std::path::Path::new(sps2_config::fixed_paths::PREFIX);
         let state = StateManager::new(base_path).await?;
 
         let packages = state.get_installed_packages().await?;
@@ -206,7 +208,7 @@ impl BuildEnvironment {
     /// Returns an error if the package is not installed.
     async fn verify_installed_package(&self, name: &str, version: &Version) -> Result<(), Error> {
         // Check if package is installed using state manager
-        let base_path = std::path::Path::new("/opt/pm");
+        let base_path = std::path::Path::new(sps2_config::fixed_paths::PREFIX);
         let state = StateManager::new(base_path).await?;
 
         // Get all installed packages

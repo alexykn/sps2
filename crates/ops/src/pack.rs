@@ -164,7 +164,7 @@ async fn pack_from_recipe_impl(
     let package_version = Version::parse(&yaml_recipe.metadata.version)?;
 
     // Construct expected staging directory path
-    let build_root = PathBuf::from("/opt/pm/build");
+    let build_root = sps2_config::BuilderConfig::default().build.build_root;
     let staging_dir = build_root
         .join(&package_name)
         .join(package_version.to_string())

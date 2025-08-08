@@ -116,7 +116,7 @@ impl BuildEnvironment {
         // Check CFLAGS
         if let Some(cflags) = self.env_vars.get("CFLAGS") {
             // Check that CFLAGS contains /opt/pm/live/include
-            if !cflags.contains("/opt/pm/live/include") {
+            if !cflags.contains(&format!("{}/include", sps2_config::fixed_paths::LIVE_DIR)) {
                 return Err(BuildError::SandboxViolation {
                     message: "CFLAGS not properly configured for isolation".to_string(),
                 }
@@ -135,7 +135,7 @@ impl BuildEnvironment {
         // Check LDFLAGS
         if let Some(ldflags) = self.env_vars.get("LDFLAGS") {
             // Check that LDFLAGS contains /opt/pm/live/lib
-            if !ldflags.contains("/opt/pm/live/lib") {
+            if !ldflags.contains(&format!("{}/lib", sps2_config::fixed_paths::LIVE_DIR)) {
                 return Err(BuildError::SandboxViolation {
                     message: "LDFLAGS not properly configured for isolation".to_string(),
                 }
@@ -176,7 +176,7 @@ impl BuildEnvironment {
                     || component.starts_with("/sbin")
                 {
                     found_system = true;
-                } else if *component == "/opt/pm/live/bin" {
+                } else if *component == sps2_config::fixed_paths::BIN_DIR {
                     if !found_system {
                         return Err(BuildError::SandboxViolation {
                             message: "/opt/pm/live/bin appears before system paths in PATH"
@@ -206,7 +206,7 @@ impl BuildEnvironment {
         // Check that build directories are within allowed paths
         let allowed_prefixes = vec![
             self.build_prefix.clone(),
-            PathBuf::from("/opt/pm"), // sps2 system directory
+            PathBuf::from(sps2_config::fixed_paths::PREFIX), // sps2 system directory
         ];
 
         // Verify staging directory is isolated

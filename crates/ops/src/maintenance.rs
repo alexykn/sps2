@@ -448,7 +448,7 @@ async fn get_initial_state_changes(ctx: &OpsCtx, state_id: &Uuid) -> Result<Vec<
 
 /// Update the GC timestamp after successful cleanup
 async fn update_gc_timestamp() -> Result<(), Error> {
-    let timestamp_path = std::path::Path::new("/opt/pm/.last_gc_timestamp");
+    let timestamp_path = std::path::Path::new(sps2_config::fixed_paths::LAST_GC_TIMESTAMP);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
