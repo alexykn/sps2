@@ -1,24 +1,23 @@
-#![deny(clippy::pedantic)]
 #![allow(clippy::module_name_repetitions, unused_variables)]
 
-//! Filesystem operations for sps2
+//! Filesystem convenience helpers backed by the platform abstraction.
 //!
-//! This crate provides APFS-optimized filesystem operations including
-//! atomic renames, clonefile support, and directory management.
+//! These functions provide a stable API returning `sps2_errors::Error` while
+//! internally leveraging the platform's `FilesystemOperations` implementation.
 
+use crate::PlatformManager;
 use sps2_errors::StorageError;
-use sps2_platform::PlatformManager;
 use std::path::Path;
 use tokio::fs;
 
 /// Result type for filesystem operations
-type Result<T> = std::result::Result<T, sps2_errors::Error>;
+pub type Result<T> = std::result::Result<T, sps2_errors::Error>;
 
 /// APFS clonefile support
 #[cfg(target_os = "macos")]
 mod apfs {
     use super::{Path, Result, StorageError};
-    use sps2_platform::PlatformManager;
+    use crate::PlatformManager;
 
     /// Clone a file or directory using APFS clonefile with security flags
     pub async fn clone_path(src: &Path, dst: &Path) -> Result<()> {
@@ -359,26 +358,16 @@ pub async fn ensure_empty_dir(path: &Path) -> Result<()> {
     create_dir_all(path).await
 }
 
-/// Set APFS compression attribute on a path
-///
-/// # Errors
-///
-/// Currently this is a no-op placeholder and does not return errors
+/// Set APFS compression attribute on a path (macOS only)
 #[cfg(target_os = "macos")]
 pub fn set_compression(_path: &Path) -> Result<()> {
-    // This would use the compression extended attributes
-    // For now, this is a placeholder
+    // Placeholder for compression extended attributes
     Ok(())
 }
 
-/// Set APFS compression attribute on a path
-///
-/// # Errors
-///
-/// This is a no-op on non-macOS platforms and does not return errors
+/// Set APFS compression attribute on a path (no-op on non-macOS)
 #[cfg(not(target_os = "macos"))]
 pub fn set_compression(_path: &Path) -> Result<()> {
-    // No-op on non-macOS
     Ok(())
 }
 

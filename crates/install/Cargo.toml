@@ -15,7 +15,6 @@ sps2-events = { path = "../events" }
 sps2-hash = { path = "../hash" }
 sps2-net = { path = "../net" }
 sps2-resolver = { path = "../resolver" }
-sps2-root = { path = "../root" }
 sps2-platform = { path = "../platform" }
 sps2-state = { path = "../state" }
 sps2-store = { path = "../store" }

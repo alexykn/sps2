@@ -12,6 +12,7 @@ pub mod binary;
 pub mod core;
 pub mod filesystem;
 pub mod implementations;
+pub mod fs;
 pub mod process;
 
 pub use core::{
@@ -22,4 +23,5 @@ pub use implementations::macos::MacOSPlatform;
 /// Re-export commonly used types
 pub use binary::BinaryOperations;
 pub use filesystem::FilesystemOperations;
+pub use fs as filesystem_helpers;
 pub use process::ProcessOperations;

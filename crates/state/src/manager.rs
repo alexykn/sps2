@@ -7,7 +7,7 @@ use crate::{
 use sps2_errors::{Error, StateError};
 use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent, StateEvent};
 use sps2_hash::Hash;
-use sps2_root;
+use sps2_platform::filesystem_helpers as sps2_root;
 use sps2_types::StateId;
 use sqlx::{Pool, Sqlite};
 use std::path::PathBuf;

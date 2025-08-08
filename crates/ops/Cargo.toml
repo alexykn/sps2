@@ -24,7 +24,6 @@ sps2-audit = { path = "../audit" }
 sps2-config = { path = "../config" }
 sps2-hash = { path = "../hash" }
 sps2-drafter = { path = "../drafter" }
-sps2-root = { path = "../root" }
 sps2-guard = { path = "../guard" }
 serde = { workspace = true }
 serde_json = { workspace = true }

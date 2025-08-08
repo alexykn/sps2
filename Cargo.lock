@@ -3279,7 +3279,6 @@ dependencies = [
  "sps2-ops",
  "sps2-platform",
  "sps2-resolver",
- "sps2-root",
  "sps2-state",
  "sps2-store",
  "sps2-types",
@@ -3444,7 +3443,6 @@ dependencies = [
  "sps2-hash",
  "sps2-install",
  "sps2-platform",
- "sps2-root",
  "sps2-state",
  "sps2-store",
  "sps2-types",
@@ -3507,7 +3505,6 @@ dependencies = [
  "sps2-platform",
  "sps2-resolver",
  "sps2-resources",
- "sps2-root",
  "sps2-state",
  "sps2-store",
  "sps2-types",
@@ -3578,7 +3575,6 @@ dependencies = [
  "sps2-net",
  "sps2-resolver",
  "sps2-resources",
- "sps2-root",
  "sps2-state",
  "sps2-store",
  "sps2-types",
@@ -3636,18 +3632,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sps2-root"
-version = "0.1.0"
-dependencies = [
- "libc",
- "sps2-errors",
- "sps2-platform",
- "sps2-types",
- "tempfile",
- "tokio",
-]
-
-[[package]]
 name = "sps2-state"
 version = "0.1.0"
 dependencies = [
@@ -3657,8 +3641,8 @@ dependencies = [
  "sps2-errors",
  "sps2-events",
  "sps2-hash",
+ "sps2-platform",
  "sps2-resolver",
- "sps2-root",
  "sps2-store",
  "sps2-types",
  "sqlx",
@@ -3680,7 +3664,6 @@ dependencies = [
  "sps2-manifest",
  "sps2-platform",
  "sps2-resolver",
- "sps2-root",
  "sps2-types",
  "tar",
  "tempfile",

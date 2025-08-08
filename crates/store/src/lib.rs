@@ -21,7 +21,7 @@ pub use package::StoredPackage;
 use sps2_errors::{Error, StorageError};
 use sps2_hash::Hash;
 use sps2_platform::PlatformManager;
-use sps2_root::set_compression;
+use sps2_platform::filesystem_helpers::set_compression;
 use std::path::{Path, PathBuf};
 
 /// Store manager for content-addressed packages
