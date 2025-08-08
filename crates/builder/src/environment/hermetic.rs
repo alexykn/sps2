@@ -158,13 +158,15 @@ impl BuildEnvironment {
         self.env_vars
             .insert("JOBS".to_string(), Self::cpu_count().to_string());
 
-        // Clean compiler/linker flags
+        // Clean compiler/linker flags (point to live prefix)
+        let live_include = format!("{}/include", sps2_config::fixed_paths::LIVE_DIR);
+        let live_lib = format!("{}/lib", sps2_config::fixed_paths::LIVE_DIR);
         self.env_vars
-            .insert("CFLAGS".to_string(), "-I/opt/pm/live/include".to_string());
+            .insert("CFLAGS".to_string(), format!("-I{live_include}"));
         self.env_vars
-            .insert("CXXFLAGS".to_string(), "-I/opt/pm/live/include".to_string());
+            .insert("CXXFLAGS".to_string(), format!("-I{live_include}"));
         // LDFLAGS with headerpad for macOS
-        let mut ldflags = "-L/opt/pm/live/lib".to_string();
+        let mut ldflags = format!("-L{live_lib}");
         if cfg!(target_os = "macos") {
             ldflags.push_str(" -headerpad_max_install_names");
         }
