@@ -100,12 +100,13 @@ impl ProgressTracker {
     pub fn with_phases(mut self, phases: Vec<ProgressPhase>) -> Self {
         // Normalize phase weights to sum to 1.0
         let total_weight: f64 = phases.iter().map(|p| p.weight).sum();
+        let mut normalized = phases;
         if total_weight > 0.0 {
-            for phase in &mut self.phases {
+            for phase in &mut normalized {
                 phase.weight /= total_weight;
             }
         }
-        self.phases = phases;
+        self.phases = normalized;
         self
     }
 

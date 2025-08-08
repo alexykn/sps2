@@ -1,13 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-
-/// Progress phase information for multi-stage operations
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProgressPhase {
-    pub name: String,
-    pub weight: f64,
-    pub description: Option<String>,
-}
+// Use the unified progress phase type from the progress module
+use crate::progress::config::ProgressPhase;
 
 /// Progress tracking events with sophisticated algorithms
 #[derive(Debug, Clone, Serialize, Deserialize)]

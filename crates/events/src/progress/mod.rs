@@ -21,7 +21,7 @@
 //! ## Usage Example
 //!
 //! ```rust
-//! use sps2_events::{ProgressManager, events::ProgressPhase};
+//! use sps2_events::{ProgressManager, config::ProgressPhase};
 //! use std::time::Duration;
 //!
 //! let manager = ProgressManager::new();

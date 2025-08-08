@@ -128,7 +128,7 @@ impl StoreVerifier {
     where
         E: EventEmitter,
     {
-        use sps2_events::events::ProgressPhase;
+        use sps2_events::config::ProgressPhase;
 
         let start_time = Instant::now();
         let progress_id = "store-verification";
@@ -142,16 +142,8 @@ impl StoreVerifier {
             operation: "Verifying store integrity".to_string(),
             total: Some(initial_stats.pending_count as u64),
             phases: vec![
-                ProgressPhase {
-                    name: "Scanning".to_string(),
-                    weight: 0.1,
-                    description: None,
-                },
-                ProgressPhase {
-                    name: "Verifying".to_string(),
-                    weight: 0.9,
-                    description: None,
-                },
+                ProgressPhase::new("Scanning", "").with_weight(0.1),
+                ProgressPhase::new("Verifying", "").with_weight(0.9),
             ],
             parent_id: None,
         }));
