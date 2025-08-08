@@ -391,7 +391,13 @@ impl BuildSystem for NodeJsBuildSystem {
         let pm = self.detect_package_manager(&ctx.source_dir).await?;
 
         // Verify package manager is available
-        let result = ctx.execute(pm.command(), &["--version"], None).await?;
+        // Verify package manager is available with merged env
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.extend(self.get_env_vars(ctx));
+        let result = ctx
+            .env
+            .execute_command_with_env(pm.command(), &["--version"], None, &merged_env, false)
+            .await?;
 
         if !result.success {
             return Err(BuildError::ConfigureFailed {
@@ -454,8 +460,17 @@ impl BuildSystem for NodeJsBuildSystem {
             let install_args = Self::get_install_command(&pm, !ctx.network_allowed, has_lock_file);
             let arg_refs: Vec<&str> = install_args.iter().map(String::as_str).collect();
 
+            let mut merged_env = ctx.get_all_env_vars();
+            merged_env.extend(self.get_env_vars(ctx));
             let result = ctx
-                .execute(pm.command(), &arg_refs, Some(&ctx.source_dir))
+                .env
+                .execute_command_with_env(
+                    pm.command(),
+                    &arg_refs,
+                    Some(&ctx.source_dir),
+                    &merged_env,
+                    false,
+                )
                 .await?;
 
             if !result.success {
@@ -476,8 +491,17 @@ impl BuildSystem for NodeJsBuildSystem {
                 run_args.extend(args.iter().map(String::as_str));
             }
 
+            let mut merged_env = ctx.get_all_env_vars();
+            merged_env.extend(self.get_env_vars(ctx));
             let result = ctx
-                .execute(pm.command(), &run_args, Some(&ctx.source_dir))
+                .env
+                .execute_command_with_env(
+                    pm.command(),
+                    &run_args,
+                    Some(&ctx.source_dir),
+                    &merged_env,
+                    false,
+                )
                 .await?;
 
             if !result.success {
@@ -533,8 +557,18 @@ impl BuildSystem for NodeJsBuildSystem {
         }
 
         // Run tests
+        // Run tests (allow failure) with merged env
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.extend(self.get_env_vars(ctx));
         let result = ctx
-            .execute(pm.command(), &["test"], Some(&ctx.source_dir))
+            .env
+            .execute_command_with_env(
+                pm.command(),
+                &["test"],
+                Some(&ctx.source_dir),
+                &merged_env,
+                true,
+            )
             .await?;
 
         let duration = start.elapsed().as_secs_f64();

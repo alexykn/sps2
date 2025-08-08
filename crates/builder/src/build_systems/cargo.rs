@@ -243,7 +243,13 @@ impl BuildSystem for CargoBuildSystem {
         self.setup_vendoring(ctx).await?;
 
         // Verify cargo is available
-        let result = ctx.execute("cargo", &["--version"], None).await?;
+        // Execute with merged env
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.extend(self.get_env_vars(ctx));
+        let result = ctx
+            .env
+            .execute_command_with_env("cargo", &["--version"], None, &merged_env, false)
+            .await?;
         if !result.success {
             return Err(BuildError::ConfigureFailed {
                 message: "cargo not found in PATH".to_string(),
@@ -268,8 +274,18 @@ impl BuildSystem for CargoBuildSystem {
         let arg_refs: Vec<&str> = build_args.iter().map(String::as_str).collect();
 
         // Run cargo build
+        // Run cargo build with merged env
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.extend(self.get_env_vars(ctx));
         let result = ctx
-            .execute("cargo", &arg_refs, Some(&ctx.source_dir))
+            .env
+            .execute_command_with_env(
+                "cargo",
+                &arg_refs,
+                Some(&ctx.source_dir),
+                &merged_env,
+                false,
+            )
             .await?;
 
         if !result.success {
@@ -308,9 +324,18 @@ impl BuildSystem for CargoBuildSystem {
             test_args.push(&jobs_str);
         }
 
-        // Run cargo test
+        // Run cargo test (allow failure)
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.extend(self.get_env_vars(ctx));
         let result = ctx
-            .execute("cargo", &test_args, Some(&ctx.source_dir))
+            .env
+            .execute_command_with_env(
+                "cargo",
+                &test_args,
+                Some(&ctx.source_dir),
+                &merged_env,
+                true,
+            )
             .await?;
 
         let duration = start.elapsed().as_secs_f64();

@@ -76,7 +76,12 @@ impl PythonBuildSystem {
 
     /// Check if uv is available
     async fn check_uv_available(&self, ctx: &BuildSystemContext) -> Result<bool, Error> {
-        let result = ctx.execute("uv", &["--version"], None).await;
+        let mut env = ctx.get_all_env_vars();
+        env.extend(self.get_env_vars(ctx));
+        let result = ctx
+            .env
+            .execute_command_with_env("uv", &["--version"], None, &env, true)
+            .await;
         Ok(result.map(|r| r.success).unwrap_or(false))
     }
 
@@ -87,11 +92,16 @@ impl PythonBuildSystem {
 
         if use_uv {
             // Try uv for faster venv creation
+            let mut env = ctx.get_all_env_vars();
+            env.extend(self.get_env_vars(ctx));
             let result = ctx
-                .execute(
+                .env
+                .execute_command_with_env(
                     "uv",
                     &["venv", "--seed", &venv_path.display().to_string()],
                     Some(&ctx.source_dir),
+                    &env,
+                    false,
                 )
                 .await?;
 
@@ -102,11 +112,16 @@ impl PythonBuildSystem {
         }
 
         // Fall back to standard venv (either uv not available or failed)
+        let mut env = ctx.get_all_env_vars();
+        env.extend(self.get_env_vars(ctx));
         let result = ctx
-            .execute(
+            .env
+            .execute_command_with_env(
                 "python3",
                 &["-m", "venv", &venv_path.display().to_string()],
                 Some(&ctx.source_dir),
+                &env,
+                false,
             )
             .await?;
 
@@ -160,8 +175,11 @@ impl PythonBuildSystem {
         fs::create_dir_all(&wheel_dir).await?;
 
         // Build wheel using uv build command
+        let mut env = ctx.get_all_env_vars();
+        env.extend(self.get_env_vars(ctx));
         let result = ctx
-            .execute(
+            .env
+            .execute_command_with_env(
                 "uv",
                 &[
                     "build",
@@ -170,6 +188,8 @@ impl PythonBuildSystem {
                     &wheel_dir.display().to_string(),
                 ],
                 Some(&ctx.source_dir),
+                &env,
+                false,
             )
             .await?;
 
@@ -202,19 +222,24 @@ impl PythonBuildSystem {
         let pip_path = venv_path.join("bin/pip");
 
         // Install build dependencies
+        let mut env = ctx.get_all_env_vars();
+        env.extend(self.get_env_vars(ctx));
         let result = ctx
-            .execute(
+            .env
+            .execute_command_with_env(
                 &pip_path.display().to_string(),
                 &[
                     "install",
                     "--upgrade",
-                    "--no-input", // Prevent interactive prompts
+                    "--no-input",
                     "pip",
                     "setuptools",
                     "wheel",
                     "build",
                 ],
                 Some(&ctx.source_dir),
+                &env,
+                false,
             )
             .await?;
 
@@ -236,11 +261,16 @@ impl PythonBuildSystem {
             build_args.push("--no-isolation");
         }
 
+        let mut env = ctx.get_all_env_vars();
+        env.extend(self.get_env_vars(ctx));
         let result = ctx
-            .execute(
+            .env
+            .execute_command_with_env(
                 &python_path.display().to_string(),
                 &build_args,
                 Some(&ctx.source_dir),
+                &env,
+                false,
             )
             .await?;
 
@@ -356,8 +386,11 @@ impl PythonBuildSystem {
         lockfile_path: &std::path::Path,
     ) -> Result<PathBuf, Error> {
         // Try pyproject.toml first
+        let mut env = ctx.get_all_env_vars();
+        env.extend(self.get_env_vars(ctx));
         let result = ctx
-            .execute(
+            .env
+            .execute_command_with_env(
                 "uv",
                 &[
                     "pip",
@@ -367,6 +400,8 @@ impl PythonBuildSystem {
                     "pyproject.toml",
                 ],
                 Some(&ctx.source_dir),
+                &env,
+                false,
             )
             .await?;
 
@@ -377,8 +412,11 @@ impl PythonBuildSystem {
         // Try requirements.txt if pyproject.toml fails
         let req_txt = ctx.source_dir.join("requirements.txt");
         if req_txt.exists() {
+            let mut env = ctx.get_all_env_vars();
+            env.extend(self.get_env_vars(ctx));
             let result = ctx
-                .execute(
+                .env
+                .execute_command_with_env(
                     "uv",
                     &[
                         "pip",
@@ -388,6 +426,8 @@ impl PythonBuildSystem {
                         "requirements.txt",
                     ],
                     Some(&ctx.source_dir),
+                    &env,
+                    false,
                 )
                 .await?;
 
@@ -419,18 +459,26 @@ impl PythonBuildSystem {
         let pip_path = venv_path.join("bin/pip");
 
         // Install pip-tools
+        let mut env = ctx.get_all_env_vars();
+        env.extend(self.get_env_vars(ctx));
         let _ = ctx
-            .execute(
+            .env
+            .execute_command_with_env(
                 &pip_path.display().to_string(),
                 &["install", "pip-tools"],
                 Some(&ctx.source_dir),
+                &env,
+                false,
             )
             .await?;
 
         // Use pip-compile
         let pip_compile = venv_path.join("bin/pip-compile");
+        let mut env = ctx.get_all_env_vars();
+        env.extend(self.get_env_vars(ctx));
         let result = ctx
-            .execute(
+            .env
+            .execute_command_with_env(
                 &pip_compile.display().to_string(),
                 &[
                     "--output-file",
@@ -438,6 +486,8 @@ impl PythonBuildSystem {
                     "pyproject.toml",
                 ],
                 Some(&ctx.source_dir),
+                &env,
+                false,
             )
             .await?;
 
@@ -599,14 +649,26 @@ impl BuildSystem for PythonBuildSystem {
         // Detect build backend
         let backend = self.detect_build_backend(&ctx.source_dir).await?;
 
-        // Verify Python is available
-        let result = ctx.execute("python3", &["--version"], None).await?;
+        // Verify Python is available (try python3 then python)
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.extend(self.get_env_vars(ctx));
+        let result = ctx
+            .env
+            .execute_command_with_env("python3", &["--version"], None, &merged_env, true)
+            .await?;
         if !result.success {
-            return Err(BuildError::ConfigureFailed {
-                message: "python3 not found in PATH".to_string(),
+            let fallback = ctx
+                .env
+                .execute_command_with_env("python", &["--version"], None, &merged_env, false)
+                .await?;
+            if !fallback.success {
+                return Err(BuildError::ConfigureFailed {
+                    message: "python3/python not found in PATH".to_string(),
+                }
+                .into());
             }
-            .into());
         }
+        // Python detected
 
         // Always create virtual environment for isolation
         let venv_path = self.create_venv(ctx).await?;
@@ -675,7 +737,12 @@ impl BuildSystem for PythonBuildSystem {
         let jobs_str;
 
         // Check if pytest is available
-        let pytest_check = ctx.execute("pytest", &["--version"], None).await;
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.extend(self.get_env_vars(ctx));
+        let pytest_check = ctx
+            .env
+            .execute_command_with_env("pytest", &["--version"], None, &merged_env, true)
+            .await;
 
         if pytest_check.map(|r| r.success).unwrap_or(false) {
             // Use pytest with verbose output
@@ -700,8 +767,18 @@ impl BuildSystem for PythonBuildSystem {
 
         // Run tests
         let test_arg_refs: Vec<&str> = test_args.iter().map(String::as_str).collect();
+        // Allow failure to parse results
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.extend(self.get_env_vars(ctx));
         let result = ctx
-            .execute(test_cmd, &test_arg_refs, Some(&ctx.source_dir))
+            .env
+            .execute_command_with_env(
+                test_cmd,
+                &test_arg_refs,
+                Some(&ctx.source_dir),
+                &merged_env,
+                true,
+            )
             .await?;
 
         let duration = start.elapsed().as_secs_f64();
@@ -765,11 +842,16 @@ impl BuildSystem for PythonBuildSystem {
         let pip_args = Self::get_pip_args(ctx, &[wheel_path.clone()]);
         let arg_refs: Vec<&str> = pip_args.iter().map(String::as_str).collect();
 
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.extend(self.get_env_vars(ctx));
         let result = ctx
-            .execute(
+            .env
+            .execute_command_with_env(
                 &pip_path.display().to_string(),
                 &arg_refs,
                 Some(&ctx.source_dir),
+                &merged_env,
+                false,
             )
             .await?;
 
@@ -877,12 +959,19 @@ impl PythonBuildSystem {
         prefix_in_staging: &Path,
         _ctx: &BuildSystemContext,
     ) -> Result<(), Error> {
-        // Detect the Python version used during build
-        let python_version = self.detect_python_version(prefix_in_staging).await?;
-        let target_shebang = format!(
-            "#!{}/bin/{python_version}",
-            sps2_config::fixed_paths::LIVE_DIR
-        );
+        // Detect the Python version used during build, but prefer python3 then python
+        let live_bin = sps2_config::fixed_paths::LIVE_DIR;
+        let python3_path = format!("{live_bin}/bin/python3");
+        let python_path = format!("{live_bin}/bin/python");
+        let target_shebang = if std::path::Path::new(&python3_path).exists() {
+            format!("#!{python3_path}")
+        } else if std::path::Path::new(&python_path).exists() {
+            format!("#!{python_path}")
+        } else {
+            // Fallback to detected version path
+            let python_version = self.detect_python_version(prefix_in_staging).await?;
+            format!("#!{live_bin}/bin/{python_version}")
+        };
 
         let mut entries = fs::read_dir(scripts_dir).await?;
         while let Some(entry) = entries.next_entry().await? {

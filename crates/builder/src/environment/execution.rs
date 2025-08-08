@@ -18,20 +18,37 @@ impl BuildEnvironment {
         self.env_vars.clone()
     }
 
-    /// Execute a command in the build environment
+    /// Execute a command in the build environment using the environment stored on the struct.
     ///
     /// # Errors
     ///
-    /// Returns an error if the command fails to execute or exits with a non-zero status.
-    ///
-    /// # Panics
-    ///
-    /// Panics if stdout is not available when capturing command output.
+    /// Returns an error if the command fails to spawn or exits with non-zero status.
     pub async fn execute_command(
         &self,
         program: &str,
         args: &[&str],
         working_dir: Option<&Path>,
+    ) -> Result<BuildCommandResult, Error> {
+        // Delegate to unified executor with the current environment and strict failure handling
+        let env = self.get_execution_env();
+        self.execute_command_with_env(program, args, working_dir, &env, false)
+            .await
+    }
+
+    /// Execute a command with an explicit environment and optional allow-failure behavior.
+    /// If `allow_failure` is true, this returns Ok(BuildCommandResult) even on non-zero exit codes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the command fails to spawn. When `allow_failure` is false,
+    /// returns an error for non-zero exit status as well.
+    pub async fn execute_command_with_env(
+        &self,
+        program: &str,
+        args: &[&str],
+        working_dir: Option<&Path>,
+        env: &HashMap<String, String>,
+        allow_failure: bool,
     ) -> Result<BuildCommandResult, Error> {
         // Use platform abstraction for process execution
         let platform = PlatformManager::instance().platform();
@@ -43,9 +60,8 @@ impl BuildEnvironment {
         let converted_args = Self::convert_args_to_strings(args);
         cmd.args(&converted_args);
 
-        // Get environment variables for execution
-        let build_env_vars = self.get_execution_env();
-        cmd.envs(&build_env_vars);
+        // Apply explicit environment
+        cmd.envs(env);
 
         if let Some(dir) = working_dir {
             cmd.current_dir(dir);
@@ -100,7 +116,7 @@ impl BuildEnvironment {
             stderr: stderr_lines.join("\n"),
         };
 
-        if !result.success {
+        if !result.success && !allow_failure {
             return Err(BuildError::CompileFailed {
                 message: format!(
                     "{program} {} failed with exit code {:?}: {}",

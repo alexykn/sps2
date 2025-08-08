@@ -216,9 +216,18 @@ impl BuildSystem for AutotoolsBuildSystem {
             .collect::<Vec<_>>()
             .join(" ");
 
-        // Run configure
+        // Run configure with merged env
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.extend(self.get_env_vars(ctx));
         let result = ctx
-            .execute("sh", &["-c", &cmd_str], Some(&ctx.build_dir))
+            .env
+            .execute_command_with_env(
+                "sh",
+                &["-c", &cmd_str],
+                Some(&ctx.build_dir),
+                &merged_env,
+                false,
+            )
             .await?;
 
         if !result.success {
@@ -255,8 +264,13 @@ impl BuildSystem for AutotoolsBuildSystem {
         // Convert to string slices
         let arg_refs: Vec<&str> = make_args.iter().map(String::as_str).collect();
 
-        // Run make
-        let result = ctx.execute("make", &arg_refs, Some(&ctx.build_dir)).await?;
+        // Run make with merged env
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.extend(self.get_env_vars(ctx));
+        let result = ctx
+            .env
+            .execute_command_with_env("make", &arg_refs, Some(&ctx.build_dir), &merged_env, false)
+            .await?;
 
         if !result.success {
             return Err(BuildError::CompilationFailed {
@@ -272,16 +286,28 @@ impl BuildSystem for AutotoolsBuildSystem {
         // Run make check or make test
         let start = std::time::Instant::now();
 
-        // Try "make check" first (more common in autotools)
+        // Try "make check" first (allow failure to parse)
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.extend(self.get_env_vars(ctx));
         let result = ctx
-            .execute("make", &["check"], Some(&ctx.build_dir))
+            .env
+            .execute_command_with_env("make", &["check"], Some(&ctx.build_dir), &merged_env, true)
             .await?;
 
         let success = if result.success {
             true
         } else {
             // Fallback to "make test"
-            let test_result = ctx.execute("make", &["test"], Some(&ctx.build_dir)).await?;
+            let test_result = ctx
+                .env
+                .execute_command_with_env(
+                    "make",
+                    &["test"],
+                    Some(&ctx.build_dir),
+                    &merged_env,
+                    true,
+                )
+                .await?;
             test_result.success
         };
 
@@ -311,14 +337,19 @@ impl BuildSystem for AutotoolsBuildSystem {
 
     async fn install(&self, ctx: &BuildSystemContext) -> Result<(), Error> {
         // Run make install with DESTDIR
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.extend(self.get_env_vars(ctx));
         let result = ctx
-            .execute(
+            .env
+            .execute_command_with_env(
                 "make",
                 &[
                     "install",
                     &format!("DESTDIR={}", ctx.env.staging_dir().display()),
                 ],
                 Some(&ctx.build_dir),
+                &merged_env,
+                false,
             )
             .await?;
 

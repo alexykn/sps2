@@ -183,9 +183,14 @@ impl BuildSystem for CMakeBuildSystem {
         let cmake_args = self.get_cmake_args(ctx, args);
         let arg_refs: Vec<&str> = cmake_args.iter().map(String::as_str).collect();
 
+        // Prepare environment overlay
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.extend(self.get_env_vars(ctx));
+
         // Run cmake
         let result = ctx
-            .execute("cmake", &arg_refs, Some(&ctx.build_dir))
+            .env
+            .execute_command_with_env("cmake", &arg_refs, Some(&ctx.build_dir), &merged_env, false)
             .await?;
 
         if !result.success {
@@ -215,9 +220,18 @@ impl BuildSystem for CMakeBuildSystem {
             cmake_args.extend(args.iter().map(String::as_str));
         }
 
-        // Run cmake build
+        // Run cmake build with merged env
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.extend(self.get_env_vars(ctx));
         let result = ctx
-            .execute("cmake", &cmake_args, Some(&ctx.build_dir))
+            .env
+            .execute_command_with_env(
+                "cmake",
+                &cmake_args,
+                Some(&ctx.build_dir),
+                &merged_env,
+                false,
+            )
             .await?;
 
         if !result.success {
@@ -233,12 +247,17 @@ impl BuildSystem for CMakeBuildSystem {
     async fn test(&self, ctx: &BuildSystemContext) -> Result<TestResults, Error> {
         let start = std::time::Instant::now();
 
-        // Run ctest
+        // Run ctest allowing failure to parse output
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.extend(self.get_env_vars(ctx));
         let result = ctx
-            .execute(
+            .env
+            .execute_command_with_env(
                 "ctest",
                 &["--output-on-failure", "--parallel", &ctx.jobs.to_string()],
                 Some(&ctx.build_dir),
+                &merged_env,
+                true,
             )
             .await?;
 
@@ -295,19 +314,21 @@ impl BuildSystem for CMakeBuildSystem {
         // and DESTDIR is /path/to/stage, files go to /path/to/stage/opt/pm/live
         // To get files in /path/to/stage directly, we need to strip the prefix during packaging
 
-        // Set DESTDIR in the environment for this context
+        // Prepare environment with DESTDIR for staged install
         let staging_dir = ctx.env.staging_dir().display().to_string();
-        if let Ok(mut extra) = ctx.extra_env.write() {
-            extra.insert("DESTDIR".to_string(), staging_dir.clone());
-        }
-
-        // Also set it directly in the build environment
-        // Set DESTDIR in the environment - env_vars is not a RwLock, it's a HashMap
-        // We need to use a different approach
-        std::env::set_var("DESTDIR", &staging_dir);
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.insert("DESTDIR".to_string(), staging_dir.clone());
+        merged_env.extend(self.get_env_vars(ctx));
 
         let result = ctx
-            .execute("cmake", &["--install", "."], Some(&ctx.build_dir))
+            .env
+            .execute_command_with_env(
+                "cmake",
+                &["--install", "."],
+                Some(&ctx.build_dir),
+                &merged_env,
+                true,
+            )
             .await;
 
         match result {
@@ -317,12 +338,19 @@ impl BuildSystem for CMakeBuildSystem {
             }
             _ => {
                 // Fallback to make install for older CMake versions or if cmake --install fails
-                // Ensure DESTDIR is set in environment
-                // Set DESTDIR in the environment
-                std::env::set_var("DESTDIR", &staging_dir);
+                let mut env_for_make = ctx.get_all_env_vars();
+                env_for_make.insert("DESTDIR".to_string(), staging_dir.clone());
+                env_for_make.extend(self.get_env_vars(ctx));
 
                 let make_result = ctx
-                    .execute("make", &["install"], Some(&ctx.build_dir))
+                    .env
+                    .execute_command_with_env(
+                        "make",
+                        &["install"],
+                        Some(&ctx.build_dir),
+                        &env_for_make,
+                        false,
+                    )
                     .await?;
 
                 if !make_result.success {

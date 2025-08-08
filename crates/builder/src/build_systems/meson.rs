@@ -141,9 +141,20 @@ impl BuildSystem for MesonBuildSystem {
         let setup_args = self.get_setup_args(ctx, args);
         let arg_refs: Vec<&str> = setup_args.iter().map(String::as_str).collect();
 
+        // Merge environment
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.extend(self.get_env_vars(ctx));
+
         // Run meson setup
         let result = ctx
-            .execute("meson", &arg_refs, Some(&ctx.source_dir))
+            .env
+            .execute_command_with_env(
+                "meson",
+                &arg_refs,
+                Some(&ctx.source_dir),
+                &merged_env,
+                false,
+            )
             .await?;
 
         if !result.success {
@@ -177,8 +188,17 @@ impl BuildSystem for MesonBuildSystem {
         compile_args.extend(user_arg_refs);
 
         // Run meson compile
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.extend(self.get_env_vars(ctx));
         let result = ctx
-            .execute("meson", &compile_args, Some(&ctx.source_dir))
+            .env
+            .execute_command_with_env(
+                "meson",
+                &compile_args,
+                Some(&ctx.source_dir),
+                &merged_env,
+                false,
+            )
             .await?;
 
         if !result.success {
@@ -194,11 +214,14 @@ impl BuildSystem for MesonBuildSystem {
     async fn test(&self, ctx: &BuildSystemContext) -> Result<TestResults, Error> {
         let start = std::time::Instant::now();
 
-        // Run meson test
+        // Run meson test (allow failure to parse)
         let build_dir_str = ctx.build_dir.display().to_string();
         let jobs_str = ctx.jobs.to_string();
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.extend(self.get_env_vars(ctx));
         let result = ctx
-            .execute(
+            .env
+            .execute_command_with_env(
                 "meson",
                 &[
                     "test",
@@ -209,6 +232,8 @@ impl BuildSystem for MesonBuildSystem {
                     &jobs_str,
                 ],
                 Some(&ctx.source_dir),
+                &merged_env,
+                true,
             )
             .await?;
 
@@ -231,19 +256,22 @@ impl BuildSystem for MesonBuildSystem {
     }
 
     async fn install(&self, ctx: &BuildSystemContext) -> Result<(), Error> {
-        // Set DESTDIR for staged installation
-        let staging_dir = ctx.env.staging_dir();
-        if let Ok(mut extra_env) = ctx.extra_env.write() {
-            extra_env.insert("DESTDIR".to_string(), staging_dir.display().to_string());
-        }
-
-        // Run meson install
+        // Run meson install with DESTDIR in env
         let build_dir_str = ctx.build_dir.display().to_string();
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.insert(
+            "DESTDIR".to_string(),
+            ctx.env.staging_dir().display().to_string(),
+        );
+        merged_env.extend(self.get_env_vars(ctx));
         let result = ctx
-            .execute(
+            .env
+            .execute_command_with_env(
                 "meson",
                 &["install", "-C", &build_dir_str],
                 Some(&ctx.source_dir),
+                &merged_env,
+                false,
             )
             .await?;
 

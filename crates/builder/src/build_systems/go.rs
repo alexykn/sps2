@@ -86,11 +86,7 @@ impl GoBuildSystem {
         }
 
         if is_build_command {
-            // Add build flags for release builds
-            if !user_args.iter().any(|arg| arg.starts_with("-gcflags")) {
-                args.push("-gcflags=all=-l".to_string()); // Disable inlining for smaller binaries
-            }
-
+            // Build flags for release builds
             if !user_args.iter().any(|arg| arg.starts_with("-ldflags")) {
                 args.push("-ldflags=-s -w".to_string()); // Strip debug info
             }
@@ -268,8 +264,13 @@ impl BuildSystem for GoBuildSystem {
         let build_args = Self::get_build_args(ctx, args);
         let arg_refs: Vec<&str> = build_args.iter().map(String::as_str).collect();
 
-        // Run go build
-        let result = ctx.execute("go", &arg_refs, Some(&ctx.source_dir)).await?;
+        // Run go build with merged env
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.extend(self.get_env_vars(ctx));
+        let result = ctx
+            .env
+            .execute_command_with_env("go", &arg_refs, Some(&ctx.source_dir), &merged_env, false)
+            .await?;
 
         if !result.success {
             return Err(BuildError::CompilationFailed {
@@ -306,8 +307,13 @@ impl BuildSystem for GoBuildSystem {
         // Test all packages
         test_args.push("./...");
 
-        // Run go test
-        let result = ctx.execute("go", &test_args, Some(&ctx.source_dir)).await?;
+        // Run go test (allow failure) with merged env
+        let mut merged_env = ctx.get_all_env_vars();
+        merged_env.extend(self.get_env_vars(ctx));
+        let result = ctx
+            .env
+            .execute_command_with_env("go", &test_args, Some(&ctx.source_dir), &merged_env, true)
+            .await?;
 
         let duration = start.elapsed().as_secs_f64();
         let output = format!("{}\n{}", result.stdout, result.stderr);
