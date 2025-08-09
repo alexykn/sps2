@@ -33,6 +33,7 @@ tempfile = { workspace = true }
 minisign-verify = "0.2.4"
 hex = "0.4.3"
 walkdir = "2.5.0"
+sps2-signing = { path = "../signing" }
 
 [dev-dependencies]
 tempfile = { workspace = true }

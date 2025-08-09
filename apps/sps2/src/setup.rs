@@ -115,8 +115,47 @@ impl SystemSetup {
             }
         }
 
+        // Seed default repositories and keys on first run
+        self.seed_default_repositories_and_keys().await?;
+
         // Check permissions on critical paths
         self.check_permissions().await?;
+
+        Ok(())
+    }
+
+    /// Seed default repositories and embedded public keys on first run
+    async fn seed_default_repositories_and_keys(&self) -> Result<(), CliError> {
+        use sps2_config::fixed_paths;
+        use tokio::fs;
+
+        // Initialize repos in config if empty
+        // For now, write defaults into config file only if none are present
+        // Embedded public key placeholder (replace with real key for production)
+        let bootstrap_key = "RWSGOq2NVecA2UPNdBUZykp1MLhfMmkAK/SZSjK3bpq2q7I8LbSVVBDm".to_string();
+
+        // Ensure keys dir exists
+        fs::create_dir_all(fixed_paths::KEYS_DIR)
+            .await
+            .map_err(|e| CliError::Setup(format!("Failed to create keys dir: {e}")))?;
+
+        // Initialize trusted_keys.json if missing
+        let keys_file = std::path::Path::new(fixed_paths::KEYS_DIR).join("trusted_keys.json");
+        if !keys_file.exists() {
+            let trusted = serde_json::json!({
+                "bootstrap": {
+                    "key_id": "bootstrap",
+                    "public_key": bootstrap_key,
+                    "comment": "Bootstrap key",
+                    "trusted_since": chrono::Utc::now().timestamp(),
+                    "expires_at": null,
+                    "algorithm": "minisign"
+                }
+            });
+            fs::write(&keys_file, serde_json::to_string_pretty(&trusted).unwrap())
+                .await
+                .map_err(|e| CliError::Setup(format!("Failed to write trusted keys: {e}")))?;
+        }
 
         Ok(())
     }

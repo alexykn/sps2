@@ -28,8 +28,25 @@ pub async fn reposync(ctx: &OpsCtx) -> Result<String, Error> {
         return Ok(message);
     }
 
-    // Repository URL (in real implementation, this would come from config)
-    let base_url = "https://cdn.sps.io";
+    // Select repository URL from config repositories by priority (fast > slow > stable > extras)
+    let mut candidates: Vec<&sps2_config::RepositoryConfig> = Vec::new();
+    if let Some(ref fast) = ctx.config.repos.fast {
+        candidates.push(fast);
+    }
+    if let Some(ref slow) = ctx.config.repos.slow {
+        candidates.push(slow);
+    }
+    if let Some(ref stable) = ctx.config.repos.stable {
+        candidates.push(stable);
+    }
+    for extra in ctx.config.repos.extras.values() {
+        candidates.push(extra);
+    }
+
+    candidates.sort_by_key(|r| r.priority);
+    let base_url = candidates
+        .first()
+        .map_or_else(|| "https://cdn.sps.io".to_string(), |r| r.url.clone());
     let index_url = format!("{base_url}/index.json");
     let index_sig_url = format!("{base_url}/index.json.minisig");
     let keys_url = format!("{base_url}/keys.json");
@@ -242,41 +259,27 @@ fn verify_index_signature(
     }
 
     // Use the full signature content (not just the base64 part)
-    let sig =
+    let _sig =
         minisign_verify::Signature::decode(signature).map_err(|e| OpsError::RepoSyncFailed {
             message: format!("Failed to parse signature: {e}"),
         })?;
 
-    // Try verification with each trusted key until one succeeds
-    let mut verification_errors = Vec::new();
+    // Use shared signing helper
+    let allowed: Vec<sps2_signing::PublicKeyRef> = trusted_keys
+        .iter()
+        .enumerate()
+        .map(|(i, k)| sps2_signing::PublicKeyRef {
+            id: format!("key-{i}"),
+            algo: sps2_signing::Algorithm::Minisign,
+            data: k.clone(),
+        })
+        .collect();
 
-    for trusted_key in trusted_keys {
-        match minisign_verify::PublicKey::from_base64(trusted_key) {
-            Ok(public_key) => {
-                // Try to verify with this key - the verify method handles key ID comparison internally
-                match public_key.verify(index_content.as_bytes(), &sig, false) {
-                    Ok(()) => {
-                        // Signature verification successful
-                        return Ok(());
-                    }
-                    Err(e) => {
-                        verification_errors.push(format!("Key verification failed: {e}"));
-                    }
-                }
-            }
-            Err(e) => {
-                verification_errors.push(format!("Invalid trusted key format: {e}"));
-            }
-        }
-    }
-
-    // If we get here, no key successfully verified the signature
-    Err(OpsError::RepoSyncFailed {
-        message: format!(
-            "Index signature verification failed. Tried {} trusted keys. Errors: {}",
-            trusted_keys.len(),
-            verification_errors.join("; ")
-        ),
-    }
-    .into())
+    // Verify bytes with minisign backend
+    let _ = sps2_signing::verify_minisign_bytes_with_keys(
+        index_content.as_bytes(),
+        signature,
+        &allowed,
+    )?;
+    Ok(())
 }

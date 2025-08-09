@@ -1,5 +1,6 @@
 //! Core configuration types and utilities shared across all crates
 
+use super::repository::Repositories;
 use serde::{Deserialize, Serialize};
 use sps2_types::{ColorChoice, OutputFormat};
 use std::path::PathBuf;
@@ -70,6 +71,13 @@ pub struct PathConfig {
     pub store_path: Option<PathBuf>,
     pub state_path: Option<PathBuf>,
     pub build_path: Option<PathBuf>,
+}
+
+/// Repository configuration group
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RepositoryGroupConfig {
+    #[serde(default)]
+    pub repositories: Repositories,
 }
 
 /// Network configuration

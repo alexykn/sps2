@@ -13,6 +13,8 @@ sps2-errors = { path = "../errors" }
 sps2-types = { path = "../types" }
 sps2-events = { path = "../events" }
 sps2-hash = { path = "../hash" }
+sps2-signing = { path = "../signing" }
+sps2-config = { path = "../config" }
 blake3 = { workspace = true }
 tokio = { workspace = true, features = ["fs"] }
 reqwest = { workspace = true }
@@ -20,6 +22,8 @@ futures = "0.3.31"
 bytes = "1.10.1"
 url = "2.5.4"
 rand = "0.9.1"
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

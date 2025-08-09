@@ -140,14 +140,53 @@ impl PackageDownloader {
         }));
 
         // Verify signature if available
-        let signature_verified = if signature_path.is_some() {
-            // TODO: Implement minisign verification once crypto support is added
-            tx.emit(AppEvent::Download(DownloadEvent::SignatureCompleted {
-                name: package_name.to_string(),
-                version: version.clone(),
-                verified: false, // Placeholder until minisign verification is implemented
-            }));
-            false
+        let signature_verified = if let Some(sig_path) = &signature_path {
+            if sig_path.exists() {
+                let sig_str = tokio::fs::read_to_string(sig_path).await.map_err(|e| {
+                    NetworkError::DownloadFailed(format!(
+                        "Failed to read signature file {}: {e}",
+                        sig_path.display()
+                    ))
+                })?;
+
+                // For now, use the bootstrap/trusted keys loaded by ops during reposync
+                // The allowed keys resolution is performed at a higher layer; here we emit result only
+                // We do a best-effort verify via the shared helper using any available key files under KEYS_DIR
+                let mut allowed = Vec::new();
+                let keys_dir = std::path::Path::new(sps2_config::fixed_paths::KEYS_DIR);
+                let keys_file = keys_dir.join("trusted_keys.json");
+                if let Ok(content) = tokio::fs::read_to_string(&keys_file).await {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(obj) = json.as_object() {
+                            for (key_id, entry) in obj {
+                                if let Some(pk) = entry.get("public_key").and_then(|v| v.as_str()) {
+                                    allowed.push(sps2_signing::PublicKeyRef {
+                                        id: key_id.clone(),
+                                        algo: sps2_signing::Algorithm::Minisign,
+                                        data: pk.to_string(),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let verified = if allowed.is_empty() {
+                    false
+                } else {
+                    sps2_signing::verify_minisign_file_with_keys(&package_path, &sig_str, &allowed)
+                        .is_ok()
+                };
+
+                tx.emit(AppEvent::Download(DownloadEvent::SignatureCompleted {
+                    name: package_name.to_string(),
+                    version: version.clone(),
+                    verified,
+                }));
+                verified
+            } else {
+                false
+            }
         } else {
             false
         };

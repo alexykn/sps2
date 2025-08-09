@@ -3526,10 +3526,14 @@ dependencies = [
  "httpmock",
  "rand 0.9.1",
  "reqwest",
+ "serde",
+ "serde_json",
+ "sps2-config",
  "sps2-errors",
  "sps2-events",
  "sps2-hash",
  "sps2-resources",
+ "sps2-signing",
  "sps2-types",
  "tempfile",
  "tokio",
@@ -3558,6 +3562,7 @@ dependencies = [
  "sps2-net",
  "sps2-resolver",
  "sps2-resources",
+ "sps2-signing",
  "sps2-state",
  "sps2-store",
  "sps2-types",
@@ -3611,6 +3616,16 @@ dependencies = [
  "serde",
  "sps2-errors",
  "tokio",
+]
+
+[[package]]
+name = "sps2-signing"
+version = "0.1.0"
+dependencies = [
+ "minisign-verify",
+ "serde",
+ "serde_json",
+ "sps2-errors",
 ]
 
 [[package]]

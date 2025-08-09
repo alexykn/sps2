@@ -14,6 +14,7 @@ pub mod builder;
 pub mod constants;
 pub mod core;
 pub mod guard;
+pub mod repository;
 
 // Re-export main types for convenience
 pub use builder::BuilderConfig;
@@ -24,6 +25,7 @@ pub use guard::{
     GuardSymlinkPolicy, PerformanceConfigToml, SymlinkPolicyConfig, UserFilePolicy,
     VerificationConfig,
 };
+pub use repository::{Repositories, RepositoryConfig};
 
 use serde::{Deserialize, Serialize};
 use sps2_errors::{ConfigError, Error};
@@ -58,6 +60,10 @@ pub struct Config {
     /// Builder configuration (loaded from separate file)
     #[serde(skip)]
     pub builder: BuilderConfig,
+
+    /// Repository definitions (fast/slow/stable/extras)
+    #[serde(default)]
+    pub repos: repository::Repositories,
 }
 
 impl Config {
