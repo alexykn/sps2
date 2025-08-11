@@ -34,7 +34,7 @@ repository = "https://github.com/org/sps2"
 
 [workspace.dependencies]
 # Async runtime
-tokio = { version = "1.46.0", features = ["full"] }
+tokio = { version = "1.47.1", features = ["full"] }
 
 # Database0.8.6
 sqlx = { version = "0.8.6", features = [
@@ -49,14 +49,14 @@ reqwest = { version = "0.12.22", features = ["json", "stream"] }
 
 # Serialization
 serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.140"
-toml = "0.9.2"
+serde_json = "1.0.142"
+toml = "0.9.5"
 
 # Error handl2.0.12
 thiserror = "2.0.12"
 
 # Utilities
-uuid = { version = "1.17.0", features = ["v4", "serde"] }
+uuid = { version = "1.18.0", features = ["v4", "serde"] }
 semver = { version = "1.0.26", features = ["serde"] }
 blake3 = "1.8.2"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
@@ -67,7 +67,7 @@ chrono = { version = "0.4.41", features = ["serde"] }
 dashmap = "6.1.0"
 crossbeam = "0.8.4"
 
-clap = { version = "4.5.41", features = ["derive", "env"] }
+clap = { version = "4.5.43", features = ["derive", "env"] }
 
 tar = "0.4.44"
 
