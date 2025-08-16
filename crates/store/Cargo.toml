@@ -17,9 +17,9 @@ sps2-resolver = { path = "../resolver" }
 tokio = { workspace = true, features = ["fs", "io-util"] }
 tar = "0.4.44"
 async-compression = { version = "0.4.27", features = ["tokio", "zstd"] }
-tokio-util = { version = "0.7.15", features = ["compat", "io", "io-util"] }
+tokio-util = { version = "0.7.16", features = ["compat", "io", "io-util"] }
 tempfile = { workspace = true }
-uuid = { version = "1.10.0", features = ["v4"] }
+uuid = { version = "1.18.0", features = ["v4"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 

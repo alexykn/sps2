@@ -18,7 +18,7 @@ thiserror = { workspace = true }
 futures = { workspace = true }
 libc = "0.2"
 serde_json = { workspace = true }
-dirs = "5.0"
+dirs = "6.0"
 chrono = { workspace = true }
 
 [dev-dependencies]
