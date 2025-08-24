@@ -15,10 +15,10 @@ pub mod network;
 pub mod ops;
 pub mod package;
 pub mod platform;
+pub mod signing;
 pub mod state;
 pub mod storage;
 pub mod version;
-pub mod signing;
 
 // Re-export all error types at the root
 pub use audit::AuditError;
@@ -32,10 +32,10 @@ pub use network::NetworkError;
 pub use ops::OpsError;
 pub use package::PackageError;
 pub use platform::PlatformError;
+pub use signing::SigningError;
 pub use state::StateError;
 pub use storage::StorageError;
 pub use version::VersionError;
-pub use signing::SigningError;
 
 use thiserror::Error;
 
@@ -131,7 +131,9 @@ impl From<serde_json::Error> for Error {
 
 impl From<minisign_verify::Error> for Error {
     fn from(err: minisign_verify::Error) -> Self {
-        Self::Signing(SigningError::VerificationFailed { reason: err.to_string() })
+        Self::Signing(SigningError::VerificationFailed {
+            reason: err.to_string(),
+        })
     }
 }
 

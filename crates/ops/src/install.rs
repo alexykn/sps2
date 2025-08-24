@@ -404,7 +404,8 @@ async fn install_remote_packages_parallel(
 
     // Create parallel executor
     let resources = std::sync::Arc::new(sps2_resources::ResourceManager::default());
-    let executor = sps2_install::ParallelExecutor::new(ctx.store.clone(), ctx.state.clone(), resources)?;
+    let executor =
+        sps2_install::ParallelExecutor::new(ctx.store.clone(), ctx.state.clone(), resources)?;
 
     // Execute parallel downloads and store packages
     let prepared_packages = match executor
@@ -443,11 +444,14 @@ async fn install_remote_packages_parallel(
     let mut atomic_installer =
         sps2_install::AtomicInstaller::new(ctx.state.clone(), ctx.store.clone()).await?;
 
-    let install_context = sps2_install::InstallContext::new()
-        .with_event_sender(ctx.tx.clone());
+    let install_context = sps2_install::InstallContext::new().with_event_sender(ctx.tx.clone());
 
     let install_result = atomic_installer
-        .install(&install_context, &resolved_packages, Some(&prepared_packages))
+        .install(
+            &install_context,
+            &resolved_packages,
+            Some(&prepared_packages),
+        )
         .await?;
 
     ctx.emit_debug("DEBUG: Atomic installation completed");

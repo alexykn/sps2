@@ -142,7 +142,8 @@ impl SystemSetup {
         // Initialize trusted_keys.json if missing using KeyManager (ensures correct key_id)
         let keys_file = std::path::Path::new(fixed_paths::KEYS_DIR).join("trusted_keys.json");
         if !keys_file.exists() {
-            let mut key_manager = sps2_ops::keys::KeyManager::new(std::path::PathBuf::from(fixed_paths::KEYS_DIR));
+            let mut key_manager =
+                sps2_ops::keys::KeyManager::new(std::path::PathBuf::from(fixed_paths::KEYS_DIR));
             key_manager
                 .initialize_with_bootstrap(&bootstrap_key)
                 .await

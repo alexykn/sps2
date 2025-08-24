@@ -252,29 +252,36 @@ impl DownloadPipeline {
 
                     // Copy the downloaded file to a persistent location to prevent temp dir cleanup
                     let persistent_dir = std::env::temp_dir().join("sps2_install_cache");
-                    tokio::fs::create_dir_all(&persistent_dir).await.map_err(|e| {
-                        InstallError::TempFileError {
+                    tokio::fs::create_dir_all(&persistent_dir)
+                        .await
+                        .map_err(|e| InstallError::TempFileError {
                             message: format!("failed to create persistent cache directory: {e}"),
-                        }
-                    })?;
+                        })?;
 
-                    let persistent_path = persistent_dir.join(result.package_path.file_name().unwrap());
+                    let persistent_path =
+                        persistent_dir.join(result.package_path.file_name().unwrap());
 
                     // Debug: print paths
                     eprintln!("DEBUG: Original path: {}", result.package_path.display());
                     eprintln!("DEBUG: Persistent path: {}", persistent_path.display());
 
-                    tokio::fs::copy(&result.package_path, &persistent_path).await.map_err(|e| {
-                        InstallError::TempFileError {
-                            message: format!("failed to copy downloaded file to persistent cache: {e}"),
-                        }
-                    })?;
+                    tokio::fs::copy(&result.package_path, &persistent_path)
+                        .await
+                        .map_err(|e| InstallError::TempFileError {
+                            message: format!(
+                                "failed to copy downloaded file to persistent cache: {e}"
+                            ),
+                        })?;
 
                     // Verify the copy worked
                     if !persistent_path.exists() {
                         return Err(InstallError::TempFileError {
-                            message: format!("Persistent file does not exist after copy: {}", persistent_path.display()),
-                        }.into());
+                            message: format!(
+                                "Persistent file does not exist after copy: {}",
+                                persistent_path.display()
+                            ),
+                        }
+                        .into());
                     }
 
                     eprintln!("DEBUG: File copied successfully to persistent location");

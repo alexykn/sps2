@@ -175,12 +175,14 @@ impl PackageDownloader {
         version: &Version,
         tx: &EventSender,
     ) -> Result<bool, NetworkError> {
-        let sig_str = tokio::fs::read_to_string(signature_path).await.map_err(|e| {
-            NetworkError::DownloadFailed(format!(
-                "Failed to read signature file {}: {e}",
-                signature_path.display()
-            ))
-        })?;
+        let sig_str = tokio::fs::read_to_string(signature_path)
+            .await
+            .map_err(|e| {
+                NetworkError::DownloadFailed(format!(
+                    "Failed to read signature file {}: {e}",
+                    signature_path.display()
+                ))
+            })?;
 
         // For now, use the bootstrap/trusted keys loaded by ops during reposync
         // The allowed keys resolution is performed at a higher layer; here we emit result only

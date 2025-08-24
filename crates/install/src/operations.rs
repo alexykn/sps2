@@ -8,7 +8,7 @@ use sps2_errors::{Error, InstallError};
 use sps2_events::events::{BatchUpdateStrategy, GeneralEvent, PackageUpdateType, UpdateResult};
 use sps2_events::{AppEvent, EventEmitter, InstallEvent, UninstallEvent, UpdateEvent};
 
-use sps2_resolver::{ResolutionContext, ResolutionResult, Resolver, NodeAction};
+use sps2_resolver::{NodeAction, ResolutionContext, ResolutionResult, Resolver};
 use sps2_state::StateManager;
 use sps2_store::PackageStore;
 use sps2_types::PackageSpec;
@@ -464,7 +464,7 @@ impl UpdateOperation {
         if packages_to_update.is_empty() {
             // No packages to update - return early with empty result
             let result = InstallResult::new(uuid::Uuid::nil());
-            
+
             // Emit batch update completed event with no changes
             context.emit(AppEvent::Update(UpdateEvent::BatchCompleted {
                 operation_id: operation_id.clone(),
@@ -474,14 +474,14 @@ impl UpdateOperation {
                 total_duration: std::time::Duration::from_secs(0),
                 total_size_change: 0,
             }));
-            
+
             return Ok(result);
         }
 
         // For each package, check if an update is available before proceeding
         let mut packages_needing_update = Vec::new();
         let mut packages_up_to_date = Vec::new();
-        
+
         for package_id in &packages_to_update {
             let spec = if context.upgrade {
                 // Upgrade mode: ignore upper bounds
@@ -496,11 +496,16 @@ impl UpdateOperation {
             resolution_context = resolution_context.add_runtime_dep(spec);
 
             // Resolve to see what version would be installed
-            match self.install_operation.resolver.resolve_with_sat(resolution_context).await {
+            match self
+                .install_operation
+                .resolver
+                .resolve_with_sat(resolution_context)
+                .await
+            {
                 Ok(resolution_result) => {
                     // Check if any resolved package is newer than current
                     let mut found_update = false;
-                    
+
                     for (resolved_id, node) in &resolution_result.nodes {
                         if resolved_id.name == package_id.name {
                             match resolved_id.version.cmp(&package_id.version()) {
@@ -508,58 +513,80 @@ impl UpdateOperation {
                                     // Update available - add to list
                                     packages_needing_update.push(package_id.clone());
                                     found_update = true;
-                                    
+
                                     // Emit event for available update
-                                    context.emit(AppEvent::General(GeneralEvent::CheckModePreview {
-                                        operation: if context.upgrade { "upgrade".to_string() } else { "update".to_string() },
-                                        action: format!(
-                                            "Would {} {} {} → {}",
-                                            if context.upgrade { "upgrade" } else { "update" },
-                                            package_id.name, package_id.version, resolved_id.version
-                                        ),
-                                        details: HashMap::from([
-                                            (
-                                                "current_version".to_string(),
-                                                package_id.version.to_string(),
+                                    context.emit(AppEvent::General(
+                                        GeneralEvent::CheckModePreview {
+                                            operation: if context.upgrade {
+                                                "upgrade".to_string()
+                                            } else {
+                                                "update".to_string()
+                                            },
+                                            action: format!(
+                                                "Would {} {} {} → {}",
+                                                if context.upgrade { "upgrade" } else { "update" },
+                                                package_id.name,
+                                                package_id.version,
+                                                resolved_id.version
                                             ),
-                                            (
-                                                "new_version".to_string(),
-                                                resolved_id.version.to_string(),
-                                            ),
-                                            ("change_type".to_string(), "unknown".to_string()),
-                                            (
-                                                "source".to_string(),
-                                                match node.action {
-                                                    sps2_resolver::NodeAction::Download => {
-                                                        "repository".to_string()
-                                                    }
-                                                    sps2_resolver::NodeAction::Local => {
-                                                        "local file".to_string()
-                                                    }
-                                                },
-                                            ),
-                                        ]),
-                                    }));
+                                            details: HashMap::from([
+                                                (
+                                                    "current_version".to_string(),
+                                                    package_id.version.to_string(),
+                                                ),
+                                                (
+                                                    "new_version".to_string(),
+                                                    resolved_id.version.to_string(),
+                                                ),
+                                                ("change_type".to_string(), "unknown".to_string()),
+                                                (
+                                                    "source".to_string(),
+                                                    match node.action {
+                                                        sps2_resolver::NodeAction::Download => {
+                                                            "repository".to_string()
+                                                        }
+                                                        sps2_resolver::NodeAction::Local => {
+                                                            "local file".to_string()
+                                                        }
+                                                    },
+                                                ),
+                                            ]),
+                                        },
+                                    ));
                                     break;
                                 }
                                 std::cmp::Ordering::Equal => {
                                     // Already up to date - add to list
                                     packages_up_to_date.push(package_id.name.clone());
                                     found_update = true;
-                                    
+
                                     // Emit event for up to date package
-                                    context.emit(AppEvent::General(GeneralEvent::CheckModePreview {
-                                        operation: if context.upgrade { "upgrade".to_string() } else { "update".to_string() },
-                                        action: format!(
-                                            "{}:{} is already at {} version",
-                                            package_id.name, package_id.version,
-                                            if context.upgrade { "latest" } else { "compatible" }
-                                        ),
-                                        details: HashMap::from([
-                                            ("version".to_string(), package_id.version.to_string()),
-                                            ("status".to_string(), "up_to_date".to_string()),
-                                        ]),
-                                    }));
+                                    context.emit(AppEvent::General(
+                                        GeneralEvent::CheckModePreview {
+                                            operation: if context.upgrade {
+                                                "upgrade".to_string()
+                                            } else {
+                                                "update".to_string()
+                                            },
+                                            action: format!(
+                                                "{}:{} is already at {} version",
+                                                package_id.name,
+                                                package_id.version,
+                                                if context.upgrade {
+                                                    "latest"
+                                                } else {
+                                                    "compatible"
+                                                }
+                                            ),
+                                            details: HashMap::from([
+                                                (
+                                                    "version".to_string(),
+                                                    package_id.version.to_string(),
+                                                ),
+                                                ("status".to_string(), "up_to_date".to_string()),
+                                            ]),
+                                        },
+                                    ));
                                     break;
                                 }
                                 std::cmp::Ordering::Less => {
@@ -569,16 +596,25 @@ impl UpdateOperation {
                             break;
                         }
                     }
-                    
+
                     if !found_update {
                         // No update found, package is up to date
                         packages_up_to_date.push(package_id.name.clone());
                         context.emit(AppEvent::General(GeneralEvent::CheckModePreview {
-                            operation: if context.upgrade { "upgrade".to_string() } else { "update".to_string() },
+                            operation: if context.upgrade {
+                                "upgrade".to_string()
+                            } else {
+                                "update".to_string()
+                            },
                             action: format!(
                                 "{}:{} is already at {} version",
-                                package_id.name, package_id.version,
-                                if context.upgrade { "latest" } else { "compatible" }
+                                package_id.name,
+                                package_id.version,
+                                if context.upgrade {
+                                    "latest"
+                                } else {
+                                    "compatible"
+                                }
                             ),
                             details: HashMap::from([
                                 ("version".to_string(), package_id.version.to_string()),
@@ -590,10 +626,16 @@ impl UpdateOperation {
                 Err(_) => {
                     // Resolution failed - package might not be available in repository
                     context.emit(AppEvent::General(GeneralEvent::CheckModePreview {
-                        operation: if context.upgrade { "upgrade".to_string() } else { "update".to_string() },
-                        action: format!("Cannot check {}s for {}", 
-                            if context.upgrade { "upgrade" } else { "update" }, 
-                            package_id.name),
+                        operation: if context.upgrade {
+                            "upgrade".to_string()
+                        } else {
+                            "update".to_string()
+                        },
+                        action: format!(
+                            "Cannot check {}s for {}",
+                            if context.upgrade { "upgrade" } else { "update" },
+                            package_id.name
+                        ),
                         details: HashMap::from([
                             (
                                 "current_version".to_string(),
@@ -613,7 +655,7 @@ impl UpdateOperation {
         // If no packages need updating, return early
         if packages_needing_update.is_empty() {
             let result = InstallResult::new(uuid::Uuid::nil());
-            
+
             // Emit batch update completed event with no changes
             context.emit(AppEvent::Update(UpdateEvent::BatchCompleted {
                 operation_id: operation_id.clone(),
@@ -623,7 +665,7 @@ impl UpdateOperation {
                 total_duration: std::time::Duration::from_secs(0),
                 total_size_change: 0,
             }));
-            
+
             return Ok(result);
         }
 

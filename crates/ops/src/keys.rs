@@ -1,13 +1,13 @@
 //! Key management utilities for signature verification
 
+use base64::{engine::general_purpose, Engine as _};
+use hex;
 use minisign_verify::{PublicKey, Signature};
 use serde::{Deserialize, Serialize};
 use sps2_errors::Error;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::fs;
-use hex;
-use base64::{engine::general_purpose, Engine as _};
 
 /// Key rotation information for verifying key changes
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,16 +76,27 @@ impl KeyManager {
     /// - The keys directory cannot be created
     /// - The bootstrap key string cannot be decoded
     /// - The public key cannot be parsed
-    pub async fn initialize_with_bootstrap(&mut self, bootstrap_key_str: &str) -> Result<(), Error> {
+    pub async fn initialize_with_bootstrap(
+        &mut self,
+        bootstrap_key_str: &str,
+    ) -> Result<(), Error> {
         fs::create_dir_all(&self.keys_dir).await?;
 
-        let decoded_pk = general_purpose::STANDARD.decode(bootstrap_key_str).map_err(|e| Error::Config(sps2_errors::ConfigError::Invalid{message: e.to_string()}))?;
+        let decoded_pk = general_purpose::STANDARD
+            .decode(bootstrap_key_str)
+            .map_err(|e| {
+                Error::Config(sps2_errors::ConfigError::Invalid {
+                    message: e.to_string(),
+                })
+            })?;
         if decoded_pk.len() < 10 {
-            return Err(Error::Config(sps2_errors::ConfigError::Invalid{message: "Invalid bootstrap key length".to_string()}));
+            return Err(Error::Config(sps2_errors::ConfigError::Invalid {
+                message: "Invalid bootstrap key length".to_string(),
+            }));
         }
         let key_id_bytes = &decoded_pk[2..10];
         let key_id = hex::encode(key_id_bytes);
-        
+
         let bootstrap = TrustedKey {
             key_id: key_id.clone(),
             public_key: bootstrap_key_str.to_string(),
@@ -172,7 +183,11 @@ impl KeyManager {
         Ok(self
             .trusted_keys
             .values()
-            .map(|k| sps2_signing::PublicKeyRef { id: k.key_id.clone(), algo: sps2_signing::Algorithm::Minisign, data: k.public_key.clone() })
+            .map(|k| sps2_signing::PublicKeyRef {
+                id: k.key_id.clone(),
+                algo: sps2_signing::Algorithm::Minisign,
+                data: k.public_key.clone(),
+            })
             .collect())
     }
 
@@ -200,14 +215,12 @@ impl KeyManager {
             }
 
             match PublicKey::from_base64(&trusted_key.public_key) {
-                Ok(public_key) => {
-                    match public_key.verify(content.as_bytes(), &sig, false) {
-                        Ok(()) => return Ok(()),
-                        Err(e) => {
-                            verification_errors.push(format!("Key {}: {}", trusted_key.key_id, e));
-                        }
+                Ok(public_key) => match public_key.verify(content.as_bytes(), &sig, false) {
+                    Ok(()) => return Ok(()),
+                    Err(e) => {
+                        verification_errors.push(format!("Key {}: {}", trusted_key.key_id, e));
                     }
-                }
+                },
                 Err(e) => {
                     verification_errors.push(format!(
                         "Invalid key format for {}: {}",
@@ -217,13 +230,15 @@ impl KeyManager {
             }
         }
 
-        Err(Error::Signing(sps2_errors::SigningError::VerificationFailed {
-            reason: format!(
-                "Signature verification failed. Tried {} trusted keys. Errors: {}",
-                self.trusted_keys.len(),
-                verification_errors.join("; ")
-            ),
-        }))
+        Err(Error::Signing(
+            sps2_errors::SigningError::VerificationFailed {
+                reason: format!(
+                    "Signature verification failed. Tried {} trusted keys. Errors: {}",
+                    self.trusted_keys.len(),
+                    verification_errors.join("; ")
+                ),
+            },
+        ))
     }
 
     /// Verify key rotations are valid
@@ -232,9 +247,11 @@ impl KeyManager {
             let previous_key = self
                 .trusted_keys
                 .get(&rotation.previous_key_id)
-                .ok_or_else(|| Error::Signing(sps2_errors::SigningError::NoTrustedKeyFound{
-                    key_id: rotation.previous_key_id.clone(),
-                }))?;
+                .ok_or_else(|| {
+                    Error::Signing(sps2_errors::SigningError::NoTrustedKeyFound {
+                        key_id: rotation.previous_key_id.clone(),
+                    })
+                })?;
 
             let rotation_content = format!(
                 "{}{}{}",
@@ -275,7 +292,11 @@ impl KeyManager {
     pub fn get_trusted_keys(&self) -> Vec<sps2_signing::PublicKeyRef> {
         self.trusted_keys
             .values()
-            .map(|k| sps2_signing::PublicKeyRef { id: k.key_id.clone(), algo: sps2_signing::Algorithm::Minisign, data: k.public_key.clone() })
+            .map(|k| sps2_signing::PublicKeyRef {
+                id: k.key_id.clone(),
+                algo: sps2_signing::Algorithm::Minisign,
+                data: k.public_key.clone(),
+            })
             .collect()
     }
 

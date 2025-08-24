@@ -1,13 +1,13 @@
 //! Repository and Index Management Operations
 
 use crate::keys;
-use std::path::PathBuf;
 use crate::{keys::KeyManager, OpsCtx};
+use dialoguer::{theme::ColorfulTheme, Confirm};
 use sps2_config::{Config, RepositoryConfig};
 use sps2_errors::{ConfigError, Error, OpsError, SigningError};
 use sps2_events::{AppEvent, EventEmitter, GeneralEvent, RepoEvent};
+use std::path::PathBuf;
 use std::time::Instant;
-use dialoguer::{Confirm, theme::ColorfulTheme};
 /// Sync repository index
 ///
 /// # Errors
@@ -23,7 +23,11 @@ pub async fn reposync(ctx: &OpsCtx, yes: bool) -> Result<String, Error> {
 
     let base_url = match candidates.first() {
         Some(repo) => repo.url.clone(),
-        None => return Err(Error::Config(ConfigError::MissingField { field: "repositories".to_string() })),
+        None => {
+            return Err(Error::Config(ConfigError::MissingField {
+                field: "repositories".to_string(),
+            }))
+        }
     };
 
     let index_url = format!("{base_url}/index.json");
@@ -35,32 +39,47 @@ pub async fn reposync(ctx: &OpsCtx, yes: bool) -> Result<String, Error> {
     }));
 
     let cached_etag = ctx.index.cache.load_etag().await.unwrap_or(None);
-    let index_json = download_index_conditional(ctx, &index_url, cached_etag.as_deref(), start).await?;
+    let index_json =
+        download_index_conditional(ctx, &index_url, cached_etag.as_deref(), start).await?;
 
     let index_signature = sps2_net::fetch_text(&ctx.net, &index_sig_url, &ctx.tx).await?;
 
     let mut trusted_keys = fetch_and_verify_keys(ctx, &ctx.net, &keys_url, &ctx.tx).await?;
 
-    if let Err(e) = sps2_signing::verify_minisign_bytes_with_keys(index_json.as_bytes(), &index_signature, &trusted_keys) {
+    if let Err(e) = sps2_signing::verify_minisign_bytes_with_keys(
+        index_json.as_bytes(),
+        &index_signature,
+        &trusted_keys,
+    ) {
         match e {
             SigningError::NoTrustedKeyFound { key_id } => {
-                let repo_keys: keys::RepositoryKeys = sps2_net::fetch_json(&ctx.net, &keys_url, &ctx.tx).await?;
+                let repo_keys: keys::RepositoryKeys =
+                    sps2_net::fetch_json(&ctx.net, &keys_url, &ctx.tx).await?;
                 let key_to_trust = repo_keys.keys.iter().find(|k| k.key_id == key_id);
 
                 if let Some(key) = key_to_trust {
                     let prompt = format!(
                         "The repository index is signed with a new key: {key_id}. Do you want to trust it?"
                     );
-                    if yes || Confirm::with_theme(&ColorfulTheme::default())
-                        .with_prompt(prompt)
-                        .interact()?
+                    if yes
+                        || Confirm::with_theme(&ColorfulTheme::default())
+                            .with_prompt(prompt)
+                            .interact()
+                            .map_err(|e| {
+                                Error::internal(format!("Failed to get user confirmation: {e}"))
+                            })?
                     {
-                        let mut key_manager = KeyManager::new(PathBuf::from(sps2_config::fixed_paths::KEYS_DIR));
+                        let mut key_manager =
+                            KeyManager::new(PathBuf::from(sps2_config::fixed_paths::KEYS_DIR));
                         key_manager.load_trusted_keys().await?;
                         key_manager.import_key(key).await?;
                         trusted_keys = key_manager.get_trusted_keys();
                         // Re-verify
-                        sps2_signing::verify_minisign_bytes_with_keys(index_json.as_bytes(), &index_signature, &trusted_keys)?;
+                        sps2_signing::verify_minisign_bytes_with_keys(
+                            index_json.as_bytes(),
+                            &index_signature,
+                            &trusted_keys,
+                        )?;
                     } else {
                         return Err(Error::Signing(SigningError::NoTrustedKeyFound { key_id }));
                     }
@@ -71,7 +90,8 @@ pub async fn reposync(ctx: &OpsCtx, yes: bool) -> Result<String, Error> {
             other_error => {
                 return Err(OpsError::RepoSyncFailed {
                     message: format!("Index signature verification failed: {other_error}"),
-                }.into());
+                }
+                .into());
             }
         }
     }
@@ -87,11 +107,7 @@ pub async fn reposync(ctx: &OpsCtx, yes: bool) -> Result<String, Error> {
 /// - The configuration file cannot be loaded or created
 /// - The repository URL is invalid
 /// - The configuration cannot be saved
-pub async fn add_repo(
-    _ctx: &OpsCtx,
-    name: &str,
-    url: &str,
-) -> Result<String, Error> {
+pub async fn add_repo(_ctx: &OpsCtx, name: &str, url: &str) -> Result<String, Error> {
     let config_path = Config::default_path()?;
     let mut config = Config::load_or_default(&Some(config_path)).await?;
 
@@ -114,7 +130,6 @@ pub async fn add_repo(
     Ok(format!("Repository '{name}' added successfully."))
 }
 
-
 /// Download index conditionally with `ETag` support
 async fn download_index_conditional(
     ctx: &OpsCtx,
@@ -122,8 +137,8 @@ async fn download_index_conditional(
     cached_etag: Option<&str>,
     start: Instant,
 ) -> Result<String, Error> {
-    let response = sps2_net::fetch_text_conditional(&ctx.net, index_url, cached_etag, &ctx.tx)
-        .await?;
+    let response =
+        sps2_net::fetch_text_conditional(&ctx.net, index_url, cached_etag, &ctx.tx).await?;
 
     if let Some((content, new_etag)) = response {
         if let Some(etag) = new_etag {
@@ -156,7 +171,9 @@ async fn finalize_index_update(
     let mut new_index_manager = ctx.index.clone();
     new_index_manager.load(Some(index_json)).await?;
 
-    let new_package_count = new_index_manager.index().map_or(0, |idx| idx.packages.len());
+    let new_package_count = new_index_manager
+        .index()
+        .map_or(0, |idx| idx.packages.len());
     let packages_updated = new_package_count.saturating_sub(old_package_count);
 
     new_index_manager.save_to_cache().await?;
@@ -196,7 +213,9 @@ async fn fetch_and_verify_keys(
         key_manager.initialize_with_bootstrap(bootstrap_key).await?;
     }
 
-    let trusted_keys = key_manager.fetch_and_verify_keys(net_client, keys_url, tx).await?;
+    let trusted_keys = key_manager
+        .fetch_and_verify_keys(net_client, keys_url, tx)
+        .await?;
 
     let _ = tx.send(AppEvent::General(GeneralEvent::OperationCompleted {
         operation: "Key verification".to_string(),
