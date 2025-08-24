@@ -35,7 +35,6 @@ repository = "https://github.com/org/sps2"
 [workspace.dependencies]
 # Async runtime
 tokio = { version = "1.47.1", features = ["full"] }
-tokio = { version = "1.47.1", features = ["full"] }
 
 # Database0.8.6
 sqlx = { version = "0.8.6", features = [
@@ -57,7 +56,6 @@ toml = "0.9.5"
 thiserror = "2.0.16"
 
 # Utilities
-uuid = { version = "1.18.0", features = ["v4", "serde"] }
 uuid = { version = "1.18.0", features = ["v4", "serde"] }
 semver = { version = "1.0.26", features = ["serde"] }
 blake3 = "1.8.2"
