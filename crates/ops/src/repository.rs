@@ -41,7 +41,7 @@ pub async fn reposync(ctx: &OpsCtx, yes: bool) -> Result<String, Error> {
 
     let mut trusted_keys = fetch_and_verify_keys(ctx, &ctx.net, &keys_url, &ctx.tx).await?;
 
-    if let Err(e) = sps2_signing::verify_minisign_bytes_with_keys(&index_json.as_bytes(), &index_signature, &trusted_keys) {
+    if let Err(e) = sps2_signing::verify_minisign_bytes_with_keys(index_json.as_bytes(), &index_signature, &trusted_keys) {
         match e {
             SigningError::NoTrustedKeyFound { key_id } => {
                 let repo_keys: keys::RepositoryKeys = sps2_net::fetch_json(&ctx.net, &keys_url, &ctx.tx).await?;
@@ -49,19 +49,18 @@ pub async fn reposync(ctx: &OpsCtx, yes: bool) -> Result<String, Error> {
 
                 if let Some(key) = key_to_trust {
                     let prompt = format!(
-                        "The repository index is signed with a new key: {}. Do you want to trust it?",
-                        key_id
+                        "The repository index is signed with a new key: {key_id}. Do you want to trust it?"
                     );
                     if yes || Confirm::with_theme(&ColorfulTheme::default())
                         .with_prompt(prompt)
                         .interact()?
                     {
-                        let mut key_manager = KeyManager::new(&PathBuf::from(sps2_config::fixed_paths::KEYS_DIR));
+                        let mut key_manager = KeyManager::new(PathBuf::from(sps2_config::fixed_paths::KEYS_DIR));
                         key_manager.load_trusted_keys().await?;
                         key_manager.import_key(key).await?;
                         trusted_keys = key_manager.get_trusted_keys();
                         // Re-verify
-                        sps2_signing::verify_minisign_bytes_with_keys(&index_json.as_bytes(), &index_signature, &trusted_keys)?;
+                        sps2_signing::verify_minisign_bytes_with_keys(index_json.as_bytes(), &index_signature, &trusted_keys)?;
                     } else {
                         return Err(Error::Signing(SigningError::NoTrustedKeyFound { key_id }));
                     }
@@ -81,6 +80,13 @@ pub async fn reposync(ctx: &OpsCtx, yes: bool) -> Result<String, Error> {
 }
 
 /// Add a new repository to the user's configuration.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The configuration file cannot be loaded or created
+/// - The repository URL is invalid
+/// - The configuration cannot be saved
 pub async fn add_repo(
     _ctx: &OpsCtx,
     name: &str,
@@ -177,7 +183,7 @@ async fn fetch_and_verify_keys(
     keys_url: &str,
     tx: &sps2_events::EventSender,
 ) -> Result<Vec<sps2_signing::PublicKeyRef>, Error> {
-    let mut key_manager = KeyManager::new(&PathBuf::from(sps2_config::fixed_paths::KEYS_DIR));
+    let mut key_manager = KeyManager::new(PathBuf::from(sps2_config::fixed_paths::KEYS_DIR));
 
     key_manager.load_trusted_keys().await?;
 

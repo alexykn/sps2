@@ -321,23 +321,25 @@ async fn preview_update(ctx: &OpsCtx, package_names: &[String]) -> Result<Instal
         }
     }
 
-    // Show packages that are already up to date
-    for package_name in &packages_up_to_date {
-        if let Some(package_id) = current_packages
-            .iter()
-            .find(|pkg| &pkg.name == package_name)
-        {
-            ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {
-                operation: "update".to_string(),
-                action: format!(
-                    "{}:{} is already up to date",
-                    package_id.name, package_id.version
-                ),
-                details: HashMap::from([
-                    ("version".to_string(), package_id.version.to_string()),
-                    ("status".to_string(), "up_to_date".to_string()),
-                ]),
-            }));
+    // Show packages that are already up to date (only if there are updates available)
+    if !preview_updated.is_empty() {
+        for package_name in &packages_up_to_date {
+            if let Some(package_id) = current_packages
+                .iter()
+                .find(|pkg| &pkg.name == package_name)
+            {
+                ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {
+                    operation: "update".to_string(),
+                    action: format!(
+                        "{}:{} is already up to date",
+                        package_id.name, package_id.version
+                    ),
+                    details: HashMap::from([
+                        ("version".to_string(), package_id.version.to_string()),
+                        ("status".to_string(), "up_to_date".to_string()),
+                    ]),
+                }));
+            }
         }
     }
 

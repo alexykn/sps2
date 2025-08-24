@@ -315,23 +315,25 @@ async fn preview_upgrade(ctx: &OpsCtx, package_names: &[String]) -> Result<Insta
         }
     }
 
-    // Show packages that are already up to date
-    for package_name in &packages_up_to_date {
-        if let Some(package_id) = current_packages
-            .iter()
-            .find(|pkg| &pkg.name == package_name)
-        {
-            ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {
-                operation: "upgrade".to_string(),
-                action: format!(
-                    "{}:{} is already at latest version",
-                    package_id.name, package_id.version
-                ),
-                details: HashMap::from([
-                    ("version".to_string(), package_id.version.to_string()),
-                    ("status".to_string(), "up_to_date".to_string()),
-                ]),
-            }));
+    // Show packages that are already up to date (only if there are upgrades available)
+    if !preview_updated.is_empty() {
+        for package_name in &packages_up_to_date {
+            if let Some(package_id) = current_packages
+                .iter()
+                .find(|pkg| &pkg.name == package_name)
+            {
+                ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {
+                    operation: "upgrade".to_string(),
+                    action: format!(
+                        "{}:{} is already at latest version",
+                        package_id.name, package_id.version
+                    ),
+                    details: HashMap::from([
+                        ("version".to_string(), package_id.version.to_string()),
+                        ("status".to_string(), "up_to_date".to_string()),
+                    ]),
+                }));
+            }
         }
     }
 
@@ -512,16 +514,9 @@ mod tests {
             .unwrap();
 
         // Test that upgrade_with_verification works without verification enabled
+        // Should succeed with no changes when package doesn't exist
         let result = upgrade_with_verification(&ctx, &["test-package".to_string()]).await;
-
-        // Should fail with upgrade error, not verification error (no packages installed)
-        assert!(result.is_err());
-        if let Err(e) = result {
-            assert!(
-                !e.to_string().contains("verification"),
-                "Should not fail due to verification"
-            );
-        }
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
@@ -562,16 +557,9 @@ mod tests {
         ctx.initialize_guard().unwrap();
 
         // Test that upgrade_with_verification runs verification
+        // Should succeed with no changes when package doesn't exist
         let result = upgrade_with_verification(&ctx, &["test-package".to_string()]).await;
-
-        // Should fail with upgrade error (package not found), not verification error
-        assert!(result.is_err());
-        if let Err(e) = result {
-            assert!(
-                !e.to_string().contains("verification failed"),
-                "Should not fail due to verification on empty state"
-            );
-        }
+        assert!(result.is_ok());
     }
 
     #[tokio::test]

@@ -5,7 +5,7 @@ use crate::{
     UninstallContext, UpdateContext,
 };
 use sps2_errors::{Error, InstallError};
-use sps2_events::events::{BatchUpdateStrategy, PackageUpdateType, UpdateResult};
+use sps2_events::events::{BatchUpdateStrategy, GeneralEvent, PackageUpdateType, UpdateResult};
 use sps2_events::{AppEvent, EventEmitter, InstallEvent, UninstallEvent, UpdateEvent};
 
 use sps2_resolver::{ResolutionContext, ResolutionResult, Resolver, NodeAction};
@@ -76,7 +76,7 @@ impl InstallOperation {
         let resolution = self.resolve_dependencies(&context).await?;
 
         // Check for already installed packages after resolution
-        self.check_already_installed_resolved(&resolution).await?;
+        self.check_already_installed_resolved(&resolution)?;
 
         // Execute parallel downloads
         let exec_context = ExecutionContext::new().with_event_sender(
@@ -202,7 +202,7 @@ impl InstallOperation {
     }
 
     /// Check for already installed packages after resolution
-    async fn check_already_installed_resolved(&self, resolution: &ResolutionResult) -> Result<(), Error> {
+    fn check_already_installed_resolved(&self, resolution: &ResolutionResult) -> Result<(), Error> {
         // Check if any resolved nodes are local (already installed)
         for node in resolution.packages_in_order() {
             if let NodeAction::Local = node.action {
@@ -430,6 +430,8 @@ impl UpdateOperation {
     ///
     /// Returns an error if package resolution fails, update conflicts occur, or installation fails.
     pub async fn execute(&mut self, context: UpdateContext) -> Result<InstallResult, Error> {
+        use std::collections::HashMap;
+
         // Emit batch update started event
         let operation_id = uuid::Uuid::new_v4().to_string();
         context.emit(AppEvent::Update(UpdateEvent::BatchStarted {
@@ -438,7 +440,7 @@ impl UpdateOperation {
             } else {
                 context.packages.clone()
             },
-            operation_id,
+            operation_id: operation_id.clone(),
             update_strategy: BatchUpdateStrategy::DependencyOrder,
             concurrent_limit: 4, // Default concurrent limit
         }));
@@ -458,10 +460,177 @@ impl UpdateOperation {
                 .collect()
         };
 
+        // Check if any updates are actually needed
+        if packages_to_update.is_empty() {
+            // No packages to update - return early with empty result
+            let result = InstallResult::new(uuid::Uuid::nil());
+            
+            // Emit batch update completed event with no changes
+            context.emit(AppEvent::Update(UpdateEvent::BatchCompleted {
+                operation_id: operation_id.clone(),
+                successful_updates: vec![],
+                failed_updates: vec![],
+                skipped_packages: vec![],
+                total_duration: std::time::Duration::from_secs(0),
+                total_size_change: 0,
+            }));
+            
+            return Ok(result);
+        }
+
+        // For each package, check if an update is available before proceeding
+        let mut packages_needing_update = Vec::new();
+        let mut packages_up_to_date = Vec::new();
+        
+        for package_id in &packages_to_update {
+            let spec = if context.upgrade {
+                // Upgrade mode: ignore upper bounds
+                PackageSpec::parse(&format!("{}>=0.0.0", package_id.name))?
+            } else {
+                // Update mode: respect constraints (compatible release)
+                PackageSpec::parse(&format!("{}~={}", package_id.name, package_id.version))?
+            };
+
+            // Create resolution context to check for available updates
+            let mut resolution_context = ResolutionContext::new();
+            resolution_context = resolution_context.add_runtime_dep(spec);
+
+            // Resolve to see what version would be installed
+            match self.install_operation.resolver.resolve_with_sat(resolution_context).await {
+                Ok(resolution_result) => {
+                    // Check if any resolved package is newer than current
+                    let mut found_update = false;
+                    
+                    for (resolved_id, node) in &resolution_result.nodes {
+                        if resolved_id.name == package_id.name {
+                            match resolved_id.version.cmp(&package_id.version()) {
+                                std::cmp::Ordering::Greater => {
+                                    // Update available - add to list
+                                    packages_needing_update.push(package_id.clone());
+                                    found_update = true;
+                                    
+                                    // Emit event for available update
+                                    context.emit(AppEvent::General(GeneralEvent::CheckModePreview {
+                                        operation: if context.upgrade { "upgrade".to_string() } else { "update".to_string() },
+                                        action: format!(
+                                            "Would {} {} {} → {}",
+                                            if context.upgrade { "upgrade" } else { "update" },
+                                            package_id.name, package_id.version, resolved_id.version
+                                        ),
+                                        details: HashMap::from([
+                                            (
+                                                "current_version".to_string(),
+                                                package_id.version.to_string(),
+                                            ),
+                                            (
+                                                "new_version".to_string(),
+                                                resolved_id.version.to_string(),
+                                            ),
+                                            ("change_type".to_string(), "unknown".to_string()),
+                                            (
+                                                "source".to_string(),
+                                                match node.action {
+                                                    sps2_resolver::NodeAction::Download => {
+                                                        "repository".to_string()
+                                                    }
+                                                    sps2_resolver::NodeAction::Local => {
+                                                        "local file".to_string()
+                                                    }
+                                                },
+                                            ),
+                                        ]),
+                                    }));
+                                    break;
+                                }
+                                std::cmp::Ordering::Equal => {
+                                    // Already up to date - add to list
+                                    packages_up_to_date.push(package_id.name.clone());
+                                    found_update = true;
+                                    
+                                    // Emit event for up to date package
+                                    context.emit(AppEvent::General(GeneralEvent::CheckModePreview {
+                                        operation: if context.upgrade { "upgrade".to_string() } else { "update".to_string() },
+                                        action: format!(
+                                            "{}:{} is already at {} version",
+                                            package_id.name, package_id.version,
+                                            if context.upgrade { "latest" } else { "compatible" }
+                                        ),
+                                        details: HashMap::from([
+                                            ("version".to_string(), package_id.version.to_string()),
+                                            ("status".to_string(), "up_to_date".to_string()),
+                                        ]),
+                                    }));
+                                    break;
+                                }
+                                std::cmp::Ordering::Less => {
+                                    // This shouldn't happen normally
+                                }
+                            }
+                            break;
+                        }
+                    }
+                    
+                    if !found_update {
+                        // No update found, package is up to date
+                        packages_up_to_date.push(package_id.name.clone());
+                        context.emit(AppEvent::General(GeneralEvent::CheckModePreview {
+                            operation: if context.upgrade { "upgrade".to_string() } else { "update".to_string() },
+                            action: format!(
+                                "{}:{} is already at {} version",
+                                package_id.name, package_id.version,
+                                if context.upgrade { "latest" } else { "compatible" }
+                            ),
+                            details: HashMap::from([
+                                ("version".to_string(), package_id.version.to_string()),
+                                ("status".to_string(), "up_to_date".to_string()),
+                            ]),
+                        }));
+                    }
+                }
+                Err(_) => {
+                    // Resolution failed - package might not be available in repository
+                    context.emit(AppEvent::General(GeneralEvent::CheckModePreview {
+                        operation: if context.upgrade { "upgrade".to_string() } else { "update".to_string() },
+                        action: format!("Cannot check {}s for {}", 
+                            if context.upgrade { "upgrade" } else { "update" }, 
+                            package_id.name),
+                        details: HashMap::from([
+                            (
+                                "current_version".to_string(),
+                                package_id.version.to_string(),
+                            ),
+                            ("status".to_string(), "resolution_failed".to_string()),
+                            (
+                                "reason".to_string(),
+                                "package not found in repository".to_string(),
+                            ),
+                        ]),
+                    }));
+                }
+            }
+        }
+
+        // If no packages need updating, return early
+        if packages_needing_update.is_empty() {
+            let result = InstallResult::new(uuid::Uuid::nil());
+            
+            // Emit batch update completed event with no changes
+            context.emit(AppEvent::Update(UpdateEvent::BatchCompleted {
+                operation_id: operation_id.clone(),
+                successful_updates: vec![],
+                failed_updates: vec![],
+                skipped_packages: vec![],
+                total_duration: std::time::Duration::from_secs(0),
+                total_size_change: 0,
+            }));
+            
+            return Ok(result);
+        }
+
         // Convert to package specs for installation
         let mut install_context = InstallContext::new();
 
-        for package_id in &packages_to_update {
+        for package_id in &packages_needing_update {
             let spec = if context.upgrade {
                 // Upgrade mode: ignore upper bounds
                 PackageSpec::parse(&format!("{}>=0.0.0", package_id.name))?
@@ -485,7 +654,6 @@ impl UpdateOperation {
         let result = self.install_operation.execute(install_context).await?;
 
         // Emit batch update completed event
-        let operation_id = uuid::Uuid::new_v4().to_string(); // In production, this should be tracked from start
         context.emit(AppEvent::Update(UpdateEvent::BatchCompleted {
             operation_id,
             successful_updates: result

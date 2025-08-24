@@ -24,6 +24,7 @@ pub struct Repositories {
 }
 
 impl Repositories {
+    #[must_use]
     pub fn get_all(&self) -> Vec<&RepositoryConfig> {
         let mut all = Vec::new();
         if let Some(fast) = &self.fast {

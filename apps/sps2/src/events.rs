@@ -668,7 +668,10 @@ impl EventHandler {
                         action,
                         details,
                     } => {
-                        self.show_check_preview(&operation, &action, &details);
+                        // Only show check mode preview in debug mode to reduce verbosity
+                        if self.debug_enabled {
+                            self.show_check_preview(&operation, &action, &details);
+                        }
                     }
                     GeneralEvent::CheckModeSummary {
                         operation,

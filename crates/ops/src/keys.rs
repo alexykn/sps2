@@ -69,6 +69,13 @@ impl KeyManager {
     }
 
     /// Initialize the key manager with a bootstrap key
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The keys directory cannot be created
+    /// - The bootstrap key string cannot be decoded
+    /// - The public key cannot be parsed
     pub async fn initialize_with_bootstrap(&mut self, bootstrap_key_str: &str) -> Result<(), Error> {
         fs::create_dir_all(&self.keys_dir).await?;
 
@@ -96,6 +103,12 @@ impl KeyManager {
     }
 
     /// Load trusted keys from disk
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The trusted keys file cannot be read
+    /// - The JSON content cannot be parsed
     pub async fn load_trusted_keys(&mut self) -> Result<(), Error> {
         let keys_file = self.keys_dir.join("trusted_keys.json");
 
@@ -112,6 +125,12 @@ impl KeyManager {
     }
 
     /// Save trusted keys to disk
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The trusted keys cannot be serialized to JSON
+    /// - The file cannot be written to disk
     pub async fn save_trusted_keys(&self) -> Result<(), Error> {
         let keys_file = self.keys_dir.join("trusted_keys.json");
         let content = serde_json::to_string_pretty(&self.trusted_keys)
@@ -121,6 +140,13 @@ impl KeyManager {
     }
 
     /// Fetch and verify keys from repository
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The keys cannot be fetched from the repository
+    /// - The keys content cannot be parsed as JSON
+    /// - Signature verification fails
     pub async fn fetch_and_verify_keys(
         &mut self,
         net_client: &sps2_net::NetClient,
@@ -134,10 +160,10 @@ impl KeyManager {
         self.verify_key_rotations(&repo_keys)?;
 
         for key in &repo_keys.keys {
-            if !self.trusted_keys.contains_key(&key.key_id) {
-                if self.is_key_rotation_valid(&repo_keys, &key.key_id) {
-                    self.trusted_keys.insert(key.key_id.clone(), key.clone());
-                }
+            if !self.trusted_keys.contains_key(&key.key_id)
+                && self.is_key_rotation_valid(&repo_keys, &key.key_id)
+            {
+                self.trusted_keys.insert(key.key_id.clone(), key.clone());
             }
         }
 
@@ -151,6 +177,13 @@ impl KeyManager {
     }
 
     /// Verify signature against content using trusted keys
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The signature cannot be decoded
+    /// - None of the trusted keys can verify the signature
+    /// - The signature has expired
     #[allow(dead_code)]
     pub fn verify_signature(&self, content: &str, signature: &str) -> Result<(), Error> {
         let sig = Signature::decode(signature)?;
@@ -238,6 +271,7 @@ impl KeyManager {
     }
 
     /// Get all trusted keys
+    #[must_use]
     pub fn get_trusted_keys(&self) -> Vec<sps2_signing::PublicKeyRef> {
         self.trusted_keys
             .values()
@@ -246,6 +280,11 @@ impl KeyManager {
     }
 
     /// Import a new key into the trusted set
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The trusted keys cannot be saved to disk
     pub async fn import_key(&mut self, key: &TrustedKey) -> Result<(), Error> {
         if self.trusted_keys.contains_key(&key.key_id) {
             return Ok(()); // Key already trusted

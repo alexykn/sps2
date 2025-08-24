@@ -52,14 +52,14 @@ impl DecompressPipeline {
     pub async fn execute_streaming_decompress_validate(
         &self,
         download_results: Vec<DownloadResult>,
-        _progress_id: &str,
+        progress_id: &str,
         tx: &EventSender,
     ) -> Result<Vec<DecompressResult>, Error> {
         if self.enable_streaming {
-            self.execute_streaming_mode(download_results, _progress_id, tx)
+            self.execute_streaming_mode(download_results, progress_id, tx)
                 .await
         } else {
-            self.execute_sequential_mode(download_results, _progress_id, tx)
+            self.execute_sequential_mode(download_results, progress_id, tx)
                 .await
         }
     }
@@ -117,6 +117,7 @@ impl DecompressPipeline {
                 validate_sp_file(&download_result.downloaded_path, Some(tx)).await?;
 
             // Keep the temp_dir to prevent cleanup
+            #[allow(clippy::no_effect_underscore_binding)]
             let _temp_dir = download_result.temp_dir;
 
             if !validation_result.is_valid {

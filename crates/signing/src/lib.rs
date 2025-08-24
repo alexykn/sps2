@@ -20,7 +20,7 @@ pub struct PublicKeyRef {
     pub data: String,
 }
 
-/// A hack to extract the key ID from a raw signature string because the minisign_verify
+/// A hack to extract the key ID from a raw signature string because the `minisign_verify`
 /// crate doesn't expose it publicly.
 fn extract_key_id_from_sig_str(signature_str: &str) -> Result<String, SigningError> {
     let mut lines = signature_str.lines();
@@ -36,6 +36,13 @@ fn extract_key_id_from_sig_str(signature_str: &str) -> Result<String, SigningErr
 
 
 /// Verify content at `content_path` against a minisign signature string using any of the provided trusted keys.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The content file cannot be read
+/// - The signature verification fails
+/// - No matching trusted key is found
 pub fn verify_minisign_file_with_keys(
     content_path: &Path,
     signature_str: &str,
@@ -50,6 +57,14 @@ pub fn verify_minisign_file_with_keys(
 }
 
 /// Verify raw bytes against a minisign signature string using any of the provided trusted keys.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The signature string cannot be decoded
+/// - The public key cannot be decoded from base64
+/// - The signature verification fails
+/// - No matching trusted key is found
 pub fn verify_minisign_bytes_with_keys(
     content: &[u8],
     signature_str: &str,
