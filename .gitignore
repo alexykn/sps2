@@ -89,3 +89,6 @@ Desktop.ini
 .env.*
 .serena
 c.env
+test-repo
+generate_index.py
+minisign.pub
