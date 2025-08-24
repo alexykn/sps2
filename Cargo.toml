@@ -35,6 +35,7 @@ repository = "https://github.com/org/sps2"
 [workspace.dependencies]
 # Async runtime
 tokio = { version = "1.47.1", features = ["full"] }
+tokio = { version = "1.47.1", features = ["full"] }
 
 # Database0.8.6
 sqlx = { version = "0.8.6", features = [
@@ -45,32 +46,34 @@ sqlx = { version = "0.8.6", features = [
 ] }
 
 # HTTP0.12.20
-reqwest = { version = "0.12.22", features = ["json", "stream"] }
+reqwest = { version = "0.12.23", features = ["json", "stream"] }
 
 # Serialization
 serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.142"
+serde_json = "1.0.143"
 toml = "0.9.5"
 
 # Error handl2.0.12
-thiserror = "2.0.12"
+thiserror = "2.0.16"
 
 # Utilities
 uuid = { version = "1.18.0", features = ["v4", "serde"] }
+uuid = { version = "1.18.0", features = ["v4", "serde"] }
 semver = { version = "1.0.26", features = ["serde"] }
 blake3 = "1.8.2"
-xxhash-rust = { version = "0.8", features = ["xxh3"] }
+xxhash-rust = { version = "0.8.15", features = ["xxh3"] }
 tracing = "0.1.41"
 chrono = { version = "0.4.41", features = ["serde"] }
+minisign-verify = "0.2.4"
 
 # Concurren6.1.0a structures
 dashmap = "6.1.0"
 crossbeam = "0.8.4"
 
-clap = { version = "4.5.43", features = ["derive", "env"] }
+clap = { version = "4.5.45", features = ["derive", "env"] }
 
 tar = "0.4.44"
 
-tempfile = "3.20.0"
+tempfile = "3.21.0"
 proptest = "1.7.0"
 futures = "0.3.31"
