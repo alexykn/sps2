@@ -8,9 +8,9 @@ name = "sps2_signing"
 path = "src/lib.rs"
 
 [dependencies]
-minisign-verify = "0.2"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+minisign-verify = "0.2.4"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.143"
 sps2-errors = { path = "../errors" }
-hex = "0.4"
-base64 = "0.21.7"
+hex = "0.4.3"
+base64 = "0.22.1"

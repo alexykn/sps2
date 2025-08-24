@@ -9,28 +9,29 @@ serde_yml = "0.0.12"
 
 # File system traversal and inspection
 walkdir = "2.5.0"
-regex = "1.11.1"
+regex = "1.11.2"
 
 # Parsing metadata files
 toml = "0.9.5"
+toml = "0.9.5"
 serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.142"
+serde_json = "1.0.143"
 
 # Archive extraction
 tar = "0.4.44"
 flate2 = "1.1.2"
-zip = "4.3.0"
-async-compression = { version = "0.4.27", features = ["tokio", "gzip", "bzip2", "xz"] }
+zip = "4.5.0"
+async-compression = { version = "0.4.28", features = ["tokio", "gzip", "bzip2", "xz"] }
 
 # Git operations
 git2 = "0.20.2"
 
 # Temporary directories and async operations
-tempfile = "3.20.0"
+tempfile = "3.21.0"
 tokio = { version = "1.47.1", features = ["full"] }
 
 # Error handling
-thiserror = "2.0.12"
+thiserror = "2.0.16"
 
 # Internal workspace dependencies
 sps2-net = { path = "../net" }
