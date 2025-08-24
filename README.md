@@ -141,6 +141,24 @@ sps2 build ripgrep.yml --max
 sps2 build ripgrep.yml -j 8
 ```
 
+### Packaging from Directory
+
+The `pack` command allows you to create packages from an already-built staging directory, skipping the build process:
+
+```bash
+# Package from a built directory with manifest
+sps2 pack --directory ./build-output --manifest manifest.toml
+
+# Package from a recipe without rebuilding (if already built)
+sps2 pack --recipe myapp.yml --no-post
+
+# Include SBOM in the package
+sps2 pack --directory ./build-output --manifest manifest.toml --sbom sbom.json
+
+# Custom output directory
+sps2 pack --recipe myapp.yml -o ./packages/
+```
+
 ### Managing Packages
 
 ```bash
