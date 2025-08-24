@@ -12,3 +12,5 @@ minisign-verify = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sps2-errors = { path = "../errors" }
+hex = "0.4"
+base64 = "0.21.7"

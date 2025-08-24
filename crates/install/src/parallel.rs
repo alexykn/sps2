@@ -416,6 +416,28 @@ impl ParallelExecutor {
                 }));
 
                 if let Some(path) = &node.path {
+                    // Check if this is an already installed package (empty path)
+                    if path.as_os_str().is_empty() {
+                        context.emit(AppEvent::General(GeneralEvent::DebugLog {
+                            message: format!(
+                                "DEBUG: Package {}-{} is already installed, skipping",
+                                package_id.name, package_id.version
+                            ),
+                            context: std::collections::HashMap::new(),
+                        }));
+
+                        // For already installed packages, just mark as completed
+                        context.emit(AppEvent::Install(InstallEvent::Completed {
+                            package: package_id.name.clone(),
+                            version: package_id.version.clone(),
+                            installed_files: 0,
+                            install_path: std::path::PathBuf::new(),
+                            duration: std::time::Duration::from_secs(0),
+                            disk_usage: 0,
+                        }));
+
+                        return Ok(package_id);
+                    }
                     context.emit(AppEvent::General(GeneralEvent::DebugLog {
                         message: format!(
                             "DEBUG: Adding local package to store: {}",
@@ -511,9 +533,12 @@ impl ParallelExecutor {
             })
             .await?;
 
+        // Keep the temp file alive by storing it in a variable that lives longer
+        let temp_file_path = temp_file.path().to_path_buf();
+
         // Add to store and prepare package data
         let stored_package = store
-            .add_package_from_file(temp_file.path(), &package_id.name, &package_id.version)
+            .add_package_from_file(&temp_file_path, &package_id.name, &package_id.version)
             .await?;
 
         // Prepare package data for AtomicInstaller (no database operations)

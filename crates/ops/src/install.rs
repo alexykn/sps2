@@ -4,10 +4,10 @@
 //! Delegates to `sps2_install` crate for the actual installation logic.
 
 use crate::{InstallReport, InstallRequest, OpsCtx};
-use sps2_errors::{Error, InstallError, OpsError};
+use sps2_errors::{Error, OpsError};
 use sps2_events::{AppEvent, EventEmitter, GeneralEvent, ProgressEvent, ResolverEvent};
 use sps2_guard::{OperationResult as GuardOperationResult, PackageChange as GuardPackageChange};
-use sps2_install::{InstallConfig, InstallContext, Installer, PipelineConfig, PipelineMaster};
+use sps2_install::{InstallConfig, InstallContext, Installer};
 use sps2_types::{PackageSpec, Version};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -343,7 +343,7 @@ async fn install_remote_packages_parallel(
     specs: &[PackageSpec],
 ) -> Result<sps2_install::InstallResult, Error> {
     use sps2_events::{patterns::InstallProgressConfig, ProgressManager};
-    use sps2_state::PackageRef;
+    // use sps2_state::PackageRef;
     use std::time::Instant;
 
     let start = Instant::now();
@@ -398,28 +398,20 @@ async fn install_remote_packages_parallel(
 
     progress_manager.update_phase_to_done(&progress_id, "Resolve", &ctx.tx);
 
-    // Phase 2-4: Pipeline execution (download, validate, stage)
-    let pipeline_config = PipelineConfig {
-        max_downloads: 4,                // Conservative default
-        max_decompressions: 2,           // CPU intensive
-        max_validations: 3,              // I/O and compute
-        enable_streaming: true,          // Enable streaming optimization
-        buffer_size: 256 * 1024,         // 256KB buffers
-        memory_limit: 100 * 1024 * 1024, // 100MB memory limit
-        ..PipelineConfig::default()
-    };
+    // Phase 2-4: Parallel execution (download, store, prepare)
+    // Use the same approach as the regular installer with ParallelExecutor
+    let exec_context = sps2_install::ExecutionContext::new().with_event_sender(ctx.tx.clone());
 
-    // Derive staging base path from StateManager for test isolation
-    let staging_base_path = ctx.state.state_path().join("staging");
-    let pipeline =
-        PipelineMaster::new(pipeline_config, ctx.store.clone(), staging_base_path).await?;
+    // Create parallel executor
+    let resources = std::sync::Arc::new(sps2_resources::ResourceManager::default());
+    let executor = sps2_install::ParallelExecutor::new(ctx.store.clone(), ctx.state.clone(), resources)?;
 
-    // Execute pipeline with comprehensive error handling
-    let batch_result = match pipeline
-        .execute_batch(&execution_plan, &resolved_packages, &ctx.tx)
+    // Execute parallel downloads and store packages
+    let prepared_packages = match executor
+        .execute_parallel(&execution_plan, &resolved_packages, &exec_context)
         .await
     {
-        Ok(result) => result,
+        Ok(prepared_packages) => prepared_packages,
         Err(e) => {
             // Send helpful error context
             ctx.emit(AppEvent::General(GeneralEvent::error_with_details(
@@ -442,69 +434,37 @@ async fn install_remote_packages_parallel(
         }
     };
 
-    progress_manager.update_phase_to_done(&progress_id, "Commit", &ctx.tx);
+    progress_manager.update_phase_to_done(&progress_id, "Download", &ctx.tx);
 
-    ctx.emit_debug("DEBUG: Starting state management integration");
+    // Phase 5: Atomic installation
+    ctx.emit_debug("DEBUG: Starting atomic installation");
 
-    // Begin state transition
-    let transition = ctx.state.begin_transition("install packages").await?;
-    let new_state_id = transition.to;
+    // Perform atomic installation using the prepared packages
+    let mut atomic_installer =
+        sps2_install::AtomicInstaller::new(ctx.state.clone(), ctx.store.clone()).await?;
 
-    // Create package references for all successfully installed packages
-    let mut packages_added = Vec::new();
-    for package_id in &batch_result.successful_packages {
-        // Get the actual hash from the batch result
-        let hash = batch_result.package_hashes.get(package_id).ok_or_else(|| {
-            InstallError::AtomicOperationFailed {
-                message: format!("Missing hash for package {}", package_id.name),
-            }
-        })?;
+    let install_context = sps2_install::InstallContext::new()
+        .with_event_sender(ctx.tx.clone());
 
-        let package_ref = PackageRef {
-            state_id: new_state_id,
-            package_id: package_id.clone(),
-            hash: hash.to_hex(),
-            size: 1024 * 1024, // TODO: Get actual size from store
-        };
-        packages_added.push(package_ref);
-    }
-
-    ctx.emit_debug(format!(
-        "DEBUG: Batch installation completed - {} succeeded, {} failed",
-        batch_result.successful_packages.len(),
-        batch_result.failed_packages.len()
-    ));
-
-    // Commit the state transition with the installed packages
-    ctx.state
-        .commit_transition(
-            transition,
-            packages_added,
-            Vec::new(), // No packages removed
-        )
+    let install_result = atomic_installer
+        .install(&install_context, &resolved_packages, Some(&prepared_packages))
         .await?;
 
-    ctx.emit_debug("DEBUG: State transition committed successfully");
+    ctx.emit_debug("DEBUG: Atomic installation completed");
 
     // Complete progress tracking
     progress_manager.complete_operation(&progress_id, &ctx.tx);
 
     // Send comprehensive completion metrics
     ctx.emit_debug(format!(
-        "DEBUG: Installation metrics - Total: {}, Successful: {}, Failed: {}, Duration: {:.2}s",
+        "DEBUG: Installation metrics - Total: {}, Successful: {}, Duration: {:.2}s",
         specs.len(),
-        batch_result.successful_packages.len(),
-        batch_result.failed_packages.len(),
+        install_result.installed_packages.len(),
         start.elapsed().as_secs_f64()
     ));
 
-    // Convert batch result to install result with actual state ID
-    Ok(sps2_install::InstallResult {
-        installed_packages: batch_result.successful_packages,
-        updated_packages: Vec::new(), // Pipeline doesn't track updates separately
-        removed_packages: Vec::new(), // No packages removed during install
-        state_id: new_state_id,
-    })
+    // Return the install result from AtomicInstaller (already committed via 2PC)
+    Ok(install_result)
 }
 
 /// Install local packages using the regular installer

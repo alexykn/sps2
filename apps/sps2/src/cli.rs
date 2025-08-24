@@ -103,9 +103,9 @@ pub enum Commands {
         packages: Vec<String>,
     },
 
-    /// Build package from Starlark recipe
+    /// Build package from YAML recipe
     Build {
-        /// Path to recipe file (.star)
+        /// Path to recipe file (.yaml or .yml)
         recipe: PathBuf,
 
         /// Output directory for .sp file
@@ -194,7 +194,11 @@ pub enum Commands {
 
     /// Sync repository index
     #[command(alias = "sync")]
-    Reposync,
+    Reposync {
+        /// Automatically trust new keys
+        #[clap(long)]
+        yes: bool,
+    },
 
     /// Clean up orphaned packages and old states
     Cleanup,
@@ -273,6 +277,24 @@ pub enum Commands {
         /// Verification scope (live, store, all)
         #[arg(long, default_value = "live")]
         scope: String,
+    },
+
+    /// Manage repositories
+    #[command(subcommand)]
+    Repo(RepoCommands),
+}
+
+/// Repository management subcommands
+#[derive(Subcommand)]
+pub enum RepoCommands {
+    /// Add a new repository
+    Add {
+        /// A unique name for the repository
+        #[clap(required = true)]
+        name: String,
+        /// The URL of the repository
+        #[clap(required = true)]
+        url: String,
     },
 }
 

@@ -160,10 +160,17 @@ async fn execute_command(
 ) -> Result<OperationResult, CliError> {
     match command {
         // Small operations (implemented in ops crate)
-        Commands::Reposync => {
-            let result = sps2_ops::reposync(&ctx).await?;
+        Commands::Reposync { yes } => {
+            let result = sps2_ops::reposync(&ctx, yes).await?;
             Ok(OperationResult::Success(result))
         }
+
+        Commands::Repo(repo_cmd) => match repo_cmd {
+            cli::RepoCommands::Add { name, url } => {
+                let result = sps2_ops::small_ops::add_repo(&ctx, &name, &url).await?;
+                Ok(OperationResult::Success(result))
+            }
+        },
 
         Commands::List => {
             let packages = sps2_ops::list_packages(&ctx).await?;

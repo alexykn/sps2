@@ -2,10 +2,12 @@
 
 use minisign_verify::{PublicKey, Signature};
 use serde::{Deserialize, Serialize};
-use sps2_errors::{Error, OpsError};
+use sps2_errors::Error;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::fs;
+use hex;
+use base64::{engine::general_purpose, Engine as _};
 
 /// Key rotation information for verifying key changes
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,9 +25,9 @@ pub struct KeyRotation {
 /// A trusted public key with metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrustedKey {
-    /// Unique identifier for the key
+    /// Unique identifier for the key (hex-encoded keynum)
     pub key_id: String,
-    /// The minisign public key data
+    /// The minisign public key data (base64)
     pub public_key: String,
     /// Optional comment/description
     pub comment: Option<String>,
@@ -67,27 +69,19 @@ impl KeyManager {
     }
 
     /// Initialize the key manager with a bootstrap key
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the bootstrap key is invalid or directory creation fails.
-    pub async fn initialize_with_bootstrap(&mut self, bootstrap_key: &str) -> Result<(), Error> {
-        // Ensure keys directory exists
+    pub async fn initialize_with_bootstrap(&mut self, bootstrap_key_str: &str) -> Result<(), Error> {
         fs::create_dir_all(&self.keys_dir).await?;
 
-        // Parse and validate bootstrap key
-        let _public_key =
-            PublicKey::from_base64(bootstrap_key).map_err(|e| OpsError::RepoSyncFailed {
-                message: format!("Invalid bootstrap key: {e}"),
-            })?;
-
-        // Generate a temporary key ID for bootstrapping
-        // In practice, this would need to be derived from the actual key data
-        // For now, we'll use a hash of the public key string
-        let key_id = format!("bootstrap-{}", hex::encode(&bootstrap_key.as_bytes()[..8]));
+        let decoded_pk = general_purpose::STANDARD.decode(bootstrap_key_str).map_err(|e| Error::Config(sps2_errors::ConfigError::Invalid{message: e.to_string()}))?;
+        if decoded_pk.len() < 10 {
+            return Err(Error::Config(sps2_errors::ConfigError::Invalid{message: "Invalid bootstrap key length".to_string()}));
+        }
+        let key_id_bytes = &decoded_pk[2..10];
+        let key_id = hex::encode(key_id_bytes);
+        
         let bootstrap = TrustedKey {
             key_id: key_id.clone(),
-            public_key: bootstrap_key.to_string(),
+            public_key: bootstrap_key_str.to_string(),
             comment: Some("Bootstrap key".to_string()),
             trusted_since: chrono::Utc::now().timestamp(),
             expires_at: None,
@@ -96,22 +90,16 @@ impl KeyManager {
         self.bootstrap_key = Some(bootstrap.clone());
         self.trusted_keys.insert(key_id, bootstrap);
 
-        // Save bootstrap key to disk
         self.save_trusted_keys().await?;
 
         Ok(())
     }
 
     /// Load trusted keys from disk
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if loading from disk fails.
     pub async fn load_trusted_keys(&mut self) -> Result<(), Error> {
         let keys_file = self.keys_dir.join("trusted_keys.json");
 
         if !keys_file.exists() {
-            // No existing keys, start with empty set
             return Ok(());
         }
 
@@ -124,10 +112,6 @@ impl KeyManager {
     }
 
     /// Save trusted keys to disk
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if saving to disk fails.
     pub async fn save_trusted_keys(&self) -> Result<(), Error> {
         let keys_file = self.keys_dir.join("trusted_keys.json");
         let content = serde_json::to_string_pretty(&self.trusted_keys)
@@ -137,72 +121,44 @@ impl KeyManager {
     }
 
     /// Fetch and verify keys from repository
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if fetching, parsing, or verifying keys fails.
     pub async fn fetch_and_verify_keys(
         &mut self,
         net_client: &sps2_net::NetClient,
         keys_url: &str,
         tx: &sps2_events::EventSender,
-    ) -> Result<Vec<String>, Error> {
-        // Fetch keys.json from repository
-        let keys_content = sps2_net::fetch_text(net_client, keys_url, tx)
-            .await
-            .map_err(|e| OpsError::RepoSyncFailed {
-                message: format!("Failed to fetch keys.json: {e}"),
-            })?;
+    ) -> Result<Vec<sps2_signing::PublicKeyRef>, Error> {
+        let keys_content = sps2_net::fetch_text(net_client, keys_url, tx).await?;
 
-        // Parse repository keys
-        let repo_keys: RepositoryKeys =
-            serde_json::from_str(&keys_content).map_err(|e| OpsError::RepoSyncFailed {
-                message: format!("Failed to parse repository keys: {e}"),
-            })?;
+        let repo_keys: RepositoryKeys = serde_json::from_str(&keys_content)?;
 
-        // Verify key rotations if any new keys are present
         self.verify_key_rotations(&repo_keys)?;
 
-        // Update trusted keys with any new valid keys
         for key in &repo_keys.keys {
-            // Check if key is already trusted
             if !self.trusted_keys.contains_key(&key.key_id) {
-                // Verify this key was properly rotated in
                 if self.is_key_rotation_valid(&repo_keys, &key.key_id) {
                     self.trusted_keys.insert(key.key_id.clone(), key.clone());
                 }
             }
         }
 
-        // Save updated keys
         self.save_trusted_keys().await?;
 
-        // Return list of trusted key public key strings for verification
         Ok(self
             .trusted_keys
             .values()
-            .map(|k| k.public_key.clone())
+            .map(|k| sps2_signing::PublicKeyRef { id: k.key_id.clone(), algo: sps2_signing::Algorithm::Minisign, data: k.public_key.clone() })
             .collect())
     }
 
     /// Verify signature against content using trusted keys
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if signature verification fails.
-    #[allow(dead_code)] // Method will be used in future implementations
+    #[allow(dead_code)]
     pub fn verify_signature(&self, content: &str, signature: &str) -> Result<(), Error> {
-        // Parse the signature (expects full signature content)
-        let sig = Signature::decode(signature).map_err(|e| OpsError::RepoSyncFailed {
-            message: format!("Invalid signature format: {e}"),
-        })?;
+        let sig = Signature::decode(signature)?;
 
-        // Try verification with each trusted key until one succeeds
         let mut verification_errors = Vec::new();
         let now = chrono::Utc::now().timestamp();
 
         for trusted_key in self.trusted_keys.values() {
-            // Check if key is expired
             if let Some(expires_at) = trusted_key.expires_at {
                 if now > expires_at {
                     verification_errors.push(format!("Key {} has expired", trusted_key.key_id));
@@ -210,15 +166,10 @@ impl KeyManager {
                 }
             }
 
-            // Parse the public key and try verification
             match PublicKey::from_base64(&trusted_key.public_key) {
                 Ok(public_key) => {
-                    // Try to verify with this key - the verify method handles key ID comparison internally
                     match public_key.verify(content.as_bytes(), &sig, false) {
-                        Ok(()) => {
-                            // Signature verification successful
-                            return Ok(());
-                        }
+                        Ok(()) => return Ok(()),
                         Err(e) => {
                             verification_errors.push(format!("Key {}: {}", trusted_key.key_id, e));
                         }
@@ -233,55 +184,35 @@ impl KeyManager {
             }
         }
 
-        // If we get here, no key successfully verified the signature
-        Err(OpsError::RepoSyncFailed {
-            message: format!(
+        Err(Error::Signing(sps2_errors::SigningError::VerificationFailed {
+            reason: format!(
                 "Signature verification failed. Tried {} trusted keys. Errors: {}",
                 self.trusted_keys.len(),
                 verification_errors.join("; ")
             ),
-        }
-        .into())
+        }))
     }
 
     /// Verify key rotations are valid
     fn verify_key_rotations(&self, repo_keys: &RepositoryKeys) -> Result<(), Error> {
         for rotation in &repo_keys.rotations {
-            // Find the previous key that should have signed this rotation
             let previous_key = self
                 .trusted_keys
                 .get(&rotation.previous_key_id)
-                .ok_or_else(|| OpsError::RepoSyncFailed {
-                    message: format!(
-                        "Key rotation references unknown previous key: {}",
-                        rotation.previous_key_id
-                    ),
-                })?;
+                .ok_or_else(|| Error::Signing(sps2_errors::SigningError::NoTrustedKeyFound{
+                    key_id: rotation.previous_key_id.clone(),
+                }))?;
 
-            // Verify the rotation signature
             let rotation_content = format!(
                 "{}{}{}",
                 rotation.new_key.key_id, rotation.new_key.public_key, rotation.timestamp
             );
 
-            let previous_public_key =
-                PublicKey::from_base64(&previous_key.public_key).map_err(|e| {
-                    OpsError::RepoSyncFailed {
-                        message: format!("Invalid previous key format: {e}"),
-                    }
-                })?;
+            let previous_public_key = PublicKey::from_base64(&previous_key.public_key)?;
 
-            let rotation_sig = Signature::decode(&rotation.rotation_signature).map_err(|e| {
-                OpsError::RepoSyncFailed {
-                    message: format!("Invalid rotation signature format: {e}"),
-                }
-            })?;
+            let rotation_sig = Signature::decode(&rotation.rotation_signature)?;
 
-            previous_public_key
-                .verify(rotation_content.as_bytes(), &rotation_sig, false)
-                .map_err(|e| OpsError::RepoSyncFailed {
-                    message: format!("Key rotation signature verification failed: {e}"),
-                })?;
+            previous_public_key.verify(rotation_content.as_bytes(), &rotation_sig, false)?;
         }
 
         Ok(())
@@ -289,14 +220,12 @@ impl KeyManager {
 
     /// Check if a key rotation is valid for a given key ID
     fn is_key_rotation_valid(&self, repo_keys: &RepositoryKeys, key_id: &str) -> bool {
-        // If it's the bootstrap key, it's always valid
         if let Some(bootstrap) = &self.bootstrap_key {
             if bootstrap.key_id == key_id {
                 return true;
             }
         }
 
-        // Check if there's a valid rotation chain to this key
         for rotation in &repo_keys.rotations {
             if rotation.new_key.key_id == key_id
                 && self.trusted_keys.contains_key(&rotation.previous_key_id)
@@ -308,11 +237,21 @@ impl KeyManager {
         false
     }
 
-    /// Get all trusted key public key strings
-    pub fn get_trusted_keys(&self) -> Vec<String> {
+    /// Get all trusted keys
+    pub fn get_trusted_keys(&self) -> Vec<sps2_signing::PublicKeyRef> {
         self.trusted_keys
             .values()
-            .map(|k| k.public_key.clone())
+            .map(|k| sps2_signing::PublicKeyRef { id: k.key_id.clone(), algo: sps2_signing::Algorithm::Minisign, data: k.public_key.clone() })
             .collect()
+    }
+
+    /// Import a new key into the trusted set
+    pub async fn import_key(&mut self, key: &TrustedKey) -> Result<(), Error> {
+        if self.trusted_keys.contains_key(&key.key_id) {
+            return Ok(()); // Key already trusted
+        }
+
+        self.trusted_keys.insert(key.key_id.clone(), key.clone());
+        self.save_trusted_keys().await
     }
 }

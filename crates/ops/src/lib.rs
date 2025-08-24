@@ -9,8 +9,8 @@
 
 mod context;
 
-mod keys;
-mod small_ops;
+pub mod keys;
+pub mod small_ops;
 
 // Import modularized operations
 mod health;

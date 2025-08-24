@@ -18,6 +18,7 @@ pub mod platform;
 pub mod state;
 pub mod storage;
 pub mod version;
+pub mod signing;
 
 // Re-export all error types at the root
 pub use audit::AuditError;
@@ -34,6 +35,7 @@ pub use platform::PlatformError;
 pub use state::StateError;
 pub use storage::StorageError;
 pub use version::VersionError;
+pub use signing::SigningError;
 
 use thiserror::Error;
 
@@ -77,6 +79,9 @@ pub enum Error {
     #[error("platform error: {0}")]
     Platform(#[from] PlatformError),
 
+    #[error("signing error: {0}")]
+    Signing(#[from] SigningError),
+
     #[error("internal error: {0}")]
     Internal(String),
 
@@ -115,6 +120,18 @@ impl From<sqlx::Error> for Error {
         Self::State(StateError::DatabaseError {
             message: err.to_string(),
         })
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(err: serde_json::Error) -> Self {
+        Self::Internal(format!("JSON error: {err}"))
+    }
+}
+
+impl From<minisign_verify::Error> for Error {
+    fn from(err: minisign_verify::Error) -> Self {
+        Self::Signing(SigningError::VerificationFailed { reason: err.to_string() })
     }
 }
 

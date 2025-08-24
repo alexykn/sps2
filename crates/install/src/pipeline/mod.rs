@@ -279,7 +279,7 @@ impl PipelineMaster {
         let decompress_results = self
             .decompress_pipeline
             .execute_streaming_decompress_validate(
-                &download_results,
+                download_results,
                 progress_id,
                 &context.event_sender().cloned().unwrap(),
             )

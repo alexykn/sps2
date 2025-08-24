@@ -23,6 +23,23 @@ pub struct Repositories {
     pub extras: std::collections::HashMap<String, RepositoryConfig>,
 }
 
+impl Repositories {
+    pub fn get_all(&self) -> Vec<&RepositoryConfig> {
+        let mut all = Vec::new();
+        if let Some(fast) = &self.fast {
+            all.push(fast);
+        }
+        if let Some(slow) = &self.slow {
+            all.push(slow);
+        }
+        if let Some(stable) = &self.stable {
+            all.push(stable);
+        }
+        all.extend(self.extras.values());
+        all
+    }
+}
+
 fn default_priority() -> u32 {
     1
 }

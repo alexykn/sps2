@@ -89,7 +89,12 @@ impl PackageDownloader {
         }));
 
         // Create destination paths
-        let package_filename = format!("{package_name}-{version}.sp");
+        // Extract filename from URL instead of constructing it
+        let package_filename = package_url
+            .split('/')
+            .last()
+            .unwrap_or(&format!("{package_name}-{version}.sp"))
+            .to_string();
         let package_path = dest_dir.join(&package_filename);
         let signature_path =
             signature_url.map(|_| dest_dir.join(format!("{package_filename}.minisig")));

@@ -187,3 +187,23 @@ pub async fn check_url(client: &NetClient, url: &str) -> Result<bool, Error> {
 pub fn parse_url(url: &str) -> Result<Url, Error> {
     Url::parse(url).map_err(|e| NetworkError::InvalidUrl(e.to_string()).into())
 }
+
+/// Fetch and deserialize JSON content from a URL
+///
+/// # Errors
+///
+/// Returns an error if the HTTP request fails, the server returns an error status,
+/// or the response body cannot be deserialized from JSON.
+pub async fn fetch_json<T: serde::de::DeserializeOwned>(
+    client: &NetClient,
+    url: &str,
+    tx: &EventSender,
+) -> Result<T, Error> {
+    let text = fetch_text(client, url, tx).await?;
+    serde_json::from_str(&text).map_err(|e| {
+        sps2_errors::OpsError::SerializationError {
+            message: e.to_string(),
+        }
+        .into()
+    })
+}

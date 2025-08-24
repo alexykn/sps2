@@ -13,6 +13,8 @@ serde = { workspace = true, optional = true }
 semver = { workspace = true }
 sqlx = { workspace = true }
 uuid = { workspace = true }
+serde_json = { workspace = true }
+minisign-verify = { workspace = true }
 
 [features]
 default = []

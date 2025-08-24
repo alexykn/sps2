@@ -51,15 +51,15 @@ impl DecompressPipeline {
     /// Execute streaming decompress and validation pipeline
     pub async fn execute_streaming_decompress_validate(
         &self,
-        download_results: &[DownloadResult],
-        progress_id: &str,
+        download_results: Vec<DownloadResult>,
+        _progress_id: &str,
         tx: &EventSender,
     ) -> Result<Vec<DecompressResult>, Error> {
         if self.enable_streaming {
-            self.execute_streaming_mode(download_results, progress_id, tx)
+            self.execute_streaming_mode(download_results, _progress_id, tx)
                 .await
         } else {
-            self.execute_sequential_mode(download_results, progress_id, tx)
+            self.execute_sequential_mode(download_results, _progress_id, tx)
                 .await
         }
     }
@@ -67,7 +67,7 @@ impl DecompressPipeline {
     /// Execute in streaming mode with concurrent decompression
     async fn execute_streaming_mode(
         &self,
-        download_results: &[DownloadResult],
+        download_results: Vec<DownloadResult>,
         _progress_id: &str,
         tx: &EventSender,
     ) -> Result<Vec<DecompressResult>, Error> {
@@ -75,16 +75,19 @@ impl DecompressPipeline {
         let mut handles = Vec::new();
 
         for download_result in download_results {
-            // Need to move ownership of the download result
-            let result_moved = DownloadResult {
+            // Keep the temp_dir to prevent cleanup of downloaded files
+            let _temp_dir = download_result.temp_dir.as_ref();
+
+            // Create a copy without temp_dir for the decompress task
+            let decompress_input = DownloadResult {
                 package_id: download_result.package_id.clone(),
                 downloaded_path: download_result.downloaded_path.clone(),
                 hash: download_result.hash.clone(),
-                temp_dir: None, // Can't clone TempDir, so we don't pass it
+                temp_dir: None, // Don't pass temp_dir to avoid ownership issues
                 node: download_result.node.clone(),
             };
 
-            let handle = self.spawn_streaming_decompress_task(result_moved, tx.clone());
+            let handle = self.spawn_streaming_decompress_task(decompress_input, tx.clone());
             handles.push(handle);
         }
 
@@ -102,7 +105,7 @@ impl DecompressPipeline {
     /// Execute in sequential mode as fallback
     async fn execute_sequential_mode(
         &self,
-        download_results: &[DownloadResult],
+        download_results: Vec<DownloadResult>,
         _progress_id: &str,
         tx: &EventSender,
     ) -> Result<Vec<DecompressResult>, Error> {
@@ -112,6 +115,9 @@ impl DecompressPipeline {
             // Basic validation without streaming
             let validation_result =
                 validate_sp_file(&download_result.downloaded_path, Some(tx)).await?;
+
+            // Keep the temp_dir to prevent cleanup
+            let _temp_dir = download_result.temp_dir;
 
             if !validation_result.is_valid {
                 return Err(InstallError::InvalidPackageFile {

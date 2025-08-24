@@ -34,6 +34,9 @@ minisign-verify = "0.2.4"
 hex = "0.4.3"
 walkdir = "2.5.0"
 sps2-signing = { path = "../signing" }
+toml = "0.8"
+base64 = "0.21.7"
+dialoguer = "0.10.4"
 
 [dev-dependencies]
 tempfile = { workspace = true }
