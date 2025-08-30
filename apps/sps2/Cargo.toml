@@ -29,7 +29,7 @@ sps2-platform = { path = "../../crates/platform" }
 clap = { version = "4.5.45", features = ["derive", "color"] }
 tokio = { workspace = true, features = ["full"] }
 tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter", "json"] }
+tracing-subscriber = { version = "0.3.20", features = ["env-filter", "json"] }
 serde_json = { workspace = true }
 comfy-table = "7.1.4"
 console = "0.16.0"
