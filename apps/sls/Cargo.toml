@@ -8,7 +8,7 @@ sps2-hash = { path = "../../crates/hash" }
 sps2-state = { path = "../../crates/state" }
 sps2-config = { path = "../../crates/config" }
 
-clap = { version = "4.5.45", features = ["derive"] }
+clap = { version = "4.5.46", features = ["derive"] }
 tokio = { version = "1.47.1", features = ["full"] }
 colored = "3.0.0"
 humansize = "2.1.3"

@@ -68,7 +68,7 @@ minisign-verify = "0.2.4"
 dashmap = "6.1.0"
 crossbeam = "0.8.4"
 
-clap = { version = "4.5.45", features = ["derive", "env"] }
+clap = { version = "4.5.46", features = ["derive", "env"] }
 
 tar = "0.4.44"
 

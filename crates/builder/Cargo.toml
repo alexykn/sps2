@@ -32,7 +32,7 @@ toml = { workspace = true }
 minisign = "0.7.9"
 async-trait = "0.1.89"
 tar = "0.4.44"
-async-compression = { version = "0.4.28", features = [
+async-compression = { version = "0.4.30", features = [
     "tokio",
     "zstd",
     "gzip",
@@ -47,7 +47,7 @@ which = "8.0.0"
 sysinfo = "0.37.0"
 uuid = { version = "1.18.0", features = ["v4"] }
 bitflags = "2.9.3"
-zip = "4.5.0"
+zip = "4.6.0"
 rayon = "1.11.0"
 ignore = { version = "0.4.23", features = [
     "simd-accel",
