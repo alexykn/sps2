@@ -63,25 +63,29 @@ impl RecommendedAction {
     }
 }
 
-/// Context and metadata for discrepancies to provide user-friendly information
+/// Provides detailed, user-friendly context for a given discrepancy.
+///
+/// This struct is designed to be self-contained, offering all the necessary information
+/// to understand and address a specific issue. It includes severity, recommended actions,
+/// and both user-facing and technical details.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DiscrepancyContext {
-    /// Severity level of this discrepancy
+    /// The severity level of this discrepancy, indicating its potential impact.
     pub severity: DiscrepancySeverity,
-    /// Recommended action to address this discrepancy
+    /// The recommended course of action to resolve the discrepancy.
     pub recommended_action: RecommendedAction,
-    /// User-friendly message explaining the issue and impact
+    /// A user-friendly message explaining the issue, its impact, and why it matters.
     pub user_message: String,
-    /// Technical details for debugging
+    /// A technical, detailed explanation of the discrepancy for debugging and analysis.
     pub technical_details: String,
-    /// Whether automatic healing is available for this discrepancy
+    /// A flag indicating whether an automated healing process is available for this issue.
     pub healing_available: bool,
-    /// Estimated time to fix this discrepancy
+    /// An optional estimate of the time required to automatically fix the discrepancy.
     pub estimated_fix_time: Option<Duration>,
-    /// Manual steps the user can take if auto-healing fails
+    /// A list of step-by-step instructions for manual resolution if auto-healing fails or is unavailable.
     pub manual_resolution_steps: Vec<String>,
-    /// Tips to prevent this issue in the future
+    /// A list of tips and best practices to help users avoid this issue in the future.
     pub prevention_tips: Vec<String>,
 }
 

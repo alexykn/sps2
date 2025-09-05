@@ -103,6 +103,12 @@ pub enum InstallError {
     #[error("no progress detected: {message}")]
     NoProgress { message: String },
 
-    #[error("Python virtual environment error for package {package}: {message}")]
-    PythonVenvError { package: String, message: String },
+    #[error("python venv creation failed for {package}: {message}")]
+    PythonVenvCreationError { package: String, message: String },
+
+    #[error("python venv activation failed for {package}: {message}")]
+    PythonVenvActivationError { package: String, message: String },
+
+    #[error("python venv dependency error for {package}: {message}")]
+    PythonVenvDependencyError { package: String, message: String },
 }

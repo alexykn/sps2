@@ -46,13 +46,13 @@ impl From<std::io::Error> for StorageError {
     fn from(err: std::io::Error) -> Self {
         match err.kind() {
             std::io::ErrorKind::PermissionDenied => Self::PermissionDenied {
-                path: String::from("<unknown>"),
+                path: format!("<unknown>: {err}"),
             },
             std::io::ErrorKind::NotFound => Self::PathNotFound {
-                path: String::from("<unknown>"),
+                path: format!("<unknown>: {err}"),
             },
             std::io::ErrorKind::AlreadyExists => Self::AlreadyExists {
-                path: String::from("<unknown>"),
+                path: format!("<unknown>: {err}"),
             },
             _ => Self::IoError {
                 message: err.to_string(),
