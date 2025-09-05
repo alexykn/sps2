@@ -7,6 +7,9 @@ fetch:
     rustup show active-toolchain
     cargo fetch
 
+fmt *args:
+    cargo fmt "$@"
+
 lint *args:
     cargo clippy --all-targets --all-features "$@"
 
