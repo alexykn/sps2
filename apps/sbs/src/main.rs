@@ -59,7 +59,7 @@ enum Commands {
         /// Use an existing Minisign public key file (.pub). If not provided, you can --generate.
         #[arg(long, value_name = "PUBFILE")]
         pubkey: Option<PathBuf>,
-        /// Generate a new unencrypted key pair for testing
+        /// Generate a new key pair
         #[arg(long, conflicts_with = "pubkey")]
         generate: bool,
         /// Output path for generated secret key (required with --generate)
@@ -100,7 +100,17 @@ async fn main() -> Result<(), Error> {
             out_public,
             comment,
         } => {
-            repo_init(repo_dir, pubkey, generate, out_secret, out_public, comment).await?;
+            let opts = RepoInitOpts {
+                repo_dir,
+                pubkey,
+                generate,
+                out_secret,
+                out_public,
+                pass: None,
+                unencrypted: false,
+                comment,
+            };
+            repo_init(opts).await?;
         }
     }
     Ok(())
@@ -131,12 +141,18 @@ async fn publish_one(
 
     // Ensure .minisig exists; if not, create it by signing the package
     let sig_path = repo_dir.join(format!("{filename}.minisig"));
+    // Resolve passphrase if needed (we'll reuse for index signing)
+    let mut pass_final = pass;
+
     if !sig_path.exists() {
+        if pass_final.is_none() {
+            pass_final = maybe_prompt_pass(None, "Enter key passphrase (press Enter for none): ")?;
+        }
         let data = tokio::fs::read(&dest).await?;
         let sig = sps2_signing::minisign_sign_bytes(
             &data,
             &key,
-            pass.as_deref(),
+            pass_final.as_deref(),
             Some("sps2 package signature"),
             Some(&filename),
         )?;
@@ -144,7 +160,7 @@ async fn publish_one(
     }
 
     // Rebuild and sign index
-    update_indices(repo_dir, base_url, key, pass).await
+    update_indices(repo_dir, base_url, key, pass_final).await
 }
 
 async fn update_indices(
@@ -153,12 +169,20 @@ async fn update_indices(
     key: PathBuf,
     pass: Option<String>,
 ) -> Result<(), Error> {
+    let pass_final = if pass.is_none() {
+        maybe_prompt_pass(
+            None,
+            "Enter key passphrase for signing index (press Enter for none): ",
+        )?
+    } else {
+        pass
+    };
     let store = LocalStore::new(&repo_dir);
     let publisher = Publisher::new(store, base_url);
     let artifacts = publisher.scan_packages_local_dir(&repo_dir).await?;
     let index = publisher.build_index(&artifacts);
     publisher
-        .publish_index(&index, &key, pass.as_deref())
+        .publish_index(&index, &key, pass_final.as_deref())
         .await?;
     println!(
         "Updated index with {} packages in {}",
@@ -168,28 +192,77 @@ async fn update_indices(
     Ok(())
 }
 
-async fn repo_init(
+fn maybe_prompt_pass(current: Option<String>, prompt: &str) -> Result<Option<String>, Error> {
+    if current.is_some() {
+        return Ok(current);
+    }
+    let entered = rpassword::prompt_password(prompt)
+        .map_err(|e| Error::internal(format!("failed to read passphrase: {e}")))?;
+    if entered.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(entered))
+    }
+}
+
+#[derive(Debug)]
+struct RepoInitOpts {
     repo_dir: PathBuf,
     pubkey: Option<PathBuf>,
     generate: bool,
     out_secret: Option<PathBuf>,
     out_public: Option<PathBuf>,
+    pass: Option<String>,
+    unencrypted: bool,
     comment: Option<String>,
-) -> Result<(), Error> {
+}
+
+async fn repo_init(opts: RepoInitOpts) -> Result<(), Error> {
+    let RepoInitOpts {
+        repo_dir,
+        pubkey,
+        generate,
+        out_secret,
+        out_public,
+        pass,
+        unencrypted,
+        comment,
+    } = opts;
     tokio::fs::create_dir_all(&repo_dir).await?;
 
     let pk_base64 = if let Some(pub_path) = pubkey {
         let content = tokio::fs::read_to_string(&pub_path).await?;
         repo_keys::extract_base64(&content)
     } else if generate {
-        // Generate unencrypted keypair for local testing
+        // Generate keypair; encrypt secret key unless --unencrypted
         use minisign::KeyPair;
         let KeyPair { pk, sk } = KeyPair::generate_unencrypted_keypair()
             .map_err(|e| Error::internal(format!("keypair generation failed: {e}")))?;
         // Write secret key
         let sk_path = out_secret.expect("out_secret required with --generate");
+        let passphrase = if unencrypted {
+            eprintln!(
+                "WARNING: writing UNENCRYPTED secret key to {}. This is unsafe; use only for throwaway local testing.",
+                sk_path.display()
+            );
+            None
+        } else if let Some(p) = pass {
+            Some(p)
+        } else {
+            let p1 = rpassword::prompt_password("Enter new key passphrase: ")
+                .map_err(|e| Error::internal(format!("failed to read passphrase: {e}")))?;
+            let p2 = rpassword::prompt_password("Repeat passphrase: ")
+                .map_err(|e| Error::internal(format!("failed to read passphrase: {e}")))?;
+            if p1 != p2 {
+                return Err(Error::internal("passphrases do not match"));
+            }
+            if p1.len() < 8 {
+                eprintln!("WARNING: passphrase is short; consider 12+ characters");
+            }
+            Some(p1)
+        };
         let sk_box = sk
-            .to_box(None)
+            .to_box(passphrase.as_deref())
             .map_err(|e| Error::internal(format!("secret key serialize failed: {e}")))?;
         tokio::fs::write(&sk_path, sk_box.to_string()).await?;
         // Write public key

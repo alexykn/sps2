@@ -21,3 +21,4 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 minisign = "0.7.9"
 base64 = "0.22.1"
+rpassword = "7.3.1"

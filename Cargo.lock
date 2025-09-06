@@ -2992,6 +2992,7 @@ dependencies = [
  "base64 0.22.1",
  "clap",
  "minisign",
+ "rpassword",
  "sps2-errors",
  "sps2-repository",
  "sps2-signing",
