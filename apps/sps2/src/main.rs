@@ -10,7 +10,7 @@ mod events;
 mod logging;
 mod setup;
 
-use crate::cli::{Cli, Commands, VulnDbCommands};
+use crate::cli::{Cli, Commands, KeysCommands, VulnDbCommands};
 use crate::display::OutputRenderer;
 use crate::error::CliError;
 use crate::events::EventHandler;
@@ -168,6 +168,29 @@ async fn execute_command(
         Commands::Repo(repo_cmd) => match repo_cmd {
             cli::RepoCommands::Add { name, url } => {
                 let result = sps2_ops::small_ops::add_repo(&ctx, &name, &url).await?;
+                Ok(OperationResult::Success(result))
+            }
+            cli::RepoCommands::List => {
+                let result = sps2_ops::small_ops::list_repos(&ctx).await?;
+                Ok(OperationResult::Success(result))
+            }
+            cli::RepoCommands::Remove { name } => {
+                let result = sps2_ops::small_ops::remove_repo(&ctx, &name).await?;
+                Ok(OperationResult::Success(result))
+            }
+        },
+
+        Commands::Keys(keys_cmd) => match keys_cmd {
+            KeysCommands::List => {
+                let result = sps2_ops::keys::keys_list(&ctx).await?;
+                Ok(OperationResult::Success(result))
+            }
+            KeysCommands::Import { file, comment } => {
+                let result = sps2_ops::keys::keys_import_from_file(&ctx, &file, comment).await?;
+                Ok(OperationResult::Success(result))
+            }
+            KeysCommands::Remove { key_id } => {
+                let result = sps2_ops::keys::keys_remove(&ctx, &key_id).await?;
                 Ok(OperationResult::Success(result))
             }
         },

@@ -147,6 +147,91 @@ pub async fn add_repo(_ctx: &OpsCtx, name: &str, url: &str) -> Result<String, Er
     Ok(format!("Repository '{name}' added successfully."))
 }
 
+/// List configured repositories from the user's configuration.
+///
+/// # Errors
+///
+/// Returns an error if the configuration file cannot be read.
+pub async fn list_repos(_ctx: &OpsCtx) -> Result<String, Error> {
+    let config_path = Config::default_path()?;
+    let config = Config::load_or_default(&Some(config_path)).await?;
+
+    let mut lines = Vec::new();
+
+    if let Some(ref fast) = config.repos.fast {
+        lines.push(format!(
+            "fast:    {} (priority {})",
+            fast.url, fast.priority
+        ));
+    }
+    if let Some(ref slow) = config.repos.slow {
+        lines.push(format!(
+            "slow:    {} (priority {})",
+            slow.url, slow.priority
+        ));
+    }
+    if let Some(ref stable) = config.repos.stable {
+        lines.push(format!(
+            "stable:  {} (priority {})",
+            stable.url, stable.priority
+        ));
+    }
+
+    for (name, repo) in &config.repos.extras {
+        lines.push(format!("{name}: {} (priority {})", repo.url, repo.priority));
+    }
+
+    if lines.is_empty() {
+        Ok("No repositories configured.".to_string())
+    } else {
+        Ok(lines.join("\n"))
+    }
+}
+
+/// Remove a repository by name. Supports standard names (fast/slow/stable) and extras.
+///
+/// # Errors
+///
+/// Returns an error if the configuration cannot be loaded or saved, or if the
+/// named repository does not exist.
+pub async fn remove_repo(_ctx: &OpsCtx, name: &str) -> Result<String, Error> {
+    let config_path = Config::default_path()?;
+    let mut config = Config::load_or_default(&Some(config_path)).await?;
+
+    let mut removed = false;
+    match name {
+        "fast" => {
+            if config.repos.fast.take().is_some() {
+                removed = true;
+            }
+        }
+        "slow" => {
+            if config.repos.slow.take().is_some() {
+                removed = true;
+            }
+        }
+        "stable" => {
+            if config.repos.stable.take().is_some() {
+                removed = true;
+            }
+        }
+        _ => {
+            if config.repos.extras.remove(name).is_some() {
+                removed = true;
+            }
+        }
+    }
+
+    if !removed {
+        return Err(Error::Config(ConfigError::Invalid {
+            message: format!("Repository '{name}' not found."),
+        }));
+    }
+
+    config.save().await?;
+    Ok(format!("Repository '{name}' removed successfully."))
+}
+
 /// Download index conditionally with `ETag` support
 async fn download_index_conditional(
     ctx: &OpsCtx,

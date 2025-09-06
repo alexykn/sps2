@@ -282,6 +282,10 @@ pub enum Commands {
     /// Manage repositories
     #[command(subcommand)]
     Repo(RepoCommands),
+
+    /// Manage trusted signing keys
+    #[command(subcommand)]
+    Keys(KeysCommands),
 }
 
 /// Repository management subcommands
@@ -295,6 +299,37 @@ pub enum RepoCommands {
         /// The URL of the repository
         #[clap(required = true)]
         url: String,
+    },
+
+    /// List configured repositories
+    List,
+
+    /// Remove a repository by name
+    Remove {
+        /// Repository name (e.g., fast, slow, stable, or extras key)
+        name: String,
+    },
+}
+
+/// Key management subcommands
+#[derive(Subcommand)]
+pub enum KeysCommands {
+    /// List trusted signing keys
+    List,
+
+    /// Import a Minisign public key (.pub or base64)
+    Import {
+        /// Path to Minisign public key (.pub or text file containing base64)
+        file: PathBuf,
+        /// Optional comment to store with the key
+        #[arg(long)]
+        comment: Option<String>,
+    },
+
+    /// Remove a trusted key by key ID
+    Remove {
+        /// Minisign key ID (hex)
+        key_id: String,
     },
 }
 

@@ -1,5 +1,6 @@
 //! Key management utilities for signature verification
 
+use crate::OpsCtx;
 use base64::{engine::general_purpose, Engine as _};
 use hex;
 use minisign_verify::{PublicKey, Signature};
@@ -313,5 +314,111 @@ impl KeyManager {
 
         self.trusted_keys.insert(key.key_id.clone(), key.clone());
         self.save_trusted_keys().await
+    }
+
+    /// Remove a trusted key by its key ID
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if saving the updated trusted keys fails.
+    pub async fn remove_key(&mut self, key_id: &str) -> Result<(), Error> {
+        self.trusted_keys.remove(key_id);
+        self.save_trusted_keys().await
+    }
+}
+
+/// Extract base64 payload from a minisign public key box or return input if already base64.
+#[must_use]
+fn extract_base64(pk_input: &str) -> String {
+    let trimmed = pk_input.trim();
+    if trimmed.lines().count() <= 1 && !trimmed.contains(' ') {
+        return trimmed.to_string();
+    }
+    let mut lines = trimmed.lines();
+    let _ = lines.next();
+    for line in lines {
+        let l = line.trim();
+        if !l.is_empty() {
+            return l.to_string();
+        }
+    }
+    trimmed.to_string()
+}
+
+/// List trusted keys (key IDs) as a displayable string.
+///
+/// # Errors
+///
+/// Returns an error if the trusted keys file cannot be read/parsed.
+pub async fn keys_list(_ctx: &OpsCtx) -> Result<String, Error> {
+    let mut km = KeyManager::new(PathBuf::from(sps2_config::fixed_paths::KEYS_DIR));
+    km.load_trusted_keys().await?;
+    let keys = km.get_trusted_keys();
+    if keys.is_empty() {
+        return Ok("No trusted keys found.".to_string());
+    }
+    let mut lines = Vec::new();
+    for k in keys {
+        lines.push(format!(
+            "{} ({})",
+            k.id,
+            match k.algo {
+                sps2_signing::Algorithm::Minisign => "minisign",
+            }
+        ));
+    }
+    Ok(lines.join("\n"))
+}
+
+/// Import a minisign public key from file. Accepts either a minisign .pub box or raw base64.
+///
+/// # Errors
+///
+/// Returns an error if the key cannot be read, decoded, or saved.
+pub async fn keys_import_from_file(
+    _ctx: &OpsCtx,
+    pubkey_path: &Path,
+    comment: Option<String>,
+) -> Result<String, Error> {
+    let content = fs::read_to_string(pubkey_path).await?;
+    let b64 = extract_base64(&content);
+    let decoded = general_purpose::STANDARD
+        .decode(&b64)
+        .map_err(|e| Error::internal(format!("Invalid minisign public key: {e}")))?;
+    if decoded.len() < 10 {
+        return Err(Error::internal(
+            "Minisign public key is too short".to_string(),
+        ));
+    }
+    let key_id = hex::encode(&decoded[2..10]);
+
+    let mut km = KeyManager::new(PathBuf::from(sps2_config::fixed_paths::KEYS_DIR));
+    km.load_trusted_keys().await?;
+    let trusted = TrustedKey {
+        key_id: key_id.clone(),
+        public_key: b64,
+        comment,
+        trusted_since: chrono::Utc::now().timestamp(),
+        expires_at: None,
+    };
+    km.import_key(&trusted).await?;
+    Ok(format!("Imported minisign key {key_id}"))
+}
+
+/// Remove a trusted key by key ID.
+///
+/// # Errors
+///
+/// Returns an error if saving the updated trusted keys fails or if the key is not present.
+pub async fn keys_remove(_ctx: &OpsCtx, key_id: &str) -> Result<String, Error> {
+    let mut km = KeyManager::new(PathBuf::from(sps2_config::fixed_paths::KEYS_DIR));
+    km.load_trusted_keys().await?;
+    // Proceed even if key doesn't exist; report accordingly
+    let existed = km.trusted_keys.contains_key(key_id);
+    km.remove_key(key_id).await?;
+    if existed {
+        Ok(format!("Removed key {key_id}"))
+    } else {
+        Ok(format!("Key {key_id} not found (no changes)"))
     }
 }
