@@ -335,7 +335,12 @@ impl ProgressTracker {
             + self
                 .phases
                 .iter()
-                .map(|p| p.name.capacity() + p.description.as_ref().map_or(0, std::string::String::capacity))
+                .map(|p| {
+                    p.name.capacity()
+                        + p.description
+                            .as_ref()
+                            .map_or(0, std::string::String::capacity)
+                })
                 .sum::<usize>();
 
         // Speed buffer samples
