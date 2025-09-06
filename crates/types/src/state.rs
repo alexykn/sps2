@@ -14,9 +14,8 @@ pub struct StateInfo {
     /// State ID
     pub id: StateId,
     /// Parent state ID
+    #[serde(alias = "parent_id")]
     pub parent: Option<StateId>,
-    /// Parent state ID (alternative field name)
-    pub parent_id: Option<StateId>,
     /// Creation timestamp
     pub timestamp: DateTime<Utc>,
     /// Operation that created this state

@@ -3690,7 +3690,6 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
- "serde_yml",
  "sps2-errors",
  "thiserror 2.0.16",
  "toml",

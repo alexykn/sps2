@@ -308,7 +308,6 @@ pub async fn history(ctx: &OpsCtx) -> Result<Vec<StateInfo>, Error> {
         let state_info = StateInfo {
             id: state_id,
             parent: parent_id,
-            parent_id,
             timestamp: state.timestamp(),
             operation: state.operation.clone(),
             current: Some(current_id) == Some(state_id),
@@ -354,7 +353,6 @@ async fn get_rollback_state_info_with_changes(
     Ok(StateInfo {
         id: target_id,
         parent: parent_id,
-        parent_id,
         timestamp: state.timestamp(),
         operation: state.operation.clone(),
         current: Some(current_id) == Some(target_id),

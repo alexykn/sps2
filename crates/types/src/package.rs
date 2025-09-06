@@ -42,10 +42,6 @@ impl PackageSpec {
     /// Returns `VersionError` if the package specification string is malformed
     /// or contains invalid version constraints.
     ///
-    /// # Panics
-    ///
-    /// This function may panic if the input string contains malformed version
-    /// constraints that cannot be parsed.
     pub fn parse(s: &str) -> Result<Self, sps2_errors::VersionError> {
         // Find the first constraint operator
         let operators = ["==", ">=", "<=", "!=", "~=", ">", "<"];
@@ -149,6 +145,7 @@ pub struct SearchResult {
 
 /// Dependency kind
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum DepKind {
     Build,
     Runtime,
@@ -160,6 +157,14 @@ impl fmt::Display for DepKind {
             Self::Build => write!(f, "build"),
             Self::Runtime => write!(f, "runtime"),
         }
+    }
+}
+
+impl std::str::FromStr for PackageSpec {
+    type Err = sps2_errors::VersionError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
     }
 }
 

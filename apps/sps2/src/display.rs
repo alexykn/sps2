@@ -309,7 +309,7 @@ impl OutputRenderer {
         println!("Operation: {}", info.operation);
         println!("Packages: {}", info.package_count);
 
-        if let Some(parent) = info.parent_id {
+        if let Some(parent) = info.parent {
             println!("Parent:   {parent}");
         }
 

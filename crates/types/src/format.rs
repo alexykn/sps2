@@ -137,39 +137,31 @@ impl PackageFormatVersion {
 
     /// Get version information for storage in package headers
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if minor or patch versions exceed 65535 (`u16::MAX`)
-    #[must_use]
-    pub fn to_header_bytes(&self) -> [u8; 12] {
+    /// Returns an error if the `minor` or `patch` versions cannot fit into
+    /// `u16` for header encoding.
+    pub fn to_header_bytes(&self) -> Result<[u8; 12], PackageFormatVersionError> {
         let mut bytes = [0u8; 12];
         // Magic bytes for versioned package format: "SPV1" (0x53505631)
         bytes[0..4].copy_from_slice(&[0x53, 0x50, 0x56, 0x31]);
         // Major version (4 bytes, little endian)
         bytes[4..8].copy_from_slice(&self.major.to_le_bytes());
-        // Minor version (2 bytes, little endian) - panic if too large
-        #[allow(clippy::cast_possible_truncation)] // Safe: bounds checked above
-        let minor_u16 = if self.minor <= u16::MAX.into() {
-            self.minor as u16
-        } else {
-            panic!(
-                "Minor version {} exceeds maximum value for header format",
-                self.minor
-            );
-        };
+        // Minor version (2 bytes, little endian)
+        let minor_u16 =
+            u16::try_from(self.minor).map_err(|_| PackageFormatVersionError::InvalidNumber {
+                component: "minor".to_string(),
+                value: self.minor.to_string(),
+            })?;
         bytes[8..10].copy_from_slice(&minor_u16.to_le_bytes());
-        // Patch version (2 bytes, little endian) - panic if too large
-        #[allow(clippy::cast_possible_truncation)] // Safe: bounds checked above
-        let patch_u16 = if self.patch <= u16::MAX.into() {
-            self.patch as u16
-        } else {
-            panic!(
-                "Patch version {} exceeds maximum value for header format",
-                self.patch
-            );
-        };
+        // Patch version (2 bytes, little endian)
+        let patch_u16 =
+            u16::try_from(self.patch).map_err(|_| PackageFormatVersionError::InvalidNumber {
+                component: "patch".to_string(),
+                value: self.patch.to_string(),
+            })?;
         bytes[10..12].copy_from_slice(&patch_u16.to_le_bytes());
-        bytes
+        Ok(bytes)
     }
 
     /// Parse version from package header bytes
