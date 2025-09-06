@@ -353,12 +353,17 @@ impl Resolver {
                     }
                 }
 
-                let node = ResolvedNode::download(
+                let mut node = ResolvedNode::download(
                     name.clone(),
                     version.clone(),
                     Self::resolve_download_url(&version_entry.download_url)?,
                     deps,
                 );
+                // Propagate signature URL and expected hash from index
+                node.signature_url = Some(version_entry.minisig_url.clone());
+                if let Ok(hash) = sps2_hash::Hash::from_hex(&version_entry.blake3) {
+                    node.expected_hash = Some(hash);
+                }
 
                 resolved_nodes.insert(package_id.clone(), node.clone());
                 graph.add_node(node);

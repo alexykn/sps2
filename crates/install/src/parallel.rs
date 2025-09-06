@@ -10,7 +10,7 @@ use sps2_events::events::AcquisitionSource;
 use sps2_events::{
     AcquisitionEvent, AppEvent, EventEmitter, EventSender, GeneralEvent, InstallEvent,
 };
-use sps2_net::NetClient;
+use sps2_net::{PackageDownloadConfig, PackageDownloader};
 use sps2_resolver::{ExecutionPlan, NodeAction, PackageId, ResolvedNode};
 use sps2_resources::ResourceManager;
 use sps2_state::StateManager;
@@ -25,7 +25,6 @@ struct ProcessPackageArgs {
     package_id: PackageId,
     node: ResolvedNode,
     context: ExecutionContext,
-    net_client: NetClient,
     store: PackageStore,
     state_manager: StateManager,
     timeout_duration: Duration,
@@ -34,8 +33,6 @@ struct ProcessPackageArgs {
 
 /// Parallel executor for package operations
 pub struct ParallelExecutor {
-    /// Network client for downloads
-    net_client: NetClient,
     /// Package store
     store: PackageStore,
     /// State manager for package_map updates
@@ -58,7 +55,6 @@ impl ParallelExecutor {
         resources: Arc<ResourceManager>,
     ) -> Result<Self, Error> {
         Ok(Self {
-            net_client: NetClient::with_defaults()?,
             store,
             state_manager,
             resources,
@@ -310,7 +306,6 @@ impl ParallelExecutor {
         _permit: tokio::sync::OwnedSemaphorePermit,
         prepared_packages: Arc<DashMap<PackageId, PreparedPackage>>,
     ) -> JoinHandle<Result<PackageId, Error>> {
-        let net_client = self.net_client.clone();
         let store = self.store.clone();
         let state_manager = self.state_manager.clone();
         let timeout_duration = self.download_timeout;
@@ -320,7 +315,6 @@ impl ParallelExecutor {
                 package_id,
                 node,
                 context,
-                net_client,
                 store,
                 state_manager,
                 timeout_duration,
@@ -336,7 +330,6 @@ impl ParallelExecutor {
             package_id,
             node,
             context,
-            net_client,
             store,
             state_manager: _state_manager,
             timeout_duration,
@@ -366,7 +359,7 @@ impl ParallelExecutor {
                         Self::download_package_only(
                             url,
                             &package_id,
-                            &net_client,
+                            &node,
                             &store,
                             &context,
                             &prepared_packages,
@@ -509,39 +502,72 @@ impl ParallelExecutor {
     async fn download_package_only(
         url: &str,
         package_id: &PackageId,
-        net_client: &NetClient,
+        node: &ResolvedNode,
         store: &PackageStore,
         context: &ExecutionContext,
         prepared_packages: &Arc<DashMap<PackageId, PreparedPackage>>,
     ) -> Result<(), Error> {
-        // Download to temporary file first
-        let temp_file =
-            tempfile::NamedTempFile::new().map_err(|e| InstallError::TempFileError {
-                message: e.to_string(),
-            })?;
+        // Create a temporary directory for the download
+        let temp_dir = tempfile::tempdir().map_err(|e| InstallError::TempFileError {
+            message: e.to_string(),
+        })?;
 
-        // Download with progress reporting
-        net_client
-            .download_file_with_progress(url, temp_file.path(), |progress| {
-                context.emit(AppEvent::Acquisition(AcquisitionEvent::DownloadProgress {
-                    package: package_id.name.clone(),
-                    bytes_downloaded: progress.downloaded,
-                    total_bytes: Some(progress.total),
-                    current_speed: 0.0, // TODO: Calculate actual speed
-                    eta: None,          // TODO: Calculate ETA
-                }));
-            })
+        // Use high-level PackageDownloader to benefit from hash/signature handling
+        let downloader = PackageDownloader::new(
+            PackageDownloadConfig::default(),
+            sps2_events::ProgressManager::new(),
+        )?;
+
+        let tx = context
+            .event_sender()
+            .cloned()
+            .unwrap_or_else(|| tokio::sync::mpsc::unbounded_channel().0);
+
+        let download_result = downloader
+            .download_package(
+                &package_id.name,
+                &package_id.version,
+                url,
+                node.signature_url.as_deref(),
+                temp_dir.path(),
+                node.expected_hash.as_ref(),
+                String::new(), // internal tracker
+                None,
+                &tx,
+            )
             .await?;
 
-        // Keep the temp file alive by storing it in a variable that lives longer
-        let temp_file_path = temp_file.path().to_path_buf();
+        // Enforce signature policy if configured
+        if let Some(policy) = context.security_policy {
+            if policy.verify_signatures && !policy.allow_unsigned {
+                // If a signature was expected (URL provided), require verification
+                if node.signature_url.is_some() {
+                    if !download_result.signature_verified {
+                        return Err(sps2_errors::Error::Signing(
+                            sps2_errors::SigningError::VerificationFailed {
+                                reason: "package signature could not be verified".to_string(),
+                            },
+                        ));
+                    }
+                } else {
+                    return Err(sps2_errors::Error::Signing(
+                        sps2_errors::SigningError::InvalidSignatureFormat(
+                            "missing signature for package".to_string(),
+                        ),
+                    ));
+                }
+            }
+        }
 
         // Add to store and prepare package data
         let stored_package = store
-            .add_package_from_file(&temp_file_path, &package_id.name, &package_id.version)
+            .add_package_from_file(
+                &download_result.package_path,
+                &package_id.name,
+                &package_id.version,
+            )
             .await?;
 
-        // Prepare package data for AtomicInstaller (no database operations)
         if let Some(hash) = stored_package.hash() {
             let size = stored_package.size().await?;
             let store_path = stored_package.path().to_path_buf();
@@ -625,19 +651,31 @@ impl ParallelExecutor {
 pub struct ExecutionContext {
     /// Event sender for progress reporting
     event_sender: Option<EventSender>,
+    /// Optional security policy for signature enforcement
+    security_policy: Option<SecurityPolicy>,
 }
 
 impl ExecutionContext {
     /// Create new execution context
     #[must_use]
     pub fn new() -> Self {
-        Self { event_sender: None }
+        Self {
+            event_sender: None,
+            security_policy: None,
+        }
     }
 
     /// Set event sender
     #[must_use]
     pub fn with_event_sender(mut self, event_sender: EventSender) -> Self {
         self.event_sender = Some(event_sender);
+        self
+    }
+
+    /// Set security policy for downloads
+    #[must_use]
+    pub fn with_security_policy(mut self, policy: SecurityPolicy) -> Self {
+        self.security_policy = Some(policy);
         self
     }
 }
@@ -664,4 +702,11 @@ struct ExecutionNode {
     /// Parent packages (for future dependency tracking, rollback, and error reporting)
     #[allow(dead_code)]
     parents: Vec<PackageId>,
+}
+
+/// Security policy for signature enforcement
+#[derive(Clone, Copy, Debug)]
+pub struct SecurityPolicy {
+    pub verify_signatures: bool,
+    pub allow_unsigned: bool,
 }

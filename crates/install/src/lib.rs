@@ -56,6 +56,7 @@ pub mod validation;
 pub use atomic::{AtomicInstaller, StateTransition};
 pub use installer::{InstallConfig, Installer};
 pub use operations::{InstallOperation, UninstallOperation, UpdateOperation};
+pub use parallel::SecurityPolicy;
 pub use parallel::{ExecutionContext, ParallelExecutor};
 pub use pipeline::batch::{BatchResult, BatchStats};
 pub use pipeline::config::PipelineConfig;

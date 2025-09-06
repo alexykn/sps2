@@ -1,5 +1,6 @@
 //! High-level installation operations
 
+use crate::parallel::SecurityPolicy;
 use crate::{
     AtomicInstaller, ExecutionContext, InstallContext, InstallResult, ParallelExecutor,
     UninstallContext, UpdateContext,
@@ -79,12 +80,17 @@ impl InstallOperation {
         self.check_already_installed_resolved(&resolution)?;
 
         // Execute parallel downloads
-        let exec_context = ExecutionContext::new().with_event_sender(
-            context
-                .event_sender
-                .clone()
-                .unwrap_or_else(|| tokio::sync::mpsc::unbounded_channel().0),
-        );
+        let exec_context = ExecutionContext::new()
+            .with_event_sender(
+                context
+                    .event_sender
+                    .clone()
+                    .unwrap_or_else(|| tokio::sync::mpsc::unbounded_channel().0),
+            )
+            .with_security_policy(SecurityPolicy {
+                verify_signatures: true, // default to verify in this path
+                allow_unsigned: false,
+            });
 
         // Debug: Check what packages we're trying to process
         context.emit_debug(format!(

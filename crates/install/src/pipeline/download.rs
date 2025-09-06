@@ -90,8 +90,8 @@ impl DownloadPipeline {
                         name: package_id.name.clone(),
                         version: package_id.version.clone(),
                         package_url: url.clone(),
-                        signature_url: None,
-                        expected_hash: None,
+                        signature_url: node.signature_url.clone(),
+                        expected_hash: node.expected_hash.clone(),
                     })
                 } else {
                     None

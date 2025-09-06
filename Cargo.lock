@@ -3611,6 +3611,7 @@ dependencies = [
  "serde",
  "sps2-errors",
  "sps2-events",
+ "sps2-hash",
  "sps2-index",
  "sps2-platform",
  "sps2-types",

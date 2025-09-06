@@ -13,6 +13,7 @@ sps2-events = { path = "../events" }
 sps2-types = { path = "../types" }
 sps2-index = { path = "../index" }
 sps2-platform = { path = "../platform" }
+sps2-hash = { path = "../hash" }
 serde = { workspace = true }
 semver = { workspace = true }
 tokio = { workspace = true }

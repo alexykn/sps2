@@ -96,6 +96,23 @@ pub async fn reposync(ctx: &OpsCtx, yes: bool) -> Result<String, Error> {
         }
     }
 
+    // Enforce index freshness based on security policy
+    if let Ok(parsed_index) = sps2_index::Index::from_json(&index_json) {
+        let now = chrono::Utc::now();
+        let age = now.signed_duration_since(parsed_index.metadata.timestamp);
+        let max_days = i64::from(ctx.config.security.index_max_age_days);
+        if age.num_days() > max_days {
+            return Err(OpsError::RepoSyncFailed {
+                message: format!(
+                    "Repository index is stale: {} days old (max {} days)",
+                    age.num_days(),
+                    max_days
+                ),
+            }
+            .into());
+        }
+    }
+
     finalize_index_update(ctx, &index_json, start).await
 }
 

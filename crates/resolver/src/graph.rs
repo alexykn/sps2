@@ -83,6 +83,10 @@ pub struct ResolvedNode {
     pub url: Option<String>,
     /// Local file path (for Local action)
     pub path: Option<PathBuf>,
+    /// Signature URL for detached signature (if remote)
+    pub signature_url: Option<String>,
+    /// Expected BLAKE3 hash for integrity verification (if remote)
+    pub expected_hash: Option<sps2_hash::Hash>,
 }
 
 impl ResolvedNode {
@@ -96,6 +100,8 @@ impl ResolvedNode {
             deps,
             url: Some(url),
             path: None,
+            signature_url: None,
+            expected_hash: None,
         }
     }
 
@@ -109,6 +115,8 @@ impl ResolvedNode {
             deps,
             url: None,
             path: Some(path),
+            signature_url: None,
+            expected_hash: None,
         }
     }
 

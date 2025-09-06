@@ -400,7 +400,12 @@ async fn install_remote_packages_parallel(
 
     // Phase 2-4: Parallel execution (download, store, prepare)
     // Use the same approach as the regular installer with ParallelExecutor
-    let exec_context = sps2_install::ExecutionContext::new().with_event_sender(ctx.tx.clone());
+    let exec_context = sps2_install::ExecutionContext::new()
+        .with_event_sender(ctx.tx.clone())
+        .with_security_policy(sps2_install::SecurityPolicy {
+            verify_signatures: ctx.config.security.verify_signatures,
+            allow_unsigned: ctx.config.security.allow_unsigned,
+        });
 
     // Create parallel executor
     let resources = std::sync::Arc::new(sps2_resources::ResourceManager::default());
