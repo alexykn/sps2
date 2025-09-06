@@ -4,6 +4,7 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
 pub enum StorageError {
     #[error("disk full: {path}")]
     DiskFull { path: String },
@@ -44,18 +45,29 @@ pub enum StorageError {
 
 impl From<std::io::Error> for StorageError {
     fn from(err: std::io::Error) -> Self {
+        // Without a known path, avoid inventing placeholders; preserve message only
+        Self::IoError {
+            message: err.to_string(),
+        }
+    }
+}
+
+impl StorageError {
+    /// Convert an `io::Error` into a `StorageError` with an associated path
+    #[must_use]
+    pub fn from_io_with_path(err: &std::io::Error, path: &std::path::Path) -> Self {
         match err.kind() {
             std::io::ErrorKind::PermissionDenied => Self::PermissionDenied {
-                path: format!("<unknown>: {err}"),
+                path: path.display().to_string(),
             },
             std::io::ErrorKind::NotFound => Self::PathNotFound {
-                path: format!("<unknown>: {err}"),
+                path: path.display().to_string(),
             },
             std::io::ErrorKind::AlreadyExists => Self::AlreadyExists {
-                path: format!("<unknown>: {err}"),
+                path: path.display().to_string(),
             },
             _ => Self::IoError {
-                message: err.to_string(),
+                message: format!("{}: {}", path.display(), err),
             },
         }
     }

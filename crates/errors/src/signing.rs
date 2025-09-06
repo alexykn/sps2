@@ -1,4 +1,4 @@
-#!/deny(clippy::pedantic, unsafe_code)
+#![deny(clippy::pedantic, unsafe_code)]
 
 //! Signing error types
 
@@ -6,6 +6,7 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
 pub enum SigningError {
     #[error("signature verification failed: {reason}")]
     VerificationFailed { reason: String },

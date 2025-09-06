@@ -4,6 +4,7 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
 pub enum OpsError {
     #[error("operation failed: {message}")]
     OperationFailed { message: String },

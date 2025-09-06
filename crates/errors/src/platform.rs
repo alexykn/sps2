@@ -6,6 +6,7 @@ use thiserror::Error;
 /// Errors that can occur during platform-specific operations
 #[derive(Debug, Clone, Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
 pub enum PlatformError {
     #[error("binary operation failed: {operation} on {binary_path} - {message}")]
     BinaryOperationFailed {

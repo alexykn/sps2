@@ -4,6 +4,7 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
 pub enum StateError {
     #[error("invalid state transition from {from} to {to}")]
     InvalidTransition { from: String, to: String },

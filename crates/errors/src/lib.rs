@@ -89,7 +89,13 @@ pub enum Error {
     Cancelled,
 
     #[error("I/O error: {message}")]
-    Io { message: String },
+    Io {
+        #[cfg_attr(feature = "serde", serde(with = "io_kind_as_str"))]
+        kind: std::io::ErrorKind,
+        message: String,
+        #[cfg_attr(feature = "serde", serde(with = "opt_path_buf"))]
+        path: Option<std::path::PathBuf>,
+    },
 }
 
 impl Error {
@@ -97,12 +103,23 @@ impl Error {
     pub fn internal(msg: impl Into<String>) -> Self {
         Self::Internal(msg.into())
     }
+
+    /// Create an Io error with an associated path
+    pub fn io_with_path(err: &std::io::Error, path: impl Into<std::path::PathBuf>) -> Self {
+        Self::Io {
+            kind: err.kind(),
+            message: err.to_string(),
+            path: Some(path.into()),
+        }
+    }
 }
 
 impl From<std::io::Error> for Error {
     fn from(err: std::io::Error) -> Self {
         Self::Io {
+            kind: err.kind(),
             message: err.to_string(),
+            path: None,
         }
     }
 }
@@ -139,3 +156,66 @@ impl From<minisign_verify::Error> for Error {
 
 /// Result type alias for sps2 operations
 pub type Result<T> = std::result::Result<T, Error>;
+
+// Serde helper modules for optional path and io::ErrorKind as string
+#[cfg(feature = "serde")]
+mod io_kind_as_str {
+    use serde::{Deserialize, Deserializer, Serializer};
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    pub fn serialize<S>(kind: &std::io::ErrorKind, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        s.serialize_str(&format!("{kind:?}"))
+    }
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<std::io::ErrorKind, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        // Best effort mapping; default to Other
+        Ok(match s.as_str() {
+            "NotFound" => std::io::ErrorKind::NotFound,
+            "PermissionDenied" => std::io::ErrorKind::PermissionDenied,
+            "ConnectionRefused" => std::io::ErrorKind::ConnectionRefused,
+            "ConnectionReset" => std::io::ErrorKind::ConnectionReset,
+            "ConnectionAborted" => std::io::ErrorKind::ConnectionAborted,
+            "NotConnected" => std::io::ErrorKind::NotConnected,
+            "AddrInUse" => std::io::ErrorKind::AddrInUse,
+            "AddrNotAvailable" => std::io::ErrorKind::AddrNotAvailable,
+            "BrokenPipe" => std::io::ErrorKind::BrokenPipe,
+            "AlreadyExists" => std::io::ErrorKind::AlreadyExists,
+            "WouldBlock" => std::io::ErrorKind::WouldBlock,
+            "InvalidInput" => std::io::ErrorKind::InvalidInput,
+            "InvalidData" => std::io::ErrorKind::InvalidData,
+            "TimedOut" => std::io::ErrorKind::TimedOut,
+            "WriteZero" => std::io::ErrorKind::WriteZero,
+            "Interrupted" => std::io::ErrorKind::Interrupted,
+            "Unsupported" => std::io::ErrorKind::Unsupported,
+            "UnexpectedEof" => std::io::ErrorKind::UnexpectedEof,
+            _ => std::io::ErrorKind::Other,
+        })
+    }
+}
+
+#[cfg(feature = "serde")]
+mod opt_path_buf {
+    use serde::{Deserialize, Deserializer, Serializer};
+    #[allow(clippy::ref_option)]
+    pub fn serialize<S>(path: &Option<std::path::PathBuf>, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match path {
+            Some(pb) => s.serialize_some(&pb.display().to_string()),
+            None => s.serialize_none(),
+        }
+    }
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<std::path::PathBuf>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let opt = Option::<String>::deserialize(deserializer)?;
+        Ok(opt.map(std::path::PathBuf::from))
+    }
+}
