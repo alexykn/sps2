@@ -2986,6 +2986,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "sbs"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "sps2-errors",
+ "sps2-repository",
+ "sps2-signing",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "schannel"
 version = "0.1.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3601,6 +3614,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "sps2-repository"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "regex",
+ "serde",
+ "serde_json",
+ "sps2-errors",
+ "sps2-hash",
+ "sps2-index",
+ "sps2-signing",
+ "thiserror 2.0.16",
+ "tokio",
+]
+
+[[package]]
 name = "sps2-resolver"
 version = "0.1.0"
 dependencies = [
@@ -3635,6 +3664,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "hex",
+ "minisign",
  "minisign-verify",
  "serde",
  "serde_json",

@@ -1,0 +1,22 @@
+[package]
+name = "sbs"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "sbs"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true, features = ["derive"] }
+sps2-errors = { path = "../../crates/errors" }
+sps2-repository = { path = "../../crates/repository" }
+sps2-signing = { path = "../../crates/signing" }
+tokio = { workspace = true, features = ["fs", "rt-multi-thread", "macros"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+

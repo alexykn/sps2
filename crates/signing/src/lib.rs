@@ -1,6 +1,7 @@
 #![deny(clippy::pedantic, unsafe_code)]
 
 use base64::{engine::general_purpose, Engine as _};
+use minisign::{sign, SecretKeyBox};
 use minisign_verify::{PublicKey, Signature};
 use serde::{Deserialize, Serialize};
 use sps2_errors::{Error, SigningError};
@@ -105,4 +106,44 @@ pub fn verify_minisign_bytes_with_keys(
     Err(SigningError::NoTrustedKeyFound {
         key_id: key_id_from_sig,
     })
+}
+
+/// Sign raw bytes with a Minisign secret key file and return the signature string.
+///
+/// The secret key file is expected to be in Minisign "secret key box" format.
+/// If the key is encrypted, provide the `passphrase_or_keychain` string as required by
+/// the underlying minisign crate (for macOS keychain integration or passphrase).
+///
+/// # Errors
+///
+/// Returns an error if the key cannot be read/parsed, the secret key cannot be decrypted,
+/// or the signing operation fails.
+pub fn minisign_sign_bytes(
+    bytes: &[u8],
+    secret_key_path: &std::path::Path,
+    passphrase_or_keychain: Option<&str>,
+    trusted_comment: Option<&str>,
+    untrusted_comment: Option<&str>,
+) -> Result<String, Error> {
+    use std::io::Cursor;
+    let sk_box_str = std::fs::read_to_string(secret_key_path)
+        .map_err(|e| Error::internal(format!("Failed to read secret key file: {e}")))?;
+
+    let sk_box = SecretKeyBox::from_string(&sk_box_str)
+        .map_err(|e| Error::internal(format!("Failed to parse secret key: {e}")))?;
+
+    let secret_key = sk_box
+        .into_secret_key(passphrase_or_keychain.map(std::string::ToString::to_string))
+        .map_err(|e| Error::internal(format!("Failed to decrypt secret key: {e}")))?;
+
+    let signature = sign(
+        None,
+        &secret_key,
+        Cursor::new(bytes),
+        trusted_comment,
+        untrusted_comment,
+    )
+    .map_err(|e| Error::internal(format!("Failed to sign bytes: {e}")))?;
+
+    Ok(signature.into_string())
 }

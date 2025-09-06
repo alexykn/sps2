@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "apps/sps2",
     "apps/sls",
+    "apps/sbs",
     "crates/builder",
     "crates/config",
     "crates/drafter",
@@ -17,6 +18,7 @@ members = [
     "crates/ops",
     "crates/platform",
     "crates/signing",
+    "crates/repository",
     "crates/resolver",
     "crates/resources",
 

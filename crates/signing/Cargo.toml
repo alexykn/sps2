@@ -9,6 +9,7 @@ path = "src/lib.rs"
 
 [dependencies]
 minisign-verify = "0.2.4"
+minisign = "0.7.9"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.143"
 sps2-errors = { path = "../errors" }
