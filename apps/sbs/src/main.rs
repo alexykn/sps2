@@ -2,6 +2,7 @@
 
 use clap::{Parser, Subcommand};
 use sps2_errors::Error;
+use sps2_repository::keys as repo_keys;
 use sps2_repository::{LocalStore, Publisher};
 use std::path::PathBuf;
 
@@ -49,6 +50,28 @@ enum Commands {
         #[arg(long)]
         pass: Option<String>,
     },
+
+    /// Initialize a repository with keys.json
+    RepoInit {
+        /// Repository directory path
+        #[arg(long, value_name = "DIR")]
+        repo_dir: PathBuf,
+        /// Use an existing Minisign public key file (.pub). If not provided, you can --generate.
+        #[arg(long, value_name = "PUBFILE")]
+        pubkey: Option<PathBuf>,
+        /// Generate a new unencrypted key pair for testing
+        #[arg(long, conflicts_with = "pubkey")]
+        generate: bool,
+        /// Output path for generated secret key (required with --generate)
+        #[arg(long, requires = "generate", value_name = "PATH")]
+        out_secret: Option<PathBuf>,
+        /// Output path for generated public key (required with --generate)
+        #[arg(long, requires = "generate", value_name = "PATH")]
+        out_public: Option<PathBuf>,
+        /// Optional comment to embed into keys.json
+        #[arg(long)]
+        comment: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -69,6 +92,16 @@ async fn main() -> Result<(), Error> {
             key,
             pass,
         } => update_indices(repo_dir, base_url, key, pass).await?,
+        Commands::RepoInit {
+            repo_dir,
+            pubkey,
+            generate,
+            out_secret,
+            out_public,
+            comment,
+        } => {
+            repo_init(repo_dir, pubkey, generate, out_secret, out_public, comment).await?;
+        }
     }
     Ok(())
 }
@@ -132,5 +165,49 @@ async fn update_indices(
         artifacts.len(),
         repo_dir.display()
     );
+    Ok(())
+}
+
+async fn repo_init(
+    repo_dir: PathBuf,
+    pubkey: Option<PathBuf>,
+    generate: bool,
+    out_secret: Option<PathBuf>,
+    out_public: Option<PathBuf>,
+    comment: Option<String>,
+) -> Result<(), Error> {
+    tokio::fs::create_dir_all(&repo_dir).await?;
+
+    let pk_base64 = if let Some(pub_path) = pubkey {
+        let content = tokio::fs::read_to_string(&pub_path).await?;
+        repo_keys::extract_base64(&content)
+    } else if generate {
+        // Generate unencrypted keypair for local testing
+        use minisign::KeyPair;
+        let KeyPair { pk, sk } = KeyPair::generate_unencrypted_keypair()
+            .map_err(|e| Error::internal(format!("keypair generation failed: {e}")))?;
+        // Write secret key
+        let sk_path = out_secret.expect("out_secret required with --generate");
+        let sk_box = sk
+            .to_box(None)
+            .map_err(|e| Error::internal(format!("secret key serialize failed: {e}")))?;
+        tokio::fs::write(&sk_path, sk_box.to_string()).await?;
+        // Write public key
+        let pk_path = out_public.expect("out_public required with --generate");
+        let pk_box = pk
+            .to_box()
+            .map_err(|e| Error::internal(format!("public key serialize failed: {e}")))?;
+        tokio::fs::write(&pk_path, pk_box.to_string()).await?;
+        // Extract base64 from box
+        repo_keys::extract_base64(&pk_box.to_string())
+    } else {
+        return Err(Error::internal(
+            "Provide --pubkey <file> or --generate with --out-secret/--out-public",
+        ));
+    };
+
+    let repo = repo_keys::make_single_key(pk_base64, comment)?;
+    repo_keys::write_keys_json(&repo_dir, &repo).await?;
+    println!("Initialized repo at {} with keys.json", repo_dir.display());
     Ok(())
 }

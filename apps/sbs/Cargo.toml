@@ -19,4 +19,5 @@ sps2-signing = { path = "../../crates/signing" }
 tokio = { workspace = true, features = ["fs", "rt-multi-thread", "macros"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
-
+minisign = "0.7.9"
+base64 = "0.22.1"

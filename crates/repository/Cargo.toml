@@ -18,3 +18,6 @@ tokio = { workspace = true, features = ["fs"] }
 regex = "1.11.2"
 thiserror = { workspace = true }
 async-trait = "0.1.80"
+chrono = { workspace = true }
+base64 = "0.22.1"
+hex = "0.4.3"

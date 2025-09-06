@@ -2989,7 +2989,9 @@ dependencies = [
 name = "sbs"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "clap",
+ "minisign",
  "sps2-errors",
  "sps2-repository",
  "sps2-signing",
@@ -3618,6 +3620,9 @@ name = "sps2-repository"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
+ "chrono",
+ "hex",
  "regex",
  "serde",
  "serde_json",
