@@ -5,6 +5,7 @@ use std::time::Duration;
 
 /// Build system types supported by sps2
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum BuildSystem {
     Autotools,
     CMake,
@@ -16,6 +17,7 @@ pub enum BuildSystem {
 
 /// Build phases for multi-stage operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum BuildPhase {
     Source,
     Build,
@@ -25,6 +27,7 @@ pub enum BuildPhase {
 
 /// Build cache strategies
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CacheStrategy {
     Skip,
     Populate,
@@ -33,6 +36,7 @@ pub enum CacheStrategy {
 
 /// Build isolation levels
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum IsolationLevel {
     None,
     Network,

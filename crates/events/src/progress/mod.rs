@@ -223,7 +223,7 @@
 //! - Fixed-size ring buffers prevent unbounded growth
 //! - Automatic pruning of old samples (max 1000 per tracker)
 //! - Compact data structures optimized for <1KB per tracker
-//! - Lock-free operations where possible for performance
+//! - Minimize locking overhead; manager uses a Mutex internally
 
 // Module declarations
 pub mod config;
@@ -324,16 +324,19 @@ pub mod patterns {
                     name: "Connect".to_string(),
                     weight: 0.05,
                     estimated_duration: Some(Duration::from_secs(2)),
+                    description: Some("Establishing network connection".to_string()),
                 },
                 ProgressPhase {
                     name: "Download".to_string(),
                     weight: 0.9,
                     estimated_duration: None, // Calculated based on speed
+                    description: Some("Transferring data".to_string()),
                 },
                 ProgressPhase {
                     name: "Verify".to_string(),
                     weight: 0.05,
                     estimated_duration: Some(Duration::from_secs(1)),
+                    description: Some("Verifying checksum/signature".to_string()),
                 },
             ];
 
@@ -352,6 +355,7 @@ pub mod patterns {
                     name: "Resolve".to_string(),
                     weight: 0.1,
                     estimated_duration: Some(Duration::from_secs(5)),
+                    description: Some("Resolving dependencies".to_string()),
                 });
             }
 
@@ -360,21 +364,25 @@ pub mod patterns {
                     name: "Download".to_string(),
                     weight: 0.5,
                     estimated_duration: None,
+                    description: Some("Downloading packages".to_string()),
                 },
                 ProgressPhase {
                     name: "Validate".to_string(),
                     weight: 0.15,
                     estimated_duration: None,
+                    description: Some("Validating artifacts".to_string()),
                 },
                 ProgressPhase {
                     name: "Stage".to_string(),
                     weight: 0.15,
                     estimated_duration: None,
+                    description: Some("Staging files".to_string()),
                 },
                 ProgressPhase {
                     name: "Commit".to_string(),
                     weight: 0.1,
                     estimated_duration: Some(Duration::from_secs(2)),
+                    description: Some("Committing to live".to_string()),
                 },
             ]);
 
@@ -396,16 +404,19 @@ pub mod patterns {
                     name: "Check".to_string(),
                     weight: 0.1,
                     estimated_duration: Some(Duration::from_secs(3)),
+                    description: Some("Checking for updates".to_string()),
                 },
                 ProgressPhase {
                     name: "Download".to_string(),
                     weight: 0.6,
                     estimated_duration: None,
+                    description: Some("Downloading updates".to_string()),
                 },
                 ProgressPhase {
                     name: "Install".to_string(),
                     weight: 0.3,
                     estimated_duration: None,
+                    description: Some("Installing updates".to_string()),
                 },
             ];
 
@@ -427,16 +438,19 @@ pub mod patterns {
                     name: "Analyze".to_string(),
                     weight: 0.2,
                     estimated_duration: Some(Duration::from_secs(2)),
+                    description: Some("Analyzing dependencies".to_string()),
                 },
                 ProgressPhase {
                     name: "Remove".to_string(),
                     weight: 0.7,
                     estimated_duration: None,
+                    description: Some("Removing files".to_string()),
                 },
                 ProgressPhase {
                     name: "Cleanup".to_string(),
                     weight: 0.1,
                     estimated_duration: Some(Duration::from_secs(1)),
+                    description: Some("Cleaning up".to_string()),
                 },
             ];
 
@@ -458,16 +472,19 @@ pub mod patterns {
                     name: "Initialize".to_string(),
                     weight: 0.1,
                     estimated_duration: Some(Duration::from_secs(2)),
+                    description: Some("Initializing update".to_string()),
                 },
                 ProgressPhase {
                     name: "Download".to_string(),
                     weight: 0.8,
                     estimated_duration: None, // Depends on network speed
+                    description: Some("Downloading vulnerability data".to_string()),
                 },
                 ProgressPhase {
                     name: "Process".to_string(),
                     weight: 0.1,
                     estimated_duration: Some(Duration::from_secs(5)),
+                    description: Some("Processing data".to_string()),
                 },
             ];
 

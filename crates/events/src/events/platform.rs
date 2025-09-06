@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 /// Platform operation events for tracking platform-specific operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "event_type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum PlatformEvent {
     /// Binary operation started (`install_name_tool`, `otool`, `codesign`)
     BinaryOperationStarted {

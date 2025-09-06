@@ -164,7 +164,7 @@ impl PipelineMaster {
             "batch_pipeline",
             Some(resolved_packages.len() as u64),
             phases,
-            context.event_sender().cloned().unwrap(),
+            context.event_sender().expect("event sender not available"),
         );
 
         // Execute the batch pipeline

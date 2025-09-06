@@ -3432,11 +3432,7 @@ dependencies = [
 name = "sps2-events"
 version = "0.1.0"
 dependencies = [
- "semver",
  "serde",
- "serde_json",
- "sps2-config",
- "sps2-errors",
  "sps2-types",
  "tokio",
  "tracing",

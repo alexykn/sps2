@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use sps2_config;
 use sps2_types::Version;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -248,22 +247,27 @@ pub enum InstallConflictType {
 
 impl InstallEvent {
     /// Create a basic installation started event
-    pub fn started(package: impl Into<String>, version: Version) -> Self {
+    pub fn started(package: impl Into<String>, version: Version, install_path: PathBuf) -> Self {
         Self::Started {
             package: package.into(),
             version,
-            install_path: PathBuf::from(sps2_config::fixed_paths::LIVE_DIR), // Default install path
+            install_path,
             force_reinstall: false,
         }
     }
 
     /// Create a basic installation completed event
-    pub fn completed(package: impl Into<String>, version: Version, files: usize) -> Self {
+    pub fn completed(
+        package: impl Into<String>,
+        version: Version,
+        files: usize,
+        install_path: PathBuf,
+    ) -> Self {
         Self::Completed {
             package: package.into(),
             version,
             installed_files: files,
-            install_path: PathBuf::from(sps2_config::fixed_paths::LIVE_DIR),
+            install_path,
             duration: Duration::from_secs(0),
             disk_usage: 0,
         }

@@ -35,8 +35,9 @@ impl ProgressManager {
     /// Create a new progress tracker
     pub fn create_tracker(&self, id: String, operation: String, total: Option<u64>) -> String {
         let tracker = ProgressTracker::new(id.clone(), operation, total);
-        let mut trackers = self.trackers.lock().unwrap();
-        trackers.insert(id.clone(), tracker);
+        if let Ok(mut trackers) = self.trackers.lock() {
+            trackers.insert(id.clone(), tracker);
+        }
         id
     }
 
@@ -49,35 +50,48 @@ impl ProgressManager {
         phases: Vec<ProgressPhase>,
     ) -> String {
         let tracker = ProgressTracker::new(id.clone(), operation, total).with_phases(phases);
-        let mut trackers = self.trackers.lock().unwrap();
-        trackers.insert(id.clone(), tracker);
+        if let Ok(mut trackers) = self.trackers.lock() {
+            trackers.insert(id.clone(), tracker);
+        }
         id
     }
 
     /// Get a tracker by its ID
     pub fn get_tracker(&self, id: &str) -> Option<ProgressTracker> {
-        let trackers = self.trackers.lock().unwrap();
-        trackers.get(id).cloned()
+        if let Ok(trackers) = self.trackers.lock() {
+            trackers.get(id).cloned()
+        } else {
+            None
+        }
     }
 
     /// Update a tracker's progress
     pub fn update(&self, id: &str, progress: u64) -> Option<ProgressUpdate> {
-        let mut trackers = self.trackers.lock().unwrap();
-        trackers.get_mut(id).map(|tracker| tracker.update(progress))
+        if let Ok(mut trackers) = self.trackers.lock() {
+            trackers.get_mut(id).map(|tracker| tracker.update(progress))
+        } else {
+            None
+        }
     }
 
     /// Advance a tracker to the next phase
     pub fn next_phase(&self, id: &str) -> Option<usize> {
-        let mut trackers = self.trackers.lock().unwrap();
-        trackers.get_mut(id).and_then(ProgressTracker::next_phase)
+        if let Ok(mut trackers) = self.trackers.lock() {
+            trackers.get_mut(id).and_then(ProgressTracker::next_phase)
+        } else {
+            None
+        }
     }
 
     /// Complete a tracker
     pub fn complete(&self, id: &str) -> Option<Duration> {
-        let mut trackers = self.trackers.lock().unwrap();
-        if let Some(tracker) = trackers.get_mut(id) {
-            let duration = tracker.complete();
-            Some(duration)
+        if let Ok(mut trackers) = self.trackers.lock() {
+            if let Some(tracker) = trackers.get_mut(id) {
+                let duration = tracker.complete();
+                Some(duration)
+            } else {
+                None
+            }
         } else {
             None
         }
@@ -86,31 +100,43 @@ impl ProgressManager {
     /// Remove a completed tracker
     #[must_use]
     pub fn remove(&self, id: &str) -> bool {
-        let mut trackers = self.trackers.lock().unwrap();
-        trackers.remove(id).is_some()
+        if let Ok(mut trackers) = self.trackers.lock() {
+            trackers.remove(id).is_some()
+        } else {
+            false
+        }
     }
 
     /// Get current memory usage of all trackers
     #[must_use]
     pub fn total_memory_usage(&self) -> usize {
-        let trackers = self.trackers.lock().unwrap();
-        trackers.values().map(ProgressTracker::memory_usage).sum()
+        if let Ok(trackers) = self.trackers.lock() {
+            trackers.values().map(ProgressTracker::memory_usage).sum()
+        } else {
+            0
+        }
     }
 
     /// Get number of active trackers
     #[must_use]
     pub fn active_count(&self) -> usize {
-        let trackers = self.trackers.lock().unwrap();
-        trackers.len()
+        if let Ok(trackers) = self.trackers.lock() {
+            trackers.len()
+        } else {
+            0
+        }
     }
 
     /// Clean up completed trackers to free memory
     #[must_use]
     pub fn cleanup_completed(&self) -> usize {
-        let mut trackers = self.trackers.lock().unwrap();
-        let initial_count = trackers.len();
-        trackers.retain(|_, tracker| !tracker.completed);
-        initial_count - trackers.len()
+        if let Ok(mut trackers) = self.trackers.lock() {
+            let initial_count = trackers.len();
+            trackers.retain(|_, tracker| !tracker.completed);
+            initial_count - trackers.len()
+        } else {
+            0
+        }
     }
 
     /// Start a new operation with progress tracking
@@ -120,10 +146,21 @@ impl ProgressManager {
         operation: &str,
         total: Option<u64>,
         phases: Vec<ProgressPhase>,
-        _tx: crate::EventSender,
+        tx: &crate::EventSender,
     ) -> String {
         let tracker_id = format!("{}_{}", id, uuid::Uuid::new_v4());
+        let phases_clone = phases.clone();
         self.create_tracker_with_phases(tracker_id.clone(), operation.to_string(), total, phases);
+        // Emit a Started event for this operation
+        let _ = tx.send(crate::AppEvent::Progress(
+            crate::events::ProgressEvent::Started {
+                id: tracker_id.clone(),
+                operation: operation.to_string(),
+                total,
+                phases: phases_clone,
+                parent_id: None,
+            },
+        ));
         tracker_id
     }
 
@@ -136,34 +173,40 @@ impl ProgressManager {
         tx: &crate::EventSender,
     ) {
         if let Some(update) = self.update(id, current) {
-            // Send progress event
-            if let Some(total) = total {
-                let _ = tx.send(crate::AppEvent::Progress(
-                    crate::events::ProgressEvent::Updated {
-                        id: id.to_string(),
-                        current,
-                        total: Some(total),
-                        phase: update.phase,
-                        speed: update.speed,
-                        eta: update.eta,
-                        efficiency: None,
-                    },
-                ));
-            }
+            // Send progress event regardless of whether total is known
+            let _ = tx.send(crate::AppEvent::Progress(
+                crate::events::ProgressEvent::Updated {
+                    id: id.to_string(),
+                    current,
+                    total,
+                    phase: update.phase,
+                    speed: update.speed,
+                    eta: update.eta,
+                    efficiency: None,
+                },
+            ));
         }
     }
 
     /// Change to a specific phase
-    pub fn change_phase(&self, id: &str, _phase: usize, tx: &crate::EventSender) {
-        // For now, we'll just advance through phases sequentially
-        if let Some(new_phase) = self.next_phase(id) {
-            let _ = tx.send(crate::AppEvent::Progress(
-                crate::events::ProgressEvent::PhaseChanged {
-                    id: id.to_string(),
-                    phase: new_phase,
-                    phase_name: format!("Phase {}", new_phase),
-                },
-            ));
+    pub fn change_phase(&self, id: &str, phase_index: usize, tx: &crate::EventSender) {
+        // Set to specific phase index if available
+        if let Ok(mut trackers) = self.trackers.lock() {
+            if let Some(tracker) = trackers.get_mut(id) {
+                let clamped = phase_index.min(tracker.phases.len().saturating_sub(1));
+                tracker.current_phase = clamped;
+                let name = tracker
+                    .phases()
+                    .get(clamped)
+                    .map_or_else(|| format!("Phase {}", clamped), |p| p.name.clone());
+                let _ = tx.send(crate::AppEvent::Progress(
+                    crate::events::ProgressEvent::PhaseChanged {
+                        id: id.to_string(),
+                        phase: clamped,
+                        phase_name: name,
+                    },
+                ));
+            }
         }
     }
 
@@ -222,7 +265,7 @@ impl ProgressManager {
         operation_name: String,
         weight: f64,
         tx: &crate::EventSender,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ) {
         // Emit child started event
         let _ = tx.send(crate::AppEvent::Progress(
             crate::events::ProgressEvent::ChildStarted {
@@ -232,11 +275,7 @@ impl ProgressManager {
                 weight,
             },
         ));
-
-        // Store parent-child relationship in tracker metadata
-        // For now, we'll track this through the event system
-        // Future enhancement: store relationships in tracker structure
-        Ok(())
+        // Fire-and-forget; UI aggregates parent/child via events.
     }
 
     /// Complete a child tracker and update parent progress
@@ -250,7 +289,7 @@ impl ProgressManager {
         child_id: &str,
         success: bool,
         tx: &crate::EventSender,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ) {
         let _ = tx.send(crate::AppEvent::Progress(
             crate::events::ProgressEvent::ChildCompleted {
                 parent_id: parent_id.to_string(),
@@ -258,11 +297,7 @@ impl ProgressManager {
                 success,
             },
         ));
-
-        // Update parent progress based on child completion
-        // For now, we'll let the UI handle aggregation
-        // Future enhancement: automatically update parent progress
-        Ok(())
+        // Fire-and-forget.
     }
 }
 impl Default for ProgressManager {

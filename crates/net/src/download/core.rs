@@ -271,7 +271,7 @@ impl PackageDownloader {
                     #[allow(clippy::cast_precision_loss)]
                     // Acceptable precision loss for progress weights
                     let weight = 1.0 / total_packages as f64; // Equal weight for each package
-                    let _ = downloader.progress_manager.register_child_tracker(
+                    downloader.progress_manager.register_child_tracker(
                         parent_id,
                         &child_id,
                         format!("Downloading {}", request.name),
@@ -297,7 +297,7 @@ impl PackageDownloader {
                 // Complete child tracker
                 if let Some(ref parent_id) = batch_progress_id_clone {
                     let success = result.is_ok();
-                    let _ = downloader
+                    downloader
                         .progress_manager
                         .complete_child_tracker(parent_id, &child_id, success, &tx);
                 }

@@ -73,7 +73,7 @@ impl DownloadPipeline {
             .create_download_tracker(&download_config);
 
         // Register as child of parent operation (e.g., install operation)
-        let _ = self.progress_manager.register_child_tracker(
+        self.progress_manager.register_child_tracker(
             parent_progress_id,
             &batch_progress_id,
             "Download Phase".to_string(),
@@ -115,7 +115,7 @@ impl DownloadPipeline {
             .await?;
 
         // Complete batch progress
-        let _ = self.progress_manager.complete_child_tracker(
+        self.progress_manager.complete_child_tracker(
             parent_progress_id,
             &batch_progress_id,
             true,

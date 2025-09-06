@@ -54,16 +54,19 @@ pub struct ProgressPhase {
     pub weight: f64,
     /// Optional estimated duration for this phase
     pub estimated_duration: Option<Duration>,
+    /// Optional human-readable description of the phase
+    pub description: Option<String>,
 }
 
 impl ProgressPhase {
     /// Create a new progress phase
     #[must_use]
-    pub fn new(name: &str, _description: &str) -> Self {
+    pub fn new(name: &str, description: &str) -> Self {
         Self {
             name: name.to_string(),
             weight: 1.0, // Default equal weight
             estimated_duration: None,
+            description: Some(description.to_string()),
         }
     }
 

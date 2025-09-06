@@ -332,7 +332,11 @@ impl ProgressTracker {
 
         // Phases vector
         let phases_size = self.phases.capacity() * std::mem::size_of::<ProgressPhase>()
-            + self.phases.iter().map(|p| p.name.capacity()).sum::<usize>();
+            + self
+                .phases
+                .iter()
+                .map(|p| p.name.capacity() + p.description.as_ref().map_or(0, std::string::String::capacity))
+                .sum::<usize>();
 
         // Speed buffer samples
         let samples_size =
