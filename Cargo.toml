@@ -58,7 +58,7 @@ toml = "0.9.5"
 thiserror = "2.0.16"
 
 # Utilities
-uuid = { version = "1.18.0", features = ["v4", "serde"] }
+uuid = { version = "1.18.1", features = ["v4", "serde"] }
 semver = { version = "1.0.26", features = ["serde"] }
 blake3 = "1.8.2"
 xxhash-rust = { version = "0.8.15", features = ["xxh3"] }
@@ -70,7 +70,7 @@ minisign-verify = "0.2.4"
 dashmap = "6.1.0"
 crossbeam = "0.8.4"
 
-clap = { version = "4.5.45", features = ["derive", "env"] }
+clap = { version = "4.5.47", features = ["derive", "env"] }
 
 tar = "0.4.44"
 
