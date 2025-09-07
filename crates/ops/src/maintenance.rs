@@ -90,6 +90,82 @@ async fn collect_last_ref_and_inventory(ctx: &OpsCtx) -> Result<LastRefData, Err
         file_objs,
     })
 }
+
+async fn evict_packages(
+    ctx: &OpsCtx,
+    last: &LastRefData,
+    required_pkg_hashes: &std::collections::HashSet<String>,
+    pkg_grace_secs: i64,
+    now: i64,
+    dry_run: bool,
+) -> Result<(usize, i64), Error> {
+    let mut count = 0usize;
+    let mut bytes = 0i64;
+    for sr in &last.store_refs {
+        if required_pkg_hashes.contains(&sr.hash) {
+            continue;
+        }
+        let last_ref = *last.pkg_last_ref.get(&sr.hash).unwrap_or(&0);
+        if last_ref == 0 || (now - last_ref) >= pkg_grace_secs {
+            let hash = sps2_hash::Hash::from_hex(&sr.hash).map_err(|e| {
+                sps2_errors::Error::internal(format!("invalid hash {}: {e}", sr.hash))
+            })?;
+            if !dry_run {
+                let _ = ctx.store.remove_package(&hash).await;
+                let mut tx = ctx.state.begin_transaction().await?;
+                sps2_state::queries::insert_package_eviction(
+                    &mut tx,
+                    &sr.hash,
+                    sr.size,
+                    Some("policy"),
+                )
+                .await?;
+                tx.commit().await?;
+            }
+            count += 1;
+            bytes += sr.size;
+        }
+    }
+    Ok((count, bytes))
+}
+
+async fn evict_objects(
+    ctx: &OpsCtx,
+    last: &LastRefData,
+    required_file_hashes: &std::collections::HashSet<String>,
+    obj_grace_secs: i64,
+    now: i64,
+    dry_run: bool,
+) -> Result<(usize, i64), Error> {
+    let mut count = 0usize;
+    let mut bytes = 0i64;
+    for fo in &last.file_objs {
+        if required_file_hashes.contains(&fo.hash) {
+            continue;
+        }
+        let last_ref = *last.obj_last_ref.get(&fo.hash).unwrap_or(&0);
+        if last_ref == 0 || (now - last_ref) >= obj_grace_secs {
+            let fh = sps2_hash::Hash::from_hex(&fo.hash).map_err(|e| {
+                sps2_errors::Error::internal(format!("invalid file hash {}: {e}", fo.hash))
+            })?;
+            if !dry_run {
+                let _ = ctx.store.file_store().remove_file(&fh).await;
+                let mut tx = ctx.state.begin_transaction().await?;
+                sps2_state::queries::insert_file_object_eviction(
+                    &mut tx,
+                    &fo.hash,
+                    fo.size,
+                    Some("policy"),
+                )
+                .await?;
+                tx.commit().await?;
+            }
+            count += 1;
+            bytes += fo.size;
+        }
+    }
+    Ok((count, bytes))
+}
 use uuid::Uuid;
 
 /// Clean up orphaned packages and old states
@@ -122,59 +198,24 @@ pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
     let (required_pkg_hashes, required_file_hashes) = collect_required_hashes(ctx, &kept).await?;
     let last = collect_last_ref_and_inventory(ctx).await?;
 
-    let (mut packages_evicted, mut pkg_space_freed) = (0usize, 0i64);
-    for sr in &last.store_refs {
-        if required_pkg_hashes.contains(&sr.hash) {
-            continue;
-        }
-        let last_ref = *last.pkg_last_ref.get(&sr.hash).unwrap_or(&0);
-        if last_ref == 0 || (now - last_ref) >= pkg_grace_secs {
-            let hash = sps2_hash::Hash::from_hex(&sr.hash).map_err(|e| {
-                sps2_errors::Error::internal(format!("invalid hash {}: {e}", sr.hash))
-            })?;
-            if !cas_cfg.dry_run {
-                let _ = ctx.store.remove_package(&hash).await;
-                let mut tx = ctx.state.begin_transaction().await?;
-                sps2_state::queries::insert_package_eviction(
-                    &mut tx,
-                    &sr.hash,
-                    sr.size,
-                    Some("policy"),
-                )
-                .await?;
-                tx.commit().await?;
-            }
-            packages_evicted += 1;
-            pkg_space_freed += sr.size;
-        }
-    }
-
-    let (mut objects_evicted, mut obj_space_freed) = (0usize, 0i64);
-    for fo in &last.file_objs {
-        if required_file_hashes.contains(&fo.hash) {
-            continue;
-        }
-        let last_ref = *last.obj_last_ref.get(&fo.hash).unwrap_or(&0);
-        if last_ref == 0 || (now - last_ref) >= obj_grace_secs {
-            let fh = sps2_hash::Hash::from_hex(&fo.hash).map_err(|e| {
-                sps2_errors::Error::internal(format!("invalid file hash {}: {e}", fo.hash))
-            })?;
-            if !cas_cfg.dry_run {
-                let _ = ctx.store.file_store().remove_file(&fh).await;
-                let mut tx = ctx.state.begin_transaction().await?;
-                sps2_state::queries::insert_file_object_eviction(
-                    &mut tx,
-                    &fo.hash,
-                    fo.size,
-                    Some("policy"),
-                )
-                .await?;
-                tx.commit().await?;
-            }
-            objects_evicted += 1;
-            obj_space_freed += fo.size;
-        }
-    }
+    let (packages_evicted, pkg_space_freed) = evict_packages(
+        ctx,
+        &last,
+        &required_pkg_hashes,
+        pkg_grace_secs,
+        now,
+        cas_cfg.dry_run,
+    )
+    .await?;
+    let (objects_evicted, obj_space_freed) = evict_objects(
+        ctx,
+        &last,
+        &required_file_hashes,
+        obj_grace_secs,
+        now,
+        cas_cfg.dry_run,
+    )
+    .await?;
 
     let duration = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
     let message = if cas_cfg.dry_run {
@@ -437,55 +478,65 @@ pub async fn history(ctx: &OpsCtx, show_all: bool, verify: bool) -> Result<Vec<S
     let all_states = ctx.state.list_states_detailed().await?;
     let current_id = ctx.state.get_current_state_id().await?;
 
-    // Determine candidate set
-    let candidate_ids: Vec<Uuid> = if show_all {
-        all_states.iter().map(sps2_state::State::state_id).collect()
-    } else {
-        let kept = compute_kept_states(
-            ctx,
-            ctx.config.cas.keep_states_count,
-            i64::from(ctx.config.cas.keep_days),
-        )
-        .await?;
-        all_states
-            .iter()
-            .map(sps2_state::State::state_id)
-            .filter(|id| kept.contains(id))
-            .collect()
-    };
-
-    // Optional physical verification
-    let filtered_ids: Vec<Uuid> = if verify {
+    if verify {
+        // Deep verify across full DB history; cap to 20 results (newest first)
+        let limit = ctx.config.state.history_verify_limit;
         let mut out = Vec::new();
-        for id in candidate_ids {
+        for state in &all_states {
+            let id = state.state_id();
             if is_state_available(ctx, &id).await? {
-                out.push(id);
+                let parent_id = state
+                    .parent_id
+                    .as_ref()
+                    .and_then(|p| uuid::Uuid::parse_str(p).ok());
+                let package_count = get_state_package_count(ctx, &id).await?;
+                let changes = if let Some(parent_id) = parent_id {
+                    calculate_state_changes(ctx, &parent_id, &id).await?
+                } else {
+                    get_initial_state_changes(ctx, &id).await?
+                };
+                out.push(StateInfo {
+                    id,
+                    parent: parent_id,
+                    timestamp: state.timestamp(),
+                    operation: state.operation.clone(),
+                    current: Some(current_id) == Some(id),
+                    package_count,
+                    total_size: 0,
+                    changes,
+                });
+                if out.len() >= limit {
+                    break;
+                }
             }
         }
-        out
-    } else {
-        candidate_ids
-    };
+        return Ok(out);
+    }
 
-    // Build StateInfo list
+    // Default: show only recent states based on state retention (not CAS policy), unless --all
+    let kept = compute_kept_states(
+        ctx,
+        ctx.config.state.retention_count,
+        i64::from(ctx.config.state.retention_days),
+    )
+    .await?;
+
     let mut state_infos = Vec::new();
     for state in &all_states {
         let id = state.state_id();
-        if !filtered_ids.contains(&id) {
+        if !show_all && !kept.contains(&id) {
             continue;
         }
         let parent_id = state
             .parent_id
             .as_ref()
             .and_then(|p| uuid::Uuid::parse_str(p).ok());
-
         let package_count = get_state_package_count(ctx, &id).await?;
         let changes = if let Some(parent_id) = parent_id {
             calculate_state_changes(ctx, &parent_id, &id).await?
         } else {
             get_initial_state_changes(ctx, &id).await?
         };
-
         state_infos.push(StateInfo {
             id,
             parent: parent_id,
@@ -497,8 +548,6 @@ pub async fn history(ctx: &OpsCtx, show_all: bool, verify: bool) -> Result<Vec<S
             changes,
         });
     }
-
-    state_infos.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
     Ok(state_infos)
 }
 

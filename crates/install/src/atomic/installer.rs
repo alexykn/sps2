@@ -890,7 +890,7 @@ impl AtomicInstaller {
             match target_map.get(name) {
                 None => {
                     self.remove_package_from_staging(&mut transition, cur)
-                        .await?
+                        .await?;
                 }
                 Some(tgt) if tgt.version != cur.version => {
                     self.remove_package_from_staging(&mut transition, cur)

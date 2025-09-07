@@ -54,6 +54,8 @@ pub struct StateConfig {
     pub retention_count: usize,
     #[serde(default = "default_retention_days")]
     pub retention_days: u32,
+    #[serde(default = "default_history_verify_limit")]
+    pub history_verify_limit: usize,
 }
 
 impl Default for StateConfig {
@@ -61,6 +63,7 @@ impl Default for StateConfig {
         Self {
             retention_count: 10, // Keep last 10 states
             retention_days: 30,  // Or 30 days, whichever is less
+            history_verify_limit: default_history_verify_limit(),
         }
     }
 }
@@ -179,4 +182,8 @@ fn default_package_grace_days() -> u32 {
 
 fn default_object_grace_days() -> u32 {
     7
+}
+
+fn default_history_verify_limit() -> usize {
+    20
 }
