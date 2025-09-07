@@ -4,7 +4,7 @@ use crate::{
     models::{Package, PackageRef, State, StoreRef},
     queries,
 };
-use sps2_errors::{Error, StateError};
+use sps2_errors::Error;
 use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent, StateEvent};
 use sps2_hash::Hash;
 use sps2_platform::filesystem_helpers as sps2_root;
@@ -245,27 +245,13 @@ impl StateManager {
             queries::decrement_store_ref(&mut tx, &pkg.hash).await?;
         }
 
-        // Archive current live state before swapping
-        let old_live_backup = self.state_path.join(transition.from.to_string());
-
-        // Ensure state_path directory exists before creating backup paths
-        sps2_root::create_dir_all(&self.state_path).await?;
-
         // Ensure parent directory of live_path exists
         if let Some(live_parent) = self.live_path.parent() {
             sps2_root::create_dir_all(live_parent).await?;
         }
 
-        // Remove old backup if it exists
-        if sps2_root::exists(&old_live_backup).await {
-            sps2_root::remove_dir_all(&old_live_backup).await?;
-        }
-
-        // Move current live to backup, then staging to live
-        if sps2_root::exists(&self.live_path).await {
-            sps2_root::rename(&self.live_path, &old_live_backup).await?;
-        }
-        sps2_root::rename(&transition.staging_path, &self.live_path).await?;
+        // New default behavior: do not archive old live. Atomically replace live with staging
+        sps2_root::atomic_rename(&transition.staging_path, &self.live_path).await?;
 
         // Update active state
         queries::set_active_state(&mut tx, &transition.to).await?;
@@ -284,79 +270,7 @@ impl StateManager {
         Ok(())
     }
 
-    /// Rollback to a previous state
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if database operations or filesystem operations fail.
-    pub async fn rollback(&self, target_state: Option<StateId>) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await?;
-
-        // Get current and target states
-        let current_state = queries::get_active_state(&mut tx).await?;
-
-        let target = if let Some(id) = target_state {
-            id
-        } else {
-            // Get parent of current state
-            let states = queries::get_all_states(&mut tx).await?;
-            let current = states
-                .iter()
-                .find(|s| s.state_id() == current_state)
-                .ok_or_else(|| StateError::StateNotFound {
-                    id: current_state.to_string(),
-                })?;
-
-            current
-                .parent_id
-                .as_ref()
-                .ok_or_else(|| StateError::RollbackFailed {
-                    message: "No parent state to rollback to".to_string(),
-                })?
-                .parse()
-                .map_err(|e| Error::internal(format!("invalid parent state ID: {e}")))?
-        };
-
-        tx.commit().await?;
-
-        // Perform rollback
-        let target_path = self.state_path.join(target.to_string());
-
-        if !sps2_root::exists(&target_path).await {
-            return Err(StateError::StateNotFound {
-                id: target.to_string(),
-            }
-            .into());
-        }
-
-        // Atomic swap - exchange target state with live
-        sps2_root::atomic_swap(&target_path, &self.live_path).await?;
-
-        // Update database
-        let mut tx = self.pool.begin().await?;
-        queries::set_active_state(&mut tx, &target).await?;
-
-        // Create rollback record
-        let rollback_id = Uuid::new_v4();
-        queries::create_state(
-            &mut tx,
-            &rollback_id,
-            Some(&target),
-            &format!("rollback from {current_state}"),
-        )
-        .await?;
-
-        tx.commit().await?;
-
-        self.tx.emit(AppEvent::State(StateEvent::RollbackCompleted {
-            from: current_state,
-            to: target,
-            duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
-            packages_reverted: 0,                        // TODO: Track packages reverted
-        }));
-
-        Ok(())
-    }
+    // Note: rollback is now implemented reconstructively in the installer crate.
 
     /// Get state history
     ///
@@ -1191,12 +1105,12 @@ impl StateManager {
         &self,
         mut journal: sps2_types::state::TransactionJournal,
     ) -> Result<(), Error> {
-        // Atomically swap the staging directory with the live directory
-        sps2_root::atomic_swap(&journal.staging_path, &self.live_path).await?;
-
-        // Archive the old live directory (which is now at the journal's staging path)
-        let old_live_archive_path = self.state_path.join(journal.parent_state_id.to_string());
-        sps2_root::rename(&journal.staging_path, &old_live_archive_path).await?;
+        // New default behavior: atomically rename staging to live (no archive kept)
+        // Ensure parent directory of live_path exists
+        if let Some(live_parent) = self.live_path.parent() {
+            sps2_root::create_dir_all(live_parent).await?;
+        }
+        sps2_root::atomic_rename(&journal.staging_path, &self.live_path).await?;
 
         // Update the journal to the 'Swapped' phase. If a crash happens now,
         // recovery will know the swap is done

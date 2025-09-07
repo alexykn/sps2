@@ -7,7 +7,6 @@
 //! - Platform-specific filesystem optimizations
 
 pub mod installer;
-pub mod rollback;
 pub mod transition;
 
 // Re-export main public API

@@ -1,6 +1,6 @@
 //! Atomic installer implementation using APFS optimizations
 
-use crate::atomic::{rollback, transition::StateTransition};
+use crate::atomic::transition::StateTransition;
 use std::sync::Arc;
 // Removed Python venv handling - Python packages are now handled like regular packages
 use crate::{InstallContext, InstallResult, PreparedPackage, StagingManager};
@@ -11,7 +11,7 @@ use sps2_platform::{core::PlatformContext, PlatformManager};
 use sps2_resolver::{PackageId, ResolvedNode};
 use sps2_state::{PackageRef, StateManager};
 use sps2_store::{PackageStore, StoredPackage};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
@@ -42,6 +42,8 @@ pub struct AtomicInstaller {
     state_manager: StateManager,
     /// Live prefix path
     live_path: PathBuf,
+    /// Content-addressable package store
+    store: PackageStore,
 }
 
 impl AtomicInstaller {
@@ -321,6 +323,7 @@ impl AtomicInstaller {
         Ok(Self {
             state_manager,
             live_path,
+            store,
         })
     }
 
@@ -712,6 +715,140 @@ impl AtomicInstaller {
     /// Returns an error if the target state doesn't exist, filesystem swap fails,
     /// or database update fails.
     pub async fn rollback(&mut self, target_state_id: Uuid) -> Result<(), Error> {
-        rollback::rollback_to_state(&self.state_manager, &self.live_path, target_state_id).await
+        // Reconstructive rollback: clone live -> staging, apply diffs current -> target, commit 2PC
+        let current_state_id = self.state_manager.get_current_state_id().await?;
+
+        // Setup state transition and staging directory
+        let mut transition =
+            StateTransition::new(&self.state_manager, "rollback".to_string()).await?;
+        // Clone current live to staging dir
+        self.create_staging_directory(&self.live_path, &transition.staging_path)
+            .await?;
+
+        // Load current and target package sets
+        let current_packages = self
+            .state_manager
+            .get_installed_packages_in_state(&current_state_id)
+            .await?;
+        let target_packages = self
+            .state_manager
+            .get_installed_packages_in_state(&target_state_id)
+            .await?;
+
+        let current_map: HashMap<String, sps2_state::models::Package> = current_packages
+            .into_iter()
+            .map(|p| (p.name.clone(), p))
+            .collect();
+        let target_map: HashMap<String, sps2_state::models::Package> = target_packages
+            .into_iter()
+            .map(|p| (p.name.clone(), p))
+            .collect();
+
+        let current_names: HashSet<String> = current_map.keys().cloned().collect();
+        let target_names: HashSet<String> = target_map.keys().cloned().collect();
+
+        // Determine removals: present in current but not in target, or version differs
+        let mut to_remove: Vec<sps2_state::models::Package> = Vec::new();
+        for name in &current_names {
+            if let Some(cur) = current_map.get(name) {
+                match target_map.get(name) {
+                    None => to_remove.push(cur.clone()),
+                    Some(tgt) => {
+                        if tgt.version != cur.version {
+                            to_remove.push(cur.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Remove packages from staging
+        for pkg in &to_remove {
+            self.remove_package_from_staging(&mut transition, pkg)
+                .await?;
+        }
+
+        // Determine additions/changes: present in target but not in current, or version differs
+        let mut to_add: Vec<sps2_state::models::Package> = Vec::new();
+        for name in &target_names {
+            if let Some(tgt) = target_map.get(name) {
+                match current_map.get(name) {
+                    None => to_add.push(tgt.clone()),
+                    Some(cur) => {
+                        if tgt.version != cur.version {
+                            to_add.push(tgt.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Link target packages into staging and stage DB refs
+        for pkg in &to_add {
+            // Resolve store path by hash
+            let hash = sps2_hash::Hash::from_hex(&pkg.hash).map_err(|e| {
+                sps2_errors::Error::internal(format!("invalid hash {}: {e}", pkg.hash))
+            })?;
+            let store_path = self.store.package_path(&hash);
+
+            // Link files
+            let pkg_id = sps2_resolver::PackageId::new(pkg.name.clone(), pkg.version());
+            self.link_package_to_staging(&mut transition, &store_path, &pkg_id)
+                .await?;
+
+            // Stage package reference for DB
+            let package_ref = PackageRef {
+                state_id: transition.staging_id,
+                package_id: pkg_id,
+                hash: pkg.hash.clone(),
+                size: pkg.size,
+            };
+            transition.package_refs.push(package_ref);
+
+            // Ensure package_map is populated for this package (best-effort)
+            let _ = self
+                .state_manager
+                .add_package_map(&pkg.name, &pkg.version, &pkg.hash)
+                .await;
+        }
+
+        // Carry forward unchanged packages to keep DB references (no relinking needed)
+        // Exclude packages whose names are in to_remove or to_add
+        let mut exclude_ids: Vec<PackageId> = Vec::with_capacity(to_remove.len() + to_add.len());
+        for pkg in &to_remove {
+            exclude_ids.push(PackageId::new(pkg.name.clone(), pkg.version()));
+        }
+        for pkg in &to_add {
+            exclude_ids.push(PackageId::new(pkg.name.clone(), pkg.version()));
+        }
+
+        self.carry_forward_packages(&mut transition, &exclude_ids)
+            .await?;
+
+        // Two-phase commit without event context
+        let transition_data = sps2_state::TransactionData {
+            package_refs: &transition.package_refs,
+            package_files: &transition.package_files,
+            file_references: &transition.file_references,
+            pending_file_hashes: &transition.pending_file_hashes,
+        };
+
+        let parent_id = transition.parent_id.unwrap_or(current_state_id);
+        let journal = self
+            .state_manager
+            .prepare_transaction(
+                &transition.staging_id,
+                &parent_id,
+                &transition.staging_path,
+                &transition.operation,
+                &transition_data,
+            )
+            .await?;
+
+        self.state_manager
+            .execute_filesystem_swap_and_finalize(journal)
+            .await?;
+
+        Ok(())
     }
 }

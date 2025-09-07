@@ -16,8 +16,6 @@ pub enum CliError {
     InvalidArguments(String),
     /// I/O error
     Io(std::io::Error),
-    /// Recovery error
-    RecoveryError(String),
 }
 
 impl fmt::Display for CliError {
@@ -29,7 +27,6 @@ impl fmt::Display for CliError {
 
             CliError::InvalidArguments(msg) => write!(f, "Invalid arguments: {msg}"),
             CliError::Io(e) => write!(f, "I/O error: {e}"),
-            CliError::RecoveryError(msg) => write!(f, "Recovery error: {msg}"),
         }
     }
 }

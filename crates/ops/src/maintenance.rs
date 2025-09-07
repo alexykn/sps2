@@ -87,14 +87,7 @@ pub async fn rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<StateI
         .into());
     }
 
-    // Verify target state directory exists on filesystem
-    let state_path = ctx.state.state_path().join(target_id.to_string());
-    if !state_path.exists() {
-        return Err(OpsError::StateNotFound {
-            state_id: target_id,
-        }
-        .into());
-    }
+    // Filesystem snapshot presence is no longer required; rollback reconstructs incrementally.
 
     // Calculate changes BEFORE rollback (current -> target)
     let current_id = ctx.state.get_current_state_id().await?;
@@ -143,13 +136,7 @@ async fn preview_rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<St
         .into());
     }
 
-    let state_path = ctx.state.state_path().join(target_id.to_string());
-    if !state_path.exists() {
-        return Err(OpsError::StateNotFound {
-            state_id: target_id,
-        }
-        .into());
-    }
+    // Filesystem snapshot presence is no longer required for rollback preview.
 
     // Calculate changes (current -> target)
     let current_id = ctx.state.get_current_state_id().await?;

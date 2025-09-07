@@ -544,24 +544,21 @@ async fn recover_if_needed(state_manager: &StateManager) -> Result<(), CliError>
 
         match journal.phase {
             TransactionPhase::Prepared => {
-                // The DB is prepared, but the FS swap didn't happen.
-                // We must complete the swap and finalize the state.
-                info!("Recovery: Completing filesystem swap and finalizing state");
-
-                // Guard: Check if the staging directory exists
-                if !sps2_platform::filesystem_helpers::exists(&journal.staging_path).await {
-                    error!("CRITICAL RECOVERY ERROR: Journal indicates prepared transaction but staging directory is missing: {}", journal.staging_path.display());
-                    return Err(CliError::RecoveryError(format!(
-                        "Cannot recover prepared transaction: staging directory {} was prematurely deleted. \
-                        This indicates a bug in the 2PC cleanup logic. The database contains prepared changes \
-                        but the staging directory required for filesystem swap is missing.",
-                        journal.staging_path.display()
-                    )));
+                // The DB is prepared, filesystem step may or may not have completed.
+                // New default behavior does an atomic rename of staging -> live.
+                // If staging still exists, complete the rename; otherwise, assume it completed and just finalize DB.
+                if sps2_platform::filesystem_helpers::exists(&journal.staging_path).await {
+                    info!("Recovery: Completing filesystem finalize (rename + DB finalize)");
+                    state_manager
+                        .execute_filesystem_swap_and_finalize(journal)
+                        .await?;
+                } else {
+                    info!("Recovery: Staging missing; assuming filesystem step completed. Finalizing DB state only.");
+                    state_manager
+                        .finalize_db_state(journal.new_state_id)
+                        .await?;
+                    state_manager.clear_journal().await?;
                 }
-
-                state_manager
-                    .execute_filesystem_swap_and_finalize(journal)
-                    .await?;
             }
             TransactionPhase::Swapped => {
                 // The FS swap happened, but the DB wasn't finalized.
