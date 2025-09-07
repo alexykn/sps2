@@ -15,6 +15,7 @@ pub struct State {
     pub operation: String,
     pub success: bool,
     pub rollback_of: Option<String>,
+    pub pruned_at: Option<i64>,
 }
 
 impl State {

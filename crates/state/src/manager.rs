@@ -292,7 +292,7 @@ impl StateManager {
     pub async fn cleanup(
         &self,
         retention_count: usize,
-        _retention_days: u32,
+        retention_days: u32,
     ) -> Result<CleanupResult, Error> {
         self.tx.emit(AppEvent::State(StateEvent::CleanupStarted {
             states_to_remove: 0,      // Will be calculated
@@ -301,7 +301,25 @@ impl StateManager {
 
         let mut tx = self.pool.begin().await?;
 
-        // Find states to remove using strict retention (keep only N newest states)
+        // Determine states to prune (visibility) using policy
+        let prune_by_count =
+            queries::get_states_for_cleanup_strict(&mut tx, retention_count).await?;
+        let mut prune_ids: std::collections::HashSet<String> = prune_by_count.into_iter().collect();
+        if retention_days > 0 {
+            let cutoff = chrono::Utc::now().timestamp() - i64::from(retention_days) * 86_400;
+            let older = queries::get_states_older_than(&mut tx, cutoff).await?;
+            for id in older {
+                prune_ids.insert(id);
+            }
+        }
+        let active = queries::get_active_state(&mut tx).await?;
+        let active_str = active.to_string();
+        let now_ts = chrono::Utc::now().timestamp();
+        let prune_list: Vec<String> = prune_ids.into_iter().collect();
+        let states_pruned =
+            queries::mark_pruned_states(&mut tx, &prune_list, now_ts, &active_str).await?;
+
+        // Legacy directories to remove (IDs beyond newest N)
         let states_to_remove =
             queries::get_states_for_cleanup_strict(&mut tx, retention_count).await?;
 
@@ -341,7 +359,7 @@ impl StateManager {
         }
 
         // Log cleanup operation to gc_log table
-        let total_items_removed = i64::try_from(states_to_remove.len())
+        let total_items_removed = i64::try_from(removed_count)
             .map_err(|e| Error::internal(format!("items removed count overflow: {e}")))?;
         let space_freed_i64 = i64::try_from(space_freed)
             .map_err(|e| Error::internal(format!("space freed overflow: {e}")))?;
@@ -356,6 +374,7 @@ impl StateManager {
         }));
 
         Ok(CleanupResult {
+            states_pruned,
             states_removed: removed_count,
             space_freed,
         })
@@ -1152,6 +1171,7 @@ pub struct StateTransition {
 
 /// Cleanup operation result
 pub struct CleanupResult {
+    pub states_pruned: usize,
     pub states_removed: usize,
     pub space_freed: u64,
 }

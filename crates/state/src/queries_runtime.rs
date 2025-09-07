@@ -379,7 +379,7 @@ pub async fn get_state_package_names(
 pub async fn get_all_states(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<State>, Error> {
     let rows = query(
         r"SELECT id, parent_id, created_at, operation,
-           success, rollback_of
+           success, rollback_of, pruned_at
            FROM states ORDER BY created_at DESC",
     )
     .fetch_all(&mut **tx)
@@ -394,6 +394,7 @@ pub async fn get_all_states(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<Stat
             operation: row.get("operation"),
             success: row.get("success"),
             rollback_of: row.get("rollback_of"),
+            pruned_at: row.get("pruned_at"),
         })
         .collect();
 
@@ -657,6 +658,51 @@ pub async fn get_package_dependents(
 /// Returns an error if the database query fails.
 pub async fn list_states_detailed(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<State>, Error> {
     get_all_states(tx).await
+}
+
+/// Get states older than cutoff (unix timestamp)
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
+pub async fn get_states_older_than(
+    tx: &mut Transaction<'_, Sqlite>,
+    cutoff: i64,
+) -> Result<Vec<String>, Error> {
+    let rows = query(r"SELECT id FROM states WHERE created_at < ? ORDER BY created_at ASC")
+        .bind(cutoff)
+        .fetch_all(&mut **tx)
+        .await?;
+    Ok(rows.into_iter().map(|r| r.get("id")).collect())
+}
+
+/// Mark a list of states as pruned (sets `pruned_at` to provided timestamp) except active state
+///
+/// # Errors
+///
+/// Returns an error if the database update fails.
+pub async fn mark_pruned_states(
+    tx: &mut Transaction<'_, Sqlite>,
+    ids: &[String],
+    ts: i64,
+    active_id: &str,
+) -> Result<usize, Error> {
+    let mut updated = 0usize;
+    for id in ids {
+        if id == active_id {
+            continue;
+        }
+        // Only mark if not already pruned
+        let res = query(r"UPDATE states SET pruned_at = ? WHERE id = ? AND pruned_at IS NULL")
+            .bind(ts)
+            .bind(id)
+            .execute(&mut **tx)
+            .await?;
+        if res.rows_affected() > 0 {
+            updated += 1;
+        }
+    }
+    Ok(updated)
 }
 
 /// Get parent state ID for a given state

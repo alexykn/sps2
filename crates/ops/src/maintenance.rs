@@ -30,20 +30,6 @@ async fn compute_kept_states(
     Ok(kept)
 }
 
-// Keep strictly the newest N states by creation time (always include current)
-async fn compute_kept_states_by_count(
-    ctx: &OpsCtx,
-    keep_count: usize,
-) -> Result<std::collections::HashSet<Uuid>, Error> {
-    let states = ctx.state.list_states_detailed().await?;
-    let mut kept: std::collections::HashSet<Uuid> = std::collections::HashSet::new();
-    for st in states.iter().take(keep_count) {
-        kept.insert(st.state_id());
-    }
-    kept.insert(ctx.state.get_current_state_id().await?);
-    Ok(kept)
-}
-
 async fn collect_required_hashes(
     ctx: &OpsCtx,
     kept: &std::collections::HashSet<Uuid>,
@@ -234,7 +220,8 @@ pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
     let duration = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
     let message = if cas_cfg.dry_run {
         format!(
-            "Dry-run: would remove {} states, {} packages ({} bytes), {} objects ({} bytes)",
+            "Dry-run: would prune {} states, remove {} dirs, {} packages ({} bytes), {} objects ({} bytes)",
+            cleanup_result.states_pruned,
             cleanup_result.states_removed,
             packages_evicted,
             pkg_space_freed,
@@ -243,7 +230,8 @@ pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
         )
     } else {
         format!(
-            "Cleaned {} states, removed {} packages ({} bytes), {} objects ({} bytes)",
+            "Pruned {} states, cleaned {} dirs, removed {} packages ({} bytes), {} objects ({} bytes)",
+            cleanup_result.states_pruned,
             cleanup_result.states_removed,
             packages_evicted,
             pkg_space_freed,
@@ -527,13 +515,11 @@ pub async fn history(ctx: &OpsCtx, show_all: bool, verify: bool) -> Result<Vec<S
         return Ok(out);
     }
 
-    // Default: match cleanup semantics: keep strictly the newest N
-    let kept = compute_kept_states_by_count(ctx, ctx.config.state.retention_count).await?;
-
     let mut state_infos = Vec::new();
     for state in &all_states {
         let id = state.state_id();
-        if !show_all && !kept.contains(&id) {
+        // Default base history: show unpruned states; always include current
+        if !(show_all || state.pruned_at.is_none() || Some(id) == Some(current_id)) {
             continue;
         }
         let parent_id = state
