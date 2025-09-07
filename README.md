@@ -229,7 +229,7 @@ sps2 verify --heal
 
 # After a successful verify/heal, sync DB refcounts from the active state (one-off)
 sps2 verify --sync-refcounts
-```
+
 # Example output:
 # ┌────────────────────────┬─────────┬───────────┬──────────────────┬──────────┐
 # │ State ID               ┆ Current ┆ Operation ┆ Created          ┆ Packages │
