@@ -301,7 +301,10 @@ impl EventHandler {
                             EventSeverity::Success,
                         );
                     }
-                    StateEvent::CleanupStarted { states_to_remove, estimated_space_freed } => {
+                    StateEvent::CleanupStarted {
+                        states_to_remove,
+                        estimated_space_freed,
+                    } => {
                         self.show_operation_message(
                             &format!(
                                 "Starting cleanup: {states_to_remove} states (est. {} freed)",
@@ -311,7 +314,11 @@ impl EventHandler {
                             EventSeverity::Info,
                         );
                     }
-                    StateEvent::CleanupProgress { states_processed, total_states, space_freed } => {
+                    StateEvent::CleanupProgress {
+                        states_processed,
+                        total_states,
+                        space_freed,
+                    } => {
                         if self.debug_enabled {
                             self.show_operation_message(
                                 &format!(
@@ -323,7 +330,12 @@ impl EventHandler {
                             );
                         }
                     }
-                    StateEvent::CleanupCompleted { states_pruned, states_removed, space_freed, duration } => {
+                    StateEvent::CleanupCompleted {
+                        states_pruned,
+                        states_removed,
+                        space_freed,
+                        duration,
+                    } => {
                         self.show_operation_message(
                             &format!(
                                 "Cleanup completed: pruned {states_pruned}, removed {states_removed}, {} freed ({}s)",

@@ -933,6 +933,12 @@ impl AtomicInstaller {
             .execute_filesystem_swap_and_finalize(journal)
             .await?;
 
+        // After switching active state, synchronize DB refcounts to match the target state exactly
+        let _ = self
+            .state_manager
+            .sync_refcounts_to_state(&target_state_id)
+            .await?;
+
         // Ensure the target state is visible in base history
         self.state_manager.unprune_state(&target_state_id).await?;
 

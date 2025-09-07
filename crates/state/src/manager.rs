@@ -1172,6 +1172,84 @@ impl StateManager {
         Ok(())
     }
 
+    /// Synchronize store_refs and file_objects refcounts to match a specific state exactly
+    ///
+    /// This sets refcounts to the exact desired values for the given state:
+    /// - For hashes present in the state: set to the number of references in that state
+    /// - For hashes not present in the state: set to 0
+    ///
+    /// Returns (store_updates, file_updates)
+    pub async fn sync_refcounts_to_state(
+        &self,
+        state_id: &sps2_types::StateId,
+    ) -> Result<(usize, usize), Error> {
+        use std::collections::HashMap;
+
+        let mut tx = self.pool.begin().await?;
+
+        // Build desired package-level counts by hash for the target state
+        let packages = queries::get_state_packages(&mut tx, state_id).await?;
+        let mut store_counts: HashMap<String, (i64 /*count*/, i64 /*size*/)> = HashMap::new();
+        for p in &packages {
+            store_counts
+                .entry(p.hash.clone())
+                .and_modify(|e| e.0 += 1)
+                .or_insert((1, p.size));
+        }
+
+        // Ensure store_ref rows exist for desired hashes
+        for (hash, (_cnt, size)) in &store_counts {
+            queries::get_or_create_store_ref(&mut tx, hash, *size).await?;
+        }
+
+        // Set store refcounts to exact values (others -> 0)
+        let rows = queries::get_all_store_refs(&mut tx).await?;
+        let mut store_updates = 0usize;
+        for r in rows {
+            let desired = store_counts.get(&r.hash).map(|(c, _)| *c).unwrap_or(0);
+            if r.ref_count != desired {
+                let updated = crate::queries_runtime::set_store_ref_count(&mut tx, &r.hash, desired)
+                    .await?;
+                if updated > 0 {
+                    store_updates += 1;
+                }
+            }
+        }
+
+        // Build desired file-level counts by file_hash for the target state
+        let mut file_counts: HashMap<String, i64> = HashMap::new();
+        for p in &packages {
+            let entries = crate::file_queries_runtime::get_package_file_entries(&mut tx, p.id).await?;
+            for e in entries {
+                file_counts
+                    .entry(e.file_hash)
+                    .and_modify(|c| *c += 1)
+                    .or_insert(1);
+            }
+        }
+
+        // Set file object refcounts to exact values (others -> 0)
+        let all_files = crate::file_queries_runtime::get_all_file_objects(&mut tx).await?;
+        let mut file_updates = 0usize;
+        for fo in all_files {
+            let desired = file_counts.get(&fo.hash).copied().unwrap_or(0);
+            if fo.ref_count != desired {
+                let updated = crate::file_queries_runtime::set_file_object_ref_count(
+                    &mut tx,
+                    &fo.hash,
+                    desired,
+                )
+                .await?;
+                if updated > 0 {
+                    file_updates += 1;
+                }
+            }
+        }
+
+        tx.commit().await?;
+        Ok((store_updates, file_updates))
+    }
+
     // ===== JOURNAL MANAGEMENT FOR TWO-PHASE COMMIT =====
 }
 
