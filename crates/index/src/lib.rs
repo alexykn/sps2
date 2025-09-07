@@ -115,6 +115,32 @@ impl IndexManager {
         Some(versions.into_iter().map(|(_, entry)| entry).collect())
     }
 
+    /// Get all versions of a package, including their version strings
+    /// sorted by version descending (newest first)
+    #[must_use]
+    pub fn get_package_versions_with_strings(
+        &self,
+        name: &str,
+    ) -> Option<Vec<(&str, &VersionEntry)>> {
+        let index = self.index.as_ref()?;
+        let package = index.packages.get(name)?;
+
+        let mut versions: Vec<(&String, &VersionEntry)> = package.versions.iter().collect();
+        versions.sort_by(|a, b| {
+            // Sort by version descending (newest first)
+            Version::parse(b.0)
+                .unwrap_or_else(|_| Version::new(0, 0, 0))
+                .cmp(&Version::parse(a.0).unwrap_or_else(|_| Version::new(0, 0, 0)))
+        });
+
+        Some(
+            versions
+                .into_iter()
+                .map(|(v, entry)| (v.as_str(), entry))
+                .collect(),
+        )
+    }
+
     /// Find the best version matching a spec
     #[must_use]
     pub fn find_best_version(&self, spec: &PackageSpec) -> Option<&VersionEntry> {

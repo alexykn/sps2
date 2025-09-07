@@ -36,14 +36,14 @@ pub async fn list_packages(ctx: &OpsCtx) -> Result<Vec<PackageInfo>, Error> {
         };
 
         // Check if there's an available update
-        let available_version =
-            ctx.index
-                .get_package_versions(&package.name)
-                .and_then(|versions| {
-                    versions
-                        .first()
-                        .and_then(|entry| sps2_types::Version::parse(&entry.version()).ok())
-                });
+        let available_version = ctx
+            .index
+            .get_package_versions_with_strings(&package.name)
+            .and_then(|versions| {
+                versions
+                    .first()
+                    .and_then(|(ver_str, _)| sps2_types::Version::parse(ver_str).ok())
+            });
 
         let status = match &available_version {
             Some(avail) if avail > &package_version => PackageStatus::Outdated,
@@ -93,19 +93,20 @@ pub async fn package_info(ctx: &OpsCtx, package_name: &str) -> Result<PackageInf
         .find(|pkg| pkg.name == package_name)
         .map(sps2_state::Package::version);
 
-    // Get available versions from index
+    // Get available versions from index (with version strings)
     let versions = ctx
         .index
-        .get_package_versions(package_name)
+        .get_package_versions_with_strings(package_name)
         .ok_or_else(|| OpsError::PackageNotFound {
             package: package_name.to_string(),
         })?;
 
-    let latest_entry = versions.first().ok_or_else(|| OpsError::PackageNotFound {
-        package: package_name.to_string(),
-    })?;
+    let (latest_version_str, latest_entry) =
+        versions.first().ok_or_else(|| OpsError::PackageNotFound {
+            package: package_name.to_string(),
+        })?;
 
-    let available_version = sps2_types::Version::parse(&latest_entry.version())?;
+    let available_version = sps2_types::Version::parse(latest_version_str)?;
 
     let status = match &installed_version {
         Some(installed) => {
@@ -163,9 +164,9 @@ pub async fn search_packages(ctx: &OpsCtx, query: &str) -> Result<Vec<SearchResu
     let installed_packages = ctx.state.get_installed_packages().await?;
 
     for package_name in package_names {
-        if let Some(versions) = ctx.index.get_package_versions(package_name) {
-            if let Some(latest) = versions.first() {
-                if let Ok(version) = sps2_types::Version::parse(&latest.version()) {
+        if let Some(versions) = ctx.index.get_package_versions_with_strings(package_name) {
+            if let Some((version_str, latest)) = versions.first() {
+                if let Ok(version) = sps2_types::Version::parse(version_str) {
                     let installed = installed_packages
                         .iter()
                         .any(|pkg| pkg.name == package_name);
