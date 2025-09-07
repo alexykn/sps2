@@ -4,6 +4,77 @@ use crate::{ChangeType, OpChange, OpsCtx, StateInfo};
 use sps2_errors::{Error, OpsError};
 use sps2_events::{AppEvent, EventEmitter, GeneralEvent, PackageEvent, StateEvent};
 use std::time::Instant;
+
+async fn compute_kept_states(
+    ctx: &OpsCtx,
+    keep_count: usize,
+    keep_days: i64,
+) -> Result<std::collections::HashSet<Uuid>, Error> {
+    let now = chrono::Utc::now().timestamp();
+    let states = ctx.state.list_states_detailed().await?;
+    let mut kept: std::collections::HashSet<Uuid> = std::collections::HashSet::new();
+    for id in states.iter().take(keep_count) {
+        kept.insert(id.state_id());
+    }
+    if keep_days > 0 {
+        let cutoff = now - (keep_days * 86_400);
+        for st in &states {
+            if st.created_at >= cutoff {
+                kept.insert(st.state_id());
+            } else {
+                break;
+            }
+        }
+    }
+    kept.insert(ctx.state.get_current_state_id().await?);
+    Ok(kept)
+}
+
+async fn collect_required_hashes(
+    ctx: &OpsCtx,
+    kept: &std::collections::HashSet<Uuid>,
+) -> Result<(std::collections::HashSet<String>, std::collections::HashSet<String>), Error> {
+    let mut required_pkg_hashes: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for st in kept {
+        let pkgs = ctx.state.get_installed_packages_in_state(st).await?;
+        for p in pkgs {
+            required_pkg_hashes.insert(p.hash);
+        }
+    }
+
+    let mut required_file_hashes: std::collections::HashSet<String> = std::collections::HashSet::new();
+    {
+        let mut tx = ctx.state.begin_transaction().await?;
+        for st in kept {
+            let packages = sps2_state::queries::get_state_packages(&mut tx, st).await?;
+            for pkg in &packages {
+                let entries = sps2_state::file_queries_runtime::get_package_file_entries(&mut tx, pkg.id).await?;
+                for e in entries {
+                    required_file_hashes.insert(e.file_hash);
+                }
+            }
+        }
+        tx.commit().await?;
+    }
+    Ok((required_pkg_hashes, required_file_hashes))
+}
+
+struct LastRefData {
+    pkg_last_ref: std::collections::HashMap<String, i64>,
+    obj_last_ref: std::collections::HashMap<String, i64>,
+    store_refs: Vec<sps2_state::StoreRef>,
+    file_objs: Vec<sps2_state::FileObject>,
+}
+
+async fn collect_last_ref_and_inventory(ctx: &OpsCtx) -> Result<LastRefData, Error> {
+    let mut tx = ctx.state.begin_transaction().await?;
+    let store_refs = sps2_state::queries::get_all_store_refs(&mut tx).await?;
+    let pkg_last_ref = sps2_state::queries::get_package_last_ref_map(&mut tx).await?;
+    let obj_last_ref = sps2_state::file_queries_runtime::get_file_last_ref_map(&mut tx).await?;
+    let file_objs = sps2_state::file_queries_runtime::get_all_file_objects(&mut tx).await?;
+    tx.commit().await?;
+    Ok(LastRefData { pkg_last_ref, obj_last_ref, store_refs, file_objs })
+}
 use uuid::Uuid;
 
 /// Clean up orphaned packages and old states
@@ -16,24 +87,104 @@ pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
 
     ctx.emit(AppEvent::Package(PackageEvent::CleanupStarting));
 
-    // Clean up old states, respecting the configured retention count
+    // Clean up old state directories (legacy snapshots and orphaned stagings)
     let cleanup_result = ctx
         .state
-        .cleanup(ctx.config.state.retention_count, 30)
+        .cleanup(ctx.config.state.retention_count, ctx.config.state.retention_days)
         .await?;
 
-    // Run garbage collection on store
-    let cleaned_packages = ctx.state.gc_store_with_removal(&ctx.store).await?;
+    // Policy-driven CAS cleanup (packages + file objects)
+    let cas_cfg = &ctx.config.cas;
+    let keep_count = cas_cfg.keep_states_count;
+    let keep_days = i64::from(cas_cfg.keep_days);
+    let pkg_grace_secs = i64::from(cas_cfg.package_grace_days) * 86_400;
+    let obj_grace_secs = i64::from(cas_cfg.object_grace_days) * 86_400;
+    let now = chrono::Utc::now().timestamp();
+
+    let kept = compute_kept_states(ctx, keep_count, keep_days).await?;
+
+    // Build required sets
+    // Required package hashes
+    let (required_pkg_hashes, required_file_hashes) =
+        collect_required_hashes(ctx, &kept).await?;
+
+    // Enumerate all known packages (from store_refs) and compute last reference timestamps
+    let last = collect_last_ref_and_inventory(ctx).await?;
+
+    // Decide package evictions
+    let mut packages_evicted = 0usize;
+    let mut pkg_space_freed = 0i64;
+    for sr in &last.store_refs {
+        if required_pkg_hashes.contains(&sr.hash) {
+            continue; // needed by kept states
+        }
+        let last_ref = *last.pkg_last_ref.get(&sr.hash).unwrap_or(&0);
+        if last_ref == 0 || (now - last_ref) >= pkg_grace_secs {
+            // Evict physical package dir; keep DB rows
+            let hash = sps2_hash::Hash::from_hex(&sr.hash)
+                .map_err(|e| sps2_errors::Error::internal(format!("invalid hash {}: {e}", sr.hash)))?;
+            if !cas_cfg.dry_run {
+                let _ = ctx.store.remove_package(&hash).await;
+                // Log eviction
+                let mut tx = ctx.state.begin_transaction().await?;
+                sps2_state::queries::insert_package_eviction(
+                    &mut tx,
+                    &sr.hash,
+                    sr.size,
+                    Some("policy"),
+                )
+                .await?;
+                tx.commit().await?;
+            }
+            packages_evicted += 1;
+            pkg_space_freed += sr.size;
+        }
+    }
+
+    // Decide file object evictions
+    let mut objects_evicted = 0usize;
+    let mut obj_space_freed = 0i64;
+    for fo in &last.file_objs {
+        if required_file_hashes.contains(&fo.hash) {
+            continue;
+        }
+        let last_ref = *last.obj_last_ref.get(&fo.hash).unwrap_or(&0);
+        if last_ref == 0 || (now - last_ref) >= obj_grace_secs {
+            let fh = sps2_hash::Hash::from_hex(&fo.hash)
+                .map_err(|e| sps2_errors::Error::internal(format!("invalid file hash {}: {e}", fo.hash)))?;
+            if !cas_cfg.dry_run {
+                let _ = ctx.store.file_store().remove_file(&fh).await;
+                let mut tx = ctx.state.begin_transaction().await?;
+                sps2_state::queries::insert_file_object_eviction(
+                    &mut tx,
+                    &fo.hash,
+                    fo.size,
+                    Some("policy"),
+                )
+                .await?;
+                tx.commit().await?;
+            }
+            objects_evicted += 1;
+            obj_space_freed += fo.size;
+        }
+    }
 
     let duration = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
-    let message = format!(
-        "Cleaned up {} old states and {} orphaned packages",
-        cleanup_result.states_removed, cleaned_packages
-    );
+    let message = if cas_cfg.dry_run {
+        format!(
+            "Dry-run: would remove {} states, {} packages ({} bytes), {} objects ({} bytes)",
+            cleanup_result.states_removed, packages_evicted, pkg_space_freed, objects_evicted, obj_space_freed
+        )
+    } else {
+        format!(
+            "Cleaned {} states, removed {} packages ({} bytes), {} objects ({} bytes)",
+            cleanup_result.states_removed, packages_evicted, pkg_space_freed, objects_evicted, obj_space_freed
+        )
+    };
 
     ctx.emit(AppEvent::Package(PackageEvent::CleanupCompleted {
         states_removed: cleanup_result.states_removed,
-        packages_removed: cleaned_packages,
+        packages_removed: packages_evicted,
         duration_ms: duration,
     }));
 

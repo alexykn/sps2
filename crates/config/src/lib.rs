@@ -64,6 +64,10 @@ pub struct Config {
     /// Repository definitions (fast/slow/stable/extras)
     #[serde(default)]
     pub repos: repository::Repositories,
+
+    /// Content-addressable store cleanup policy
+    #[serde(default)]
+    pub cas: core::CasConfig,
 }
 
 impl Config {
@@ -264,6 +268,31 @@ impl Config {
                     field: "SPS2_PARALLEL_DOWNLOADS".to_string(),
                     value: downloads,
                 })?;
+        }
+
+        // Optional CAS env overrides (best-effort; ignore if invalid)
+        if let Ok(v) = std::env::var("SPS2_CAS_KEEP_STATES") {
+            if let Ok(n) = v.parse() {
+                self.cas.keep_states_count = n;
+            }
+        }
+        if let Ok(v) = std::env::var("SPS2_CAS_KEEP_DAYS") {
+            if let Ok(n) = v.parse() {
+                self.cas.keep_days = n;
+            }
+        }
+        if let Ok(v) = std::env::var("SPS2_CAS_PKG_GRACE_DAYS") {
+            if let Ok(n) = v.parse() {
+                self.cas.package_grace_days = n;
+            }
+        }
+        if let Ok(v) = std::env::var("SPS2_CAS_OBJ_GRACE_DAYS") {
+            if let Ok(n) = v.parse() {
+                self.cas.object_grace_days = n;
+            }
+        }
+        if let Ok(v) = std::env::var("SPS2_CAS_DRY_RUN") {
+            self.cas.dry_run = matches!(v.as_str(), "1" | "true" | "yes");
         }
 
         Ok(())

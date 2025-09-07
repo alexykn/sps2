@@ -73,6 +73,33 @@ pub struct PathConfig {
     pub build_path: Option<PathBuf>,
 }
 
+/// CAS cleanup/retention configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CasConfig {
+    #[serde(default = "default_retention_count")] 
+    pub keep_states_count: usize,
+    #[serde(default = "default_retention_days")] 
+    pub keep_days: u32,
+    #[serde(default = "default_package_grace_days")] 
+    pub package_grace_days: u32,
+    #[serde(default = "default_object_grace_days")] 
+    pub object_grace_days: u32,
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+impl Default for CasConfig {
+    fn default() -> Self {
+        Self {
+            keep_states_count: default_retention_count(),
+            keep_days: default_retention_days(),
+            package_grace_days: default_package_grace_days(),
+            object_grace_days: default_object_grace_days(),
+            dry_run: false,
+        }
+    }
+}
+
 /// Repository configuration group
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RepositoryGroupConfig {
@@ -144,4 +171,12 @@ fn default_retries() -> u32 {
 
 fn default_retry_delay() -> u64 {
     1 // 1 second
+}
+
+fn default_package_grace_days() -> u32 {
+    7
+}
+
+fn default_object_grace_days() -> u32 {
+    7
 }

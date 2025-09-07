@@ -4,6 +4,7 @@ use crate::models::{Package, State, StoreRef};
 use sps2_errors::{Error, StateError};
 use sps2_types::StateId;
 use sqlx::{query, query_as, Row, Sqlite, Transaction};
+use std::collections::HashMap;
 
 /// Get the current active state
 pub async fn get_active_state(tx: &mut Transaction<'_, Sqlite>) -> Result<StateId, Error> {
@@ -222,6 +223,43 @@ pub async fn delete_unreferenced_store_items(
     }
 
     Ok(())
+}
+
+/// Get all store_refs rows
+pub async fn get_all_store_refs(
+    tx: &mut Transaction<'_, Sqlite>,
+) -> Result<Vec<StoreRef>, Error> {
+    let items = query_as!(
+        StoreRef,
+        "SELECT hash, ref_count, size, created_at FROM store_refs"
+    )
+    .fetch_all(&mut **tx)
+    .await?;
+    Ok(items)
+}
+
+/// Build a map of package hash -> last reference timestamp across all states
+pub async fn get_package_last_ref_map(
+    tx: &mut Transaction<'_, Sqlite>,
+) -> Result<HashMap<String, i64>, Error> {
+    let rows = query(
+        r#"
+        SELECT p.hash AS hash, COALESCE(MAX(s.created_at), 0) AS last_ref
+        FROM packages p
+        JOIN states s ON s.id = p.state_id
+        GROUP BY p.hash
+        "#,
+    )
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let mut map = HashMap::new();
+    for r in rows {
+        let hash: String = r.get("hash");
+        let last_ref: i64 = r.get("last_ref");
+        map.insert(hash, last_ref);
+    }
+    Ok(map)
 }
 
 /// Get all states for history

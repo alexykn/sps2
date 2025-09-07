@@ -8,6 +8,7 @@ use crate::file_models::{
 use sps2_errors::{Error, StateError};
 use sps2_hash::Hash;
 use sqlx::{query, Row, Sqlite, Transaction};
+use std::collections::HashMap;
 
 /// Add a file object to the database
 ///
@@ -175,6 +176,79 @@ pub async fn get_file_object(
         is_symlink: r.get("is_symlink"),
         symlink_target: r.get("symlink_target"),
     }))
+}
+
+/// Get all file objects
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
+pub async fn get_all_file_objects(
+    tx: &mut Transaction<'_, Sqlite>,
+) -> Result<Vec<FileObject>, Error> {
+    let rows = query(
+        r#"
+        SELECT 
+            hash,
+            size,
+            created_at,
+            ref_count,
+            is_executable,
+            is_symlink,
+            symlink_target
+        FROM file_objects
+        "#,
+    )
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(|e| StateError::DatabaseError {
+        message: format!("failed to list file objects: {e}"),
+    })?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| FileObject {
+            hash: r.get("hash"),
+            size: r.get("size"),
+            created_at: r.get("created_at"),
+            ref_count: r.get("ref_count"),
+            is_executable: r.get("is_executable"),
+            is_symlink: r.get("is_symlink"),
+            symlink_target: r.get("symlink_target"),
+        })
+        .collect())
+}
+
+/// Build a map of file hash -> last reference timestamp across all states
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
+pub async fn get_file_last_ref_map(
+    tx: &mut Transaction<'_, Sqlite>,
+) -> Result<HashMap<String, i64>, Error> {
+    let rows = query(
+        r#"
+        SELECT pfe.file_hash AS hash, COALESCE(MAX(s.created_at), 0) AS last_ref
+        FROM package_file_entries pfe
+        JOIN packages p ON p.id = pfe.package_id
+        JOIN states s ON s.id = p.state_id
+        GROUP BY pfe.file_hash
+        "#,
+    )
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(|e| StateError::DatabaseError {
+        message: format!("failed to build file last-ref map: {e}"),
+    })?;
+
+    let mut map = HashMap::new();
+    for r in rows {
+        let hash: String = r.get("hash");
+        let last_ref: i64 = r.get("last_ref");
+        map.insert(hash, last_ref);
+    }
+    Ok(map)
 }
 
 /// Get all file entries for a package

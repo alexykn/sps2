@@ -4,6 +4,7 @@ use crate::models::{Package, State, StoreRef};
 use sps2_errors::{Error, StateError};
 use sps2_types::StateId;
 use sqlx::{query, Row, Sqlite, Transaction};
+use std::collections::HashMap;
 
 /// Get the current active state
 ///
@@ -526,6 +527,109 @@ pub async fn delete_unreferenced_store_items(
     Ok(())
 }
 
+/// Get all `store_refs` rows
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
+pub async fn get_all_store_refs(
+    tx: &mut Transaction<'_, Sqlite>,
+) -> Result<Vec<StoreRef>, Error> {
+    let rows = query(
+        "SELECT hash, ref_count, size, created_at FROM store_refs",
+    )
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let items = rows
+        .into_iter()
+        .map(|row| StoreRef {
+            hash: row.get("hash"),
+            ref_count: row.get("ref_count"),
+            size: row.get("size"),
+            created_at: row.get("created_at"),
+        })
+        .collect();
+
+    Ok(items)
+}
+
+/// Build a map of package hash -> last reference timestamp across all states
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
+pub async fn get_package_last_ref_map(
+    tx: &mut Transaction<'_, Sqlite>,
+) -> Result<HashMap<String, i64>, Error> {
+    let rows = query(
+        r#"
+        SELECT p.hash AS hash, COALESCE(MAX(s.created_at), 0) AS last_ref
+        FROM packages p
+        JOIN states s ON s.id = p.state_id
+        GROUP BY p.hash
+        "#,
+    )
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let mut map = HashMap::new();
+    for r in rows {
+        let hash: String = r.get("hash");
+        let last_ref: i64 = r.get("last_ref");
+        map.insert(hash, last_ref);
+    }
+    Ok(map)
+}
+
+/// Insert a package eviction log entry
+///
+/// # Errors
+///
+/// Returns an error if the database insert fails.
+pub async fn insert_package_eviction(
+    tx: &mut Transaction<'_, Sqlite>,
+    hash: &str,
+    size: i64,
+    reason: Option<&str>,
+) -> Result<(), Error> {
+    let now = chrono::Utc::now().timestamp();
+    query(
+        "INSERT OR REPLACE INTO package_evictions (hash, evicted_at, size, reason) VALUES (?1, ?2, ?3, ?4)",
+    )
+    .bind(hash)
+    .bind(now)
+    .bind(size)
+    .bind(reason)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// Insert a file object eviction log entry
+///
+/// # Errors
+///
+/// Returns an error if the database insert fails.
+pub async fn insert_file_object_eviction(
+    tx: &mut Transaction<'_, Sqlite>,
+    hash: &str,
+    size: i64,
+    reason: Option<&str>,
+) -> Result<(), Error> {
+    let now = chrono::Utc::now().timestamp();
+    query(
+        "INSERT OR REPLACE INTO file_object_evictions (hash, evicted_at, size, reason) VALUES (?1, ?2, ?3, ?4)",
+    )
+    .bind(hash)
+    .bind(now)
+    .bind(size)
+    .bind(reason)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
 /// Get packages that depend on the given package
 ///
 /// # Errors
@@ -937,3 +1041,4 @@ pub async fn remove_package_map(
 
     Ok(())
 }
+    
