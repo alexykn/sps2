@@ -406,117 +406,6 @@ impl StateManager {
         })
     }
 
-    /// Commit a state transition
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if database transaction or filesystem operations fail.
-    pub async fn commit_transition(
-        &self,
-        transition: StateTransition,
-        packages_added: Vec<PackageRef>,
-        packages_removed: Vec<PackageRef>,
-    ) -> Result<(), Error> {
-        let mut tx = self.pool.begin().await?;
-
-        // Create new state record
-        queries::create_state(
-            &mut tx,
-            &transition.to,
-            Some(&transition.from),
-            &transition.operation,
-        )
-        .await?;
-
-        // Copy packages from parent state
-        let parent_packages = queries::get_state_packages(&mut tx, &transition.from).await?;
-
-        // Active-state refcount semantics: decrement store refs for all parent packages first
-        let mut store_dec_count = 0usize;
-        for pkg in &parent_packages {
-            queries::decrement_store_ref(&mut tx, &pkg.hash).await?;
-            store_dec_count += 1;
-        }
-
-        // Track packages in new state
-        let mut new_packages = Vec::new();
-
-        // Add existing packages (minus removed ones)
-        for pkg in parent_packages {
-            let removed = packages_removed
-                .iter()
-                .any(|r| r.package_id.name == pkg.name);
-            if !removed {
-                let _id = queries::add_package(
-                    &mut tx,
-                    &transition.to,
-                    &pkg.name,
-                    &pkg.version,
-                    &pkg.hash,
-                    pkg.size,
-                )
-                .await?;
-                new_packages.push((pkg.hash.clone(), pkg.size));
-            }
-        }
-
-        // Add new packages
-        for pkg in &packages_added {
-            let _id = queries::add_package(
-                &mut tx,
-                &transition.to,
-                &pkg.package_id.name,
-                &pkg.package_id.version.to_string(),
-                &pkg.hash,
-                pkg.size,
-            )
-            .await?;
-            new_packages.push((pkg.hash.clone(), pkg.size));
-        }
-
-        // Update store reference counts
-        for (hash, size) in &new_packages {
-            queries::get_or_create_store_ref(&mut tx, hash, *size).await?;
-            queries::increment_store_ref(&mut tx, hash).await?;
-        }
-
-        // Clamp negatives to zero defensively
-        sqlx::query("UPDATE store_refs SET ref_count = 0 WHERE ref_count < 0")
-            .execute(&mut *tx)
-            .await?;
-
-        // Ensure parent directory of live_path exists
-        if let Some(live_parent) = self.live_path.parent() {
-            sps2_root::create_dir_all(live_parent).await?;
-        }
-
-        // New default behavior: do not archive old live. Atomically replace live with staging
-        sps2_root::atomic_rename(&transition.staging_path, &self.live_path).await?;
-
-        // Update active state
-        queries::set_active_state(&mut tx, &transition.to).await?;
-
-        // Commit transaction
-        tx.commit().await?;
-
-        // Emit debug summary
-        self.emit_debug(format!(
-            "legacy commit refcounts: store +{} -{}",
-            new_packages.len(),
-            store_dec_count
-        ));
-
-        self.tx
-            .emit(AppEvent::State(StateEvent::TransitionCompleted {
-                from: transition.from,
-                to: transition.to,
-                operation: transition.operation,
-                duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
-            }));
-
-        Ok(())
-    }
-
     // Note: rollback is now implemented reconstructively in the installer crate.
 
     /// Get state history
@@ -1172,13 +1061,17 @@ impl StateManager {
         Ok(())
     }
 
-    /// Synchronize store_refs and file_objects refcounts to match a specific state exactly
+    /// Synchronize `store_refs` and `file_objects` refcounts to match a specific state exactly
     ///
     /// This sets refcounts to the exact desired values for the given state:
     /// - For hashes present in the state: set to the number of references in that state
     /// - For hashes not present in the state: set to 0
     ///
-    /// Returns (store_updates, file_updates)
+    /// Returns (`store_updates`, `file_updates`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any database read or write fails while computing or applying refcounts.
     pub async fn sync_refcounts_to_state(
         &self,
         state_id: &sps2_types::StateId,
@@ -1208,8 +1101,8 @@ impl StateManager {
         for r in rows {
             let desired = store_counts.get(&r.hash).map(|(c, _)| *c).unwrap_or(0);
             if r.ref_count != desired {
-                let updated = crate::queries_runtime::set_store_ref_count(&mut tx, &r.hash, desired)
-                    .await?;
+                let updated =
+                    crate::queries_runtime::set_store_ref_count(&mut tx, &r.hash, desired).await?;
                 if updated > 0 {
                     store_updates += 1;
                 }
@@ -1219,7 +1112,8 @@ impl StateManager {
         // Build desired file-level counts by file_hash for the target state
         let mut file_counts: HashMap<String, i64> = HashMap::new();
         for p in &packages {
-            let entries = crate::file_queries_runtime::get_package_file_entries(&mut tx, p.id).await?;
+            let entries =
+                crate::file_queries_runtime::get_package_file_entries(&mut tx, p.id).await?;
             for e in entries {
                 file_counts
                     .entry(e.file_hash)
@@ -1235,9 +1129,7 @@ impl StateManager {
             let desired = file_counts.get(&fo.hash).copied().unwrap_or(0);
             if fo.ref_count != desired {
                 let updated = crate::file_queries_runtime::set_file_object_ref_count(
-                    &mut tx,
-                    &fo.hash,
-                    desired,
+                    &mut tx, &fo.hash, desired,
                 )
                 .await?;
                 if updated > 0 {

@@ -1,8 +1,8 @@
 //! Main installer implementation
 
 use crate::{
-    AtomicInstaller, InstallContext, InstallOperation, InstallResult, UninstallContext,
-    UninstallOperation, UpdateContext, UpdateOperation,
+    InstallContext, InstallOperation, InstallResult, UninstallContext, UninstallOperation,
+    UpdateContext, UpdateOperation,
 };
 use sps2_errors::{Error, InstallError};
 // EventSender not used directly in this module but imported for potential future use
@@ -172,30 +172,6 @@ impl Installer {
         self.cleanup_old_states().await?;
 
         Ok(result)
-    }
-
-    /// Rollback to a previous state
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the target state doesn't exist or rollback operation fails.
-    pub async fn rollback(&mut self, target_state_id: Uuid) -> Result<(), Error> {
-        // Validate target state exists
-        if !self.state_manager.state_exists(&target_state_id).await? {
-            return Err(InstallError::StateNotFound {
-                state_id: target_state_id.to_string(),
-            }
-            .into());
-        }
-
-        // Create atomic installer for rollback
-        let mut atomic_installer =
-            AtomicInstaller::new(self.state_manager.clone(), self.store.clone()).await?;
-
-        // Perform rollback
-        atomic_installer.rollback(target_state_id).await?;
-
-        Ok(())
     }
 
     /// List available states for rollback
