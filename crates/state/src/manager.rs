@@ -306,6 +306,7 @@ impl StateManager {
             queries::get_states_for_cleanup_strict(&mut tx, retention_count).await?;
 
         let mut space_freed = 0u64;
+        let mut removed_count: usize = 0;
 
         // Remove state directories
         for state_id in &states_to_remove {
@@ -313,6 +314,7 @@ impl StateManager {
             if sps2_root::exists(&state_path).await {
                 space_freed += sps2_root::size(&state_path).await?;
                 sps2_root::remove_dir_all(&state_path).await?;
+                removed_count += 1;
             }
         }
 
@@ -330,6 +332,7 @@ impl StateManager {
                                 let path = entry.path();
                                 space_freed += sps2_root::size(&path).await?;
                                 sps2_root::remove_dir_all(&path).await?;
+                                removed_count += 1;
                             }
                         }
                     }
@@ -347,13 +350,13 @@ impl StateManager {
         tx.commit().await?;
 
         self.tx.emit(AppEvent::State(StateEvent::CleanupCompleted {
-            states_removed: states_to_remove.len(),
+            states_removed: removed_count,
             space_freed,
             duration: std::time::Duration::from_millis(0), // TODO: Add proper timing
         }));
 
         Ok(CleanupResult {
-            states_removed: states_to_remove.len(),
+            states_removed: removed_count,
             space_freed,
         })
     }

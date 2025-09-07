@@ -30,6 +30,20 @@ async fn compute_kept_states(
     Ok(kept)
 }
 
+// Keep strictly the newest N states by creation time (always include current)
+async fn compute_kept_states_by_count(
+    ctx: &OpsCtx,
+    keep_count: usize,
+) -> Result<std::collections::HashSet<Uuid>, Error> {
+    let states = ctx.state.list_states_detailed().await?;
+    let mut kept: std::collections::HashSet<Uuid> = std::collections::HashSet::new();
+    for st in states.iter().take(keep_count) {
+        kept.insert(st.state_id());
+    }
+    kept.insert(ctx.state.get_current_state_id().await?);
+    Ok(kept)
+}
+
 async fn collect_required_hashes(
     ctx: &OpsCtx,
     kept: &std::collections::HashSet<Uuid>,
@@ -513,13 +527,8 @@ pub async fn history(ctx: &OpsCtx, show_all: bool, verify: bool) -> Result<Vec<S
         return Ok(out);
     }
 
-    // Default: show only recent states based on state retention (not CAS policy), unless --all
-    let kept = compute_kept_states(
-        ctx,
-        ctx.config.state.retention_count,
-        i64::from(ctx.config.state.retention_days),
-    )
-    .await?;
+    // Default: match cleanup semantics: keep strictly the newest N
+    let kept = compute_kept_states_by_count(ctx, ctx.config.state.retention_count).await?;
 
     let mut state_infos = Vec::new();
     for state in &all_states {
