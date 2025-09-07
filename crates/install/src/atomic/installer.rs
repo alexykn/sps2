@@ -918,56 +918,8 @@ impl AtomicInstaller {
         }
 
         // Journal and finalize: mark the target state as new active
-        // Recompute refcounts for active-state semantics: decrement current, increment target
-        {
-            let mut db_tx = self.state_manager.begin_transaction().await?;
-
-            // Decrement current state's package and file refs
-            let current_packages = self
-                .state_manager
-                .get_installed_packages_in_state(&current_state_id)
-                .await?;
-            for pkg in &current_packages {
-                sps2_state::queries::decrement_store_ref(&mut db_tx, &pkg.hash).await?;
-                let _ = sps2_state::file_queries_runtime::decrement_file_object_refs_for_package(
-                    &mut db_tx, pkg.id,
-                )
-                .await?;
-            }
-
-            // Increment target state's package and file refs
-            let target_packages = self
-                .state_manager
-                .get_installed_packages_in_state(&target_state_id)
-                .await?;
-            for pkg in &target_packages {
-                sps2_state::queries::get_or_create_store_ref(&mut db_tx, &pkg.hash, pkg.size)
-                    .await?;
-                sps2_state::queries::increment_store_ref(&mut db_tx, &pkg.hash).await?;
-
-                // For each file entry in target package, increment object refcount
-                let entries =
-                    sps2_state::file_queries_runtime::get_package_file_entries(&mut db_tx, pkg.id)
-                        .await?;
-                for e in entries {
-                    let _ = sps2_state::file_queries_runtime::increment_file_object_ref(
-                        &mut db_tx,
-                        &e.file_hash,
-                    )
-                    .await?;
-                }
-            }
-
-            // Clamp negatives
-            sqlx::query("UPDATE store_refs SET ref_count = 0 WHERE ref_count < 0")
-                .execute(&mut *db_tx)
-                .await?;
-            sqlx::query("UPDATE file_objects SET ref_count = 0 WHERE ref_count < 0")
-                .execute(&mut *db_tx)
-                .await?;
-
-            db_tx.commit().await?;
-        }
+        // Note: Refcount semantics are handled centrally by StateManager::prepare_transaction.
+        // The installer only performs the filesystem swap and DB finalization steps.
 
         let journal = sps2_types::state::TransactionJournal {
             new_state_id: target_state_id,
