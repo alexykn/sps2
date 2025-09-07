@@ -8,9 +8,9 @@ A modern, atomic package manager for macOS ARM64 with rollback capabilities and 
 
 ### Current Status
 
-- ✅ **Working**: `install`, `uninstall`, `rollback`, `history`, `list`, `vulndb update`, `check-health`
+- ✅ **Working**: `install`, `uninstall`, `rollback`, `history`, `cleanup`, `list`, `vulndb update`, `check-health`
 - 🚧 **In Progress**: `draft` and `build` (functional but incomplete)
-- ⚠️ **Untested**: `update`, `upgrade`, `info`, `search`, `reposync`, `cleanup`, `audit`, `self-update`
+- ⚠️ **Untested**: `update`, `upgrade`, `info`, `search`, `reposync`, `audit`, `self-update`
 
 ## Features
 
@@ -28,7 +28,7 @@ A modern, atomic package manager for macOS ARM64 with rollback capabilities and 
 ### Prerequisites
 
 - macOS with Apple Silicon
-- Rust 1.87.0 or later
+- Rust 1.88.0 or later
 - SQLite 3.x
 - sudo access for `/opt/pm` directory
 
@@ -195,9 +195,41 @@ sps2 uninstall jq
 ### State Management
 
 ```bash
-# View state history
+# View recent state history (filtered by retention policy)
 sps2 history
 
+# Show all states (no availability filtering)
+sps2 history --all
+
+# Verify CAS availability for states (caps by config: state.history_verify_limit)
+sps2 history --verify
+
+# Override per-run verify limit
+sps2 history --verify --limit 50
+```
+
+### Cleanup Storage (CAS)
+
+```bash
+# Preview cleanup actions without deleting anything
+sps2 cleanup --dry-run
+
+# Perform cleanup based on policy (see config)
+sps2 cleanup
+```
+
+### Verification & Repair
+
+```bash
+# Verify current system; levels: quick, standard, full; scopes: live, store, all
+sps2 verify --level standard --scope live
+
+# Verify and attempt to heal discrepancies
+sps2 verify --heal
+
+# After a successful verify/heal, sync DB refcounts from the active state (one-off)
+sps2 verify --sync-refcounts
+```
 # Example output:
 # ┌────────────────────────┬─────────┬───────────┬──────────────────┬──────────┐
 # │ State ID               ┆ Current ┆ Operation ┆ Created          ┆ Packages │
