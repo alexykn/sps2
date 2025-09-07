@@ -3466,6 +3466,7 @@ dependencies = [
  "sps2-hash",
  "sps2-install",
  "sps2-platform",
+ "sps2-resolver",
  "sps2-state",
  "sps2-store",
  "sps2-types",

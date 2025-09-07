@@ -209,6 +209,10 @@ pub struct StoreVerificationConfig {
     pub max_concurrency: usize,
     #[serde(default = "default_store_enable_quarantine")]
     pub enable_quarantine: bool,
+    /// When true, after successful healing the guard will synchronize DB refcounts
+    /// from the active state only (packages and file entries).
+    #[serde(default = "default_store_sync_refcounts")]
+    pub sync_refcounts: bool,
 }
 
 impl Default for StoreVerificationConfig {
@@ -220,8 +224,13 @@ impl Default for StoreVerificationConfig {
             batch_size: default_store_batch_size(),
             max_concurrency: default_store_max_concurrency(),
             enable_quarantine: default_store_enable_quarantine(),
+            sync_refcounts: default_store_sync_refcounts(),
         }
     }
+}
+
+fn default_store_sync_refcounts() -> bool {
+    false
 }
 
 /// Top-level guard configuration (alternative to verification.guard approach)

@@ -38,6 +38,238 @@ impl EventEmitter for StateManager {
 }
 
 impl StateManager {
+    // Helper: decrement all refs from parent and return a (name,version)->Package map with counters
+    async fn decrement_parent_refs_and_build_map(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        parent_id: &Uuid,
+    ) -> Result<
+        (
+            std::collections::HashMap<(String, String), crate::models::Package>,
+            usize,
+            usize,
+        ),
+        Error,
+    > {
+        let parent_packages = queries::get_state_packages(tx, parent_id).await?;
+        let mut parent_pkg_map: std::collections::HashMap<
+            (String, String),
+            crate::models::Package,
+        > = std::collections::HashMap::new();
+        for pkg in &parent_packages {
+            parent_pkg_map.insert((pkg.name.clone(), pkg.version.clone()), pkg.clone());
+        }
+
+        let mut store_dec_count: usize = 0;
+        let mut file_dec_count: usize = 0;
+        for pkg in &parent_packages {
+            queries::decrement_store_ref(tx, &pkg.hash).await?;
+            store_dec_count += 1;
+            let dec =
+                crate::file_queries_runtime::decrement_file_object_refs_for_package(tx, pkg.id)
+                    .await?;
+            file_dec_count += dec;
+        }
+        Ok((parent_pkg_map, store_dec_count, file_dec_count))
+    }
+
+    // Helper: add package refs and build map PackageId -> db id, returning increment count
+    async fn add_package_refs_and_build_id_map(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        package_refs: &[PackageRef],
+    ) -> Result<
+        (
+            std::collections::HashMap<sps2_resolver::PackageId, i64>,
+            usize,
+        ),
+        Error,
+    > {
+        let mut package_id_map = std::collections::HashMap::new();
+        let mut store_inc_count = 0usize;
+        for package_ref in package_refs {
+            let package_id = self.add_package_ref_with_tx(tx, package_ref).await?;
+            package_id_map.insert(package_ref.package_id.clone(), package_id);
+            store_inc_count += 1;
+        }
+        Ok((package_id_map, store_inc_count))
+    }
+
+    // Helper: add legacy package_files rows
+    async fn add_legacy_package_files(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        staging_id: &Uuid,
+        package_files: &[(String, String, String, bool)],
+    ) -> Result<(), Error> {
+        for (package_name, package_version, file_path, is_directory) in package_files {
+            queries::add_package_file(
+                tx,
+                staging_id,
+                package_name,
+                package_version,
+                file_path,
+                *is_directory,
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    // Helper: process pending hashes for packages with computed file hashes
+    async fn process_pending_file_hashes(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        package_id_map: &std::collections::HashMap<sps2_resolver::PackageId, i64>,
+        pending: &[(sps2_resolver::PackageId, Vec<sps2_hash::FileHashResult>)],
+    ) -> Result<usize, Error> {
+        let mut file_inc_count = 0usize;
+        for (package_id, file_hashes) in pending {
+            if let Some(&db_package_id) = package_id_map.get(package_id) {
+                for file_hash in file_hashes {
+                    let relative_path = file_hash.relative_path.clone();
+
+                    let file_ref = crate::FileReference {
+                        package_id: db_package_id,
+                        relative_path,
+                        hash: file_hash.hash.clone(),
+                        metadata: crate::FileMetadata {
+                            size: file_hash.size as i64,
+                            permissions: file_hash.mode.unwrap_or(0o644),
+                            uid: 0,
+                            gid: 0,
+                            mtime: None,
+                            is_executable: file_hash.mode.map(|m| m & 0o111 != 0).unwrap_or(false),
+                            is_symlink: file_hash.is_symlink,
+                            symlink_target: None,
+                        },
+                    };
+
+                    let _ =
+                        queries::add_file_object(tx, &file_ref.hash, &file_ref.metadata).await?;
+                    queries::add_package_file_entry(tx, db_package_id, &file_ref).await?;
+                    file_inc_count += 1;
+                }
+            }
+        }
+        Ok(file_inc_count)
+    }
+
+    // Helper: process direct file references
+    async fn process_file_references(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        file_references: &[(i64, crate::FileReference)],
+    ) -> Result<usize, Error> {
+        let mut file_inc_count = 0usize;
+        for (package_id, file_ref) in file_references {
+            let _ = queries::add_file_object(tx, &file_ref.hash, &file_ref.metadata).await?;
+            queries::add_package_file_entry(tx, *package_id, file_ref).await?;
+            file_inc_count += 1;
+        }
+        Ok(file_inc_count)
+    }
+
+    // Helper: backfill carry-forward packages' file entries from parent
+    async fn backfill_carry_forward_files(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        parent_pkg_map: &std::collections::HashMap<(String, String), crate::models::Package>,
+        package_id_map: &std::collections::HashMap<sps2_resolver::PackageId, i64>,
+        transition_data: &TransactionData<'_>,
+    ) -> Result<usize, Error> {
+        use sps2_hash::Hash as Sps2Hash;
+        let mut file_inc_count = 0usize;
+
+        // Build set of packages that had file hashes computed in this transition
+        let mut hashed_set: std::collections::HashSet<sps2_resolver::PackageId> =
+            std::collections::HashSet::new();
+        for (pid, _hashes) in transition_data.pending_file_hashes {
+            hashed_set.insert(pid.clone());
+        }
+
+        for pkg_ref in transition_data.package_refs {
+            if hashed_set.contains(&pkg_ref.package_id) {
+                continue;
+            }
+            let Some(&new_db_pkg_id) = package_id_map.get(&pkg_ref.package_id) else {
+                continue;
+            };
+
+            if let Some(parent_pkg) = parent_pkg_map.get(&(
+                pkg_ref.package_id.name.clone(),
+                pkg_ref.package_id.version.to_string(),
+            )) {
+                let parent_entries =
+                    crate::file_queries_runtime::get_package_file_entries(tx, parent_pkg.id)
+                        .await?;
+                for entry in parent_entries {
+                    let hash_hex = entry.file_hash.clone();
+                    let fh = Sps2Hash::from_hex(&hash_hex).map_err(|e| {
+                        Error::internal(format!("invalid file hash {hash_hex}: {e}"))
+                    })?;
+
+                    let existing = crate::file_queries_runtime::get_file_object(tx, &fh).await?;
+
+                    if existing.is_none() {
+                        let metadata = crate::FileMetadata {
+                            size: 0,
+                            permissions: entry.permissions as u32,
+                            uid: entry.uid as u32,
+                            gid: entry.gid as u32,
+                            mtime: entry.mtime,
+                            is_executable: false,
+                            is_symlink: false,
+                            symlink_target: None,
+                        };
+                        let _ = queries::add_file_object(tx, &fh, &metadata).await?;
+                    }
+
+                    let file_ref = crate::FileReference {
+                        package_id: new_db_pkg_id,
+                        relative_path: entry.relative_path.clone(),
+                        hash: fh.clone(),
+                        metadata: crate::FileMetadata {
+                            size: existing.as_ref().map(|o| o.size).unwrap_or(0),
+                            permissions: entry.permissions as u32,
+                            uid: entry.uid as u32,
+                            gid: entry.gid as u32,
+                            mtime: entry.mtime,
+                            is_executable: existing
+                                .as_ref()
+                                .map(|o| o.is_executable)
+                                .unwrap_or(false),
+                            is_symlink: existing.as_ref().map(|o| o.is_symlink).unwrap_or(false),
+                            symlink_target: existing
+                                .as_ref()
+                                .and_then(|o| o.symlink_target.clone()),
+                        },
+                    };
+                    let _ =
+                        queries::add_file_object(tx, &file_ref.hash, &file_ref.metadata).await?;
+                    queries::add_package_file_entry(tx, new_db_pkg_id, &file_ref).await?;
+                    file_inc_count += 1;
+                }
+            }
+        }
+
+        Ok(file_inc_count)
+    }
+
+    // Helper: clamp negative refcounts to zero
+    async fn clamp_negatives(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    ) -> Result<(), Error> {
+        sqlx::query("UPDATE store_refs SET ref_count = 0 WHERE ref_count < 0")
+            .execute(&mut **tx)
+            .await?;
+        sqlx::query("UPDATE file_objects SET ref_count = 0 WHERE ref_count < 0")
+            .execute(&mut **tx)
+            .await?;
+        Ok(())
+    }
+
     /// Create a new state manager with database setup
     ///
     /// # Errors
@@ -199,6 +431,13 @@ impl StateManager {
         // Copy packages from parent state
         let parent_packages = queries::get_state_packages(&mut tx, &transition.from).await?;
 
+        // Active-state refcount semantics: decrement store refs for all parent packages first
+        let mut store_dec_count = 0usize;
+        for pkg in &parent_packages {
+            queries::decrement_store_ref(&mut tx, &pkg.hash).await?;
+            store_dec_count += 1;
+        }
+
         // Track packages in new state
         let mut new_packages = Vec::new();
 
@@ -241,9 +480,10 @@ impl StateManager {
             queries::increment_store_ref(&mut tx, hash).await?;
         }
 
-        for pkg in &packages_removed {
-            queries::decrement_store_ref(&mut tx, &pkg.hash).await?;
-        }
+        // Clamp negatives to zero defensively
+        sqlx::query("UPDATE store_refs SET ref_count = 0 WHERE ref_count < 0")
+            .execute(&mut *tx)
+            .await?;
 
         // Ensure parent directory of live_path exists
         if let Some(live_parent) = self.live_path.parent() {
@@ -258,6 +498,13 @@ impl StateManager {
 
         // Commit transaction
         tx.commit().await?;
+
+        // Emit debug summary
+        self.emit_debug(format!(
+            "legacy commit refcounts: store +{} -{}",
+            new_packages.len(),
+            store_dec_count
+        ));
 
         self.tx
             .emit(AppEvent::State(StateEvent::TransitionCompleted {
@@ -1047,76 +1294,54 @@ impl StateManager {
         // DO NOT update the `active_state` table yet
         self.create_state_with_tx(&mut tx, staging_id, Some(parent_id), operation)
             .await?;
+        // Active-state refcount semantics: decrement all refs from parent, then increment for new state
+        let (parent_pkg_map, store_dec_count, file_dec_count) = self
+            .decrement_parent_refs_and_build_map(&mut tx, parent_id)
+            .await?;
 
-        // Track package IDs for file hash processing
-        let mut package_id_map = std::collections::HashMap::new();
+        // Add all package references and build map of db IDs
+        let (package_id_map, store_inc_count) = self
+            .add_package_refs_and_build_id_map(&mut tx, transition_data.package_refs)
+            .await?;
 
-        // Add all package references to the database
-        for package_ref in transition_data.package_refs {
-            let package_id = self.add_package_ref_with_tx(&mut tx, package_ref).await?;
-            package_id_map.insert(package_ref.package_id.clone(), package_id);
-        }
+        // Add legacy package_files rows
+        self.add_legacy_package_files(&mut tx, staging_id, transition_data.package_files)
+            .await?;
 
-        // Add all stored package files to the database
-        for (package_name, package_version, file_path, is_directory) in
-            transition_data.package_files
-        {
-            queries::add_package_file(
+        // Add file-level entries for newly hashed packages
+        let mut file_inc_count = self
+            .process_pending_file_hashes(
                 &mut tx,
-                staging_id,
-                package_name,
-                package_version,
-                file_path,
-                *is_directory,
+                &package_id_map,
+                transition_data.pending_file_hashes,
             )
             .await?;
-        }
 
-        // Process pending file hashes now that we have package IDs
-        for (package_id, file_hashes) in transition_data.pending_file_hashes {
-            if let Some(&db_package_id) = package_id_map.get(package_id) {
-                for file_hash in file_hashes {
-                    let relative_path = file_hash.relative_path.clone();
+        // Add file-level entries for direct file references, if any
+        file_inc_count += self
+            .process_file_references(&mut tx, transition_data.file_references)
+            .await?;
 
-                    let file_ref = crate::FileReference {
-                        package_id: db_package_id,
-                        relative_path,
-                        hash: file_hash.hash.clone(),
-                        metadata: crate::FileMetadata {
-                            size: file_hash.size as i64,
-                            permissions: file_hash.mode.unwrap_or(0o644),
-                            uid: 0,
-                            gid: 0,
-                            mtime: None,
-                            is_executable: file_hash.mode.map(|m| m & 0o111 != 0).unwrap_or(false),
-                            is_symlink: file_hash.is_symlink,
-                            symlink_target: None,
-                        },
-                    };
+        // Backfill carry-forward packages without hashes for this transition
+        file_inc_count += self
+            .backfill_carry_forward_files(
+                &mut tx,
+                &parent_pkg_map,
+                &package_id_map,
+                transition_data,
+            )
+            .await?;
 
-                    // First add the file object if it doesn't exist
-                    let _dedup_result =
-                        queries::add_file_object(&mut tx, &file_ref.hash, &file_ref.metadata)
-                            .await?;
-
-                    // Then add the package file entry
-                    queries::add_package_file_entry(&mut tx, db_package_id, &file_ref).await?;
-                }
-            }
-        }
-
-        // Add file-level data if available (for direct file references)
-        for (package_id, file_ref) in transition_data.file_references {
-            // First add the file object if it doesn't exist
-            let _dedup_result =
-                queries::add_file_object(&mut tx, &file_ref.hash, &file_ref.metadata).await?;
-
-            // Then add the package file entry
-            queries::add_package_file_entry(&mut tx, *package_id, file_ref).await?;
-        }
+        // Clamp negatives to zero defensively
+        self.clamp_negatives(&mut tx).await?;
 
         // Commit the DB transaction
         tx.commit().await?;
+
+        // Emit debug summary
+        self.emit_debug(format!(
+            "2PC refcounts: store +{store_inc_count} -{store_dec_count}, files +{file_inc_count} -{file_dec_count}"
+        ));
 
         // Create the journal file on disk. This is the "commit point" for Phase 1
         let journal = sps2_types::state::TransactionJournal {
@@ -1189,4 +1414,257 @@ pub struct CleanupResult {
     pub states_pruned: usize,
     pub states_removed: usize,
     pub space_freed: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{file_queries_runtime as fq, queries};
+    use tempfile::TempDir;
+
+    async fn mk_state() -> (TempDir, StateManager) {
+        let td = TempDir::new().expect("tempdir");
+        let mgr = StateManager::new(td.path()).await.expect("state new");
+        (td, mgr)
+    }
+
+    async fn store_ref_count(state: &StateManager, hash: &str) -> i64 {
+        let mut tx = state.begin_transaction().await.expect("tx");
+        let rows = queries::get_all_store_refs(&mut tx).await.expect("refs");
+        tx.commit().await.expect("commit");
+        rows.into_iter()
+            .find(|r| r.hash == hash)
+            .map(|r| r.ref_count)
+            .unwrap_or(0)
+    }
+
+    async fn file_obj_ref_count(state: &StateManager, hash: &str) -> i64 {
+        let mut tx = state.begin_transaction().await.expect("tx");
+        let h = sps2_hash::Hash::from_hex(hash).expect("hash");
+        let row = fq::get_file_object(&mut tx, &h).await.expect("get");
+        tx.commit().await.expect("commit");
+        row.map(|o| o.ref_count).unwrap_or(0)
+    }
+
+    async fn seed_parent_with_pkg(
+        state: &StateManager,
+        name: &str,
+        version: &str,
+        pkg_hash_hex: &str,
+        files: &[(&str, i64)],
+    ) {
+        let mut tx = state.begin_transaction().await.expect("tx");
+        let sid = queries::get_active_state(&mut tx).await.expect("sid");
+        let pkg_id = queries::add_package(&mut tx, &sid, name, version, pkg_hash_hex, 1)
+            .await
+            .expect("add pkg");
+
+        for (rel, size) in files {
+            let fh = sps2_hash::Hash::from_data(rel.as_bytes());
+            let meta = crate::FileMetadata::regular_file(*size, 0o644);
+            let _ = fq::add_file_object(&mut tx, &fh, &meta)
+                .await
+                .expect("add fo");
+            let fr = crate::FileReference {
+                package_id: pkg_id,
+                relative_path: (*rel).to_string(),
+                hash: fh,
+                metadata: meta,
+            };
+            let _ = fq::add_package_file_entry(&mut tx, pkg_id, &fr)
+                .await
+                .expect("pfe");
+        }
+        tx.commit().await.expect("commit");
+    }
+
+    #[tokio::test]
+    async fn t_2pc_carry_forward_net_zero() {
+        let (_td, state) = mk_state().await;
+        let parent_id = state.get_active_state().await.expect("parent");
+        let pkg_hash = sps2_hash::Hash::from_data(b"pkg-A").to_hex();
+        seed_parent_with_pkg(
+            &state,
+            "A",
+            "1.0.0",
+            &pkg_hash,
+            &[("bin/a", 3), ("bin/b", 4)],
+        )
+        .await;
+
+        // build transition data with carry-forward only
+        let staging_id = uuid::Uuid::new_v4();
+        let pid = sps2_resolver::PackageId::new(
+            "A".to_string(),
+            sps2_types::Version::parse("1.0.0").unwrap(),
+        );
+        let pref = PackageRef {
+            state_id: staging_id,
+            package_id: pid,
+            hash: pkg_hash.clone(),
+            size: 1,
+        };
+        let td = TransactionData {
+            package_refs: &[pref],
+            package_files: &[],
+            file_references: &[],
+            pending_file_hashes: &[],
+        };
+
+        let staging_path = state.state_path().join(format!("staging-{staging_id}"));
+        let _journal = state
+            .prepare_transaction(&staging_id, &parent_id, &staging_path, "test-carry", &td)
+            .await
+            .expect("prepare");
+
+        // store ref should be 1 for A
+        assert_eq!(store_ref_count(&state, &pkg_hash).await, 1);
+
+        // file refs should be 1 for both files
+        let f1 = sps2_hash::Hash::from_data(b"bin/a").to_hex();
+        let f2 = sps2_hash::Hash::from_data(b"bin/b").to_hex();
+        assert_eq!(file_obj_ref_count(&state, &f1).await, 1);
+        assert_eq!(file_obj_ref_count(&state, &f2).await, 1);
+    }
+
+    #[tokio::test]
+    async fn t_2pc_install_increments() {
+        let (_td, state) = mk_state().await;
+        let parent_id = state.get_active_state().await.expect("parent");
+        let pkg_hash = sps2_hash::Hash::from_data(b"pkg-B").to_hex();
+        let staging_id = uuid::Uuid::new_v4();
+        let pid = sps2_resolver::PackageId::new(
+            "B".to_string(),
+            sps2_types::Version::parse("1.0.0").unwrap(),
+        );
+        let pref = PackageRef {
+            state_id: staging_id,
+            package_id: pid,
+            hash: pkg_hash.clone(),
+            size: 1,
+        };
+        let file_hashes = vec![
+            sps2_hash::FileHashResult {
+                relative_path: "bin/x".to_string(),
+                size: 1,
+                mode: Some(0o755),
+                is_symlink: false,
+                is_directory: false,
+                hash: sps2_hash::Hash::from_data(b"bin/x"),
+            },
+            sps2_hash::FileHashResult {
+                relative_path: "share/d".to_string(),
+                size: 2,
+                mode: Some(0o644),
+                is_symlink: false,
+                is_directory: false,
+                hash: sps2_hash::Hash::from_data(b"share/d"),
+            },
+        ];
+        let td = TransactionData {
+            package_refs: &[pref],
+            package_files: &[],
+            file_references: &[],
+            pending_file_hashes: &[(
+                sps2_resolver::PackageId::new(
+                    "B".to_string(),
+                    sps2_types::Version::parse("1.0.0").unwrap(),
+                ),
+                file_hashes,
+            )],
+        };
+        let staging_path = state.state_path().join(format!("staging-{staging_id}"));
+        let _ = state
+            .prepare_transaction(&staging_id, &parent_id, &staging_path, "install", &td)
+            .await
+            .expect("prepare");
+
+        assert_eq!(store_ref_count(&state, &pkg_hash).await, 1);
+        assert_eq!(
+            file_obj_ref_count(&state, &sps2_hash::Hash::from_data(b"bin/x").to_hex()).await,
+            1
+        );
+        assert_eq!(
+            file_obj_ref_count(&state, &sps2_hash::Hash::from_data(b"share/d").to_hex()).await,
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn t_2pc_uninstall_decrements_to_zero() {
+        let (_td, state) = mk_state().await;
+        let parent_id = state.get_active_state().await.expect("parent");
+        let pkg_hash = sps2_hash::Hash::from_data(b"pkg-U").to_hex();
+        seed_parent_with_pkg(&state, "U", "1.0.0", &pkg_hash, &[("bin/u", 3)]).await;
+
+        let td = TransactionData {
+            package_refs: &[],
+            package_files: &[],
+            file_references: &[],
+            pending_file_hashes: &[],
+        };
+        let staging_id = uuid::Uuid::new_v4();
+        let staging_path = state.state_path().join(format!("staging-{staging_id}"));
+        let _ = state
+            .prepare_transaction(&staging_id, &parent_id, &staging_path, "uninstall", &td)
+            .await
+            .expect("prepare");
+
+        assert_eq!(store_ref_count(&state, &pkg_hash).await, 0);
+        assert_eq!(
+            file_obj_ref_count(&state, &sps2_hash::Hash::from_data(b"bin/u").to_hex()).await,
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn t_2pc_update_swaps_refs() {
+        let (_td, state) = mk_state().await;
+        let parent_id = state.get_active_state().await.expect("parent");
+        let pkg_hash_v1 = sps2_hash::Hash::from_data(b"pkg-V1").to_hex();
+        seed_parent_with_pkg(&state, "V", "1.0.0", &pkg_hash_v1, &[("bin/v1", 1)]).await;
+
+        let pkg_hash_v2 = sps2_hash::Hash::from_data(b"pkg-V2").to_hex();
+        let staging_id = uuid::Uuid::new_v4();
+        let pid = sps2_resolver::PackageId::new(
+            "V".to_string(),
+            sps2_types::Version::parse("2.0.0").unwrap(),
+        );
+        let pref = PackageRef {
+            state_id: staging_id,
+            package_id: pid.clone(),
+            hash: pkg_hash_v2.clone(),
+            size: 1,
+        };
+        let fh = sps2_hash::FileHashResult {
+            relative_path: "bin/v2".to_string(),
+            size: 1,
+            mode: Some(0o755),
+            is_symlink: false,
+            is_directory: false,
+            hash: sps2_hash::Hash::from_data(b"bin/v2"),
+        };
+        let td = TransactionData {
+            package_refs: &[pref],
+            package_files: &[],
+            file_references: &[],
+            pending_file_hashes: &[(pid, vec![fh])],
+        };
+        let staging_path = state.state_path().join(format!("staging-{staging_id}"));
+        let _ = state
+            .prepare_transaction(&staging_id, &parent_id, &staging_path, "update", &td)
+            .await
+            .expect("prepare");
+
+        assert_eq!(store_ref_count(&state, &pkg_hash_v1).await, 0);
+        assert_eq!(store_ref_count(&state, &pkg_hash_v2).await, 1);
+        assert_eq!(
+            file_obj_ref_count(&state, &sps2_hash::Hash::from_data(b"bin/v1").to_hex()).await,
+            0
+        );
+        assert_eq!(
+            file_obj_ref_count(&state, &sps2_hash::Hash::from_data(b"bin/v2").to_hex()).await,
+            1
+        );
+    }
 }

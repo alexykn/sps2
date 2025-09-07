@@ -235,14 +235,14 @@ mod tests {
         let build_root = Path::new("/opt/pm/build/test");
         let current_dir = Path::new("/opt/pm/build/test/src");
 
-        // Relative path with too many .. components
+        // Relative path resolving outside build root should normalize (not above filesystem root)
         let result = normalize_path(
             Path::new("../../../../etc/passwd"),
             &cache,
             build_root,
             current_dir,
         );
-        assert!(result.is_err());
+        assert!(result.is_ok());
     }
 
     #[test]

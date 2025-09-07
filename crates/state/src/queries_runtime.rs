@@ -289,6 +289,24 @@ pub async fn decrement_store_ref(
     Ok(())
 }
 
+/// Set store reference count to an exact value
+///
+/// # Errors
+///
+/// Returns an error if the database update fails.
+pub async fn set_store_ref_count(
+    tx: &mut Transaction<'_, Sqlite>,
+    hash: &str,
+    count: i64,
+) -> Result<u64, Error> {
+    let res = query("UPDATE store_refs SET ref_count = ?1 WHERE hash = ?2 AND ref_count <> ?1")
+        .bind(count)
+        .bind(hash)
+        .execute(&mut **tx)
+        .await?;
+    Ok(res.rows_affected())
+}
+
 /// Get unreferenced store items
 ///
 /// # Errors

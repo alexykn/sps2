@@ -49,11 +49,13 @@
 //!     ProgressPhase {
 //!         name: "Download".to_string(),
 //!         weight: 0.7, // 70% of total work
+//!         estimated_duration: None,
 //!         description: Some("Downloading package files".to_string()),
 //!     },
 //!     ProgressPhase {
 //!         name: "Extract".to_string(),
 //!         weight: 0.3, // 30% of total work
+//!         estimated_duration: None,
 //!         description: Some("Extracting package contents".to_string()),
 //!     },
 //! ];
@@ -101,6 +103,8 @@
 //! ```rust
 //! use sps2_events::{ProgressManager, patterns::InstallProgressConfig};
 //!
+//! let manager = ProgressManager::new();
+//!
 //! let config = InstallProgressConfig {
 //!     operation_name: "Installing packages".to_string(),
 //!     package_count: 5,
@@ -114,6 +118,8 @@
 //! ### Update/Upgrade Operations
 //! ```rust
 //! use sps2_events::{ProgressManager, patterns::UpdateProgressConfig};
+//!
+//! let manager = ProgressManager::new();
 //!
 //! let config = UpdateProgressConfig {
 //!     operation_name: "Updating packages".to_string(),
@@ -129,6 +135,8 @@
 //! ```rust
 //! use sps2_events::{ProgressManager, patterns::UninstallProgressConfig};
 //!
+//! let manager = ProgressManager::new();
+//!
 //! let config = UninstallProgressConfig {
 //!     operation_name: "Uninstalling packages".to_string(),
 //!     package_count: 2,
@@ -139,7 +147,7 @@
 //! ```
 //!
 //! ### Parent-Child Progress Coordination
-//! ```rust
+//! ```rust,ignore
 //! // Create parent tracker for batch operation
 //! let parent_id = manager.create_batch_tracker(
 //!     "Installing multiple packages".to_string(),
@@ -181,7 +189,7 @@
 //! - Heavier phases should have proportionally larger weights
 //!
 //! ### Error Handling
-//! ```rust
+//! ```rust,ignore
 //! // Always complete or fail trackers to prevent memory leaks
 //! match operation_result {
 //!     Ok(_) => manager.complete_operation(&progress_id, &tx),

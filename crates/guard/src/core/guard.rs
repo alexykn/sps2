@@ -275,6 +275,63 @@ impl EventEmitter for StateVerificationGuard {
 }
 
 impl StateVerificationGuard {
+    /// Synchronize DB refcounts to match the active state only (packages and file entries)
+    async fn sync_refcounts_active_state(&self) -> Result<(usize, usize), Error> {
+        use std::collections::HashMap;
+
+        // Build derived counts and apply updates in a single DB transaction
+        let active_state = self.state_manager.get_active_state().await?;
+        let mut tx = self.state_manager.begin_transaction().await?;
+
+        // Derive package-level counts by hash for the active state (and capture a size per hash)
+        let packages = sps2_state::queries::get_state_packages(&mut tx, &active_state).await?;
+        let mut store_counts: HashMap<String, (i64 /*count*/, i64 /*size*/)> = HashMap::new();
+        for p in packages {
+            store_counts
+                .entry(p.hash.clone())
+                .and_modify(|e| e.0 += 1)
+                .or_insert((1, p.size));
+        }
+
+        let mut store_updates = 0usize;
+        for (hash, (cnt, size)) in store_counts.iter() {
+            // ensure row exists
+            sps2_state::queries::get_or_create_store_ref(&mut tx, hash, *size).await?;
+            // update only if changed
+            let updated = sps2_state::queries::set_store_ref_count(&mut tx, hash, *cnt).await?;
+            if updated > 0 {
+                store_updates += 1;
+            }
+        }
+
+        // Derive file-level counts by file_hash for the active state
+        let packages_again =
+            sps2_state::queries::get_state_packages(&mut tx, &active_state).await?;
+        let mut file_counts: HashMap<String, i64> = HashMap::new();
+        for p in packages_again {
+            let entries =
+                sps2_state::file_queries_runtime::get_package_file_entries(&mut tx, p.id).await?;
+            for e in entries {
+                file_counts
+                    .entry(e.file_hash)
+                    .and_modify(|c| *c += 1)
+                    .or_insert(1);
+            }
+        }
+
+        let mut file_updates = 0usize;
+        for (hash, cnt) in file_counts.iter() {
+            let updated =
+                sps2_state::file_queries_runtime::set_file_object_ref_count(&mut tx, hash, *cnt)
+                    .await?;
+            if updated > 0 {
+                file_updates += 1;
+            }
+        }
+
+        tx.commit().await?;
+        Ok((store_updates, file_updates))
+    }
     /// Create a new StateVerificationGuard
     ///
     /// This is used internally by the builder pattern.
@@ -442,8 +499,22 @@ impl StateVerificationGuard {
         // First, run verification to detect discrepancies
         let mut verification_result = self.verify_only().await?;
 
-        // If no discrepancies found, return early
+        // If no discrepancies found, optionally sync refcounts and return early
         if verification_result.is_valid {
+            if let Some(guard_cfg) = &config.guard {
+                if guard_cfg.store_verification.sync_refcounts {
+                    match self.sync_refcounts_active_state().await {
+                        Ok((s, f)) => {
+                            self.emit_debug(format!(
+                                "Guard refcount sync (active-state): store {s}, files {f}"
+                            ));
+                        }
+                        Err(e) => {
+                            self.emit_debug(format!("Guard refcount sync failed: {e}"));
+                        }
+                    }
+                }
+            }
             return Ok(verification_result);
         }
 
@@ -626,6 +697,22 @@ impl StateVerificationGuard {
         }
         healing_ctx_events.emit_error_summary();
 
+        // Optional refcount synchronization after healing completes
+        if let Some(guard_cfg) = &config.guard {
+            if guard_cfg.store_verification.sync_refcounts {
+                match self.sync_refcounts_active_state().await {
+                    Ok((s, f)) => {
+                        self.emit_debug(format!(
+                            "Guard refcount sync (active-state): store {s}, files {f}"
+                        ));
+                    }
+                    Err(e) => {
+                        self.emit_debug(format!("Guard refcount sync failed: {e}"));
+                    }
+                }
+            }
+        }
+
         Ok(verification_result)
     }
 
@@ -644,8 +731,22 @@ impl StateVerificationGuard {
         // First, run verification to detect discrepancies
         let mut verification_result = self.verify_with_scope(scope).await?;
 
-        // If no discrepancies found, return early
+        // If no discrepancies found, optionally sync refcounts and return early
         if verification_result.is_valid {
+            if let Some(guard_cfg) = &config.guard {
+                if guard_cfg.store_verification.sync_refcounts {
+                    match self.sync_refcounts_active_state().await {
+                        Ok((s, f)) => {
+                            self.emit_debug(format!(
+                                "Guard refcount sync (active-state): store {s}, files {f}"
+                            ));
+                        }
+                        Err(e) => {
+                            self.emit_debug(format!("Guard refcount sync failed: {e}"));
+                        }
+                    }
+                }
+            }
             return Ok(verification_result);
         }
 
@@ -803,6 +904,22 @@ impl StateVerificationGuard {
             verification_result.discrepancies.len(),
             duration_ms
         ));
+
+        // Optional refcount synchronization after healing completes
+        if let Some(guard_cfg) = &config.guard {
+            if guard_cfg.store_verification.sync_refcounts {
+                match self.sync_refcounts_active_state().await {
+                    Ok((s, f)) => {
+                        self.emit_debug(format!(
+                            "Guard refcount sync (active-state): store {s}, files {f}"
+                        ));
+                    }
+                    Err(e) => {
+                        self.emit_debug(format!("Guard refcount sync failed: {e}"));
+                    }
+                }
+            }
+        }
 
         Ok(verification_result)
     }
@@ -1128,5 +1245,73 @@ impl StateVerificationGuard {
                     | crate::types::Discrepancy::MissingFile { .. }
             )
         }) && result.discrepancies.len() > 3 // Only escalate if we have multiple serious issues
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sps2_config::{Config, GuardConfiguration};
+
+    use tempfile::TempDir;
+    use tokio::fs as afs;
+
+    async fn mk_env() -> (
+        TempDir,
+        sps2_state::StateManager,
+        sps2_store::PackageStore,
+        sps2_events::EventSender,
+    ) {
+        let td = TempDir::new().unwrap();
+        let state = sps2_state::StateManager::new(td.path()).await.unwrap();
+        let store_base = td.path().join("store");
+        afs::create_dir_all(&store_base).await.unwrap();
+        let store = sps2_store::PackageStore::new(store_base);
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        (td, state, store, tx)
+    }
+
+    #[tokio::test]
+    async fn guard_sync_refcounts_active_state_resets_wrong_counts() {
+        let (_td, state, store, tx) = mk_env().await;
+        // Seed DB: add one package row in active state
+        let mut dbtx = state.begin_transaction().await.unwrap();
+        let sid = sps2_state::queries::get_active_state(&mut dbtx)
+            .await
+            .unwrap();
+        let pkg_hash = sps2_hash::Hash::from_data(b"pkg-A").to_hex();
+        let _pkg_id = sps2_state::queries::add_package(&mut dbtx, &sid, "A", "1.0.0", &pkg_hash, 1)
+            .await
+            .unwrap();
+        // Ensure store_refs row exists and set a wrong count
+        sps2_state::queries::get_or_create_store_ref(&mut dbtx, &pkg_hash, 0)
+            .await
+            .unwrap();
+        let _ = sps2_state::queries::set_store_ref_count(&mut dbtx, &pkg_hash, 7)
+            .await
+            .unwrap();
+        dbtx.commit().await.unwrap();
+
+        // Build guard with sync enabled
+        let mut guard = StateVerificationGuard::builder()
+            .with_state_manager(state.clone())
+            .with_store(store.clone())
+            .with_event_sender(tx)
+            .with_level(crate::types::VerificationLevel::Standard)
+            .build()
+            .unwrap();
+        let mut cfg = Config::default();
+        let mut gcfg = GuardConfiguration::default();
+        gcfg.store_verification.sync_refcounts = true;
+        cfg.guard = Some(gcfg);
+
+        let _ = guard.verify_and_heal(&cfg).await.unwrap();
+
+        let mut check_tx = state.begin_transaction().await.unwrap();
+        let rows = sps2_state::queries::get_all_store_refs(&mut check_tx)
+            .await
+            .unwrap();
+        let got = rows.into_iter().find(|r| r.hash == pkg_hash).unwrap();
+        assert_eq!(got.ref_count, 1);
     }
 }

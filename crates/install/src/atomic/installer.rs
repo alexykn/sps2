@@ -918,6 +918,57 @@ impl AtomicInstaller {
         }
 
         // Journal and finalize: mark the target state as new active
+        // Recompute refcounts for active-state semantics: decrement current, increment target
+        {
+            let mut db_tx = self.state_manager.begin_transaction().await?;
+
+            // Decrement current state's package and file refs
+            let current_packages = self
+                .state_manager
+                .get_installed_packages_in_state(&current_state_id)
+                .await?;
+            for pkg in &current_packages {
+                sps2_state::queries::decrement_store_ref(&mut db_tx, &pkg.hash).await?;
+                let _ = sps2_state::file_queries_runtime::decrement_file_object_refs_for_package(
+                    &mut db_tx, pkg.id,
+                )
+                .await?;
+            }
+
+            // Increment target state's package and file refs
+            let target_packages = self
+                .state_manager
+                .get_installed_packages_in_state(&target_state_id)
+                .await?;
+            for pkg in &target_packages {
+                sps2_state::queries::get_or_create_store_ref(&mut db_tx, &pkg.hash, pkg.size)
+                    .await?;
+                sps2_state::queries::increment_store_ref(&mut db_tx, &pkg.hash).await?;
+
+                // For each file entry in target package, increment object refcount
+                let entries =
+                    sps2_state::file_queries_runtime::get_package_file_entries(&mut db_tx, pkg.id)
+                        .await?;
+                for e in entries {
+                    let _ = sps2_state::file_queries_runtime::increment_file_object_ref(
+                        &mut db_tx,
+                        &e.file_hash,
+                    )
+                    .await?;
+                }
+            }
+
+            // Clamp negatives
+            sqlx::query("UPDATE store_refs SET ref_count = 0 WHERE ref_count < 0")
+                .execute(&mut *db_tx)
+                .await?;
+            sqlx::query("UPDATE file_objects SET ref_count = 0 WHERE ref_count < 0")
+                .execute(&mut *db_tx)
+                .await?;
+
+            db_tx.commit().await?;
+        }
+
         let journal = sps2_types::state::TransactionJournal {
             new_state_id: target_state_id,
             parent_state_id: current_state_id,
@@ -934,5 +985,257 @@ impl AtomicInstaller {
         self.state_manager.unprune_state(&target_state_id).await?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sps2_store::create_package;
+    use sps2_types::{Arch, Manifest, Version};
+    use std::collections::HashMap;
+    use tempfile::TempDir;
+    use tokio::fs as afs;
+
+    async fn mk_env() -> (TempDir, StateManager, sps2_store::PackageStore) {
+        let td = TempDir::new().expect("td");
+        let state = StateManager::new(td.path()).await.expect("state");
+        let store_base = td.path().join("store");
+        afs::create_dir_all(&store_base).await.unwrap();
+        let store = sps2_store::PackageStore::new(store_base);
+        (td, state, store)
+    }
+
+    async fn make_sp_and_add_to_store(
+        store: &sps2_store::PackageStore,
+        name: &str,
+        version: &str,
+        files: &[(&str, &str)],
+    ) -> (
+        sps2_hash::Hash,
+        std::path::PathBuf,
+        u64,
+        Vec<sps2_hash::Hash>,
+    ) {
+        let td = TempDir::new().unwrap();
+        let src = td.path().join("src");
+        afs::create_dir_all(&src).await.unwrap();
+        // manifest
+        let v = Version::parse(version).unwrap();
+        let m = Manifest::new(name.to_string(), &v, 1, &Arch::Arm64);
+        let manifest_path = src.join("manifest.toml");
+        sps2_store::manifest_io::write_manifest(&manifest_path, &m)
+            .await
+            .unwrap();
+        // files under opt/pm/live
+        for (rel, content) in files {
+            let p = src.join("opt/pm/live").join(rel);
+            if let Some(parent) = p.parent() {
+                afs::create_dir_all(parent).await.unwrap();
+            }
+            afs::write(&p, content.as_bytes()).await.unwrap();
+        }
+        // create .sp
+        let sp = td.path().join("pkg.sp");
+        create_package(&src, &sp).await.unwrap();
+        // add to store
+        let stored = store.add_package(&sp).await.unwrap();
+        let hash = stored.hash().unwrap();
+        let path = store.package_path(&hash);
+        let file_hashes: Vec<sps2_hash::Hash> = stored
+            .file_hashes()
+            .unwrap_or(&[])
+            .iter()
+            .map(|r| r.hash.clone())
+            .collect();
+        let size = afs::metadata(&sp).await.unwrap().len();
+        (hash, path, size, file_hashes)
+    }
+
+    async fn refcount_store(state: &StateManager, hex: &str) -> i64 {
+        let mut tx = state.begin_transaction().await.unwrap();
+        let all = sps2_state::queries::get_all_store_refs(&mut tx)
+            .await
+            .unwrap();
+        all.into_iter()
+            .find(|r| r.hash == hex)
+            .map_or(0, |r| r.ref_count)
+    }
+    async fn refcount_file(state: &StateManager, hex: &str) -> i64 {
+        let mut tx = state.begin_transaction().await.unwrap();
+        let h = sps2_hash::Hash::from_hex(hex).unwrap();
+        let row = sps2_state::file_queries_runtime::get_file_object(&mut tx, &h)
+            .await
+            .unwrap();
+        row.map_or(0, |o| o.ref_count)
+    }
+
+    #[tokio::test]
+    async fn install_then_uninstall_updates_refcounts() {
+        let (_td, state, store) = mk_env().await;
+        let (hash, store_path, size, file_hashes) =
+            make_sp_and_add_to_store(&store, "A", "1.0.0", &[("bin/x", "same"), ("share/a", "A")])
+                .await;
+
+        let mut ai = AtomicInstaller::new(state.clone(), store.clone())
+            .await
+            .unwrap();
+        let mut resolved: HashMap<PackageId, ResolvedNode> = HashMap::new();
+        let pid = PackageId::new(
+            "A".to_string(),
+            sps2_types::Version::parse("1.0.0").unwrap(),
+        );
+        resolved.insert(
+            pid.clone(),
+            ResolvedNode::local(
+                "A".to_string(),
+                pid.version.clone(),
+                store_path.clone(),
+                vec![],
+            ),
+        );
+        let mut prepared = HashMap::new();
+        prepared.insert(
+            pid.clone(),
+            crate::PreparedPackage {
+                hash: hash.clone(),
+                size,
+                store_path: store_path.clone(),
+                is_local: true,
+            },
+        );
+        let ctx = crate::InstallContext {
+            packages: vec![],
+            local_files: vec![],
+            force: false,
+            event_sender: None,
+        };
+        let _res = ai.install(&ctx, &resolved, Some(&prepared)).await.unwrap();
+
+        // After install
+        assert!(refcount_store(&state, &hash.to_hex()).await > 0);
+        for fh in &file_hashes {
+            assert!(refcount_file(&state, &fh.to_hex()).await > 0);
+        }
+
+        // Uninstall package A
+        let uctx = crate::UninstallContext {
+            packages: vec!["A".to_string()],
+            autoremove: false,
+            force: true,
+            event_sender: None,
+        };
+        let _u = ai
+            .uninstall(
+                &[PackageId::new(
+                    "A".to_string(),
+                    sps2_types::Version::parse("1.0.0").unwrap(),
+                )],
+                &uctx,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(refcount_store(&state, &hash.to_hex()).await, 0);
+        for fh in &file_hashes {
+            assert_eq!(refcount_file(&state, &fh.to_hex()).await, 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn shared_file_uninstall_decrements_but_not_zero() {
+        let (_td, state, store) = mk_env().await;
+        // A and B share bin/x
+        let (hash_a, path_a, size_a, file_hashes_a) = make_sp_and_add_to_store(
+            &store,
+            "A",
+            "1.0.0",
+            &[("bin/x", "same"), ("share/a", "AA")],
+        )
+        .await;
+        let (hash_b, path_b, size_b, file_hashes_b) = make_sp_and_add_to_store(
+            &store,
+            "B",
+            "1.0.0",
+            &[("bin/x", "same"), ("share/b", "BB")],
+        )
+        .await;
+        let h_same = file_hashes_a
+            .iter()
+            .find(|h| file_hashes_b.iter().any(|hb| hb == *h))
+            .unwrap()
+            .clone();
+
+        let mut ai = AtomicInstaller::new(state.clone(), store.clone())
+            .await
+            .unwrap();
+
+        // Install A then B
+        let mut resolved: HashMap<PackageId, ResolvedNode> = HashMap::new();
+        let pid_a = PackageId::new(
+            "A".to_string(),
+            sps2_types::Version::parse("1.0.0").unwrap(),
+        );
+        let pid_b = PackageId::new(
+            "B".to_string(),
+            sps2_types::Version::parse("1.0.0").unwrap(),
+        );
+        resolved.insert(
+            pid_a.clone(),
+            ResolvedNode::local(
+                "A".to_string(),
+                pid_a.version.clone(),
+                path_a.clone(),
+                vec![],
+            ),
+        );
+        resolved.insert(
+            pid_b.clone(),
+            ResolvedNode::local(
+                "B".to_string(),
+                pid_b.version.clone(),
+                path_b.clone(),
+                vec![],
+            ),
+        );
+
+        let mut prepared = HashMap::new();
+        prepared.insert(
+            pid_a.clone(),
+            crate::PreparedPackage {
+                hash: hash_a.clone(),
+                size: size_a,
+                store_path: path_a.clone(),
+                is_local: true,
+            },
+        );
+        prepared.insert(
+            pid_b.clone(),
+            crate::PreparedPackage {
+                hash: hash_b.clone(),
+                size: size_b,
+                store_path: path_b.clone(),
+                is_local: true,
+            },
+        );
+        let ctx = crate::InstallContext {
+            packages: vec![],
+            local_files: vec![],
+            force: false,
+            event_sender: None,
+        };
+        let _res = ai.install(&ctx, &resolved, Some(&prepared)).await.unwrap();
+
+        // Uninstall A
+        let uctx = crate::UninstallContext {
+            packages: vec!["A".to_string()],
+            autoremove: false,
+            force: true,
+            event_sender: None,
+        };
+        let _u = ai.uninstall(&[pid_a.clone()], &uctx).await.unwrap();
+
+        // Shared file remains referenced by B
+        assert!(refcount_file(&state, &h_same.to_hex()).await > 0);
     }
 }

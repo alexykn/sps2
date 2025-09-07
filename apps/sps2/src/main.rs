@@ -369,7 +369,9 @@ async fn execute_command(
             ))
         }
 
-        Commands::Verify { heal, level, scope } => {
+        Commands::Verify {
+            heal, level, scope, ..
+        } => {
             let result = sps2_ops::verify(&ctx, heal, &level, &scope).await?;
             Ok(OperationResult::VerificationResult(result))
         }
@@ -529,9 +531,15 @@ fn apply_cli_config(
         } => {
             config.builder.build.build_jobs = *job_count;
         }
-        _ => {
-            // No command-specific config overrides for other commands yet
+        cli::Commands::Verify { sync_refcounts, .. } => {
+            if *sync_refcounts {
+                // Ensure top-level guard config exists, then enable one-off refcount sync
+                let mut guard_cfg = config.guard.clone().unwrap_or_default();
+                guard_cfg.store_verification.sync_refcounts = true;
+                config.guard = Some(guard_cfg);
+            }
         }
+        _ => {}
     }
 
     Ok(())

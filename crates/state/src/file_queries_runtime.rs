@@ -135,6 +135,116 @@ pub async fn add_package_file_entry(
     Ok(row.get("id"))
 }
 
+/// Decrement a file object's refcount by 1, returning the new refcount
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails
+pub async fn decrement_file_object_ref(
+    tx: &mut Transaction<'_, Sqlite>,
+    hash: &str,
+) -> Result<i64, Error> {
+    query(r#"UPDATE file_objects SET ref_count = ref_count - 1 WHERE hash = ?"#)
+        .bind(hash)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| StateError::DatabaseError {
+            message: format!("failed to decrement file object refcount: {e}"),
+        })?;
+
+    let row = query(r#"SELECT ref_count FROM file_objects WHERE hash = ?"#)
+        .bind(hash)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(|e| StateError::DatabaseError {
+            message: format!("failed to fetch file object refcount: {e}"),
+        })?;
+
+    Ok(row.map(|r| r.get::<i64, _>("ref_count")).unwrap_or(0))
+}
+
+/// Increment a file object's refcount by 1, returning the new refcount
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails
+pub async fn increment_file_object_ref(
+    tx: &mut Transaction<'_, Sqlite>,
+    hash: &str,
+) -> Result<i64, Error> {
+    query(r#"UPDATE file_objects SET ref_count = ref_count + 1 WHERE hash = ?"#)
+        .bind(hash)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| StateError::DatabaseError {
+            message: format!("failed to increment file object refcount: {e}"),
+        })?;
+
+    let row = query(r#"SELECT ref_count FROM file_objects WHERE hash = ?"#)
+        .bind(hash)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(|e| StateError::DatabaseError {
+            message: format!("failed to fetch file object refcount: {e}"),
+        })?;
+
+    Ok(row.map(|r| r.get::<i64, _>("ref_count")).unwrap_or(0))
+}
+
+/// Decrement `file_object` refcounts for all entries of a package
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails
+pub async fn decrement_file_object_refs_for_package(
+    tx: &mut Transaction<'_, Sqlite>,
+    package_id: i64,
+) -> Result<usize, Error> {
+    // Collect all file hashes for this package
+    let rows = query(
+        r#"
+        SELECT file_hash FROM package_file_entries
+        WHERE package_id = ?
+        "#,
+    )
+    .bind(package_id)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(|e| StateError::DatabaseError {
+        message: format!("failed to list package file entries for decrement: {e}"),
+    })?;
+
+    let mut count = 0usize;
+    for r in rows {
+        let hash: String = r.get("file_hash");
+        let _ = decrement_file_object_ref(tx, &hash).await?;
+        count += 1;
+    }
+    Ok(count)
+}
+
+/// Set a file object's refcount to an exact value
+///
+/// # Errors
+///
+/// Returns the number of rows updated
+pub async fn set_file_object_ref_count(
+    tx: &mut Transaction<'_, Sqlite>,
+    hash: &str,
+    count: i64,
+) -> Result<u64, Error> {
+    let res = query(r#"UPDATE file_objects SET ref_count = ? WHERE hash = ? AND ref_count <> ?"#)
+        .bind(count)
+        .bind(hash)
+        .bind(count)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| StateError::DatabaseError {
+            message: format!("failed to set file object refcount: {e}"),
+        })?;
+    Ok(res.rows_affected())
+}
+
 /// Get file object by hash
 ///
 /// # Errors
@@ -881,5 +991,123 @@ pub async fn verify_file_with_tracking(
             update_verification_status(tx, hash, "failed", Some(&error_msg)).await?;
             Ok(false)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::manager::StateManager;
+    use tempfile::TempDir;
+
+    async fn mk_state() -> (TempDir, StateManager) {
+        let td = TempDir::new().expect("tempdir");
+        let mgr = StateManager::new(td.path()).await.expect("state new");
+        (td, mgr)
+    }
+
+    #[tokio::test]
+    async fn decrement_file_object_ref_allows_below_zero_and_preserves_row() {
+        let (_td, state) = mk_state().await;
+        let mut tx = state.begin_transaction().await.expect("tx");
+
+        // Seed a file object with ref_count = 1
+        let h = Hash::from_data(b"file-A");
+        let meta = FileMetadata::regular_file(10, 0o644);
+        let _ = add_file_object(&mut tx, &h, &meta).await.expect("add");
+
+        // Decrement to zero
+        let c0 = decrement_file_object_ref(&mut tx, &h.to_hex())
+            .await
+            .expect("dec0");
+        assert_eq!(c0, 0);
+
+        // Decrement again (may go negative, row persists)
+        let c1 = decrement_file_object_ref(&mut tx, &h.to_hex())
+            .await
+            .expect("dec1");
+        assert_eq!(c1, -1);
+
+        // Row still exists
+        let fo = get_file_object(&mut tx, &h).await.expect("get");
+        assert!(fo.is_some());
+    }
+
+    #[tokio::test]
+    async fn decrement_file_object_refs_for_package_counts_entries() {
+        let (_td, state) = mk_state().await;
+        let mut tx = state.begin_transaction().await.expect("tx");
+        let sid = state.get_current_state_id().await.expect("state id");
+
+        // Add package and two files
+        let pkg_id = crate::queries::add_package(&mut tx, &sid, "pkg", "1.0.0", "deadbeef", 1)
+            .await
+            .expect("add pkg");
+
+        let h1 = Hash::from_data(b"F1");
+        let h2 = Hash::from_data(b"F2");
+        let meta1 = FileMetadata::regular_file(5, 0o644);
+        let meta2 = FileMetadata::regular_file(6, 0o644);
+        let _ = add_file_object(&mut tx, &h1, &meta1).await.expect("add f1");
+        let _ = add_file_object(&mut tx, &h2, &meta2).await.expect("add f2");
+
+        let fr1 = FileReference {
+            package_id: pkg_id,
+            relative_path: "bin/a".to_string(),
+            hash: h1.clone(),
+            metadata: meta1.clone(),
+        };
+        let fr2 = FileReference {
+            package_id: pkg_id,
+            relative_path: "bin/b".to_string(),
+            hash: h2.clone(),
+            metadata: meta2.clone(),
+        };
+        let _ = add_package_file_entry(&mut tx, pkg_id, &fr1)
+            .await
+            .expect("pfe1");
+        let _ = add_package_file_entry(&mut tx, pkg_id, &fr2)
+            .await
+            .expect("pfe2");
+
+        let dec = decrement_file_object_refs_for_package(&mut tx, pkg_id)
+            .await
+            .expect("dec refs");
+        assert_eq!(dec, 2);
+
+        let first_obj = get_file_object(&mut tx, &h1)
+            .await
+            .expect("get f1")
+            .unwrap();
+        let second_obj = get_file_object(&mut tx, &h2)
+            .await
+            .expect("get f2")
+            .unwrap();
+        assert_eq!(first_obj.ref_count, 0);
+        assert_eq!(second_obj.ref_count, 0);
+    }
+
+    #[tokio::test]
+    async fn set_file_object_refcount_is_idempotent() {
+        let (_td, state) = mk_state().await;
+        let mut tx = state.begin_transaction().await.expect("tx");
+        let h = Hash::from_data(b"file-Z");
+        let meta = FileMetadata::regular_file(3, 0o644);
+        let _ = add_file_object(&mut tx, &h, &meta).await.expect("add");
+        let _ = increment_file_object_ref(&mut tx, &h.to_hex())
+            .await
+            .expect("inc");
+        let _ = increment_file_object_ref(&mut tx, &h.to_hex())
+            .await
+            .expect("inc2");
+
+        let updated = set_file_object_ref_count(&mut tx, &h.to_hex(), 2)
+            .await
+            .expect("set1");
+        assert!(updated > 0);
+        let updated2 = set_file_object_ref_count(&mut tx, &h.to_hex(), 2)
+            .await
+            .expect("set2");
+        assert_eq!(updated2, 0);
     }
 }

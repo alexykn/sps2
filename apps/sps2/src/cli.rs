@@ -289,6 +289,11 @@ pub enum Commands {
         /// Verification scope (live, store, all)
         #[arg(long, default_value = "live")]
         scope: String,
+
+        /// Synchronize DB refcounts from the active state after verification/heal
+        /// (one-off maintenance; does not change persistent config)
+        #[arg(long)]
+        sync_refcounts: bool,
     },
 
     /// Manage repositories
