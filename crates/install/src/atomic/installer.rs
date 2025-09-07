@@ -851,4 +851,85 @@ impl AtomicInstaller {
 
         Ok(())
     }
+
+    /// Rollback by moving active to an existing target state without creating a new state row
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if staging or filesystem operations fail.
+    pub async fn rollback_move_to_state(&mut self, target_state_id: Uuid) -> Result<(), Error> {
+        let current_state_id = self.state_manager.get_current_state_id().await?;
+
+        // Setup staging and clone current live
+        let mut transition =
+            StateTransition::new(&self.state_manager, "rollback".to_string()).await?;
+        self.create_staging_directory(&self.live_path, &transition.staging_path)
+            .await?;
+
+        // Compute diffs current -> target using DB
+        let current_packages = self
+            .state_manager
+            .get_installed_packages_in_state(&current_state_id)
+            .await?;
+        let target_packages = self
+            .state_manager
+            .get_installed_packages_in_state(&target_state_id)
+            .await?;
+
+        let current_map: HashMap<String, sps2_state::models::Package> = current_packages
+            .into_iter()
+            .map(|p| (p.name.clone(), p))
+            .collect();
+        let target_map: HashMap<String, sps2_state::models::Package> = target_packages
+            .into_iter()
+            .map(|p| (p.name.clone(), p))
+            .collect();
+
+        // Remove anything not in target or with version change
+        for (name, cur) in &current_map {
+            match target_map.get(name) {
+                None => {
+                    self.remove_package_from_staging(&mut transition, cur)
+                        .await?
+                }
+                Some(tgt) if tgt.version != cur.version => {
+                    self.remove_package_from_staging(&mut transition, cur)
+                        .await?;
+                }
+                _ => {}
+            }
+        }
+
+        // Add/link anything present in target and missing/different in current
+        for (name, tgt) in &target_map {
+            let needs_add = match current_map.get(name) {
+                None => true,
+                Some(cur) => cur.version != tgt.version,
+            };
+            if needs_add {
+                let hash = sps2_hash::Hash::from_hex(&tgt.hash).map_err(|e| {
+                    sps2_errors::Error::internal(format!("invalid hash {}: {e}", tgt.hash))
+                })?;
+                let store_path = self.store.package_path(&hash);
+                let pkg_id = sps2_resolver::PackageId::new(tgt.name.clone(), tgt.version());
+                self.link_package_to_staging(&mut transition, &store_path, &pkg_id)
+                    .await?;
+            }
+        }
+
+        // Journal and finalize: mark the target state as new active
+        let journal = sps2_types::state::TransactionJournal {
+            new_state_id: target_state_id,
+            parent_state_id: current_state_id,
+            staging_path: transition.staging_path.clone(),
+            phase: sps2_types::state::TransactionPhase::Prepared,
+            operation: "rollback".to_string(),
+        };
+        self.state_manager.write_journal(&journal).await?;
+        self.state_manager
+            .execute_filesystem_swap_and_finalize(journal)
+            .await?;
+
+        Ok(())
+    }
 }

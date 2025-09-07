@@ -76,13 +76,13 @@ pub struct PathConfig {
 /// CAS cleanup/retention configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CasConfig {
-    #[serde(default = "default_retention_count")] 
+    #[serde(default = "default_retention_count")]
     pub keep_states_count: usize,
-    #[serde(default = "default_retention_days")] 
+    #[serde(default = "default_retention_days")]
     pub keep_days: u32,
-    #[serde(default = "default_package_grace_days")] 
+    #[serde(default = "default_package_grace_days")]
     pub package_grace_days: u32,
-    #[serde(default = "default_object_grace_days")] 
+    #[serde(default = "default_object_grace_days")]
     pub object_grace_days: u32,
     #[serde(default)]
     pub dry_run: bool,

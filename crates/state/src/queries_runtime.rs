@@ -532,14 +532,10 @@ pub async fn delete_unreferenced_store_items(
 /// # Errors
 ///
 /// Returns an error if the database query fails.
-pub async fn get_all_store_refs(
-    tx: &mut Transaction<'_, Sqlite>,
-) -> Result<Vec<StoreRef>, Error> {
-    let rows = query(
-        "SELECT hash, ref_count, size, created_at FROM store_refs",
-    )
-    .fetch_all(&mut **tx)
-    .await?;
+pub async fn get_all_store_refs(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<StoreRef>, Error> {
+    let rows = query("SELECT hash, ref_count, size, created_at FROM store_refs")
+        .fetch_all(&mut **tx)
+        .await?;
 
     let items = rows
         .into_iter()
@@ -1041,4 +1037,3 @@ pub async fn remove_package_map(
 
     Ok(())
 }
-    

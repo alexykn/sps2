@@ -224,8 +224,8 @@ async fn execute_command(
             Ok(OperationResult::StateInfo(state_info))
         }
 
-        Commands::History => {
-            let history = sps2_ops::history(&ctx).await?;
+        Commands::History { all, verify } => {
+            let history = sps2_ops::history(&ctx, all, verify).await?;
             Ok(OperationResult::StateHistory(history))
         }
 

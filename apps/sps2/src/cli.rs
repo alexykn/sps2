@@ -210,7 +210,15 @@ pub enum Commands {
     },
 
     /// Show state history
-    History,
+    History {
+        /// Show all states (no availability filtering)
+        #[arg(long)]
+        all: bool,
+
+        /// Verify availability by checking CAS contents on disk
+        #[arg(long)]
+        verify: bool,
+    },
 
     /// Check system health
     #[command(name = "check-health")]

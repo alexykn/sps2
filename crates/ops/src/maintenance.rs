@@ -33,8 +33,15 @@ async fn compute_kept_states(
 async fn collect_required_hashes(
     ctx: &OpsCtx,
     kept: &std::collections::HashSet<Uuid>,
-) -> Result<(std::collections::HashSet<String>, std::collections::HashSet<String>), Error> {
-    let mut required_pkg_hashes: std::collections::HashSet<String> = std::collections::HashSet::new();
+) -> Result<
+    (
+        std::collections::HashSet<String>,
+        std::collections::HashSet<String>,
+    ),
+    Error,
+> {
+    let mut required_pkg_hashes: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
     for st in kept {
         let pkgs = ctx.state.get_installed_packages_in_state(st).await?;
         for p in pkgs {
@@ -42,13 +49,16 @@ async fn collect_required_hashes(
         }
     }
 
-    let mut required_file_hashes: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut required_file_hashes: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
     {
         let mut tx = ctx.state.begin_transaction().await?;
         for st in kept {
             let packages = sps2_state::queries::get_state_packages(&mut tx, st).await?;
             for pkg in &packages {
-                let entries = sps2_state::file_queries_runtime::get_package_file_entries(&mut tx, pkg.id).await?;
+                let entries =
+                    sps2_state::file_queries_runtime::get_package_file_entries(&mut tx, pkg.id)
+                        .await?;
                 for e in entries {
                     required_file_hashes.insert(e.file_hash);
                 }
@@ -73,7 +83,12 @@ async fn collect_last_ref_and_inventory(ctx: &OpsCtx) -> Result<LastRefData, Err
     let obj_last_ref = sps2_state::file_queries_runtime::get_file_last_ref_map(&mut tx).await?;
     let file_objs = sps2_state::file_queries_runtime::get_all_file_objects(&mut tx).await?;
     tx.commit().await?;
-    Ok(LastRefData { pkg_last_ref, obj_last_ref, store_refs, file_objs })
+    Ok(LastRefData {
+        pkg_last_ref,
+        obj_last_ref,
+        store_refs,
+        file_objs,
+    })
 }
 use uuid::Uuid;
 
@@ -84,16 +99,18 @@ use uuid::Uuid;
 /// Returns an error if cleanup operation fails.
 pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
     let start = Instant::now();
-
     ctx.emit(AppEvent::Package(PackageEvent::CleanupStarting));
 
-    // Clean up old state directories (legacy snapshots and orphaned stagings)
+    // Legacy snapshots and orphaned stagings
     let cleanup_result = ctx
         .state
-        .cleanup(ctx.config.state.retention_count, ctx.config.state.retention_days)
+        .cleanup(
+            ctx.config.state.retention_count,
+            ctx.config.state.retention_days,
+        )
         .await?;
 
-    // Policy-driven CAS cleanup (packages + file objects)
+    // CAS policy cleanup
     let cas_cfg = &ctx.config.cas;
     let keep_count = cas_cfg.keep_states_count;
     let keep_days = i64::from(cas_cfg.keep_days);
@@ -102,30 +119,21 @@ pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
     let now = chrono::Utc::now().timestamp();
 
     let kept = compute_kept_states(ctx, keep_count, keep_days).await?;
-
-    // Build required sets
-    // Required package hashes
-    let (required_pkg_hashes, required_file_hashes) =
-        collect_required_hashes(ctx, &kept).await?;
-
-    // Enumerate all known packages (from store_refs) and compute last reference timestamps
+    let (required_pkg_hashes, required_file_hashes) = collect_required_hashes(ctx, &kept).await?;
     let last = collect_last_ref_and_inventory(ctx).await?;
 
-    // Decide package evictions
-    let mut packages_evicted = 0usize;
-    let mut pkg_space_freed = 0i64;
+    let (mut packages_evicted, mut pkg_space_freed) = (0usize, 0i64);
     for sr in &last.store_refs {
         if required_pkg_hashes.contains(&sr.hash) {
-            continue; // needed by kept states
+            continue;
         }
         let last_ref = *last.pkg_last_ref.get(&sr.hash).unwrap_or(&0);
         if last_ref == 0 || (now - last_ref) >= pkg_grace_secs {
-            // Evict physical package dir; keep DB rows
-            let hash = sps2_hash::Hash::from_hex(&sr.hash)
-                .map_err(|e| sps2_errors::Error::internal(format!("invalid hash {}: {e}", sr.hash)))?;
+            let hash = sps2_hash::Hash::from_hex(&sr.hash).map_err(|e| {
+                sps2_errors::Error::internal(format!("invalid hash {}: {e}", sr.hash))
+            })?;
             if !cas_cfg.dry_run {
                 let _ = ctx.store.remove_package(&hash).await;
-                // Log eviction
                 let mut tx = ctx.state.begin_transaction().await?;
                 sps2_state::queries::insert_package_eviction(
                     &mut tx,
@@ -141,17 +149,16 @@ pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
         }
     }
 
-    // Decide file object evictions
-    let mut objects_evicted = 0usize;
-    let mut obj_space_freed = 0i64;
+    let (mut objects_evicted, mut obj_space_freed) = (0usize, 0i64);
     for fo in &last.file_objs {
         if required_file_hashes.contains(&fo.hash) {
             continue;
         }
         let last_ref = *last.obj_last_ref.get(&fo.hash).unwrap_or(&0);
         if last_ref == 0 || (now - last_ref) >= obj_grace_secs {
-            let fh = sps2_hash::Hash::from_hex(&fo.hash)
-                .map_err(|e| sps2_errors::Error::internal(format!("invalid file hash {}: {e}", fo.hash)))?;
+            let fh = sps2_hash::Hash::from_hex(&fo.hash).map_err(|e| {
+                sps2_errors::Error::internal(format!("invalid file hash {}: {e}", fo.hash))
+            })?;
             if !cas_cfg.dry_run {
                 let _ = ctx.store.file_store().remove_file(&fh).await;
                 let mut tx = ctx.state.begin_transaction().await?;
@@ -173,12 +180,20 @@ pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
     let message = if cas_cfg.dry_run {
         format!(
             "Dry-run: would remove {} states, {} packages ({} bytes), {} objects ({} bytes)",
-            cleanup_result.states_removed, packages_evicted, pkg_space_freed, objects_evicted, obj_space_freed
+            cleanup_result.states_removed,
+            packages_evicted,
+            pkg_space_freed,
+            objects_evicted,
+            obj_space_freed
         )
     } else {
         format!(
             "Cleaned {} states, removed {} packages ({} bytes), {} objects ({} bytes)",
-            cleanup_result.states_removed, packages_evicted, pkg_space_freed, objects_evicted, obj_space_freed
+            cleanup_result.states_removed,
+            packages_evicted,
+            pkg_space_freed,
+            objects_evicted,
+            obj_space_freed
         )
     };
 
@@ -188,9 +203,7 @@ pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
         duration_ms: duration,
     }));
 
-    // Update GC timestamp after successful cleanup
     if let Err(e) = update_gc_timestamp().await {
-        // Log but don't fail the cleanup operation
         eprintln!("Warning: Failed to update GC timestamp: {e}");
     }
 
@@ -248,7 +261,8 @@ pub async fn rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<StateI
     let mut atomic_installer =
         sps2_install::AtomicInstaller::new(ctx.state.clone(), ctx.store.clone()).await?;
 
-    atomic_installer.rollback(target_id).await?;
+    // Move semantics: make target the active state without creating a new one
+    atomic_installer.rollback_move_to_state(target_id).await?;
 
     // Get state information with pre-calculated changes
     let state_info = get_rollback_state_info_with_changes(ctx, target_id, rollback_changes).await?;
@@ -419,48 +433,112 @@ async fn preview_rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<St
 /// # Errors
 ///
 /// Returns an error if state history retrieval fails.
-pub async fn history(ctx: &OpsCtx) -> Result<Vec<StateInfo>, Error> {
-    let states = ctx.state.list_states_detailed().await?;
+pub async fn history(ctx: &OpsCtx, show_all: bool, verify: bool) -> Result<Vec<StateInfo>, Error> {
+    let all_states = ctx.state.list_states_detailed().await?;
     let current_id = ctx.state.get_current_state_id().await?;
 
-    let mut state_infos = Vec::new();
+    // Determine candidate set
+    let candidate_ids: Vec<Uuid> = if show_all {
+        all_states.iter().map(sps2_state::State::state_id).collect()
+    } else {
+        let kept = compute_kept_states(
+            ctx,
+            ctx.config.cas.keep_states_count,
+            i64::from(ctx.config.cas.keep_days),
+        )
+        .await?;
+        all_states
+            .iter()
+            .map(sps2_state::State::state_id)
+            .filter(|id| kept.contains(id))
+            .collect()
+    };
 
-    for state in states {
-        let state_id = state.state_id();
+    // Optional physical verification
+    let filtered_ids: Vec<Uuid> = if verify {
+        let mut out = Vec::new();
+        for id in candidate_ids {
+            if is_state_available(ctx, &id).await? {
+                out.push(id);
+            }
+        }
+        out
+    } else {
+        candidate_ids
+    };
+
+    // Build StateInfo list
+    let mut state_infos = Vec::new();
+    for state in &all_states {
+        let id = state.state_id();
+        if !filtered_ids.contains(&id) {
+            continue;
+        }
         let parent_id = state
             .parent_id
             .as_ref()
             .and_then(|p| uuid::Uuid::parse_str(p).ok());
 
-        // Get actual package count for this state
-        let package_count = get_state_package_count(ctx, &state_id).await?;
-
-        // Calculate changes from parent state
+        let package_count = get_state_package_count(ctx, &id).await?;
         let changes = if let Some(parent_id) = parent_id {
-            calculate_state_changes(ctx, &parent_id, &state_id).await?
+            calculate_state_changes(ctx, &parent_id, &id).await?
         } else {
-            // Root state - all packages are installs
-            get_initial_state_changes(ctx, &state_id).await?
+            get_initial_state_changes(ctx, &id).await?
         };
 
-        let state_info = StateInfo {
-            id: state_id,
+        state_infos.push(StateInfo {
+            id,
             parent: parent_id,
             timestamp: state.timestamp(),
             operation: state.operation.clone(),
-            current: Some(current_id) == Some(state_id),
+            current: Some(current_id) == Some(id),
             package_count,
-            total_size: 0, // TODO: Calculate actual size
+            total_size: 0,
             changes,
-        };
-
-        state_infos.push(state_info);
+        });
     }
 
-    // Sort by timestamp (newest first)
     state_infos.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
-
     Ok(state_infos)
+}
+
+async fn is_state_available(ctx: &OpsCtx, state_id: &Uuid) -> Result<bool, Error> {
+    // Check every package in the state
+    let packages = ctx.state.get_installed_packages_in_state(state_id).await?;
+    for pkg in packages {
+        // Legacy path: package dir in store must exist
+        let hash = sps2_hash::Hash::from_hex(&pkg.hash)
+            .map_err(|e| sps2_errors::Error::internal(format!("invalid hash {}: {e}", pkg.hash)))?;
+        if !ctx.store.has_package(&hash).await {
+            return Ok(false);
+        }
+
+        // File-level path: ensure all referenced file objects exist
+        let mut tx = ctx.state.begin_transaction().await?;
+        let file_entries = sps2_state::file_queries_runtime::get_package_file_entries_by_name(
+            &mut tx,
+            state_id,
+            &pkg.name,
+            &pkg.version,
+        )
+        .await?;
+        tx.commit().await?;
+
+        if !file_entries.is_empty() {
+            for entry in file_entries {
+                let fh = sps2_hash::Hash::from_hex(&entry.file_hash).map_err(|e| {
+                    sps2_errors::Error::internal(format!(
+                        "invalid file hash {}: {e}",
+                        entry.file_hash
+                    ))
+                })?;
+                if !ctx.store.file_store().has_file(&fh).await {
+                    return Ok(false);
+                }
+            }
+        }
+    }
+    Ok(true)
 }
 
 /// Get rollback state information with pre-calculated changes

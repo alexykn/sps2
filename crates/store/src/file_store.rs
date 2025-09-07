@@ -219,8 +219,6 @@ impl FileStore {
         Ok(())
     }
 
-    
-
     /// Store all files from a directory
     ///
     /// Returns a list of file hash results
