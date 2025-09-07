@@ -131,6 +131,7 @@ pub enum StateEvent {
 
     /// State cleanup completed
     CleanupCompleted {
+        states_pruned: usize,
         states_removed: usize,
         space_freed: u64,
         duration: Duration,

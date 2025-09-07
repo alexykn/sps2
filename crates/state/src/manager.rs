@@ -368,6 +368,7 @@ impl StateManager {
         tx.commit().await?;
 
         self.tx.emit(AppEvent::State(StateEvent::CleanupCompleted {
+            states_pruned,
             states_removed: removed_count,
             space_freed,
             duration: std::time::Duration::from_millis(0), // TODO: Add proper timing
@@ -460,8 +461,9 @@ impl StateManager {
         }
 
         self.tx.emit(AppEvent::State(StateEvent::CleanupCompleted {
-            states_removed: 0,                           // GC doesn't remove states directly
-            space_freed: packages_removed as u64,        // Packages removed
+            states_pruned: 0,
+            states_removed: 0, // GC doesn't remove states directly
+            space_freed: packages_removed as u64, // Packages removed
             duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
         }));
 
@@ -812,6 +814,19 @@ impl StateManager {
         let mut tx = self.pool.begin().await?;
         // Basic verification - check if we can query the database
         let _active_state = queries::get_active_state(&mut tx).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Unprune a state so it appears again in base history
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database update fails.
+    pub async fn unprune_state(&self, state_id: &sps2_types::StateId) -> Result<(), Error> {
+        let mut tx = self.pool.begin().await?;
+        let id_str = state_id.to_string();
+        queries::unprune_state(&mut tx, &id_str).await?;
         tx.commit().await?;
         Ok(())
     }

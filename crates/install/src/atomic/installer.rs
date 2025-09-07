@@ -930,6 +930,9 @@ impl AtomicInstaller {
             .execute_filesystem_swap_and_finalize(journal)
             .await?;
 
+        // Ensure the target state is visible in base history
+        self.state_manager.unprune_state(&target_state_id).await?;
+
         Ok(())
     }
 }

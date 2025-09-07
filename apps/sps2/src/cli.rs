@@ -218,6 +218,10 @@ pub enum Commands {
         /// Verify availability by checking CAS contents on disk
         #[arg(long)]
         verify: bool,
+
+        /// Limit number of states for --verify (overrides config)
+        #[arg(long, requires = "verify")]
+        limit: Option<usize>,
     },
 
     /// Check system health

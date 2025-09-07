@@ -705,6 +705,19 @@ pub async fn mark_pruned_states(
     Ok(updated)
 }
 
+/// Unprune a state by clearing `pruned_at`
+///
+/// # Errors
+///
+/// Returns an error if the database update fails.
+pub async fn unprune_state(tx: &mut Transaction<'_, Sqlite>, id: &str) -> Result<(), Error> {
+    query(r"UPDATE states SET pruned_at = NULL WHERE id = ?")
+        .bind(id)
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
+
 /// Get parent state ID for a given state
 ///
 /// # Errors

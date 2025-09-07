@@ -476,13 +476,18 @@ async fn preview_rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<St
 /// # Errors
 ///
 /// Returns an error if state history retrieval fails.
-pub async fn history(ctx: &OpsCtx, show_all: bool, verify: bool) -> Result<Vec<StateInfo>, Error> {
+pub async fn history(
+    ctx: &OpsCtx,
+    show_all: bool,
+    verify: bool,
+    limit_override: Option<usize>,
+) -> Result<Vec<StateInfo>, Error> {
     let all_states = ctx.state.list_states_detailed().await?;
     let current_id = ctx.state.get_current_state_id().await?;
 
     if verify {
-        // Deep verify across full DB history; cap to 20 results (newest first)
-        let limit = ctx.config.state.history_verify_limit;
+        // Deep verify across full DB history; cap by override or config (newest first)
+        let limit = limit_override.unwrap_or(ctx.config.state.history_verify_limit);
         let mut out = Vec::new();
         for state in &all_states {
             let id = state.state_id();
