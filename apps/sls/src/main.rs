@@ -55,6 +55,13 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Exit cleanly when stdout is closed (e.g., piped to head)
+    #[cfg(unix)]
+    unsafe {
+        // Reset SIGPIPE to default so the process terminates without a panic
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
     let cli = Cli::parse();
 
     let store_path = cli
@@ -86,7 +93,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if let Some(path) = cli.path {
             // User specified a path/hash
-            list_specific(&store_path, &path, &file_map, cli.long, cli.hash, use_color).await?;
+            list_specific(
+                &store_path,
+                &path,
+                &file_map,
+                cli.long,
+                cli.hash,
+                cli.recursive,
+                use_color,
+            )
+            .await?;
         } else {
             // List all
             list_store(
@@ -243,9 +259,9 @@ async fn list_recursive(
                             perms,
                             size,
                             if use_color {
-                                full_hash[..16].dimmed()
+                                short_hash(full_hash, 16).dimmed()
                             } else {
-                                full_hash[..16].normal()
+                                short_hash(full_hash, 16).normal()
                             },
                             if use_color {
                                 file_name.green()
@@ -261,9 +277,9 @@ async fn list_recursive(
                         perms,
                         size,
                         if use_color {
-                            full_hash[..16].dimmed()
+                            short_hash(full_hash, 16).dimmed()
                         } else {
-                            full_hash[..16].normal()
+                            short_hash(full_hash, 16).normal()
                         }
                     );
                 }
@@ -275,9 +291,9 @@ async fn list_recursive(
                             "{}{} {}",
                             indent,
                             if use_color {
-                                full_hash[..8].dimmed()
+                                short_hash(full_hash, 8).dimmed()
                             } else {
-                                full_hash[..8].normal()
+                                short_hash(full_hash, 8).normal()
                             },
                             if use_color {
                                 file_name.green()
@@ -291,9 +307,9 @@ async fn list_recursive(
                         "{}{} (unknown)",
                         indent,
                         if use_color {
-                            full_hash[..8].dimmed()
+                            short_hash(full_hash, 8).dimmed()
                         } else {
-                            full_hash[..8].normal()
+                            short_hash(full_hash, 8).normal()
                         }
                     );
                 }
@@ -310,32 +326,129 @@ async fn list_specific(
     file_map: &HashMap<String, Vec<String>>,
     long_format: bool,
     hash_only: bool,
+    recursive: bool,
     use_color: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Check if it's a hash prefix
-    if path_or_hash.len() >= 2 && path_or_hash.chars().all(|c| c.is_ascii_hexdigit()) {
-        // It's a hash - find matching objects
-        let prefix1 = &path_or_hash[..2];
-        let prefix2 = if path_or_hash.len() > 2 {
-            &path_or_hash[2..4]
-        } else {
-            ""
-        };
+    // Check if it's a hex hash prefix with at least 2 chars
+    let is_hex = path_or_hash.chars().all(|c| c.is_ascii_hexdigit());
+    if path_or_hash.len() >= 2 && is_hex {
+        let prefix = path_or_hash.to_ascii_lowercase();
+        let prefix1 = &prefix[..2];
 
-        let dir = store_path.join("objects").join(prefix1).join(prefix2);
-        if dir.exists() {
-            let mut entries = fs::read_dir(&dir).await?;
-            let mut found = false;
+        let objects = store_path.join("objects");
+        let p1_dir = objects.join(prefix1);
+        if !p1_dir.exists() {
+            eprintln!("No objects found with prefix '{path_or_hash}'");
+            return Ok(());
+        }
 
-            while let Some(entry) = entries.next_entry().await? {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if name.starts_with(&path_or_hash[4..]) {
+        // Length-based behavior:
+        // - len == 2: list second-level dirs (00-ff)
+        // - len == 3: list second-level dirs starting with the 3rd nibble
+        // - len >= 4: list files in p1/p2 whose name starts with full prefix
+        match prefix.len() {
+            2 => {
+                let mut entries = fs::read_dir(&p1_dir).await?;
+                let mut dirs = Vec::new();
+                while let Some(e) = entries.next_entry().await? {
+                    if e.file_type().await?.is_dir() {
+                        dirs.push(e.file_name().to_string_lossy().to_string());
+                    }
+                }
+                dirs.sort();
+                if recursive {
+                    for d in dirs {
+                        if use_color {
+                            println!("{}/", d.blue());
+                        } else {
+                            println!("{d}/");
+                        }
+                        Box::pin(list_recursive(
+                            &p1_dir.join(&d),
+                            file_map,
+                            long_format,
+                            hash_only,
+                            use_color,
+                            1,
+                        ))
+                        .await?;
+                    }
+                } else {
+                    for d in dirs {
+                        if use_color {
+                            println!("{}/", d.blue());
+                        } else {
+                            println!("{d}/");
+                        }
+                    }
+                }
+            }
+            3 => {
+                let p2_prefix = &prefix[2..3];
+                let mut entries = fs::read_dir(&p1_dir).await?;
+                let mut dirs = Vec::new();
+                while let Some(e) = entries.next_entry().await? {
+                    if e.file_type().await?.is_dir() {
+                        let name = e.file_name().to_string_lossy().to_string();
+                        if name.starts_with(p2_prefix) {
+                            dirs.push(name);
+                        }
+                    }
+                }
+                if dirs.is_empty() {
+                    eprintln!("No objects found with prefix '{path_or_hash}'");
+                } else {
+                    dirs.sort();
+                    if recursive {
+                        for d in dirs {
+                            if use_color {
+                                println!("{}/", d.blue());
+                            } else {
+                                println!("{d}/");
+                            }
+                            Box::pin(list_recursive(
+                                &p1_dir.join(&d),
+                                file_map,
+                                long_format,
+                                hash_only,
+                                use_color,
+                                1,
+                            ))
+                            .await?;
+                        }
+                    } else {
+                        for d in dirs {
+                            if use_color {
+                                println!("{}/", d.blue());
+                            } else {
+                                println!("{d}/");
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {
+                // len >= 4
+                let p2 = &prefix[2..4];
+                let dir = p1_dir.join(p2);
+                if !dir.exists() {
+                    eprintln!("No objects found with prefix '{path_or_hash}'");
+                    return Ok(());
+                }
+
+                let mut entries = fs::read_dir(&dir).await?;
+                let mut found = false;
+                while let Some(entry) = entries.next_entry().await? {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    // In the current layout, 'name' is the full hash
+                    if !name.starts_with(&prefix) {
+                        continue;
+                    }
                     found = true;
-                    let full_hash = format!("{prefix1}{prefix2}{name}");
+                    let full_hash = name;
                     let metadata = entry.metadata().await?;
 
                     if hash_only {
-                        // Just show the full hash
                         println!("{full_hash}");
                     } else if long_format {
                         let size = format_size(metadata.len(), BINARY);
@@ -348,9 +461,9 @@ async fn list_specific(
                                     perms,
                                     size,
                                     if use_color {
-                                        full_hash[..16].dimmed()
+                                        short_hash(&full_hash, 16).dimmed()
                                     } else {
-                                        full_hash[..16].normal()
+                                        short_hash(&full_hash, 16).normal()
                                     },
                                     if use_color {
                                         file_name.green()
@@ -365,55 +478,57 @@ async fn list_specific(
                                 perms,
                                 size,
                                 if use_color {
-                                    full_hash[..16].dimmed()
+                                    short_hash(&full_hash, 16).dimmed()
                                 } else {
-                                    full_hash[..16].normal()
+                                    short_hash(&full_hash, 16).normal()
+                                }
+                            );
+                        }
+                    } else if let Some(names) = file_map.get(&full_hash) {
+                        for file_name in names {
+                            println!(
+                                "{} {}",
+                                if use_color {
+                                    short_hash(&full_hash, 8).dimmed()
+                                } else {
+                                    short_hash(&full_hash, 8).normal()
+                                },
+                                if use_color {
+                                    file_name.green()
+                                } else {
+                                    file_name.normal()
                                 }
                             );
                         }
                     } else {
-                        // Default: short hash + filename
-                        if let Some(names) = file_map.get(&full_hash) {
-                            for file_name in names {
-                                println!(
-                                    "{} {}",
-                                    if use_color {
-                                        full_hash[..8].dimmed()
-                                    } else {
-                                        full_hash[..8].normal()
-                                    },
-                                    if use_color {
-                                        file_name.green()
-                                    } else {
-                                        file_name.normal()
-                                    }
-                                );
+                        println!(
+                            "{} (unknown)",
+                            if use_color {
+                                short_hash(&full_hash, 8).dimmed()
+                            } else {
+                                short_hash(&full_hash, 8).normal()
                             }
-                        } else {
-                            println!(
-                                "{} (unknown)",
-                                if use_color {
-                                    full_hash[..8].dimmed()
-                                } else {
-                                    full_hash[..8].normal()
-                                }
-                            );
-                        }
+                        );
                     }
                 }
+                if !found {
+                    eprintln!("No objects found with prefix '{path_or_hash}'");
+                }
             }
-
-            if !found {
-                eprintln!("No objects found with prefix '{path_or_hash}'");
-            }
-        } else {
-            eprintln!("No objects found with prefix '{path_or_hash}'");
         }
     } else {
         eprintln!("Invalid hash prefix: {path_or_hash}");
     }
 
     Ok(())
+}
+
+fn short_hash(s: &str, n: usize) -> &str {
+    if s.len() <= n {
+        s
+    } else {
+        &s[..n]
+    }
 }
 
 fn format_permissions(metadata: &std::fs::Metadata) -> String {
@@ -590,9 +705,9 @@ async fn list_packages(
                 println!(
                     "{} -> {}:{}",
                     if use_color {
-                        hash[..16].dimmed()
+                        short_hash(&hash, 16).dimmed()
                     } else {
-                        hash[..16].normal()
+                        short_hash(&hash, 16).normal()
                     },
                     if use_color {
                         name.cyan()
@@ -609,9 +724,9 @@ async fn list_packages(
                 println!(
                     "{} (unknown)",
                     if use_color {
-                        hash[..16].dimmed()
+                        short_hash(&hash, 16).dimmed()
                     } else {
-                        hash[..16].normal()
+                        short_hash(&hash, 16).normal()
                     }
                 );
             }

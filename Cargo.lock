@@ -3231,6 +3231,7 @@ dependencies = [
  "clap",
  "colored",
  "humansize",
+ "libc",
  "sps2-config",
  "sps2-hash",
  "sps2-state",
