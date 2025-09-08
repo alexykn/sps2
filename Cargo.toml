@@ -63,7 +63,7 @@ semver = { version = "1.0.26", features = ["serde"] }
 blake3 = "1.8.2"
 xxhash-rust = { version = "0.8.15", features = ["xxh3"] }
 tracing = "0.1.41"
-chrono = { version = "0.4.41", features = ["serde"] }
+chrono = { version = "0.4.42", features = ["serde"] }
 minisign-verify = "0.2.4"
 
 # Concurren6.1.0a structures
