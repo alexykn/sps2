@@ -22,3 +22,9 @@ fix *args:
 build *args:
     rustup show active-toolchain
     cargo build --release --target=aarch64-apple-darwin
+
+push:
+    git push origin main
+
+pull:
+    git pull origin main
