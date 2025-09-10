@@ -177,9 +177,8 @@ impl PackageFormatDetector {
     pub fn validate_compatibility(&self, format_info: &PackageFormatInfo) -> Result<(), Error> {
         match &format_info.validation {
             PackageFormatValidationResult::Compatible => Ok(()),
-            PackageFormatValidationResult::BackwardsCompatible { warning } => {
-                // Log warning but allow processing
-                eprintln!("Warning: {warning}");
+            PackageFormatValidationResult::BackwardsCompatible { warning: _ } => {
+                // Allow processing without direct printing; callers may emit events if needed
                 Ok(())
             }
             PackageFormatValidationResult::RequiresMigration { migration: _ } => {

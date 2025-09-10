@@ -3,6 +3,7 @@
 use super::{BuildSystem, BuildSystemConfig, BuildSystemContext, TestFailure, TestResults};
 use async_trait::async_trait;
 use sps2_errors::{BuildError, Error};
+use sps2_events::{AppEvent, EventEmitter, GeneralEvent};
 use std::collections::HashMap;
 use std::path::Path;
 use tokio::fs;
@@ -246,7 +247,9 @@ impl BuildSystem for GoBuildSystem {
 
             if !result.success {
                 // Non-fatal: old-style GOPATH project
-                eprintln!("Warning: go mod init failed, continuing with GOPATH mode");
+                ctx.env.emit(AppEvent::General(GeneralEvent::warning(
+                    "go mod init failed, continuing with GOPATH mode",
+                )));
             }
         }
 

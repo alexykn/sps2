@@ -107,24 +107,10 @@ impl PackageStore {
     /// - Directory creation fails
     /// - Package format is incompatible
     pub async fn add_package(&self, sp_file: &Path) -> Result<StoredPackage, Error> {
-        // Validate package format before processing
-        #[allow(unused_variables)] // Used in debug_assertions block below
-        let format_info = self
-            .format_validator
+        // Validate package format before processing (no direct printing here)
+        self.format_validator
             .validate_before_storage(sp_file)
             .await?;
-
-        // Log format information for debugging
-        #[cfg(debug_assertions)]
-        eprintln!(
-            "Adding package with format version {} (detected from {})",
-            format_info.version,
-            if format_info.from_header {
-                "header"
-            } else {
-                "manifest"
-            }
-        );
 
         // Extract to temporary directory first
         let temp_dir = tempfile::tempdir().map_err(|e| StorageError::IoError {
@@ -442,31 +428,6 @@ impl PackageStore {
     pub async fn is_package_compatible(&self, hash: &Hash) -> Result<bool, Error> {
         let format_info = self.get_stored_package_format_info(hash).await?;
         Ok(format_info.is_compatible)
-    }
-
-    /// Get package size by name and version
-    ///
-    /// # Deprecated
-    ///
-    /// This method is deprecated. Package sizes should be retrieved from the
-    /// state database instead, as it tracks the actual installed package sizes.
-    /// Use `StateManager::get_installed_packages()` and access the `size` field
-    /// on the returned `Package` structs.
-    ///
-    /// # Errors
-    ///
-    /// Always returns 0 as this method is deprecated
-    #[deprecated(
-        since = "0.1.0",
-        note = "Use StateManager::get_installed_packages() to get package sizes from the state database"
-    )]
-    pub fn get_package_size(
-        &self,
-        _package_name: &str,
-        _package_version: &sps2_types::Version,
-    ) -> Result<u64, Error> {
-        // Deprecated: Package sizes should come from state database
-        Ok(0)
     }
 
     /// Add package from file with specific name and version

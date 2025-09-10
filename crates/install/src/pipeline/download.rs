@@ -1,19 +1,15 @@
 //! Download pipeline stage implementation
 
 use sps2_errors::{Error, InstallError};
-use sps2_events::{patterns::DownloadProgressConfig, EventSender, ProgressManager};
+use sps2_events::{EventSender, ProgressManager};
 use sps2_hash::Hash;
 use sps2_net::{PackageDownloadRequest, PackageDownloader};
-use sps2_resolver::{ExecutionPlan, NodeAction, PackageId, ResolvedNode};
+use sps2_resolver::{ExecutionPlan, PackageId, ResolvedNode};
 use sps2_resources::ResourceManager;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::task::JoinHandle;
-
-use sps2_events::EventEmitter;
 
 /// Result of package download operation
 #[derive(Debug)]
@@ -29,10 +25,10 @@ pub struct DownloadResult {
 /// Download pipeline stage coordinator
 pub struct DownloadPipeline {
     downloader: PackageDownloader,
-    #[allow(dead_code)] // Reserved for future resource management features
+    #[allow(dead_code)]
     resources: Arc<ResourceManager>,
     progress_manager: Arc<ProgressManager>,
-    #[allow(dead_code)] // Reserved for future timeout handling features
+    #[allow(dead_code)]
     operation_timeout: Duration,
 }
 
@@ -137,216 +133,5 @@ impl DownloadPipeline {
         }
 
         Ok(results)
-    }
-
-    /// Spawn a download task for a single package
-    #[allow(dead_code)] // Legacy method kept for compatibility
-    pub fn spawn_download_task(
-        &self,
-        package_id: PackageId,
-        node: ResolvedNode,
-        _progress_id: String,
-        tx: EventSender,
-    ) -> JoinHandle<Result<DownloadResult, Error>> {
-        let downloader = self.downloader.clone();
-        let resources = self.resources.clone();
-        let progress_manager = self.progress_manager.clone();
-        let timeout = self.operation_timeout;
-
-        tokio::spawn(async move {
-            let _permit = resources.acquire_download_permit().await?;
-
-            let estimated_size = 50 * 1024 * 1024; // Estimate 50MB per download
-            if resources.limits.memory_usage.is_some() {
-                resources
-                    .memory_usage
-                    .fetch_add(estimated_size, Ordering::Relaxed);
-            }
-
-            let result = tokio::time::timeout(
-                timeout,
-                Self::download_package_with_progress(
-                    &downloader,
-                    &package_id,
-                    &node,
-                    &progress_manager,
-                    &tx,
-                ),
-            )
-            .await;
-
-            if resources.limits.memory_usage.is_some() {
-                resources
-                    .memory_usage
-                    .fetch_sub(estimated_size, Ordering::Relaxed);
-            }
-
-            match result {
-                Ok(Ok(download_result)) => Ok(download_result),
-                Ok(Err(e)) => Err(e),
-                Err(_) => Err(InstallError::DownloadTimeout {
-                    package: package_id.name,
-                    url: node.url.unwrap_or_default(),
-                    timeout_seconds: timeout.as_secs(),
-                }
-                .into()),
-            }
-        })
-    }
-
-    /// Download a package with progress reporting
-    #[allow(dead_code)] // Legacy method kept for compatibility
-    async fn download_package_with_progress(
-        downloader: &PackageDownloader,
-        package_id: &PackageId,
-        node: &ResolvedNode,
-        progress_manager: &ProgressManager,
-        tx: &EventSender,
-    ) -> Result<DownloadResult, Error> {
-        match &node.action {
-            NodeAction::Download => {
-                if let Some(url) = &node.url {
-                    let temp_dir =
-                        tempfile::tempdir().map_err(|e| InstallError::TempFileError {
-                            message: format!("failed to create temp dir: {e}"),
-                        })?;
-
-                    tx.emit(sps2_events::AppEvent::Download(
-                        sps2_events::DownloadEvent::PackageStarted {
-                            name: package_id.name.clone(),
-                            version: package_id.version.clone(),
-                            url: url.clone(),
-                        },
-                    ));
-
-                    let download_config = DownloadProgressConfig {
-                        operation_name: format!("Downloading {}", package_id.name),
-                        total_bytes: None, // We don't know the total size yet
-                        package_name: Some(package_id.name.clone()),
-                        url: url.clone(),
-                    };
-                    let progress_id = progress_manager.create_download_tracker(&download_config);
-
-                    let result = downloader
-                        .download_package(
-                            &package_id.name,
-                            &package_id.version,
-                            url,
-                            None, // No signature URL for now
-                            temp_dir.path(),
-                            None, // No expected hash for now
-                            progress_id.clone(),
-                            None, // No parent progress ID
-                            tx,
-                        )
-                        .await?;
-
-                    progress_manager.complete_operation(&progress_id, tx);
-
-                    tx.emit(sps2_events::AppEvent::Download(
-                        sps2_events::DownloadEvent::PackageCompleted {
-                            name: package_id.name.clone(),
-                            version: package_id.version.clone(),
-                        },
-                    ));
-
-                    // Copy the downloaded file to a persistent location to prevent temp dir cleanup
-                    let persistent_dir = std::env::temp_dir().join("sps2_install_cache");
-                    tokio::fs::create_dir_all(&persistent_dir)
-                        .await
-                        .map_err(|e| InstallError::TempFileError {
-                            message: format!("failed to create persistent cache directory: {e}"),
-                        })?;
-
-                    let persistent_path =
-                        persistent_dir.join(result.package_path.file_name().unwrap());
-
-                    // Debug: print paths
-                    eprintln!("DEBUG: Original path: {}", result.package_path.display());
-                    eprintln!("DEBUG: Persistent path: {}", persistent_path.display());
-
-                    tokio::fs::copy(&result.package_path, &persistent_path)
-                        .await
-                        .map_err(|e| InstallError::TempFileError {
-                            message: format!(
-                                "failed to copy downloaded file to persistent cache: {e}"
-                            ),
-                        })?;
-
-                    // Verify the copy worked
-                    if !persistent_path.exists() {
-                        return Err(InstallError::TempFileError {
-                            message: format!(
-                                "Persistent file does not exist after copy: {}",
-                                persistent_path.display()
-                            ),
-                        }
-                        .into());
-                    }
-
-                    eprintln!("DEBUG: File copied successfully to persistent location");
-
-                    Ok(DownloadResult {
-                        package_id: package_id.clone(),
-                        downloaded_path: persistent_path,
-                        hash: result.hash,
-                        temp_dir: Some(temp_dir),
-                        node: node.clone(),
-                    })
-                } else {
-                    Err(InstallError::MissingDownloadUrl {
-                        package: package_id.name.clone(),
-                    }
-                    .into())
-                }
-            }
-            NodeAction::Local => {
-                if let Some(path) = &node.path {
-                    // Compute hash for local file
-                    let hash = Hash::hash_file(path).await?;
-
-                    Ok(DownloadResult {
-                        package_id: package_id.clone(),
-                        downloaded_path: path.clone(),
-                        hash,
-                        temp_dir: None,
-                        node: node.clone(),
-                    })
-                } else {
-                    Err(InstallError::MissingLocalPath {
-                        package: package_id.name.clone(),
-                    }
-                    .into())
-                }
-            }
-        }
-    }
-
-    /// Wait for at least one download to complete
-    #[allow(dead_code)] // Legacy method kept for compatibility
-    async fn wait_for_download_completion(
-        &self,
-        mut handles: Vec<(PackageId, JoinHandle<Result<DownloadResult, Error>>)>,
-    ) -> Result<(PackageId, DownloadResult), Error> {
-        loop {
-            for i in (0..handles.len()).rev() {
-                if handles[i].1.is_finished() {
-                    let (package_id, handle) = handles.remove(i);
-                    match handle.await {
-                        Ok(Ok(result)) => return Ok((package_id, result)),
-                        Ok(Err(e)) => return Err(e),
-                        Err(e) => {
-                            return Err(InstallError::TaskError {
-                                message: format!("download task failed: {e}"),
-                            }
-                            .into())
-                        }
-                    }
-                }
-            }
-
-            // Small delay before checking again
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
     }
 }

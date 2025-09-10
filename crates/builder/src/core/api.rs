@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
-use sps2_events::{AppEvent, GeneralEvent};
+use sps2_events::{AppEvent, EventEmitter, GeneralEvent};
 use sps2_resources::ResourceManager;
 use std::sync::Arc;
 
@@ -1185,6 +1185,7 @@ impl BuilderApi {
         env: &BuildEnvironment,
     ) -> Result<BuildCommandResult, Error> {
         use crate::artifact_qa::patchers::rpath::RPathPatcher;
+        use sps2_events::{AppEvent, GeneralEvent};
         use sps2_types::BuildSystemProfile;
 
         // Check if this is appropriate for the build system
@@ -1197,15 +1198,17 @@ impl BuilderApi {
             profile,
             BuildSystemProfile::RustMinimal | BuildSystemProfile::GoMedium
         ) {
-            eprintln!(
-                "Warning: patch_rpaths() is not recommended for {} projects. \
-                Rust and Go binaries typically don't need rpath patching and it may cause issues.",
-                if used_systems.contains("cargo") {
-                    "Rust"
-                } else {
-                    "Go"
-                }
-            );
+            let sys = if used_systems.contains("cargo") {
+                "Rust"
+            } else {
+                "Go"
+            };
+            env.emit(AppEvent::General(GeneralEvent::warning_with_context(
+                format!(
+                    "patch_rpaths() is not recommended for {sys} projects. Rust and Go binaries typically don't need rpath patching and it may cause issues."
+                ),
+                format!("profile={profile:?}"),
+            )));
             // Continue but warn - don't fail in case user knows what they're doing
         }
 

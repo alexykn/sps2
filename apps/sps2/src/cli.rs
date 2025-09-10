@@ -119,22 +119,7 @@ pub enum Commands {
         /// Number of parallel build jobs (0=auto)
         #[arg(short, long)]
         jobs: Option<usize>,
-
-        /// Compression level: fast, balanced, maximum, or 1-22
-        #[arg(long, value_name = "LEVEL")]
-        compression_level: Option<String>,
-
-        /// Use fast compression (equivalent to --compression-level fast)
-        #[arg(long, conflicts_with = "compression_level")]
-        fast: bool,
-
-        /// Use maximum compression (equivalent to --compression-level maximum)
-        #[arg(long, conflicts_with_all = ["compression_level", "fast"])]
-        max: bool,
-
-        /// Use legacy compression format (single stream, no seeking)
-        #[arg(long)]
-        legacy: bool,
+        // Compression-related flags are removed until fully supported
     },
 
     /// Package from staging directory without rebuilding

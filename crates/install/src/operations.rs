@@ -70,8 +70,7 @@ impl InstallOperation {
         // Check local .sp files exist (validation moved to AtomicInstaller)
         self.check_local_packages_exist(&context)?;
 
-        // Check for already installed packages (after resolution)
-        // self.check_already_installed(&context).await?;
+        // Check for already installed packages (handled during atomic install)
 
         // Resolve dependencies
         let resolution = self.resolve_dependencies(&context).await?;
@@ -218,89 +217,6 @@ impl InstallOperation {
             }
         }
         Ok(())
-    }
-
-    /// Check for already installed packages (legacy function)
-    #[allow(dead_code)]
-    async fn check_already_installed(&self, context: &InstallContext) -> Result<(), Error> {
-        // Get currently installed packages
-        let installed_packages = self.state_manager.get_installed_packages().await?;
-
-        // Check remote package specs
-        for spec in &context.packages {
-            // Check if this exact version is already installed
-            if let Some(installed_pkg) = installed_packages.iter().find(|pkg| pkg.name == spec.name)
-            {
-                if spec.version_spec.matches(&installed_pkg.version()) {
-                    // Send informative event
-                    context.emit_warning_with_context(
-                        format!(
-                            "Package {}-{} is already installed",
-                            installed_pkg.name, installed_pkg.version
-                        ),
-                        "Skipping installation to avoid state corruption",
-                    );
-
-                    // For now, we'll return an error to prevent state corruption
-                    // In the future, we might want to handle this more gracefully
-                    return Err(InstallError::PackageAlreadyInstalled {
-                        package: format!("{}-{}", installed_pkg.name, installed_pkg.version),
-                    }
-                    .into());
-                }
-            }
-        }
-
-        // Check local .sp files for already installed packages
-        // Try to infer package info from filename first, fall back to manifest extraction if needed
-        for local_file in &context.local_files {
-            // Try to parse package info from filename (e.g., gmp-6.3.0-1.arm64.sp)
-            if let Some(filename) = local_file.file_stem().and_then(|s| s.to_str()) {
-                if let Some((name, version)) = Self::parse_package_filename(filename) {
-                    // Check if this package name/version is already installed
-                    if let Some(_installed_pkg) = installed_packages
-                        .iter()
-                        .find(|pkg| pkg.name == name && pkg.version == version)
-                    {
-                        context.emit_warning_with_context(
-                            format!(
-                                "Package {}-{} from {} is already installed",
-                                name,
-                                version,
-                                local_file.display()
-                            ),
-                            "Skipping installation to avoid state corruption",
-                        );
-
-                        return Err(InstallError::PackageAlreadyInstalled {
-                            package: format!("{}-{}", name, version),
-                        }
-                        .into());
-                    }
-                }
-                // If filename parsing fails, we'll let AtomicInstaller handle the validation
-                // and duplicate detection during the actual installation process
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Parse package name and version from filename (e.g., "gmp-6.3.0-1.arm64" -> ("gmp", "6.3.0"))
-    #[allow(dead_code)]
-    fn parse_package_filename(filename: &str) -> Option<(String, String)> {
-        // Expected format: {name}-{version}-{build}.{arch}
-        // Example: gmp-6.3.0-1.arm64
-        let parts: Vec<&str> = filename.split('-').collect();
-        if parts.len() >= 3 {
-            let name = parts[0].to_string();
-            // Version is everything between first dash and last dash (before build number)
-            let version_parts: Vec<&str> = parts[1..parts.len() - 1].to_vec();
-            let version = version_parts.join("-");
-            Some((name, version))
-        } else {
-            None
-        }
     }
 }
 

@@ -24,9 +24,9 @@ pub async fn restore_missing_file(
     package_version: &str,
     file_path: &str,
 ) -> Result<(), Error> {
-    eprintln!(
-        "DEBUG: restore_missing_file starting for {package_name}/{package_version} - {file_path}"
-    );
+    ctx.emit_debug(format!(
+        "restore_missing_file starting for {package_name}/{package_version} - {file_path}"
+    ));
 
     let result = restore_missing_file_impl(ctx, package_name, package_version, file_path).await;
 
@@ -215,11 +215,11 @@ async fn restore_missing_file_impl(
             })?;
     }
 
-    eprintln!(
-        "DEBUG: Successfully restored {} to {}",
+    ctx.emit_debug(format!(
+        "Successfully restored {} to {}",
         file_path,
         target_path.display()
-    );
+    ));
 
     // Clear the mtime trackers for this package so the healed file is re-verified
     ctx.emit_debug(format!(

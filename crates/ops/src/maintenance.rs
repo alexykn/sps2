@@ -247,7 +247,11 @@ pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
     }));
 
     if let Err(e) = update_gc_timestamp().await {
-        eprintln!("Warning: Failed to update GC timestamp: {e}");
+        use sps2_events::events::GeneralEvent;
+        ctx.emit(AppEvent::General(GeneralEvent::warning_with_context(
+            "Failed to update GC timestamp",
+            e.to_string(),
+        )));
     }
 
     Ok(message)
