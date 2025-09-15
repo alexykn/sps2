@@ -18,6 +18,7 @@ use sps2_store::PackageStore;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
+use tokio::sync::OwnedSemaphorePermit;
 use tokio::task::JoinHandle;
 use tokio::time::{timeout, Duration, Instant};
 
@@ -29,6 +30,7 @@ struct ProcessPackageArgs {
     state_manager: StateManager,
     timeout_duration: Duration,
     prepared_packages: Arc<DashMap<PackageId, PreparedPackage>>,
+    permit: OwnedSemaphorePermit,
 }
 
 /// Parallel executor for package operations
@@ -303,7 +305,7 @@ impl ParallelExecutor {
         package_id: PackageId,
         node: ResolvedNode,
         context: ExecutionContext,
-        _permit: tokio::sync::OwnedSemaphorePermit,
+        permit: OwnedSemaphorePermit,
         prepared_packages: Arc<DashMap<PackageId, PreparedPackage>>,
     ) -> JoinHandle<Result<PackageId, Error>> {
         let store = self.store.clone();
@@ -319,6 +321,7 @@ impl ParallelExecutor {
                 state_manager,
                 timeout_duration,
                 prepared_packages,
+                permit,
             })
             .await
         })
@@ -334,6 +337,7 @@ impl ParallelExecutor {
             state_manager: _state_manager,
             timeout_duration,
             prepared_packages,
+            permit: _permit,
         } = args;
         context.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: format!(
@@ -709,4 +713,135 @@ struct ExecutionNode {
 pub struct SecurityPolicy {
     pub verify_signatures: bool,
     pub allow_unsigned: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sps2_events::{AppEvent, InstallEvent};
+    use sps2_resolver::{DependencyGraph, ResolvedNode};
+    use sps2_store::{create_package, PackageStore};
+    use sps2_types::{Arch, Manifest, Version};
+    use tempfile::TempDir;
+    use tokio::fs as afs;
+    use std::sync::Arc;
+
+    async fn mk_env() -> (TempDir, StateManager, PackageStore) {
+        let td = TempDir::new().expect("tempdir");
+        let state = StateManager::new(td.path()).await.expect("state manager");
+        let store_base = td.path().join("store");
+        afs::create_dir_all(&store_base).await.expect("store dir");
+        let store = PackageStore::new(store_base);
+        (td, state, store)
+    }
+
+    async fn create_sp(name: &str, version: &str) -> (TempDir, std::path::PathBuf) {
+        let td = TempDir::new().expect("package dir");
+        let src = td.path().join("src");
+        afs::create_dir_all(&src).await.expect("src dir");
+
+        let version = Version::parse(version).expect("valid version");
+        let manifest = Manifest::new(name.to_string(), &version, 1, &Arch::Arm64);
+        let manifest_path = src.join("manifest.toml");
+        sps2_store::manifest_io::write_manifest(&manifest_path, &manifest)
+            .await
+            .expect("write manifest");
+
+        let content_path = src.join("opt/pm/live/share");
+        afs::create_dir_all(&content_path).await.expect("content dir");
+        afs::write(content_path.join("file.txt"), name.as_bytes())
+            .await
+            .expect("write file");
+
+        let sp_path = td.path().join("pkg.sp");
+        create_package(&src, &sp_path).await.expect("create package");
+
+        (td, sp_path)
+    }
+
+    #[tokio::test]
+    async fn download_permit_limits_parallelism() {
+        let (_td, state, store) = mk_env().await;
+
+        let (_pkg1_dir, pkg1_sp) = create_sp("pkg-a", "1.0.0").await;
+        let (_pkg2_dir, pkg2_sp) = create_sp("pkg-b", "1.0.0").await;
+
+        let node1 = ResolvedNode::local(
+            "pkg-a".to_string(),
+            Version::parse("1.0.0").unwrap(),
+            pkg1_sp.clone(),
+            vec![],
+        );
+        let node2 = ResolvedNode::local(
+            "pkg-b".to_string(),
+            Version::parse("1.0.0").unwrap(),
+            pkg2_sp.clone(),
+            vec![],
+        );
+
+        let pkg1_id = node1.package_id();
+        let pkg2_id = node2.package_id();
+
+        let mut resolved_packages = HashMap::new();
+        resolved_packages.insert(pkg1_id.clone(), node1.clone());
+        resolved_packages.insert(pkg2_id.clone(), node2.clone());
+
+        let mut graph = DependencyGraph::new();
+        graph.add_node(node1);
+        graph.add_node(node2);
+
+        let sorted = vec![pkg1_id.clone(), pkg2_id.clone()];
+        let execution_plan = ExecutionPlan::from_sorted_packages(&sorted, &graph);
+
+        let limits = sps2_resources::limits::ResourceLimits {
+            concurrent_downloads: 1,
+            concurrent_decompressions: 1,
+            concurrent_installations: 1,
+            memory_usage: None,
+        };
+        let resources = Arc::new(sps2_resources::ResourceManager::new(limits));
+        let executor = ParallelExecutor::new(store, state, resources).expect("parallel executor");
+
+        let (tx, mut rx) = sps2_events::channel();
+        let context = ExecutionContext::new().with_event_sender(tx);
+
+        executor
+            .execute_parallel(&execution_plan, &resolved_packages, &context)
+            .await
+            .expect("execute parallel");
+
+        let mut sequence = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            if let AppEvent::Install(install_event) = event {
+                match install_event {
+                    InstallEvent::Started { package, .. } => {
+                        sequence.push(("start", package));
+                    }
+                    InstallEvent::Completed { package, .. } => {
+                        sequence.push(("complete", package));
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        let starts: Vec<_> = sequence
+            .iter()
+            .enumerate()
+            .filter(|(_, (kind, _))| *kind == "start")
+            .collect();
+        let completes: Vec<_> = sequence
+            .iter()
+            .enumerate()
+            .filter(|(_, (kind, _))| *kind == "complete")
+            .collect();
+
+        assert_eq!(starts.len(), 2, "expected two start events");
+        assert_eq!(completes.len(), 2, "expected two completion events");
+        assert!(starts[0].0 < completes[0].0, "first completion must follow first start");
+        assert!(
+            completes[0].0 < starts[1].0,
+            "second package should only start after first completes"
+        );
+    }
 }
