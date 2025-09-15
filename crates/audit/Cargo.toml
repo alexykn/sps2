@@ -22,7 +22,7 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 semver = { workspace = true }
 reqwest = { workspace = true }
-zip = "4.5.0"
+zip = "5.1.1"
 tempfile = { workspace = true }
 futures = { workspace = true }
 dashmap = { workspace = true }

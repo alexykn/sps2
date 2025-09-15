@@ -26,7 +26,7 @@ pub fn generate_yaml_recipe(
     };
 
     // Serialize to YAML
-    serde_yml::to_string(&yaml_recipe).map_err(|e| {
+    serde_yaml2::to_string(&yaml_recipe).map_err(|e| {
         BuildError::DraftTemplateFailed {
             message: format!("Failed to serialize YAML recipe: {e}"),
         }

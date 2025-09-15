@@ -306,7 +306,7 @@ build:
   args:
     - -DCMAKE_BUILD_TYPE=Release
 ";
-        let recipe: YamlRecipe = serde_yml::from_str(yaml).unwrap();
+        let recipe: YamlRecipe = serde_yaml2::from_str(yaml).unwrap();
         assert_eq!(recipe.metadata.name, "zlib");
         assert_eq!(recipe.metadata.version, "1.3.1");
     }
@@ -347,7 +347,7 @@ build:
 post:
   fix_permissions: true
 "#;
-        let recipe: YamlRecipe = serde_yml::from_str(yaml).unwrap();
+        let recipe: YamlRecipe = serde_yaml2::from_str(yaml).unwrap();
         assert_eq!(recipe.metadata.name, "gcc");
         assert_eq!(
             recipe.facts.get("build_triple").unwrap(),

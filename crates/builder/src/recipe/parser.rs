@@ -34,7 +34,7 @@ pub async fn parse_yaml_recipe(path: &Path) -> Result<YamlRecipe, Error> {
 /// - Validation fails
 pub fn parse_yaml_recipe_from_string(content: &str) -> Result<YamlRecipe, Error> {
     let mut recipe: YamlRecipe =
-        serde_yml::from_str(content).map_err(|e| BuildError::RecipeError {
+        serde_yaml2::from_str(content).map_err(|e| BuildError::RecipeError {
             message: format!("failed to parse YAML: {e}"),
         })?;
 

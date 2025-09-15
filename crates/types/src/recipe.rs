@@ -3,11 +3,12 @@
 //! This module provides a declarative YAML-based recipe format that replaces
 //! the Starlark-based system with proper staged execution.
 
+use serde::de::{self, IgnoredAny, MapAccess, Unexpected, Visitor};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 /// Build isolation level
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum IsolationLevel {
     /// No isolation - uses host environment as-is (shows warning)
@@ -24,6 +25,118 @@ impl Default for IsolationLevel {
     fn default() -> Self {
         Self::Default
     }
+}
+
+impl<'de> Deserialize<'de> for IsolationLevel {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct IsolationLevelVisitor;
+
+        impl<'de> Visitor<'de> for IsolationLevelVisitor {
+            type Value = IsolationLevel;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("an isolation level (none, default, enhanced, hermetic, or 0-3)")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                parse_from_str(value)
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                parse_from_str(&value)
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if value > u64::from(u8::MAX) {
+                    return Err(de::Error::invalid_value(
+                        Unexpected::Unsigned(value),
+                        &"number between 0 and 3",
+                    ));
+                }
+                let byte = u8::try_from(value).map_err(|_| {
+                    de::Error::invalid_value(Unexpected::Unsigned(value), &"number between 0 and 3")
+                })?;
+                parse_from_u8(byte)
+            }
+
+            fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if value < 0 {
+                    return Err(de::Error::invalid_value(
+                        Unexpected::Signed(value),
+                        &"number between 0 and 3",
+                    ));
+                }
+                let unsigned = u64::try_from(value).map_err(|_| {
+                    de::Error::invalid_value(Unexpected::Signed(value), &"number between 0 and 3")
+                })?;
+                self.visit_u64(unsigned)
+            }
+
+            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                if let Some((key, _value)) = map.next_entry::<String, IgnoredAny>()? {
+                    if map.next_entry::<IgnoredAny, IgnoredAny>()?.is_some() {
+                        return Err(de::Error::custom(
+                            "isolation level map must contain a single entry",
+                        ));
+                    }
+                    parse_from_str(&key)
+                } else {
+                    Err(de::Error::custom(
+                        "expected isolation level map with a single entry",
+                    ))
+                }
+            }
+        }
+
+        deserializer.deserialize_any(IsolationLevelVisitor)
+    }
+}
+
+fn parse_from_str<E>(value: &str) -> Result<IsolationLevel, E>
+where
+    E: de::Error,
+{
+    let normalized = value.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "none" => Ok(IsolationLevel::None),
+        "default" => Ok(IsolationLevel::Default),
+        "enhanced" => Ok(IsolationLevel::Enhanced),
+        "hermetic" => Ok(IsolationLevel::Hermetic),
+        other => Err(de::Error::unknown_variant(
+            other,
+            &["none", "default", "enhanced", "hermetic"],
+        )),
+    }
+}
+
+fn parse_from_u8<E>(value: u8) -> Result<IsolationLevel, E>
+where
+    E: de::Error,
+{
+    IsolationLevel::from_u8(value).ok_or_else(|| {
+        de::Error::invalid_value(
+            Unexpected::Unsigned(u64::from(value)),
+            &"number between 0 and 3",
+        )
+    })
 }
 
 impl IsolationLevel {
