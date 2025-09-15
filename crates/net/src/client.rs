@@ -54,6 +54,25 @@ impl std::fmt::Debug for NetClient {
 }
 
 impl NetClient {
+    /// Create a new network client that does not consult system proxy configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the HTTP client cannot be created.
+    pub fn new_without_proxies(config: NetConfig) -> Result<Self, Error> {
+        let client = Client::builder()
+            .timeout(config.timeout)
+            .connect_timeout(config.connect_timeout)
+            .pool_idle_timeout(config.pool_idle_timeout)
+            .pool_max_idle_per_host(config.pool_max_idle_per_host)
+            .no_proxy()
+            .user_agent(&config.user_agent)
+            .build()
+            .map_err(|e| NetworkError::ConnectionRefused(e.to_string()))?;
+
+        Ok(Self { client, config })
+    }
+
     /// Create a new network client
     ///
     /// # Errors
