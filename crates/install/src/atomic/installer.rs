@@ -11,7 +11,7 @@ use sps2_platform::{core::PlatformContext, PlatformManager};
 use sps2_resolver::{PackageId, ResolvedNode};
 use sps2_state::{PackageRef, StateManager};
 use sps2_store::{PackageStore, StoredPackage};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
@@ -223,53 +223,46 @@ impl AtomicInstaller {
     async fn carry_forward_packages(
         &self,
         transition: &mut StateTransition,
-        exclude_packages: &[PackageId],
+        parent_packages: &[sps2_state::models::Package],
+        exclude_names: &HashSet<String>,
     ) -> Result<(), Error> {
         if let Some(parent_id) = transition.parent_id {
-            let parent_packages = self
-                .state_manager
-                .get_installed_packages_in_state(&parent_id)
-                .await?;
-
             for pkg in parent_packages {
-                // Check if this package should be excluded
-                let should_exclude = exclude_packages.iter().any(|exclude_pkg| {
-                    exclude_pkg.name == pkg.name && exclude_pkg.version.to_string() == pkg.version
-                });
+                if exclude_names.contains(&pkg.name) {
+                    continue;
+                }
 
-                if !should_exclude {
-                    // Just add the package reference - no need to re-link files
-                    let package_id = PackageId::new(pkg.name.clone(), pkg.version());
-                    let package_ref = PackageRef {
-                        state_id: transition.staging_id,
-                        package_id: package_id.clone(),
-                        hash: pkg.hash.clone(),
-                        size: pkg.size,
-                    };
-                    transition.package_refs.push(package_ref);
+                // Just add the package reference - no need to re-link files
+                let package_id = PackageId::new(pkg.name.clone(), pkg.version());
+                let package_ref = PackageRef {
+                    state_id: transition.staging_id,
+                    package_id: package_id.clone(),
+                    hash: pkg.hash.clone(),
+                    size: pkg.size,
+                };
+                transition.package_refs.push(package_ref);
 
-                    // Carry forward package file information from parent state
-                    let mut tx = self.state_manager.begin_transaction().await?;
-                    let file_paths = sps2_state::queries::get_package_files(
-                        &mut tx,
-                        &parent_id,
-                        &pkg.name,
-                        &pkg.version,
-                    )
-                    .await?;
-                    tx.commit().await?;
+                // Carry forward package file information from parent state
+                let mut tx = self.state_manager.begin_transaction().await?;
+                let file_paths = sps2_state::queries::get_package_files(
+                    &mut tx,
+                    &parent_id,
+                    &pkg.name,
+                    &pkg.version,
+                )
+                .await?;
+                tx.commit().await?;
 
-                    // Add file paths to transition
-                    for file_path in file_paths {
-                        let staging_file = transition.staging_path.join(&file_path);
-                        let is_directory = staging_file.is_dir();
-                        transition.package_files.push((
-                            pkg.name.clone(),
-                            pkg.version.clone(),
-                            file_path,
-                            is_directory,
-                        ));
-                    }
+                // Add file paths to transition
+                for file_path in file_paths {
+                    let staging_file = transition.staging_path.join(&file_path);
+                    let is_directory = staging_file.is_dir();
+                    transition.package_files.push((
+                        pkg.name.clone(),
+                        pkg.version.clone(),
+                        file_path,
+                        is_directory,
+                    ));
                 }
             }
         }
@@ -342,10 +335,28 @@ impl AtomicInstaller {
         // Setup state transition and staging directory
         let mut transition = self.setup_state_transition("install", context).await?;
 
+        // Collect the current state's packages so we can carry forward untouched entries and
+        // detect in-place upgrades cleanly.
+        let parent_packages = if let Some(parent_id) = transition.parent_id {
+            self.state_manager
+                .get_installed_packages_in_state(&parent_id)
+                .await?
+        } else {
+            Vec::new()
+        };
+        let parent_lookup: HashMap<String, sps2_state::models::Package> = parent_packages
+            .iter()
+            .cloned()
+            .map(|pkg| (pkg.name.clone(), pkg))
+            .collect();
+
         // APFS clonefile already copies all existing packages, so we don't need to re-link them.
         // We only need to carry forward the package references and file information in the database.
-        let exclude_packages: Vec<PackageId> = resolved_packages.keys().cloned().collect();
-        self.carry_forward_packages(&mut transition, &exclude_packages)
+        let exclude_names: HashSet<String> = resolved_packages
+            .keys()
+            .map(|pkg| pkg.name.clone())
+            .collect();
+        self.carry_forward_packages(&mut transition, &parent_packages, &exclude_names)
             .await?;
 
         // Apply package changes to staging
@@ -358,6 +369,7 @@ impl AtomicInstaller {
                 package_id,
                 node,
                 prepared_package,
+                parent_lookup.get(&package_id.name),
                 &mut result,
             )
             .await?;
@@ -383,6 +395,7 @@ impl AtomicInstaller {
         package_id: &PackageId,
         node: &ResolvedNode,
         prepared_package: Option<&PreparedPackage>,
+        prior_package: Option<&sps2_state::models::Package>,
         result: &mut InstallResult,
     ) -> Result<(), Error> {
         // Install the package files (both Download and Local actions are handled identically)
@@ -403,6 +416,18 @@ impl AtomicInstaller {
         let hash = &prepared.hash;
         let store_path = &prepared.store_path;
         let size = prepared.size;
+
+        let mut was_present = false;
+        let mut version_changed = false;
+        if let Some(existing) = prior_package {
+            was_present = true;
+            let existing_version = existing.version();
+            if existing_version != package_id.version {
+                version_changed = true;
+                self.remove_package_from_staging(transition, existing)
+                    .await?;
+            }
+        }
 
         // Load package from the prepared store path
         let _stored_package = StoredPackage::load(store_path).await?;
@@ -434,7 +459,11 @@ impl AtomicInstaller {
         };
         transition.package_refs.push(package_ref);
 
-        result.add_installed(package_id.clone());
+        if was_present && version_changed {
+            result.add_updated(package_id.clone());
+        } else {
+            result.add_installed(package_id.clone());
+        }
         Ok(())
     }
 
@@ -529,33 +558,36 @@ impl AtomicInstaller {
         let mut result = InstallResult::new(transition.staging_id);
 
         // Remove packages from staging and track them in result
-        if let Some(parent_id) = transition.parent_id {
-            let parent_packages = self
-                .state_manager
+        let parent_packages = if let Some(parent_id) = transition.parent_id {
+            self.state_manager
                 .get_installed_packages_in_state(&parent_id)
-                .await?;
+                .await?
+        } else {
+            Vec::new()
+        };
 
-            for pkg in parent_packages {
-                // Check if this package should be removed
-                let should_remove = packages_to_remove
-                    .iter()
-                    .any(|remove_pkg| remove_pkg.name == pkg.name);
+        for pkg in &parent_packages {
+            // Check if this package should be removed
+            let should_remove = packages_to_remove
+                .iter()
+                .any(|remove_pkg| remove_pkg.name == pkg.name);
 
-                if should_remove {
-                    // Remove package files from staging
-                    result.add_removed(PackageId::new(pkg.name.clone(), pkg.version()));
+            if should_remove {
+                result.add_removed(PackageId::new(pkg.name.clone(), pkg.version()));
 
-                    // Remove package files from staging
-                    self.remove_package_from_staging(&mut transition, &pkg)
-                        .await?;
+                self.remove_package_from_staging(&mut transition, pkg)
+                    .await?;
 
-                    context.emit_debug(format!("Removed package {} from staging", pkg.name));
-                }
+                context.emit_debug(format!("Removed package {} from staging", pkg.name));
             }
         }
 
         // Carry forward packages that are not being removed
-        self.carry_forward_packages(&mut transition, packages_to_remove)
+        let exclude_names: HashSet<String> = packages_to_remove
+            .iter()
+            .map(|pkg| pkg.name.clone())
+            .collect();
+        self.carry_forward_packages(&mut transition, &parent_packages, &exclude_names)
             .await?;
 
         // Execute two-phase commit
@@ -866,6 +898,29 @@ mod tests {
         (hash, path, size, file_hashes)
     }
 
+    fn collect_relative_files(base: &std::path::Path) -> Vec<std::path::PathBuf> {
+        fn walk(
+            base: &std::path::Path,
+            current: &std::path::Path,
+            acc: &mut Vec<std::path::PathBuf>,
+        ) -> std::io::Result<()> {
+            for entry in std::fs::read_dir(current)? {
+                let entry = entry?;
+                let path = entry.path();
+                if entry.file_type()?.is_dir() {
+                    walk(base, &path, acc)?;
+                } else {
+                    acc.push(path.strip_prefix(base).unwrap().to_path_buf());
+                }
+            }
+            Ok(())
+        }
+
+        let mut acc = Vec::new();
+        walk(base, base, &mut acc).unwrap();
+        acc
+    }
+
     async fn refcount_store(state: &StateManager, hex: &str) -> i64 {
         let mut tx = state.begin_transaction().await.unwrap();
         let all = sps2_state::queries::get_all_store_refs(&mut tx)
@@ -882,6 +937,140 @@ mod tests {
             .await
             .unwrap();
         row.map_or(0, |o| o.ref_count)
+    }
+
+    #[tokio::test]
+    async fn install_then_update_replaces_old_version() {
+        let (_td, state, store) = mk_env().await;
+        let (hash_v1, path_v1, size_v1, _file_hashes_v1) = make_sp_and_add_to_store(
+            &store,
+            "A",
+            "1.0.0",
+            &[("share/v1.txt", "v1"), ("bin/a", "binary")],
+        )
+        .await;
+        let (hash_v2, path_v2, size_v2, _file_hashes_v2) = make_sp_and_add_to_store(
+            &store,
+            "A",
+            "1.1.0",
+            &[("share/v2.txt", "v2"), ("bin/a", "binary2")],
+        )
+        .await;
+
+        let mut ai = AtomicInstaller::new(state.clone(), store.clone())
+            .await
+            .unwrap();
+
+        // Initial install of v1
+        let mut resolved: HashMap<PackageId, ResolvedNode> = HashMap::new();
+        let pid_v1 = PackageId::new(
+            "A".to_string(),
+            sps2_types::Version::parse("1.0.0").unwrap(),
+        );
+        resolved.insert(
+            pid_v1.clone(),
+            ResolvedNode::local(
+                "A".to_string(),
+                pid_v1.version.clone(),
+                path_v1.clone(),
+                vec![],
+            ),
+        );
+        let mut prepared = HashMap::new();
+        prepared.insert(
+            pid_v1.clone(),
+            crate::PreparedPackage {
+                hash: hash_v1.clone(),
+                size: size_v1,
+                store_path: path_v1.clone(),
+                is_local: true,
+            },
+        );
+        let ctx = crate::InstallContext {
+            packages: vec![],
+            local_files: vec![],
+            force: false,
+            event_sender: None,
+        };
+        let _ = ai.install(&ctx, &resolved, Some(&prepared)).await.unwrap();
+
+        let live_path = state.live_path().to_path_buf();
+        let files_after_install = collect_relative_files(&live_path);
+        assert!(files_after_install
+            .iter()
+            .any(|p| p.ends_with("share/v1.txt")));
+        let binary_rel_initial = files_after_install
+            .iter()
+            .find(|p| p.ends_with("bin/a"))
+            .expect("binary present after initial install");
+        assert_eq!(
+            std::fs::read_to_string(live_path.join(binary_rel_initial)).unwrap(),
+            "binary"
+        );
+
+        // Update to v2
+        let mut resolved_update: HashMap<PackageId, ResolvedNode> = HashMap::new();
+        let pid_v2 = PackageId::new(
+            "A".to_string(),
+            sps2_types::Version::parse("1.1.0").unwrap(),
+        );
+        resolved_update.insert(
+            pid_v2.clone(),
+            ResolvedNode::local(
+                "A".to_string(),
+                pid_v2.version.clone(),
+                path_v2.clone(),
+                vec![],
+            ),
+        );
+        let mut prepared_update = HashMap::new();
+        prepared_update.insert(
+            pid_v2.clone(),
+            crate::PreparedPackage {
+                hash: hash_v2.clone(),
+                size: size_v2,
+                store_path: path_v2.clone(),
+                is_local: true,
+            },
+        );
+        let update_ctx = crate::InstallContext {
+            packages: vec![],
+            local_files: vec![],
+            force: true,
+            event_sender: None,
+        };
+        let update_result = ai
+            .install(&update_ctx, &resolved_update, Some(&prepared_update))
+            .await
+            .unwrap();
+
+        assert!(update_result.installed_packages.is_empty());
+        assert_eq!(update_result.updated_packages, vec![pid_v2.clone()]);
+        assert!(update_result.removed_packages.is_empty());
+
+        let installed = state.get_installed_packages().await.unwrap();
+        assert_eq!(installed.len(), 1);
+        assert_eq!(installed[0].version, "1.1.0");
+
+        // Live directory should reflect the new version
+        let files_after_update = collect_relative_files(&live_path);
+        assert!(!files_after_update
+            .iter()
+            .any(|p| p.ends_with("share/v1.txt")));
+        assert!(files_after_update
+            .iter()
+            .any(|p| p.ends_with("share/v2.txt")));
+        let binary_rel_updated = files_after_update
+            .iter()
+            .find(|p| p.ends_with("bin/a"))
+            .expect("binary present after update");
+        assert_eq!(
+            std::fs::read_to_string(live_path.join(binary_rel_updated)).unwrap(),
+            "binary2"
+        );
+
+        assert_eq!(refcount_store(&state, &hash_v1.to_hex()).await, 0);
+        assert!(refcount_store(&state, &hash_v2.to_hex()).await > 0);
     }
 
     #[tokio::test]
