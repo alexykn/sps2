@@ -150,6 +150,7 @@ pub struct DependencyGraph {
 
 impl DependencyGraph {
     /// Create new empty graph
+    #[must_use]
     pub fn new() -> Self {
         Self {
             nodes: std::collections::HashMap::new(),
@@ -170,6 +171,7 @@ impl DependencyGraph {
     }
 
     /// Check for cycles using DFS
+    #[must_use]
     pub fn has_cycles(&self) -> bool {
         use std::collections::HashSet;
 
@@ -213,6 +215,10 @@ impl DependencyGraph {
     }
 
     /// Perform topological sort using Kahn's algorithm
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a dependency cycle is detected.
     pub fn topological_sort(&self) -> Result<Vec<PackageId>, sps2_errors::Error> {
         use std::collections::{HashMap, VecDeque};
 

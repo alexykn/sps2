@@ -722,9 +722,9 @@ mod tests {
     use sps2_resolver::{DependencyGraph, ResolvedNode};
     use sps2_store::{create_package, PackageStore};
     use sps2_types::{Arch, Manifest, Version};
+    use std::sync::Arc;
     use tempfile::TempDir;
     use tokio::fs as afs;
-    use std::sync::Arc;
 
     async fn mk_env() -> (TempDir, StateManager, PackageStore) {
         let td = TempDir::new().expect("tempdir");
@@ -748,13 +748,17 @@ mod tests {
             .expect("write manifest");
 
         let content_path = src.join("opt/pm/live/share");
-        afs::create_dir_all(&content_path).await.expect("content dir");
+        afs::create_dir_all(&content_path)
+            .await
+            .expect("content dir");
         afs::write(content_path.join("file.txt"), name.as_bytes())
             .await
             .expect("write file");
 
         let sp_path = td.path().join("pkg.sp");
-        create_package(&src, &sp_path).await.expect("create package");
+        create_package(&src, &sp_path)
+            .await
+            .expect("create package");
 
         (td, sp_path)
     }
@@ -838,7 +842,10 @@ mod tests {
 
         assert_eq!(starts.len(), 2, "expected two start events");
         assert_eq!(completes.len(), 2, "expected two completion events");
-        assert!(starts[0].0 < completes[0].0, "first completion must follow first start");
+        assert!(
+            starts[0].0 < completes[0].0,
+            "first completion must follow first start"
+        );
         assert!(
             completes[0].0 < starts[1].0,
             "second package should only start after first completes"

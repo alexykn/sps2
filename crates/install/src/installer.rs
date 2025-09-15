@@ -186,7 +186,7 @@ impl Installer {
         for state in states {
             let packages = self
                 .state_manager
-                .get_state_packages(&state.state_id())
+                .get_installed_packages_in_state(&state.state_id())
                 .await?;
 
             // Parse parent_id if present
@@ -203,7 +203,7 @@ impl Installer {
                 packages: packages
                     .into_iter()
                     .take(5)
-                    .map(|name| sps2_types::PackageId::new(name, sps2_types::Version::new(1, 0, 0)))
+                    .map(|pkg| sps2_types::PackageId::new(pkg.name.clone(), pkg.version()))
                     .collect(), // First 5 packages as sample
             });
         }
@@ -334,5 +334,122 @@ impl StateInfo {
                 self.package_count - 3
             )
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{AtomicInstaller, PreparedPackage};
+    use sps2_index::IndexManager;
+    use sps2_resolver::{PackageId, ResolvedNode, Resolver};
+    use sps2_store::create_package;
+    use sps2_types::{Arch, Manifest, Version};
+    use std::collections::HashMap;
+    use tempfile::TempDir;
+    use tokio::fs as afs;
+
+    async fn mk_env() -> (TempDir, StateManager, sps2_store::PackageStore) {
+        let td = TempDir::new().expect("tempdir");
+        let state = StateManager::new(td.path()).await.expect("state manager");
+        let store_base = td.path().join("store");
+        afs::create_dir_all(&store_base).await.expect("store dir");
+        let store = sps2_store::PackageStore::new(store_base);
+        (td, state, store)
+    }
+
+    async fn make_sp_and_add_to_store(
+        store: &sps2_store::PackageStore,
+        name: &str,
+        version: &str,
+    ) -> (sps2_hash::Hash, std::path::PathBuf, u64) {
+        let td = TempDir::new().expect("pkg dir");
+        let src = td.path().join("src");
+        afs::create_dir_all(&src).await.expect("src dir");
+
+        let version_parsed = Version::parse(version).expect("version");
+        let manifest = Manifest::new(name.to_string(), &version_parsed, 1, &Arch::Arm64);
+        let manifest_path = src.join("manifest.toml");
+        sps2_store::manifest_io::write_manifest(&manifest_path, &manifest)
+            .await
+            .expect("write manifest");
+
+        let content_dir = src.join("opt/pm/live/share");
+        afs::create_dir_all(&content_dir)
+            .await
+            .expect("content dir");
+        afs::write(content_dir.join("content.txt"), name.as_bytes())
+            .await
+            .expect("write content");
+
+        let sp = td.path().join("pkg.sp");
+        create_package(&src, &sp).await.expect("create package");
+
+        let stored = store.add_package(&sp).await.expect("add package");
+        let hash = stored.hash().expect("hash");
+        let path = store.package_path(&hash);
+        let size = afs::metadata(&sp).await.expect("metadata").len();
+        (hash, path, size)
+    }
+
+    #[tokio::test]
+    async fn list_states_reports_actual_package_versions() {
+        let (_, state, store) = mk_env().await;
+        let (hash, store_path, size) = make_sp_and_add_to_store(&store, "demo", "1.2.3").await;
+
+        let mut resolved: HashMap<PackageId, ResolvedNode> = HashMap::new();
+        let pkg_id = PackageId::new("demo".to_string(), Version::parse("1.2.3").unwrap());
+        resolved.insert(
+            pkg_id.clone(),
+            ResolvedNode::local(
+                "demo".to_string(),
+                pkg_id.version.clone(),
+                store_path.clone(),
+                vec![],
+            ),
+        );
+
+        let mut prepared = HashMap::new();
+        prepared.insert(
+            pkg_id.clone(),
+            PreparedPackage {
+                hash: hash.clone(),
+                size,
+                store_path,
+                is_local: true,
+            },
+        );
+
+        let ctx = InstallContext {
+            packages: vec![],
+            local_files: vec![],
+            force: false,
+            event_sender: None,
+        };
+
+        let mut atomic = AtomicInstaller::new(state.clone(), store.clone())
+            .await
+            .expect("atomic installer");
+        let _ = atomic
+            .install(&ctx, &resolved, Some(&prepared))
+            .await
+            .expect("install");
+
+        let temp_dir = TempDir::new().expect("installer tempdir");
+        let package_resolver = Resolver::new(IndexManager::new(temp_dir.path().join("index")));
+        let installer = Installer::new(
+            InstallConfig::default(),
+            package_resolver,
+            state.clone(),
+            store,
+        );
+
+        let states = installer.list_states().await.expect("list states");
+        assert!(!states.is_empty());
+        let first = &states[0];
+        assert_eq!(first.package_count, 1);
+        assert_eq!(first.packages.len(), 1);
+        assert_eq!(first.packages[0].name, "demo");
+        assert_eq!(first.packages[0].version, Version::parse("1.2.3").unwrap());
     }
 }
