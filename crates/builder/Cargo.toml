@@ -47,7 +47,7 @@ which = "8.0.0"
 sysinfo = "0.37.0"
 uuid = { version = "1.18.1", features = ["v4"] }
 bitflags = "2.9.4"
-zip = "5.0.0"
+zip = "5.1.1"
 rayon = "1.11.0"
 ignore = { version = "0.4.23", features = [
     "simd-accel",
