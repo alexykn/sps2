@@ -3,13 +3,12 @@
 //! A simple ls-like tool to explore the content-addressed store
 
 use clap::Parser;
-use colored::Colorize;
-use humansize::{format_size, BINARY};
 use sps2_config::fixed_paths;
 use sps2_state::create_pool;
 use sqlx::Acquire;
 
 use std::collections::HashMap;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
@@ -70,7 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db_path = cli
         .db
         .unwrap_or_else(|| PathBuf::from(fixed_paths::DB_PATH));
-    let use_color = !cli.no_color && atty::is(atty::Stream::Stdout);
+    let use_color = !cli.no_color && std::io::stdout().is_terminal();
 
     if cli.packages {
         // List packages instead of objects
@@ -189,11 +188,7 @@ async fn list_store(
 
         dirs.sort();
         for dir in dirs {
-            if use_color {
-                println!("{}/", dir.blue());
-            } else {
-                println!("{dir}/");
-            }
+            println!("{}/", style_blue(&dir, use_color));
         }
     }
 
@@ -225,11 +220,7 @@ async fn list_recursive(
         let name = entry.file_name().to_string_lossy().to_string();
 
         if metadata.is_dir() {
-            if use_color {
-                println!("{}{}/", indent, name.blue());
-            } else {
-                println!("{indent}{name}/");
-            }
+            println!("{indent}{}/", style_blue(&name, use_color));
 
             // Recursive listing handled at top level
             Box::pin(list_recursive(
@@ -248,7 +239,7 @@ async fn list_recursive(
             if hash_only {
                 println!("{indent}{full_hash}");
             } else if long_format {
-                let size = format_size(metadata.len(), BINARY);
+                let size = format_size(metadata.len());
                 let perms = format_permissions(&metadata);
 
                 if let Some(names) = file_map.get(full_hash) {
@@ -258,16 +249,8 @@ async fn list_recursive(
                             indent,
                             perms,
                             size,
-                            if use_color {
-                                short_hash(full_hash, 16).dimmed()
-                            } else {
-                                short_hash(full_hash, 16).normal()
-                            },
-                            if use_color {
-                                file_name.green()
-                            } else {
-                                file_name.normal()
-                            }
+                            style_dimmed(short_hash(full_hash, 16), use_color),
+                            style_green(file_name, use_color)
                         );
                     }
                 } else {
@@ -276,11 +259,7 @@ async fn list_recursive(
                         indent,
                         perms,
                         size,
-                        if use_color {
-                            short_hash(full_hash, 16).dimmed()
-                        } else {
-                            short_hash(full_hash, 16).normal()
-                        }
+                        style_dimmed(short_hash(full_hash, 16), use_color)
                     );
                 }
             } else {
@@ -290,27 +269,15 @@ async fn list_recursive(
                         println!(
                             "{}{} {}",
                             indent,
-                            if use_color {
-                                short_hash(full_hash, 8).dimmed()
-                            } else {
-                                short_hash(full_hash, 8).normal()
-                            },
-                            if use_color {
-                                file_name.green()
-                            } else {
-                                file_name.normal()
-                            }
+                            style_dimmed(short_hash(full_hash, 8), use_color),
+                            style_green(file_name, use_color)
                         );
                     }
                 } else {
                     println!(
                         "{}{} (unknown)",
                         indent,
-                        if use_color {
-                            short_hash(full_hash, 8).dimmed()
-                        } else {
-                            short_hash(full_hash, 8).normal()
-                        }
+                        style_dimmed(short_hash(full_hash, 8), use_color)
                     );
                 }
             }
@@ -358,11 +325,7 @@ async fn list_specific(
                 dirs.sort();
                 if recursive {
                     for d in dirs {
-                        if use_color {
-                            println!("{}/", d.blue());
-                        } else {
-                            println!("{d}/");
-                        }
+                        println!("{}/", style_blue(&d, use_color));
                         Box::pin(list_recursive(
                             &p1_dir.join(&d),
                             file_map,
@@ -375,11 +338,7 @@ async fn list_specific(
                     }
                 } else {
                     for d in dirs {
-                        if use_color {
-                            println!("{}/", d.blue());
-                        } else {
-                            println!("{d}/");
-                        }
+                        println!("{}/", style_blue(&d, use_color));
                     }
                 }
             }
@@ -401,11 +360,7 @@ async fn list_specific(
                     dirs.sort();
                     if recursive {
                         for d in dirs {
-                            if use_color {
-                                println!("{}/", d.blue());
-                            } else {
-                                println!("{d}/");
-                            }
+                            println!("{}/", style_blue(&d, use_color));
                             Box::pin(list_recursive(
                                 &p1_dir.join(&d),
                                 file_map,
@@ -418,11 +373,7 @@ async fn list_specific(
                         }
                     } else {
                         for d in dirs {
-                            if use_color {
-                                println!("{}/", d.blue());
-                            } else {
-                                println!("{d}/");
-                            }
+                            println!("{}/", style_blue(&d, use_color));
                         }
                     }
                 }
@@ -451,7 +402,7 @@ async fn list_specific(
                     if hash_only {
                         println!("{full_hash}");
                     } else if long_format {
-                        let size = format_size(metadata.len(), BINARY);
+                        let size = format_size(metadata.len());
                         let perms = format_permissions(&metadata);
 
                         if let Some(names) = file_map.get(&full_hash) {
@@ -460,16 +411,8 @@ async fn list_specific(
                                     "{} {:>8} {} -> {}",
                                     perms,
                                     size,
-                                    if use_color {
-                                        short_hash(&full_hash, 16).dimmed()
-                                    } else {
-                                        short_hash(&full_hash, 16).normal()
-                                    },
-                                    if use_color {
-                                        file_name.green()
-                                    } else {
-                                        file_name.normal()
-                                    }
+                                    style_dimmed(short_hash(&full_hash, 16), use_color),
+                                    style_green(file_name, use_color)
                                 );
                             }
                         } else {
@@ -477,37 +420,21 @@ async fn list_specific(
                                 "{} {:>8} {} (unknown)",
                                 perms,
                                 size,
-                                if use_color {
-                                    short_hash(&full_hash, 16).dimmed()
-                                } else {
-                                    short_hash(&full_hash, 16).normal()
-                                }
+                                style_dimmed(short_hash(&full_hash, 16), use_color)
                             );
                         }
                     } else if let Some(names) = file_map.get(&full_hash) {
                         for file_name in names {
                             println!(
                                 "{} {}",
-                                if use_color {
-                                    short_hash(&full_hash, 8).dimmed()
-                                } else {
-                                    short_hash(&full_hash, 8).normal()
-                                },
-                                if use_color {
-                                    file_name.green()
-                                } else {
-                                    file_name.normal()
-                                }
+                                style_dimmed(short_hash(&full_hash, 8), use_color),
+                                style_green(file_name, use_color)
                             );
                         }
                     } else {
                         println!(
                             "{} (unknown)",
-                            if use_color {
-                                short_hash(&full_hash, 8).dimmed()
-                            } else {
-                                short_hash(&full_hash, 8).normal()
-                            }
+                            style_dimmed(short_hash(&full_hash, 8), use_color)
                         );
                     }
                 }
@@ -569,6 +496,51 @@ fn format_permissions(metadata: &std::fs::Metadata) -> String {
         } else {
             "-rw-rw-rw-".to_string()
         }
+    }
+}
+
+fn apply_ansi_style(text: &str, code: &str, use_color: bool) -> String {
+    if use_color {
+        format!("\x1b[{code}{text}\x1b[0m")
+    } else {
+        text.to_string()
+    }
+}
+
+fn style_dimmed(text: &str, use_color: bool) -> String {
+    apply_ansi_style(text, "2m", use_color)
+}
+
+fn style_blue(text: &str, use_color: bool) -> String {
+    apply_ansi_style(text, "34m", use_color)
+}
+
+fn style_green(text: &str, use_color: bool) -> String {
+    apply_ansi_style(text, "32m", use_color)
+}
+
+fn style_yellow(text: &str, use_color: bool) -> String {
+    apply_ansi_style(text, "33m", use_color)
+}
+
+fn style_cyan(text: &str, use_color: bool) -> String {
+    apply_ansi_style(text, "36m", use_color)
+}
+
+fn format_size(bytes: u64) -> String {
+    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
+    let mut size = bytes as f64;
+    let mut unit_index = 0;
+
+    while size >= 1024.0 && unit_index < UNITS.len() - 1 {
+        size /= 1024.0;
+        unit_index += 1;
+    }
+
+    if unit_index == 0 {
+        format!("{size:.0} {}", UNITS[unit_index])
+    } else {
+        format!("{size:.1} {}", UNITS[unit_index])
     }
 }
 
@@ -650,31 +622,15 @@ async fn list_packages(
                 println!(
                     "{} {} ({}:{})",
                     perms,
-                    if use_color {
-                        hash.dimmed()
-                    } else {
-                        hash.normal()
-                    },
-                    if use_color {
-                        name.cyan()
-                    } else {
-                        name.normal()
-                    },
-                    if use_color {
-                        version.yellow()
-                    } else {
-                        version.normal()
-                    }
+                    style_dimmed(&hash, use_color),
+                    style_cyan(name, use_color),
+                    style_yellow(version, use_color)
                 );
             } else {
                 println!(
                     "{} {} (unknown package)",
                     perms,
-                    if use_color {
-                        hash.dimmed()
-                    } else {
-                        hash.normal()
-                    }
+                    style_dimmed(&hash, use_color)
                 );
             }
 
@@ -689,14 +645,7 @@ async fn list_packages(
 
                 files.sort();
                 for file in files {
-                    println!(
-                        "  {}",
-                        if use_color {
-                            file.green()
-                        } else {
-                            file.normal()
-                        }
-                    );
+                    println!("  {}", style_green(&file, use_color));
                 }
             }
         } else {
@@ -704,30 +653,14 @@ async fn list_packages(
             if let Some((name, version)) = package_map.get(&hash) {
                 println!(
                     "{} -> {}:{}",
-                    if use_color {
-                        short_hash(&hash, 16).dimmed()
-                    } else {
-                        short_hash(&hash, 16).normal()
-                    },
-                    if use_color {
-                        name.cyan()
-                    } else {
-                        name.normal()
-                    },
-                    if use_color {
-                        version.yellow()
-                    } else {
-                        version.normal()
-                    }
+                    style_dimmed(short_hash(&hash, 16), use_color),
+                    style_cyan(name, use_color),
+                    style_yellow(version, use_color)
                 );
             } else {
                 println!(
                     "{} (unknown)",
-                    if use_color {
-                        short_hash(&hash, 16).dimmed()
-                    } else {
-                        short_hash(&hash, 16).normal()
-                    }
+                    style_dimmed(short_hash(&hash, 16), use_color)
                 );
             }
         }
@@ -771,31 +704,15 @@ async fn list_specific_package(
                         println!(
                             "{} {} ({}:{})",
                             perms,
-                            if use_color {
-                                hash.dimmed()
-                            } else {
-                                hash.normal()
-                            },
-                            if use_color {
-                                name.cyan()
-                            } else {
-                                name.normal()
-                            },
-                            if use_color {
-                                version.yellow()
-                            } else {
-                                version.normal()
-                            }
+                            style_dimmed(&hash, use_color),
+                            style_cyan(name, use_color),
+                            style_yellow(version, use_color)
                         );
                     } else {
                         println!(
                             "{} {} (unknown package)",
                             perms,
-                            if use_color {
-                                hash.dimmed()
-                            } else {
-                                hash.normal()
-                            }
+                            style_dimmed(&hash, use_color)
                         );
                     }
 
@@ -809,45 +726,19 @@ async fn list_specific_package(
 
                     files.sort();
                     for file in files {
-                        println!(
-                            "  {}",
-                            if use_color {
-                                file.green()
-                            } else {
-                                file.normal()
-                            }
-                        );
+                        println!("  {}", style_green(&file, use_color));
                     }
                 } else {
                     // Short format
                     if let Some((name, version)) = package_map.get(&hash) {
                         println!(
                             "{} -> {}:{}",
-                            if use_color {
-                                hash.dimmed()
-                            } else {
-                                hash.normal()
-                            },
-                            if use_color {
-                                name.cyan()
-                            } else {
-                                name.normal()
-                            },
-                            if use_color {
-                                version.yellow()
-                            } else {
-                                version.normal()
-                            }
+                            style_dimmed(&hash, use_color),
+                            style_cyan(name, use_color),
+                            style_yellow(version, use_color)
                         );
                     } else {
-                        println!(
-                            "{} (unknown)",
-                            if use_color {
-                                hash.dimmed()
-                            } else {
-                                hash.normal()
-                            }
-                        );
+                        println!("{} (unknown)", style_dimmed(&hash, use_color));
                     }
                 }
             }
