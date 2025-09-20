@@ -142,7 +142,7 @@ impl BuildEnvironment {
 
                     // Use NetClient to download the file with consistent retry logic
                     let default_tx = {
-                        let (tx, _) = tokio::sync::mpsc::unbounded_channel();
+                        let (tx, _) = sps2_events::channel();
                         tx
                     };
                     let event_sender = self.context.event_sender.as_ref().unwrap_or(&default_tx);

@@ -482,7 +482,7 @@ impl AtomicInstaller {
 
         // Link files from store to staging
         if let Some(sender) = &transition.event_sender {
-            let _ = sender.send(AppEvent::General(GeneralEvent::DebugLog {
+            sender.emit(AppEvent::General(GeneralEvent::DebugLog {
                 message: format!("Linking package {} to staging", package_id.name),
                 context: std::collections::HashMap::new(),
             }));
@@ -513,7 +513,7 @@ impl AtomicInstaller {
 
         // Debug what was linked
         if let Some(sender) = &transition.event_sender {
-            let _ = sender.send(AppEvent::General(GeneralEvent::DebugLog {
+            sender.emit(AppEvent::General(GeneralEvent::DebugLog {
                 message: format!(
                     "Linked {} files/directories for package {}",
                     file_paths.len(),

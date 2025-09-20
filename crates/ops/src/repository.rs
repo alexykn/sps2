@@ -16,6 +16,8 @@ use std::time::Instant;
 pub async fn reposync(ctx: &OpsCtx, yes: bool) -> Result<String, Error> {
     let start = Instant::now();
 
+    let _correlation = ctx.push_correlation("reposync");
+
     ctx.emit(AppEvent::Repo(RepoEvent::SyncStarting));
 
     let mut candidates: Vec<&sps2_config::RepositoryConfig> = ctx.config.repos.get_all();
@@ -250,7 +252,7 @@ async fn download_index_conditional(
         }
         Ok(content)
     } else {
-        let _ = ctx.tx.send(AppEvent::Repo(RepoEvent::SyncCompleted {
+        ctx.tx.emit(AppEvent::Repo(RepoEvent::SyncCompleted {
             packages_updated: 0,
             duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
             bytes_transferred: 0,
@@ -308,7 +310,7 @@ async fn fetch_and_verify_keys(
 
     if key_manager.get_trusted_keys().is_empty() {
         let bootstrap_key = "RWSGOq2NVecA2UPNdBUZykp1MLhfMmkAK/SZSjK3bpq2q7I8LbSVVBDm";
-        let _ = tx.send(AppEvent::General(GeneralEvent::Warning {
+        tx.emit(AppEvent::General(GeneralEvent::Warning {
             message: "Initializing with bootstrap key".to_string(),
             context: Some("First run - no trusted keys found".to_string()),
         }));
@@ -319,7 +321,7 @@ async fn fetch_and_verify_keys(
         .fetch_and_verify_keys(net_client, keys_url, tx)
         .await?;
 
-    let _ = tx.send(AppEvent::General(GeneralEvent::OperationCompleted {
+    tx.emit(AppEvent::General(GeneralEvent::OperationCompleted {
         operation: "Key verification".to_string(),
         success: true,
     }));

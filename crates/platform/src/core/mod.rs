@@ -1,29 +1,26 @@
 //! Core platform abstractions and context management
 
+use crate::binary::BinaryOperations;
+use crate::filesystem::FilesystemOperations;
+use crate::process::ProcessOperations;
 use serde::{Deserialize, Serialize};
 use sps2_errors::PlatformError;
-use sps2_events::{events::PlatformEvent, AppEvent};
+use sps2_events::{events::PlatformEvent, AppEvent, EventEmitter, EventSender};
 use std::collections::HashMap;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Instant, SystemTime};
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::UnboundedSender;
-
-use crate::binary::BinaryOperations;
-use crate::filesystem::FilesystemOperations;
-use crate::process::ProcessOperations;
 
 /// Context for platform operations, providing event emission and metadata tracking
 pub struct PlatformContext {
-    event_sender: Option<mpsc::UnboundedSender<AppEvent>>,
+    event_sender: Option<EventSender>,
     operation_metadata: HashMap<String, String>,
 }
 
 impl PlatformContext {
     /// Create a new platform context with event emission capabilities
-    pub fn new(event_sender: Option<mpsc::UnboundedSender<AppEvent>>) -> Self {
+    pub fn new(event_sender: Option<EventSender>) -> Self {
         Self {
             event_sender,
             operation_metadata: HashMap::new(),
@@ -33,7 +30,7 @@ impl PlatformContext {
     /// Emit a platform event if event sender is available
     pub async fn emit_event(&self, event: AppEvent) {
         if let Some(sender) = &self.event_sender {
-            let _ = sender.send(event);
+            sender.emit(event);
         }
     }
 
@@ -107,7 +104,7 @@ pub struct ToolRegistry {
     fallback_paths: HashMap<String, Vec<PathBuf>>,
 
     /// Event sender for tool discovery notifications (with interior mutability)
-    event_tx: Arc<RwLock<Option<UnboundedSender<AppEvent>>>>,
+    event_tx: Arc<RwLock<Option<EventSender>>>,
 }
 
 /// Persistent platform cache for storing discovered tools across process restarts
@@ -304,7 +301,7 @@ impl ToolRegistry {
     }
 
     /// Set event sender for tool discovery notifications
-    pub fn set_event_sender(&self, tx: UnboundedSender<AppEvent>) {
+    pub fn set_event_sender(&self, tx: EventSender) {
         let mut event_tx = self.event_tx.write().unwrap();
         *event_tx = Some(tx);
     }
@@ -670,7 +667,7 @@ impl ToolRegistry {
     fn emit_event(&self, event: AppEvent) {
         let event_tx = self.event_tx.read().unwrap();
         if let Some(tx) = event_tx.as_ref() {
-            let _ = tx.send(event);
+            tx.emit(event);
         }
     }
 
@@ -762,7 +759,7 @@ impl PlatformManager {
     }
 
     /// Set event sender for tool discovery notifications
-    pub fn set_tool_event_sender(&self, tx: UnboundedSender<AppEvent>) {
+    pub fn set_tool_event_sender(&self, tx: EventSender) {
         self.tool_registry.set_event_sender(tx);
     }
 
@@ -831,10 +828,7 @@ impl Platform {
     }
 
     /// Create a platform context with event emission
-    pub fn create_context(
-        &self,
-        event_sender: Option<mpsc::UnboundedSender<AppEvent>>,
-    ) -> PlatformContext {
+    pub fn create_context(&self, event_sender: Option<EventSender>) -> PlatformContext {
         PlatformContext::new(event_sender)
     }
 
@@ -896,7 +890,7 @@ impl Platform {
 impl PlatformContext {
     /// Create a PlatformContext with basic package information (fallback when BuildContext is not available)
     pub fn with_package_info(
-        event_sender: Option<mpsc::UnboundedSender<AppEvent>>,
+        event_sender: Option<EventSender>,
         package_name: &str,
         package_version: &str,
         arch: &str,

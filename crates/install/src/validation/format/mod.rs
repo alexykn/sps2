@@ -11,7 +11,7 @@ pub mod extension;
 pub mod size_limits;
 
 use sps2_errors::Error;
-use sps2_events::EventSender;
+use sps2_events::{EventEmitter, EventSender};
 use std::path::Path;
 
 use crate::validation::types::PackageFormat;
@@ -43,7 +43,7 @@ pub async fn validate_file_format(
     event_sender: Option<&EventSender>,
 ) -> Result<PackageFormat, Error> {
     if let Some(sender) = event_sender {
-        let _ = sender.send(sps2_events::AppEvent::General(
+        let () = sender.emit(sps2_events::AppEvent::General(
             sps2_events::GeneralEvent::DebugLog {
                 message: format!(
                     "DEBUG: validate_file_format - checking extension for: {}",
@@ -58,7 +58,7 @@ pub async fn validate_file_format(
     validate_package_extension(file_path)?;
 
     if let Some(sender) = event_sender {
-        let _ = sender.send(sps2_events::AppEvent::General(
+        let () = sender.emit(sps2_events::AppEvent::General(
             sps2_events::GeneralEvent::DebugLog {
                 message: "DEBUG: validate_file_format - extension check passed".to_string(),
                 context: std::collections::HashMap::new(),
@@ -76,7 +76,7 @@ pub async fn validate_file_format(
     validate_supported_format(&format)?;
 
     if let Some(sender) = event_sender {
-        let _ = sender.send(sps2_events::AppEvent::General(
+        let () = sender.emit(sps2_events::AppEvent::General(
             sps2_events::GeneralEvent::OperationCompleted {
                 operation: "File format validation completed".to_string(),
                 success: true,

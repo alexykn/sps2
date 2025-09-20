@@ -7,9 +7,9 @@
 - Builder helpers expose expressive APIs (`with_correlation_id`, `with_parent`, `with_label`).
 
 ### Emission expectations
-- All new event APIs will accept or generate an `EventMeta`.
-- `EventEmitter` will grow an `emit_with_meta` helper and default `emit` will forward an auto-generated `EventMeta` with reasonable defaults.
-- CLI/logging can rely on `EventMeta::tracing_level()` / `EventSource::as_str()` for structured output.
+- All event APIs now emit `EventMessage { meta, event }` envelopes; helper constructors ensure a fresh `EventMeta` is attached when call-sites do not provide one explicitly.
+- `EventEmitter` exposes `emit_with_meta`, and the default `emit` path auto-generates metadata (ids, levels, correlation) before forwarding to the sender.
+- CLI/logging consume the metadata directly, relying on `EventMeta::tracing_level()` / `EventSource::as_str()` for structured output and span correlation.
 
 ## Structured Error Envelope (crates/errors/src/structured.rs)
 - `StructuredError` provides a durable `ErrorCode`, `ErrorSeverity`, friendly message, optional details, metadata map, and an `ErrorContext` block.

@@ -88,6 +88,8 @@ pub async fn pack_from_directory(
     let package_name = manifest.package.name.clone();
     let package_version = manifest.version()?;
 
+    let _correlation = ctx.push_correlation(format!("pack:{package_name}"));
+
     // Create a minimal build context
     let output_path = determine_output_path(output_dir, &package_name, &package_version);
     let build_context = BuildContext::new(
@@ -162,6 +164,8 @@ async fn pack_from_recipe_impl(
     let yaml_recipe = parse_yaml_recipe(recipe_path).await?;
     let package_name = yaml_recipe.metadata.name.clone();
     let package_version = Version::parse(&yaml_recipe.metadata.version)?;
+
+    let _correlation = ctx.push_correlation(format!("pack:{package_name}"));
 
     // Construct expected staging directory path
     let build_root = sps2_config::BuilderConfig::default().build.build_root;
@@ -285,14 +289,16 @@ async fn execute_post_steps(
 
     // Execute each post step
     for step in &build_plan.post_steps {
-        let _ = context.event_sender.as_ref().unwrap().send(AppEvent::Build(
-            BuildEvent::PhaseStarted {
+        context
+            .event_sender
+            .as_ref()
+            .unwrap()
+            .emit(AppEvent::Build(BuildEvent::PhaseStarted {
                 session_id: "pack-session".to_string(),
                 package: context.name.clone(),
                 phase: BuildPhase::Build,
                 estimated_duration: None,
-            },
-        ));
+            }));
 
         execute_post_step_with_security(
             step,
@@ -303,14 +309,16 @@ async fn execute_post_steps(
         )
         .await?;
 
-        let _ = context.event_sender.as_ref().unwrap().send(AppEvent::Build(
-            BuildEvent::PhaseCompleted {
+        context
+            .event_sender
+            .as_ref()
+            .unwrap()
+            .emit(AppEvent::Build(BuildEvent::PhaseCompleted {
                 session_id: "pack-session".to_string(),
                 package: context.name.clone(),
                 phase: BuildPhase::Build,
                 duration: std::time::Duration::from_secs(0), // Not tracking duration here
-            },
-        ));
+            }));
     }
 
     context

@@ -26,6 +26,8 @@ use uuid::Uuid;
 pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallReport, Error> {
     let start = Instant::now();
 
+    let _correlation = ctx.push_correlation_for_packages("update", package_names);
+
     // Check mode: preview what would be updated
     if ctx.check_mode {
         return preview_update(ctx, package_names).await;

@@ -12,6 +12,8 @@ use sps2_store::StoredPackage;
 ///
 /// Returns an error if package listing fails.
 pub async fn list_packages(ctx: &OpsCtx) -> Result<Vec<PackageInfo>, Error> {
+    let _correlation = ctx.push_correlation("query:list");
+
     ctx.emit(AppEvent::Package(PackageEvent::ListStarting));
 
     // Get installed packages from state
@@ -181,6 +183,8 @@ pub async fn package_info(ctx: &OpsCtx, package_name: &str) -> Result<PackageInf
 ///
 /// Returns an error if package search fails.
 pub async fn search_packages(ctx: &OpsCtx, query: &str) -> Result<Vec<SearchResult>, Error> {
+    let _correlation = ctx.push_correlation(format!("query:search:{query}"));
+
     ctx.emit(AppEvent::Package(PackageEvent::SearchStarting {
         query: query.to_string(),
     }));
@@ -321,7 +325,7 @@ mod tests {
             .await
             .expect("install package");
 
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, _rx) = sps2_events::channel();
         let config = Config::default();
         let index = sps2_index::IndexManager::new(temp_dir.path().join("index"));
         let net = NetClient::new_without_proxies(NetConfig::default()).expect("net client");

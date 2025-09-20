@@ -15,6 +15,8 @@
 //! - **Tracing integration**: Built-in structured logging with intelligent log levels
 //! - **Progress tracking**: Sophisticated algorithms with ETA, speed calculation, and phases
 
+use serde::{Deserialize, Serialize};
+
 pub mod meta;
 pub use meta::{EventLevel, EventMeta, EventSource};
 
@@ -48,13 +50,33 @@ pub use events::{
     UpdateEvent,
 };
 
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+
+/// Envelope carrying metadata alongside an application event.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EventMessage {
+    pub meta: EventMeta,
+    pub event: AppEvent,
+}
+
+impl EventMessage {
+    #[must_use]
+    pub fn new(meta: EventMeta, event: AppEvent) -> Self {
+        Self { meta, event }
+    }
+
+    #[must_use]
+    pub fn from_event(event: AppEvent) -> Self {
+        let meta = derive_meta(&event);
+        Self { meta, event }
+    }
+}
 
 /// Type alias for event sender using the new `AppEvent` system
-pub type EventSender = UnboundedSender<AppEvent>;
+pub type EventSender = UnboundedSender<EventMessage>;
 
 /// Type alias for event receiver using the new `AppEvent` system
-pub type EventReceiver = tokio::sync::mpsc::UnboundedReceiver<AppEvent>;
+pub type EventReceiver = UnboundedReceiver<EventMessage>;
 
 /// Create a new event channel with the `AppEvent` system
 #[must_use]
@@ -70,12 +92,22 @@ pub trait EventEmitter {
     /// Get the event sender for this emitter
     fn event_sender(&self) -> Option<&EventSender>;
 
-    /// Emit an event through this emitter
-    fn emit(&self, event: AppEvent) {
+    /// Allow implementers to enrich event metadata before emission.
+    fn enrich_event_meta(&self, _event: &AppEvent, _meta: &mut EventMeta) {}
+
+    /// Emit an event with explicitly provided metadata.
+    fn emit_with_meta(&self, meta: EventMeta, event: AppEvent) {
         if let Some(sender) = self.event_sender() {
-            // Ignore send errors - if receiver is dropped, we just continue
-            let _ = sender.send(event);
+            let message = EventMessage::new(meta, event);
+            let _ = sender.send(message);
         }
+    }
+
+    /// Emit an event through this emitter, automatically deriving metadata.
+    fn emit(&self, event: AppEvent) {
+        let mut meta = derive_meta(&event);
+        self.enrich_event_meta(&event, &mut meta);
+        self.emit_with_meta(meta, event);
     }
 
     /// Emit a debug log event
@@ -243,4 +275,10 @@ impl EventEmitter for EventSender {
     fn event_sender(&self) -> Option<&EventSender> {
         Some(self)
     }
+}
+
+fn derive_meta(event: &AppEvent) -> EventMeta {
+    let level: EventLevel = event.log_level().into();
+    let source = event.event_source();
+    EventMeta::new(level, source)
 }

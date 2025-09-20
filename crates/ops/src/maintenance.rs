@@ -314,7 +314,7 @@ pub async fn rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<StateI
     // Get state information with pre-calculated changes
     let state_info = get_rollback_state_info_with_changes(ctx, target_id, rollback_changes).await?;
 
-    let _ = ctx.tx.send(AppEvent::State(StateEvent::RollbackCompleted {
+    ctx.tx.emit(AppEvent::State(StateEvent::RollbackCompleted {
         from: ctx.state.get_current_state_id().await?,
         to: target_id,
         duration: start.elapsed(),

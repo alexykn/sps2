@@ -10,7 +10,7 @@ pub mod orchestrator;
 pub mod recovery;
 
 use sps2_errors::Error;
-use sps2_events::EventSender;
+use sps2_events::{EventEmitter, EventSender};
 use std::path::Path;
 
 use crate::validation::types::ValidationResult;
@@ -46,7 +46,7 @@ pub async fn validate_sp_file(
     event_sender: Option<&EventSender>,
 ) -> Result<ValidationResult, Error> {
     if let Some(sender) = event_sender {
-        let _ = sender.send(sps2_events::AppEvent::Install(
+        let () = sender.emit(sps2_events::AppEvent::Install(
             sps2_events::InstallEvent::ValidationStarted {
                 package: "unknown".to_string(), // TODO: Extract package name from file_path
                 version: sps2_types::Version::new(0, 0, 0), // TODO: Extract version from file_path
@@ -57,7 +57,7 @@ pub async fn validate_sp_file(
                 ],
             },
         ));
-        let _ = sender.send(sps2_events::AppEvent::General(
+        let () = sender.emit(sps2_events::AppEvent::General(
             sps2_events::GeneralEvent::DebugLog {
                 message: format!("DEBUG: Starting validation of {}", file_path.display()),
                 context: std::collections::HashMap::new(),
@@ -74,13 +74,13 @@ pub async fn validate_sp_file(
         .await?;
 
     if let Some(sender) = event_sender {
-        let _ = sender.send(sps2_events::AppEvent::General(
+        let () = sender.emit(sps2_events::AppEvent::General(
             sps2_events::GeneralEvent::OperationCompleted {
                 operation: format!("Validation completed for {}", file_path.display()),
                 success: true,
             },
         ));
-        let _ = sender.send(sps2_events::AppEvent::General(
+        let () = sender.emit(sps2_events::AppEvent::General(
             sps2_events::GeneralEvent::DebugLog {
                 message: "PIPELINE: Starting format validation stage".to_string(),
                 context: std::collections::HashMap::new(),
@@ -217,7 +217,7 @@ pub async fn validate_batch(
 
         if let Some(sender) = event_sender {
             if let Ok(ref _validation_result) = result {
-                let _ = sender.send(sps2_events::AppEvent::General(
+                let () = sender.emit(sps2_events::AppEvent::General(
                     sps2_events::GeneralEvent::DebugLog {
                         message: format!(
                             "PIPELINE: Content validation complete for {} - validation passed",

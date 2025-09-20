@@ -12,7 +12,7 @@ pub mod policies;
 pub mod symlinks;
 
 use sps2_errors::Error;
-use sps2_events::EventSender;
+use sps2_events::{EventEmitter, EventSender};
 use std::path::Path;
 
 use crate::validation::types::{PackageFormat, ValidationResult};
@@ -49,7 +49,7 @@ pub async fn validate_security_properties(
     event_sender: Option<&EventSender>,
 ) -> Result<(), Error> {
     if let Some(sender) = event_sender {
-        let _ = sender.send(sps2_events::AppEvent::General(
+        let () = sender.emit(sps2_events::AppEvent::General(
             sps2_events::GeneralEvent::OperationStarted {
                 operation: "Validating security properties".to_string(),
             },
@@ -67,7 +67,7 @@ pub async fn validate_security_properties(
     // Additional security checks can be added here in the future
 
     if let Some(sender) = event_sender {
-        let _ = sender.send(sps2_events::AppEvent::General(
+        let () = sender.emit(sps2_events::AppEvent::General(
             sps2_events::GeneralEvent::OperationCompleted {
                 operation: "Security validation completed".to_string(),
                 success: true,
@@ -90,7 +90,7 @@ pub async fn validate_package_security(
     event_sender: Option<&EventSender>,
 ) -> Result<(), Error> {
     if let Some(sender) = event_sender {
-        let _ = sender.send(sps2_events::AppEvent::General(
+        let () = sender.emit(sps2_events::AppEvent::General(
             sps2_events::GeneralEvent::DebugLog {
                 message: format!(
                     "DEBUG: Applying {} security policy to package",

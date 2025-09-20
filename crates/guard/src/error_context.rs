@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use sps2_errors::{DiscrepancySeverity, GuardError, GuardErrorSummary};
 use sps2_events::events::GuardDiscrepancyParams;
-use sps2_events::{AppEvent, EventSender, GuardEvent};
+use sps2_events::{AppEvent, EventEmitter, EventSender, GuardEvent};
 
 use crate::types::{Discrepancy, OperationType, VerificationResult};
 
@@ -128,7 +128,7 @@ impl GuardErrorContext {
             let context = error.user_context();
 
             self.event_sender
-                .send(AppEvent::Guard(GuardEvent::DiscrepancyFound(
+                .emit(AppEvent::Guard(GuardEvent::DiscrepancyFound(
                     GuardDiscrepancyParams {
                         operation_id: self.operation_id.clone(),
                         discrepancy_type: format!("{error:?}"),
@@ -142,8 +142,7 @@ impl GuardErrorContext {
                         requires_confirmation: context.requires_user_action(),
                         estimated_fix_time_seconds: context.estimated_fix_time.map(|d| d.as_secs()),
                     },
-                )))
-                .unwrap_or(());
+                )));
         }
 
         self.errors.push(error);
@@ -159,7 +158,7 @@ impl GuardErrorContext {
             let context = discrepancy.user_context();
 
             self.event_sender
-                .send(AppEvent::Guard(GuardEvent::DiscrepancyFound(
+                .emit(AppEvent::Guard(GuardEvent::DiscrepancyFound(
                     GuardDiscrepancyParams {
                         operation_id: self.operation_id.clone(),
                         discrepancy_type: discrepancy.short_description().to_string(),
@@ -177,8 +176,7 @@ impl GuardErrorContext {
                         requires_confirmation: discrepancy.requires_confirmation(),
                         estimated_fix_time_seconds: context.estimated_fix_time.map(|d| d.as_secs()),
                     },
-                )))
-                .unwrap_or(());
+                )));
         }
 
         self.discrepancies.push(discrepancy);
@@ -241,9 +239,8 @@ impl GuardErrorContext {
         if all_errors.is_empty() {
             // No errors to report
             if self.verbosity_level.include_detailed_context() {
-                let _ = self
-                    .event_sender
-                    .send(AppEvent::Guard(GuardEvent::ErrorSummary {
+                self.event_sender
+                    .emit(AppEvent::Guard(GuardEvent::ErrorSummary {
                         operation_id: self.operation_id.clone(),
                         total_errors: 0,
                         recoverable_errors: 0,
@@ -276,9 +273,8 @@ impl GuardErrorContext {
             }
         }
 
-        let _ = self
-            .event_sender
-            .send(AppEvent::Guard(GuardEvent::ErrorSummary {
+        self.event_sender
+            .emit(AppEvent::Guard(GuardEvent::ErrorSummary {
                 operation_id: self.operation_id.clone(),
                 total_errors: summary.total_errors,
                 recoverable_errors: summary.recoverable_errors.len(),
@@ -297,9 +293,8 @@ impl GuardErrorContext {
         packages_count: usize,
         files_count: Option<usize>,
     ) {
-        let _ = self
-            .event_sender
-            .send(AppEvent::Guard(GuardEvent::VerificationStarted {
+        self.event_sender
+            .emit(AppEvent::Guard(GuardEvent::VerificationStarted {
                 operation_id: self.operation_id.clone(),
                 scope: scope.to_string(),
                 level: level.to_string(),
@@ -317,9 +312,8 @@ impl GuardErrorContext {
     ) {
         let by_severity = self.get_severity_counts();
 
-        let _ = self
-            .event_sender
-            .send(AppEvent::Guard(GuardEvent::VerificationCompleted {
+        self.event_sender
+            .emit(AppEvent::Guard(GuardEvent::VerificationCompleted {
                 operation_id: self.operation_id.clone(),
                 total_discrepancies: self.discrepancies.len(),
                 by_severity,
@@ -341,9 +335,8 @@ impl GuardErrorContext {
     ) {
         let start_time = Instant::now();
 
-        let _ = self
-            .event_sender
-            .send(AppEvent::Guard(GuardEvent::HealingResult {
+        self.event_sender
+            .emit(AppEvent::Guard(GuardEvent::HealingResult {
                 operation_id: self.operation_id.clone(),
                 discrepancy_type: discrepancy_type.to_string(),
                 file_path: file_path.to_string(),

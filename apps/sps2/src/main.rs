@@ -79,7 +79,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
     // --- END RECOVERY LOGIC ---
 
     // Create event channel
-    let (event_sender, event_receiver) = tokio::sync::mpsc::unbounded_channel();
+    let (event_sender, event_receiver) = sps2_events::channel();
 
     // Build operations context
     let ops_ctx = build_ops_context(

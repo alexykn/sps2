@@ -2,22 +2,22 @@
 
 ## 1. Executive Summary
 **Top issues (severity ordered):**
-1. Massive unused surface: 480 event variants exist but only 158 are referenced; 93/229 error variants never appear at call-sites. This bloat obscures the active contract and confuses contributors.
-2. Progress duplication: 45 domain variants embed progress metrics that belong in `ProgressEvent`, while the CLI never consumes the advanced progress channel. Progress data is fragmented and effectively lost.
-3. Error leakage into events: nearly every domain enum has a `*Failed { error: String }` payload, duplicating `sps2_errors` but throwing away structured detail (retryable, source, remediation).
-4. Missing correlation metadata: there is no shared `EventMeta` (ids, severity, source). Emitters invent ad-hoc IDs, preventing UI/log correlation and telemetry aggregation.
-5. Payload inflation: large `Vec`, `PathBuf`, and `Duration` payloads are cloned and serialized without consumers, stressing the event bus and complicating future API stability.
+1. Progress duplication: domain enums still emit progress-shaped variants while the CLI drops `ProgressEvent` updates, leaving metadata-rich progress streams unused.
+2. Error leakage into events: `*Failed { error: String }` variants persist across domains, discarding structured context from `sps2_errors` and preventing users from seeing retryability or remediation hints.
+3. Unused surface area: 49 event variants and 93 error variants have no call-sites post-trim, continuing to obscure the active contract for contributors.
+4. Payload inflation: large `Vec`, `PathBuf`, and `Duration` payloads remain in events without consumers, complicating stabilization and adding serialization cost.
+5. Structured error adoption lag: although the envelope exists, major operations still return legacy errors, so CLI/logging cannot surface durable codes or hints yet.
 
 **High-impact wins (1–2 week effort):**
-- Prune unused event variants/enums (start with `AcquisitionEvent`, `PythonEvent`, unused install phases).
-- Remove `error: String` fields in events; rely on structured `Error` propagation and log once in CLI.
-- Introduce a thin `ProgressUpdate` API and migrate current emitters to it; stop emitting domain `*Progress` variants.
-- Add `EventMeta { id, parent, issued_at, level, source, correlation }` and emit it from `OpsCtx`.
+- Complete progress-channel consolidation so `ProgressEvent` (or the upcoming tracker API) becomes the single source of granular updates.
+- Replace `error: String` payloads with structured conversions (`ErrorCode`, retryable flags) and let the CLI render enriched failures.
+- Continue pruning/deprecating unused variants (focus on `PythonEvent` and legacy progress helpers) to keep the surface comprehensible.
+- Add payload size guardrails (lint/tests) once the progress refactor lands to prevent regressions.
 
 **30 / 60 / 90-day refactor roadmap:**
-- **30 days:** inventory cleanup + guardrails. Delete unused variants, wire `EventMeta`, ensure CLI handles `ProgressEvent`. Ship lint to forbid new `error: String` payloads. Provide migration shims.
-- **60 days:** land consolidated Domain/Progress/Diagnostic enums, migrate emitters incrementally (install/update/build/guard). Introduce durable `ErrorCode` & severity on `sps2_errors::Error`.
-- **90 days:** complete consumer updates (CLI, logging, tests), remove deprecated variants, add snapshot/property tests for event streams, document contracts.
+- **30 days:** finish progress-channel redesign (Phase 3), wire CLI/JSON renderers to the new tracker, and retire duplicated domain `*Progress` variants.
+- **60 days:** roll out structured error adoption (Phase 4) across install/update/build/guard, emitting error codes + hints while preserving backwards compatibility.
+- **90 days:** remove deprecated variants, finalize diagnostics taxonomy, and backstop with snapshot/property tests plus doc updates for contributor guidelines.
 
 ## 2. Event & Error Inventory
 Artifacts generated in `refactor/`:
@@ -75,49 +75,37 @@ Full narrative in `refactor/overlap_report.md`. Key highlights:
 - Progress duplication + missing meta prevents correlating failures with progress stalls, despite emitting both signals.
 
 ## 4. Target Architecture (Proposed)
-Goals: separate **Domain**, **Progress**, **Diagnostic** channels, enforce shared metadata, and attach structured errors. Foundational types now live in-code (`crates/events/src/meta.rs`, `crates/errors/src/structured.rs`); illustrative wiring remains in `refactor/proposed_events.rs`:
+Goals: separate **Domain**, **Progress**, **Diagnostic** channels, enforce shared metadata, and attach structured errors. Foundational types now live in-code (`crates/events/src/meta.rs`, `crates/events/src/lib.rs`, `crates/errors/src/structured.rs`). The runtime wire format uses the new `EventMessage` envelope:
 
 ```rust
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EventMeta {
-    pub id: Uuid,
-    pub parent: Option<Uuid>,
-    pub issued_at: DateTime<Utc>,
-    pub level: Level,
-    pub source: &'static str,
-    pub correlation: Option<String>,
+#[derive(Clone, Debug)]
+pub struct EventMessage {
+    pub meta: EventMeta,
+    pub event: AppEvent,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum AppEvent {
-    Domain(EventMeta, DomainEvent),
-    Progress(EventMeta, ProgressEvent),
-    Diagnostic(EventMeta, DiagnosticEvent),
+impl EventEmitter for OpsCtx {
+    fn emit(&self, event: AppEvent) {
+        let meta = self.meta_for(&event);
+        self.emit_with_meta(meta, event);
+    }
 }
 ```
 
-`refactor/proposed_errors.rs` outlines a companion error envelope with `ErrorCode`, `Severity`, and `ErrorContext`. Domain-specific errors collapse into reusable constructors supplying hints and retryability for the UI.
+Domain events stay lightweight milestones, while the progress tracker will shift to `ProgressManager`-generated `EventMessage`s with deterministic `parent_id` / `correlation_id`. `refactor/proposed_errors.rs` continues to track the target structured error API (codes, severity, context) that Phase 4 will roll out across call-sites.
 
 ## 5. Concrete Refactor PR Plan
-1. **Inventory pruning (PR #1)**
-   - Delete unused event enums/variants confirmed by `event_variant_usage.json`.
-   - Add `#[deprecated]` shims for any API exported publicly; guard with `cfg(test)` to keep fixtures compiling.
-   - Introduce `#[deny(clippy::large_enum_variant)]` on `events` crate to flag oversized payloads.
+1. **Inventory pruning (PR #1 — shipped)**
+   - Unused variants culled or flagged; inventories kept in `refactor/` for follow-up removals.
 
-2. **Event meta introduction (PR #2)**
-   - Add `EventMeta` struct and change `EventEmitter::emit` signature to accept `(EventMeta, AppEventPayload)`.
-   - Implement meta construction inside `OpsCtx` (auto-generate IDs, timestamps, correlation).
-   - Update CLI consumers to read the meta (log level, source).
+2. **Event metadata pipeline (PR #2 — shipped)**
+   - `EventMessage` envelope + `EventEmitter::emit_with_meta` provide IDs, levels, sources, and correlation IDs to every consumer (CLI + tracing already reads them).
 
-3. **Progress channel consolidation (PR #3)**
-   - Introduce `ProgressUpdate` enum (Started/Advanced/Completed/Failed) with phase identifiers.
-   - Replace domain `*Progress` variants with progress emissions; update CLI to render progress (TTY + JSON).
-   - Deprecate builders like `ProgressEvent::started_with_phases` in favour of tracker APIs.
+3. **Progress channel consolidation (PR #3 — next)**
+   - Introduce the streamlined progress tracker (`ProgressUpdate` phases + IDs), migrate emitters, and make the CLI/JSON renderer consume it. Deprecate duplicated domain progress variants with shims.
 
-4. **Error envelope upgrade (PR #4)**
-   - Implement `ErrorCode`, `Severity`, `ErrorContext`; add constructors for common operations.
-   - Update major error emitters (install/update/build) to return the new enriched `Error`.
-   - Wire CLI/logging to display `code`, `severity`, and `hint()`.
+4. **Structured error adoption (PR #4 — next)**
+   - Map domain errors onto `StructuredError` (codes, severity, context). Update ops/install/build/guard to return structured failures and surface hints in CLI/logging.
 
 5. **Domain event slimming (PR #5)**
    - Reduce domain enums to milestone triads (`Started`, `Succeeded`, `Failed`) plus essential metadata.
@@ -154,4 +142,4 @@ pub enum AppEvent {
 - **CI gates:** run `cargo fmt`, `cargo clippy --all-targets --all-features`, `cargo test --workspace`, `cargo-udeps` to guarantee no resurrected dead code, and optional `cargo-semver-checks` for public crates.
 
 ---
-**Next actions:** kick off PR #1 (variant pruning + progress handler wiring) and socialize the proposed contracts with CLI/platform teams before tackling meta introduction.
+**Next actions:** focus on PR #3 (progress tracker consolidation) and socialize the structured error adoption plan with CLI/platform teams ahead of Phase 4.

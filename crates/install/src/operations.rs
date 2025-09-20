@@ -84,7 +84,7 @@ impl InstallOperation {
                 context
                     .event_sender
                     .clone()
-                    .unwrap_or_else(|| tokio::sync::mpsc::unbounded_channel().0),
+                    .unwrap_or_else(|| sps2_events::channel().0),
             )
             .with_security_policy(SecurityPolicy {
                 verify_signatures: true, // default to verify in this path

@@ -3,7 +3,7 @@
 use crate::artifact_qa::{macho_utils, reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
-use sps2_events::{AppEvent, GeneralEvent, QaEvent};
+use sps2_events::{AppEvent, EventSender, GeneralEvent, QaEvent};
 use sps2_platform::{PlatformContext, PlatformManager};
 use sps2_types::RpathStyle;
 
@@ -30,10 +30,7 @@ impl RPathPatcher {
 
     /// Create a platform context for this patcher
     #[must_use]
-    pub fn create_platform_context(
-        &self,
-        event_sender: Option<tokio::sync::mpsc::UnboundedSender<sps2_events::AppEvent>>,
-    ) -> PlatformContext {
+    pub fn create_platform_context(&self, event_sender: Option<EventSender>) -> PlatformContext {
         self.platform.create_context(event_sender)
     }
 

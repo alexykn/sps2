@@ -1267,7 +1267,7 @@ mod tests {
         let store_base = td.path().join("store");
         afs::create_dir_all(&store_base).await.unwrap();
         let store = sps2_store::PackageStore::new(store_base);
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, _rx) = sps2_events::channel();
         (td, state, store, tx)
     }
 

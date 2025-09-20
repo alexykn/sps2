@@ -14,6 +14,7 @@ use sps2_resolver::Resolver;
 use sps2_state::StateManager;
 use sps2_store::PackageStore;
 use std::cell::RefCell;
+use std::fmt::Write;
 
 use std::future::Future;
 
@@ -39,15 +40,64 @@ pub struct OpsCtx {
     pub guard: RefCell<Option<StateVerificationGuard>>,
     /// Whether to run in check mode (preview only)
     pub check_mode: bool,
+    /// Active correlation identifier for events emitted via this context
+    correlation_id: RefCell<Option<String>>,
 }
 
 impl EventEmitter for OpsCtx {
     fn event_sender(&self) -> Option<&EventSender> {
         Some(&self.tx)
     }
+
+    fn enrich_event_meta(&self, _event: &sps2_events::AppEvent, meta: &mut sps2_events::EventMeta) {
+        if let Some(correlation) = self.correlation_id.borrow().as_ref() {
+            meta.correlation_id = Some(correlation.clone());
+        }
+        if self.check_mode {
+            meta.labels
+                .entry("check_mode".to_string())
+                .or_insert_with(|| "true".to_string());
+        }
+    }
 }
 
 impl OpsCtx {
+    /// Push a correlation identifier string, restoring the previous value when dropped.
+    #[must_use]
+    pub fn push_correlation(&self, correlation: impl Into<String>) -> CorrelationGuard<'_> {
+        let mut slot = self.correlation_id.borrow_mut();
+        let previous = slot.replace(correlation.into());
+        CorrelationGuard {
+            ctx: self,
+            previous,
+        }
+    }
+
+    /// Construct a correlation identifier from an operation name and package list.
+    #[must_use]
+    pub fn push_correlation_for_packages(
+        &self,
+        operation: &str,
+        packages: &[String],
+    ) -> CorrelationGuard<'_> {
+        let mut identifier = operation.to_string();
+        if !packages.is_empty() {
+            identifier.push(':');
+            let sample_len = packages.len().min(3);
+            let sample = packages
+                .iter()
+                .take(sample_len)
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+                .join(",");
+            identifier.push_str(&sample);
+            if packages.len() > sample_len {
+                let _ = write!(&mut identifier, ",+{}", packages.len() - sample_len);
+            }
+        }
+        self.push_correlation(identifier)
+    }
+
     // No public constructor - use OpsContextBuilder instead
 
     /// Run state verification if guard is enabled
@@ -559,6 +609,18 @@ impl<'a, T> GuardedOperation<'a, T> {
     }
 }
 
+/// Guard that restores the previous correlation identifier when dropped.
+pub struct CorrelationGuard<'a> {
+    ctx: &'a OpsCtx,
+    previous: Option<String>,
+}
+
+impl Drop for CorrelationGuard<'_> {
+    fn drop(&mut self) {
+        *self.ctx.correlation_id.borrow_mut() = self.previous.take();
+    }
+}
+
 /// Builder for operations context
 pub struct OpsContextBuilder {
     store: Option<PackageStore>,
@@ -717,6 +779,7 @@ impl OpsContextBuilder {
             config,
             guard: RefCell::new(None), // Guard will be initialized separately
             check_mode: self.check_mode.unwrap_or(false),
+            correlation_id: RefCell::new(None),
         })
     }
 }
@@ -743,7 +806,7 @@ mod tests {
 
         let state = StateManager::new(&state_dir).await.unwrap();
         let store = PackageStore::new(store_dir.clone());
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, _rx) = sps2_events::channel();
         let config = Config::default();
 
         let index = IndexManager::new(&store_dir);
@@ -778,7 +841,7 @@ mod tests {
 
         let state = StateManager::new(&state_dir).await.unwrap();
         let store = PackageStore::new(store_dir.clone());
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, _rx) = sps2_events::channel();
 
         let mut config = Config::default();
         config.verification.enabled = true;
@@ -817,7 +880,7 @@ mod tests {
 
         let state = StateManager::new(&state_dir).await.unwrap();
         let store = PackageStore::new(store_dir.clone());
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, _rx) = sps2_events::channel();
         let config = Config::default();
 
         let index = IndexManager::new(&store_dir);
@@ -898,7 +961,7 @@ mod tests {
 
         let state = StateManager::new(&state_dir).await.unwrap();
         let store = PackageStore::new(store_dir.clone());
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, _rx) = sps2_events::channel();
         let config = Config::default();
 
         let index = IndexManager::new(&store_dir);

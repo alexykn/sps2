@@ -525,7 +525,7 @@ impl ParallelExecutor {
         let tx = context
             .event_sender()
             .cloned()
-            .unwrap_or_else(|| tokio::sync::mpsc::unbounded_channel().0);
+            .unwrap_or_else(|| sps2_events::channel().0);
 
         let download_result = downloader
             .download_package(
@@ -815,8 +815,8 @@ mod tests {
             .expect("execute parallel");
 
         let mut sequence = Vec::new();
-        while let Ok(event) = rx.try_recv() {
-            if let AppEvent::Install(install_event) = event {
+        while let Ok(message) = rx.try_recv() {
+            if let AppEvent::Install(install_event) = message.event {
                 match install_event {
                     InstallEvent::Started { package, .. } => {
                         sequence.push(("start", package));

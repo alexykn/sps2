@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::EventSource;
+
 // Declare all domain modules
 pub mod acquisition;
 pub mod audit;
@@ -95,6 +97,30 @@ pub enum AppEvent {
 }
 
 impl AppEvent {
+    /// Identify the source domain for this event (used for metadata/logging).
+    #[must_use]
+    pub fn event_source(&self) -> EventSource {
+        match self {
+            AppEvent::General(_) => EventSource::GENERAL,
+            AppEvent::Download(_) => EventSource::DOWNLOAD,
+            AppEvent::Build(_) => EventSource::BUILD,
+            AppEvent::State(_) => EventSource::STATE,
+            AppEvent::Install(_) => EventSource::INSTALL,
+            AppEvent::Uninstall(_) => EventSource::UNINSTALL,
+            AppEvent::Update(_) => EventSource::UPDATE,
+            AppEvent::Acquisition(_) => EventSource::ACQUISITION,
+            AppEvent::Progress(_) => EventSource::PROGRESS,
+            AppEvent::Repo(_) => EventSource::REPO,
+            AppEvent::Resolver(_) => EventSource::RESOLVER,
+            AppEvent::Guard(_) => EventSource::GUARD,
+            AppEvent::Qa(_) => EventSource::QA,
+            AppEvent::Audit(_) => EventSource::AUDIT,
+            AppEvent::Python(_) => EventSource::PYTHON,
+            AppEvent::Package(_) => EventSource::PACKAGE,
+            AppEvent::Platform(_) => EventSource::PLATFORM,
+        }
+    }
+
     /// Determine the appropriate tracing log level for this event
     #[must_use]
     pub fn log_level(&self) -> tracing::Level {

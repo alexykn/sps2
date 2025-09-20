@@ -28,6 +28,9 @@ pub async fn build(
 ) -> Result<BuildReport, Error> {
     let start = Instant::now();
 
+    let correlation_label = format!("build:{}", recipe_path.display());
+    let _correlation = ctx.push_correlation(correlation_label);
+
     if !recipe_path.exists() {
         return Err(OpsError::RecipeNotFound {
             path: recipe_path.display().to_string(),

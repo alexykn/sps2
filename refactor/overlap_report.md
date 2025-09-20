@@ -8,7 +8,7 @@
 ## Progress Leakage Into Domain Events
 - `DownloadEvent::{Progress,BatchProgress,SpeedUpdate,Stalled}` duplicate the granular metrics already modeled by `ProgressEvent::{Updated,BatchProgress,StatisticsUpdated,BottleneckDetected}`.
 - `InstallEvent` and `AcquisitionEvent` expose phase/step updates (`StagingStarted`, `ValidationStarted`, `BatchAcquisitionProgress`, etc.) that the CLI only logs; most variants are never emitted, and none drive the progress UI.
-- Progress IDs (`id`, `phase`, `operation`) are recomputed per call-site instead of flowing through a shared `EventMeta`, making it impossible to correlate domain milestones with progress updates.
+- Progress IDs (`id`, `phase`, `operation`) are still recomputed per call-site; even with the new `EventMeta` envelope providing `event_id`/`parent_id`, emitters have not yet standardised on using those fields for progress correlation.
 
 ## Error Semantics Bleeding Into Events
 - Nearly every domain event has a terminal `*Failed { error: String, .. }` variant. This transports raw strings instead of the structured `sps2_errors::Error`; consumers cannot distinguish retryable vs fatal conditions.
@@ -31,10 +31,10 @@
 - **Complexity**: Engineers must sift through hundreds of unused variants to understand the contract, heightening the chance of incorrect emissions.
 - **Inconsistency**: Progress, milestones, and failures are expressed through overlapping enums, making it impossible for consumers to reconstruct a linear story of an operation.
 - **Performance drag**: Large payloads (Vecs, PathBufs, Duration) are cloned and serialized even though receivers drop them, inflating the event bus and log volume.
-- **Observability gaps**: Despite the breadth of enums, core flows (install/update) expose neither correlation IDs nor durable error codes, so UI/logs cannot stitch together user-facing narratives.
+- **Observability gaps**: Durable error codes remain absent and progress updates are not rendered, so even with `EventMeta` correlation IDs the UI/logs cannot yet stitch together a complete narrative.
 
 ## Quick Wins Identified
 1. Finish collapsing the dormant `PythonEvent` family and the lower-case `ProgressEvent::*` helpers, then guard against regressions with a lint/check.
 2. Route progress information exclusively through a slim `ProgressEvent` (or forthcoming `ProgressUpdate`) channel and strip the remaining progress-shaped variants.
 3. Replace `error: String` payloads with structured error references (`ErrorCode`, `retryable`) or rely on `Result<T, Error>` propagation; reserve events for milestones (`InstallCompleted`, `InstallRolledBack`).
-4. Introduce a shared `EventMeta` (id, source component, severity, correlation id) carried by every event to enable cross-stream correlation and downstream filtering.
+4. Leverage the shared `EventMeta` (id, source component, severity, correlation id) by threading deterministic parent/correlation identifiers through the progress tracker and consumers.

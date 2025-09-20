@@ -15,6 +15,7 @@
 use super::config::ProgressPhase;
 use super::tracker::ProgressTracker;
 use super::update::ProgressUpdate;
+use crate::EventEmitter;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -152,7 +153,7 @@ impl ProgressManager {
         let phases_clone = phases.clone();
         self.create_tracker_with_phases(tracker_id.clone(), operation.to_string(), total, phases);
         // Emit a Started event for this operation
-        let _ = tx.send(crate::AppEvent::Progress(
+        let () = tx.emit(crate::AppEvent::Progress(
             crate::events::ProgressEvent::Started {
                 id: tracker_id.clone(),
                 operation: operation.to_string(),
@@ -174,7 +175,7 @@ impl ProgressManager {
     ) {
         if let Some(update) = self.update(id, current) {
             // Send progress event regardless of whether total is known
-            let _ = tx.send(crate::AppEvent::Progress(
+            let () = tx.emit(crate::AppEvent::Progress(
                 crate::events::ProgressEvent::Updated {
                     id: id.to_string(),
                     current,
@@ -199,7 +200,7 @@ impl ProgressManager {
                     .phases()
                     .get(clamped)
                     .map_or_else(|| format!("Phase {}", clamped), |p| p.name.clone());
-                let _ = tx.send(crate::AppEvent::Progress(
+                let () = tx.emit(crate::AppEvent::Progress(
                     crate::events::ProgressEvent::PhaseChanged {
                         id: id.to_string(),
                         phase: clamped,
@@ -216,7 +217,7 @@ impl ProgressManager {
         if let Some(tracker) = trackers.get_mut(id) {
             if let Some(phase_index) = tracker.phases().iter().position(|p| p.name == phase_name) {
                 tracker.current_phase = phase_index;
-                let _ = tx.send(crate::AppEvent::Progress(
+                let () = tx.emit(crate::AppEvent::Progress(
                     crate::events::ProgressEvent::PhaseChanged {
                         id: id.to_string(),
                         phase: phase_index,
@@ -230,7 +231,7 @@ impl ProgressManager {
     /// Complete an operation
     pub fn complete_operation(&self, id: &str, tx: &crate::EventSender) {
         if let Some(duration) = self.complete(id) {
-            let _ = tx.send(crate::AppEvent::Progress(
+            let () = tx.emit(crate::AppEvent::Progress(
                 crate::events::ProgressEvent::Completed {
                     id: id.to_string(),
                     duration,
@@ -267,7 +268,7 @@ impl ProgressManager {
         tx: &crate::EventSender,
     ) {
         // Emit child started event
-        let _ = tx.send(crate::AppEvent::Progress(
+        let () = tx.emit(crate::AppEvent::Progress(
             crate::events::ProgressEvent::ChildStarted {
                 parent_id: parent_id.to_string(),
                 child_id: child_id.to_string(),
@@ -290,7 +291,7 @@ impl ProgressManager {
         success: bool,
         tx: &crate::EventSender,
     ) {
-        let _ = tx.send(crate::AppEvent::Progress(
+        let () = tx.emit(crate::AppEvent::Progress(
             crate::events::ProgressEvent::ChildCompleted {
                 parent_id: parent_id.to_string(),
                 child_id: child_id.to_string(),

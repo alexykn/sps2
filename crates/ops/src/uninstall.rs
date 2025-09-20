@@ -28,6 +28,8 @@ pub async fn uninstall(ctx: &OpsCtx, package_names: &[String]) -> Result<Install
         return Err(OpsError::NoPackagesSpecified.into());
     }
 
+    let _correlation = ctx.push_correlation_for_packages("uninstall", package_names);
+
     // Check mode: preview what would be uninstalled
     if ctx.check_mode {
         return preview_uninstall(ctx, package_names).await;
@@ -328,7 +330,7 @@ mod tests {
 
         let state = StateManager::new(&state_dir).await.unwrap();
         let store = PackageStore::new(store_dir.clone());
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, _rx) = sps2_events::channel();
         let config = Config::default(); // Verification disabled by default
 
         let index = IndexManager::new(&store_dir);
@@ -372,7 +374,7 @@ mod tests {
 
         let state = StateManager::new(&state_dir).await.unwrap();
         let store = PackageStore::new(store_dir.clone());
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, _rx) = sps2_events::channel();
 
         let mut config = Config::default();
         config.verification.enabled = true;

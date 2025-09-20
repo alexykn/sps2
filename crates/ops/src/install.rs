@@ -32,6 +32,8 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
         return Err(OpsError::NoPackagesSpecified.into());
     }
 
+    let _correlation = ctx.push_correlation_for_packages("install", package_specs);
+
     // Check mode: preview what would be installed
     if ctx.check_mode {
         return preview_install(ctx, package_specs).await;

@@ -27,6 +27,8 @@ use uuid::Uuid;
 pub async fn upgrade(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallReport, Error> {
     let start = Instant::now();
 
+    let _correlation = ctx.push_correlation_for_packages("upgrade", package_names);
+
     // Check mode: preview what would be upgraded
     if ctx.check_mode {
         return preview_upgrade(ctx, package_names).await;
@@ -493,7 +495,7 @@ mod tests {
 
         let state = StateManager::new(&state_dir).await.unwrap();
         let store = PackageStore::new(store_dir.clone());
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, _rx) = sps2_events::channel();
         let config = Config::default(); // Verification disabled by default
 
         let index = IndexManager::new(&store_dir);
@@ -530,7 +532,7 @@ mod tests {
 
         let state = StateManager::new(&state_dir).await.unwrap();
         let store = PackageStore::new(store_dir.clone());
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, _rx) = sps2_events::channel();
 
         let mut config = Config::default();
         config.verification.enabled = true;

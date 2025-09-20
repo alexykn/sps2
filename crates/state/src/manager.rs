@@ -288,7 +288,7 @@ impl StateManager {
         Self::ensure_initial_state(&pool).await?;
 
         // Create event channel (events will be ignored for now)
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, _rx) = sps2_events::channel();
 
         Ok(Self {
             pool,

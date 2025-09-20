@@ -5,7 +5,7 @@
 //! validation with proper error recovery and progress reporting.
 
 use sps2_errors::Error;
-use sps2_events::EventSender;
+use sps2_events::{EventEmitter, EventSender};
 use std::path::Path;
 
 use crate::validation::content::ContentLimits;
@@ -77,7 +77,7 @@ impl ValidationOrchestrator {
         event_sender: Option<&EventSender>,
     ) -> Result<ValidationResult, Error> {
         if let Some(sender) = event_sender {
-            let _ = sender.send(sps2_events::AppEvent::General(
+            let () = sender.emit(sps2_events::AppEvent::General(
                 sps2_events::GeneralEvent::OperationStarted {
                     operation: format!(
                         "Starting comprehensive validation of {}",
@@ -126,7 +126,7 @@ impl ValidationOrchestrator {
         self.finalize_validation(&mut result)?;
 
         if let Some(sender) = event_sender {
-            let _ = sender.send(sps2_events::AppEvent::General(
+            let () = sender.emit(sps2_events::AppEvent::General(
                 sps2_events::GeneralEvent::OperationCompleted {
                     operation: format!(
                         "Comprehensive validation completed for {}",
@@ -147,7 +147,7 @@ impl ValidationOrchestrator {
         event_sender: Option<&EventSender>,
     ) -> Result<crate::validation::types::PackageFormat, Error> {
         if let Some(sender) = event_sender {
-            let _ = sender.send(sps2_events::AppEvent::General(
+            let () = sender.emit(sps2_events::AppEvent::General(
                 sps2_events::GeneralEvent::DebugLog {
                     message: "PIPELINE: Starting format validation stage".to_string(),
                     context: std::collections::HashMap::new(),
@@ -159,7 +159,7 @@ impl ValidationOrchestrator {
             crate::validation::format::validate_file_format(file_path, event_sender).await?;
 
         if let Some(sender) = event_sender {
-            let _ = sender.send(sps2_events::AppEvent::General(
+            let () = sender.emit(sps2_events::AppEvent::General(
                 sps2_events::GeneralEvent::DebugLog {
                     message: format!("PIPELINE: Format validation complete - detected: {format:?}"),
                     context: std::collections::HashMap::new(),
@@ -179,7 +179,7 @@ impl ValidationOrchestrator {
         event_sender: Option<&EventSender>,
     ) -> Result<(), Error> {
         if let Some(sender) = event_sender {
-            let _ = sender.send(sps2_events::AppEvent::General(
+            let () = sender.emit(sps2_events::AppEvent::General(
                 sps2_events::GeneralEvent::DebugLog {
                     message: "PIPELINE: Starting content validation stage".to_string(),
                     context: std::collections::HashMap::new(),
@@ -198,7 +198,7 @@ impl ValidationOrchestrator {
         .await?;
 
         if let Some(sender) = event_sender {
-            let _ = sender.send(sps2_events::AppEvent::General(
+            let () = sender.emit(sps2_events::AppEvent::General(
                 sps2_events::GeneralEvent::DebugLog {
                     message: format!(
                         "PIPELINE: Content validation complete - {} files, {} bytes",
@@ -221,7 +221,7 @@ impl ValidationOrchestrator {
         event_sender: Option<&EventSender>,
     ) -> Result<(), Error> {
         if let Some(sender) = event_sender {
-            let _ = sender.send(sps2_events::AppEvent::General(
+            let () = sender.emit(sps2_events::AppEvent::General(
                 sps2_events::GeneralEvent::DebugLog {
                     message: format!(
                         "PIPELINE: Starting security validation stage with {} policy",
@@ -243,7 +243,7 @@ impl ValidationOrchestrator {
         .await?;
 
         if let Some(sender) = event_sender {
-            let _ = sender.send(sps2_events::AppEvent::General(
+            let () = sender.emit(sps2_events::AppEvent::General(
                 sps2_events::GeneralEvent::DebugLog {
                     message: "PIPELINE: Security validation complete".to_string(),
                     context: std::collections::HashMap::new(),
