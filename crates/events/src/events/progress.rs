@@ -45,7 +45,10 @@ pub enum ProgressEvent {
     /// Progress failed
     Failed {
         id: String,
-        error: String,
+        code: String,
+        message: String,
+        hint: Option<String>,
+        retryable: bool,
         completed_items: u64,
         partial_duration: Duration,
     },
@@ -197,10 +200,19 @@ impl ProgressEvent {
     }
 
     /// Create a progress failed event
-    pub fn failed(id: impl Into<String>, error: impl Into<String>) -> Self {
+    pub fn failed(
+        id: impl Into<String>,
+        code: impl Into<String>,
+        message: impl Into<String>,
+        hint: Option<String>,
+        retryable: bool,
+    ) -> Self {
         Self::Failed {
             id: id.into(),
-            error: error.into(),
+            code: code.into(),
+            message: message.into(),
+            hint,
+            retryable,
             completed_items: 0,
             partial_duration: Duration::from_secs(0),
         }

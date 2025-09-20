@@ -166,11 +166,17 @@ pub trait EventEmitter {
     }
 
     /// Emit an operation failed event
-    fn emit_operation_failed(&self, operation: impl Into<String>, error: impl Into<String>) {
-        self.emit(AppEvent::General(GeneralEvent::OperationFailed {
-            operation: operation.into(),
-            error: error.into(),
-        }));
+    fn emit_operation_failed(
+        &self,
+        operation: impl Into<String>,
+        code: impl Into<String>,
+        message: impl Into<String>,
+        hint: Option<String>,
+        retryable: bool,
+    ) {
+        self.emit(AppEvent::General(GeneralEvent::operation_failed(
+            operation, code, message, hint, retryable,
+        )));
     }
 
     /// Emit a download started event
@@ -264,8 +270,17 @@ pub trait EventEmitter {
     }
 
     /// Emit a progress failed event
-    fn emit_progress_failed(&self, id: impl Into<String>, error: impl Into<String>) {
-        self.emit(AppEvent::Progress(ProgressEvent::failed(id, error)));
+    fn emit_progress_failed(
+        &self,
+        id: impl Into<String>,
+        code: impl Into<String>,
+        message: impl Into<String>,
+        hint: Option<String>,
+        retryable: bool,
+    ) {
+        self.emit(AppEvent::Progress(ProgressEvent::failed(
+            id, code, message, hint, retryable,
+        )));
     }
 }
 
