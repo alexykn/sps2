@@ -197,6 +197,18 @@ impl ProgressTracker {
         self.start_time.elapsed()
     }
 
+    /// Get the operation name associated with this tracker.
+    #[must_use]
+    pub fn operation(&self) -> &str {
+        &self.operation
+    }
+
+    /// Get the total work configured for this tracker, if known.
+    #[must_use]
+    pub fn total(&self) -> Option<u64> {
+        self.total
+    }
+
     /// Calculate ETA using multiple sophisticated methods
     fn calculate_eta(&self, current_speed: Option<f64>) -> Option<Duration> {
         if self.completed || self.total.is_none() {

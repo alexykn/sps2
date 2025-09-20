@@ -15,7 +15,7 @@
 use super::config::ProgressPhase;
 use super::tracker::ProgressTracker;
 use super::update::ProgressUpdate;
-use crate::EventEmitter;
+use crate::{AppEvent, EventEmitter, ProgressEvent};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -55,6 +55,21 @@ impl ProgressManager {
             trackers.insert(id.clone(), tracker);
         }
         id
+    }
+
+    /// Emit a started event for an existing tracker using its stored metadata.
+    pub fn emit_started<E: EventEmitter>(&self, id: &str, emitter: &E) {
+        if let Ok(trackers) = self.trackers.lock() {
+            if let Some(tracker) = trackers.get(id) {
+                emitter.emit(AppEvent::Progress(ProgressEvent::Started {
+                    id: id.to_string(),
+                    operation: tracker.operation().to_string(),
+                    total: tracker.total(),
+                    phases: tracker.phases().to_vec(),
+                    parent_id: None,
+                }));
+            }
+        }
     }
 
     /// Get a tracker by its ID
@@ -141,56 +156,52 @@ impl ProgressManager {
     }
 
     /// Start a new operation with progress tracking
-    pub fn start_operation(
+    pub fn start_operation<E: EventEmitter>(
         &self,
         id: &str,
         operation: &str,
         total: Option<u64>,
         phases: Vec<ProgressPhase>,
-        tx: &crate::EventSender,
+        emitter: &E,
     ) -> String {
         let tracker_id = format!("{}_{}", id, uuid::Uuid::new_v4());
         let phases_clone = phases.clone();
         self.create_tracker_with_phases(tracker_id.clone(), operation.to_string(), total, phases);
         // Emit a Started event for this operation
-        let () = tx.emit(crate::AppEvent::Progress(
-            crate::events::ProgressEvent::Started {
-                id: tracker_id.clone(),
-                operation: operation.to_string(),
-                total,
-                phases: phases_clone,
-                parent_id: None,
-            },
-        ));
+        emitter.emit(AppEvent::Progress(ProgressEvent::Started {
+            id: tracker_id.clone(),
+            operation: operation.to_string(),
+            total,
+            phases: phases_clone,
+            parent_id: None,
+        }));
         tracker_id
     }
 
     /// Update progress for an operation
-    pub fn update_progress(
+    pub fn update_progress<E: EventEmitter>(
         &self,
         id: &str,
         current: u64,
         total: Option<u64>,
-        tx: &crate::EventSender,
+        emitter: &E,
     ) {
         if let Some(update) = self.update(id, current) {
             // Send progress event regardless of whether total is known
-            let () = tx.emit(crate::AppEvent::Progress(
-                crate::events::ProgressEvent::Updated {
-                    id: id.to_string(),
-                    current,
-                    total,
-                    phase: update.phase,
-                    speed: update.speed,
-                    eta: update.eta,
-                    efficiency: None,
-                },
-            ));
+            emitter.emit(AppEvent::Progress(ProgressEvent::Updated {
+                id: id.to_string(),
+                current,
+                total,
+                phase: update.phase,
+                speed: update.speed,
+                eta: update.eta,
+                efficiency: None,
+            }));
         }
     }
 
     /// Change to a specific phase
-    pub fn change_phase(&self, id: &str, phase_index: usize, tx: &crate::EventSender) {
+    pub fn change_phase<E: EventEmitter>(&self, id: &str, phase_index: usize, emitter: &E) {
         // Set to specific phase index if available
         if let Ok(mut trackers) = self.trackers.lock() {
             if let Some(tracker) = trackers.get_mut(id) {
@@ -200,45 +211,39 @@ impl ProgressManager {
                     .phases()
                     .get(clamped)
                     .map_or_else(|| format!("Phase {}", clamped), |p| p.name.clone());
-                let () = tx.emit(crate::AppEvent::Progress(
-                    crate::events::ProgressEvent::PhaseChanged {
-                        id: id.to_string(),
-                        phase: clamped,
-                        phase_name: name,
-                    },
-                ));
+                emitter.emit(AppEvent::Progress(ProgressEvent::PhaseChanged {
+                    id: id.to_string(),
+                    phase: clamped,
+                    phase_name: name,
+                }));
             }
         }
     }
 
     /// Change to a specific phase by name and mark it as done
-    pub fn update_phase_to_done(&self, id: &str, phase_name: &str, tx: &crate::EventSender) {
+    pub fn update_phase_to_done<E: EventEmitter>(&self, id: &str, phase_name: &str, emitter: &E) {
         let mut trackers = self.trackers.lock().unwrap();
         if let Some(tracker) = trackers.get_mut(id) {
             if let Some(phase_index) = tracker.phases().iter().position(|p| p.name == phase_name) {
                 tracker.current_phase = phase_index;
-                let () = tx.emit(crate::AppEvent::Progress(
-                    crate::events::ProgressEvent::PhaseChanged {
-                        id: id.to_string(),
-                        phase: phase_index,
-                        phase_name: phase_name.to_string(),
-                    },
-                ));
+                emitter.emit(AppEvent::Progress(ProgressEvent::PhaseChanged {
+                    id: id.to_string(),
+                    phase: phase_index,
+                    phase_name: phase_name.to_string(),
+                }));
             }
         }
     }
 
     /// Complete an operation
-    pub fn complete_operation(&self, id: &str, tx: &crate::EventSender) {
+    pub fn complete_operation<E: EventEmitter>(&self, id: &str, emitter: &E) {
         if let Some(duration) = self.complete(id) {
-            let () = tx.emit(crate::AppEvent::Progress(
-                crate::events::ProgressEvent::Completed {
-                    id: id.to_string(),
-                    duration,
-                    final_speed: None,
-                    total_processed: 0,
-                },
-            ));
+            emitter.emit(AppEvent::Progress(ProgressEvent::Completed {
+                id: id.to_string(),
+                duration,
+                final_speed: None,
+                total_processed: 0,
+            }));
         }
     }
 
@@ -259,23 +264,21 @@ impl ProgressManager {
     /// # Errors
     ///
     /// Returns an error if the event cannot be sent to the event channel.
-    pub fn register_child_tracker(
+    pub fn register_child_tracker<E: EventEmitter>(
         &self,
         parent_id: &str,
         child_id: &str,
         operation_name: String,
         weight: f64,
-        tx: &crate::EventSender,
+        emitter: &E,
     ) {
         // Emit child started event
-        let () = tx.emit(crate::AppEvent::Progress(
-            crate::events::ProgressEvent::ChildStarted {
-                parent_id: parent_id.to_string(),
-                child_id: child_id.to_string(),
-                operation: operation_name,
-                weight,
-            },
-        ));
+        emitter.emit(AppEvent::Progress(ProgressEvent::ChildStarted {
+            parent_id: parent_id.to_string(),
+            child_id: child_id.to_string(),
+            operation: operation_name,
+            weight,
+        }));
         // Fire-and-forget; UI aggregates parent/child via events.
     }
 
@@ -284,20 +287,18 @@ impl ProgressManager {
     /// # Errors
     ///
     /// Returns an error if the event cannot be sent to the event channel.
-    pub fn complete_child_tracker(
+    pub fn complete_child_tracker<E: EventEmitter>(
         &self,
         parent_id: &str,
         child_id: &str,
         success: bool,
-        tx: &crate::EventSender,
+        emitter: &E,
     ) {
-        let () = tx.emit(crate::AppEvent::Progress(
-            crate::events::ProgressEvent::ChildCompleted {
-                parent_id: parent_id.to_string(),
-                child_id: child_id.to_string(),
-                success,
-            },
-        ));
+        emitter.emit(AppEvent::Progress(ProgressEvent::ChildCompleted {
+            parent_id: parent_id.to_string(),
+            child_id: child_id.to_string(),
+            success,
+        }));
         // Fire-and-forget.
     }
 }

@@ -2,7 +2,6 @@
 # Rust / Cargo                                                                #
 ###############################################################################
 
-refactor/
 
 # All compiled output lives here
 /target/

@@ -2,7 +2,9 @@
 
 use crate::logging::log_event_with_tracing;
 use console::{style, Term};
-use sps2_events::{AppEvent, EventMessage, EventMeta};
+use sps2_events::{AppEvent, EventMessage, EventMeta, ProgressEvent};
+use std::collections::HashMap;
+use std::time::Duration;
 
 /// Event severity levels for UI styling
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -130,12 +132,25 @@ impl UiStyle {
     }
 }
 
+#[derive(Debug, Clone)]
+struct ProgressState {
+    operation: String,
+    total: Option<u64>,
+    current: u64,
+    phases: Vec<String>,
+    current_phase: Option<usize>,
+    last_percent_reported: Option<u8>,
+    last_displayed_progress: u64,
+}
+
 /// Event handler for user feedback
 pub struct EventHandler {
     /// UI styling configuration
     ui_style: UiStyle,
     /// Whether debug mode is enabled
     debug_enabled: bool,
+    /// Active progress trackers keyed by progress identifier
+    progress_states: HashMap<String, ProgressState>,
 }
 
 impl EventHandler {
@@ -143,6 +158,7 @@ impl EventHandler {
         Self {
             ui_style: UiStyle::new(colors_enabled),
             debug_enabled,
+            progress_states: HashMap::new(),
         }
     }
 
@@ -894,6 +910,10 @@ impl EventHandler {
                 }
             }
 
+            AppEvent::Progress(progress_event) => {
+                self.handle_progress_event(&meta, progress_event);
+            }
+
             AppEvent::Guard(guard_event) => {
                 use sps2_events::GuardEvent;
                 match guard_event {
@@ -1023,6 +1043,216 @@ impl EventHandler {
             // Catch-all for other events (silently ignore for now)
             _ => {
                 self.show_unhandled_event(&meta, &event);
+            }
+        }
+    }
+
+    fn handle_progress_event(&mut self, meta: &EventMeta, progress_event: ProgressEvent) {
+        match progress_event {
+            ProgressEvent::Started {
+                id,
+                operation,
+                total,
+                phases,
+                ..
+            } => {
+                let phase_names = phases.into_iter().map(|p| p.name).collect();
+                let state = ProgressState {
+                    operation: operation.clone(),
+                    total,
+                    current: 0,
+                    phases: phase_names,
+                    current_phase: None,
+                    last_percent_reported: None,
+                    last_displayed_progress: 0,
+                };
+                self.progress_states.insert(id.clone(), state);
+                self.show_meta_message(meta, format!("Started {operation}"), EventSeverity::Info);
+            }
+            ProgressEvent::Updated {
+                id,
+                current,
+                total,
+                phase,
+                speed,
+                eta,
+                ..
+            } => {
+                if let Some(state) = self.progress_states.get_mut(&id) {
+                    state.current = current;
+                    if let Some(phase_index) = phase {
+                        state.current_phase = Some(phase_index);
+                    }
+                    if total.is_some() {
+                        state.total = total;
+                    }
+
+                    let mut message = None;
+                    if let Some(total) = state.total.filter(|total| *total > 0) {
+                        let percent = ((current as f64 / total as f64) * 100.0)
+                            .clamp(0.0, 100.0)
+                            .round() as u8;
+                        let should_report = state
+                            .last_percent_reported
+                            .is_none_or(|last| percent >= last.saturating_add(5) || percent == 100);
+                        if should_report {
+                            state.last_percent_reported = Some(percent);
+                            let mut text = format!("{} {percent}%", state.operation);
+                            if let Some(phase_idx) = state.current_phase {
+                                if let Some(name) = state.phases.get(phase_idx) {
+                                    text.push_str(&format!(" ({name})"));
+                                }
+                            }
+                            if let Some(speed) = speed {
+                                text.push_str(&format!(" • {speed:.1}/s"));
+                            }
+                            if let Some(eta) = eta {
+                                text.push_str(&format!(" • eta {}", format_duration(eta)));
+                            }
+                            message = Some(text);
+                        }
+                    } else if current >= state.last_displayed_progress + 10 {
+                        state.last_displayed_progress = current;
+                        let mut text = format!("{} progress {}", state.operation, current);
+                        if let Some(phase_idx) = state.current_phase {
+                            if let Some(name) = state.phases.get(phase_idx) {
+                                text.push_str(&format!(" ({name})"));
+                            }
+                        }
+                        message = Some(text);
+                    }
+
+                    if let Some(text) = message {
+                        self.show_meta_message(meta, text, EventSeverity::Info);
+                    }
+                } else if self.debug_enabled {
+                    self.show_meta_message(
+                        meta,
+                        format!("Progress update for unknown tracker {id}: {current}/{total:?}"),
+                        EventSeverity::Debug,
+                    );
+                }
+            }
+            ProgressEvent::PhaseChanged {
+                id,
+                phase,
+                phase_name,
+            } => {
+                if let Some(operation) = self.progress_states.get_mut(&id).map(|state| {
+                    state.current_phase = Some(phase);
+                    state.operation.clone()
+                }) {
+                    self.show_meta_message(
+                        meta,
+                        format!("{operation} → phase {phase_name}"),
+                        EventSeverity::Info,
+                    );
+                } else if self.debug_enabled {
+                    self.show_meta_message(
+                        meta,
+                        format!("Phase change for unknown tracker {id}: {phase_name}"),
+                        EventSeverity::Debug,
+                    );
+                }
+            }
+            ProgressEvent::Completed {
+                id,
+                duration,
+                total_processed,
+                ..
+            } => {
+                let message = if let Some(state) = self.progress_states.remove(&id) {
+                    let mut text = format!(
+                        "{} completed in {}",
+                        state.operation,
+                        format_duration(duration)
+                    );
+                    if total_processed > 0 {
+                        text.push_str(&format!(" • processed {total_processed}"));
+                    }
+                    text
+                } else {
+                    format!("Progress {id} completed in {}", format_duration(duration))
+                };
+                self.show_meta_message(meta, message, EventSeverity::Success);
+            }
+            ProgressEvent::Failed {
+                id,
+                error,
+                partial_duration,
+                ..
+            } => {
+                let message = if let Some(state) = self.progress_states.remove(&id) {
+                    format!(
+                        "{} failed after {}: {error}",
+                        state.operation,
+                        format_duration(partial_duration)
+                    )
+                } else {
+                    format!(
+                        "Progress {id} failed after {}: {error}",
+                        format_duration(partial_duration)
+                    )
+                };
+                self.show_meta_message(meta, message, EventSeverity::Error);
+            }
+            ProgressEvent::Paused { id, reason, .. } => {
+                if self.debug_enabled {
+                    self.show_meta_message(
+                        meta,
+                        format!("Progress {id} paused: {reason}"),
+                        EventSeverity::Debug,
+                    );
+                }
+            }
+            ProgressEvent::Resumed { id, pause_duration } => {
+                if self.debug_enabled {
+                    self.show_meta_message(
+                        meta,
+                        format!(
+                            "Progress {id} resumed after {}",
+                            format_duration(pause_duration)
+                        ),
+                        EventSeverity::Debug,
+                    );
+                }
+            }
+            ProgressEvent::ChildStarted {
+                parent_id,
+                child_id,
+                operation,
+                ..
+            } => {
+                if self.debug_enabled {
+                    self.show_meta_message(
+                        meta,
+                        format!("Progress {parent_id} -> child {child_id} started: {operation}"),
+                        EventSeverity::Debug,
+                    );
+                }
+            }
+            ProgressEvent::ChildCompleted {
+                parent_id,
+                child_id,
+                success,
+            } => {
+                if self.debug_enabled {
+                    let status = if success { "succeeded" } else { "failed" };
+                    self.show_meta_message(
+                        meta,
+                        format!("Progress {parent_id} -> child {child_id} {status}"),
+                        EventSeverity::Debug,
+                    );
+                }
+            }
+            other => {
+                if self.debug_enabled {
+                    self.show_meta_message(
+                        meta,
+                        format!("Progress event (debug): {other:?}"),
+                        EventSeverity::Debug,
+                    );
+                }
             }
         }
     }
@@ -1199,6 +1429,35 @@ No changes were made. Use without --check to execute."
             format!("{} {}", size as u64, UNITS[unit_index])
         } else {
             format!("{:.1} {}", size, UNITS[unit_index])
+        }
+    }
+}
+
+fn format_duration(duration: Duration) -> String {
+    let secs = duration.as_secs();
+    if secs == 0 {
+        format!("{}ms", duration.as_millis())
+    } else if secs < 60 {
+        format!("{secs}s")
+    } else {
+        let minutes = secs / 60;
+        let seconds = secs % 60;
+        if minutes < 60 {
+            if seconds == 0 {
+                format!("{minutes}m")
+            } else {
+                format!("{minutes}m {seconds}s")
+            }
+        } else {
+            let hours = minutes / 60;
+            let minutes = minutes % 60;
+            if minutes == 0 && seconds == 0 {
+                format!("{hours}h")
+            } else if seconds == 0 {
+                format!("{hours}h {minutes}m")
+            } else {
+                format!("{hours}h {minutes}m {seconds}s")
+            }
         }
     }
 }

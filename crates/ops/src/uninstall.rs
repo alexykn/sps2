@@ -41,6 +41,7 @@ pub async fn uninstall(ctx: &OpsCtx, package_names: &[String]) -> Result<Install
         package_count: package_names.len() as u64,
     };
     let progress_id = progress_manager.create_uninstall_tracker(uninstall_config);
+    progress_manager.emit_started(&progress_id, ctx);
 
     // Create installer
     let config = InstallConfig::default();
@@ -79,7 +80,7 @@ pub async fn uninstall(ctx: &OpsCtx, package_names: &[String]) -> Result<Install
         duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
     };
 
-    progress_manager.complete_operation(&progress_id, &ctx.tx);
+    progress_manager.complete_operation(&progress_id, ctx);
 
     Ok(report)
 }

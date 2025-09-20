@@ -65,7 +65,7 @@ Total variants across the event surface now sit at **207**, with **49** still un
 
 **Call-site insights:**
 - Download/install/build/guard domains now map 1:1 between emitted variants and CLI consumers; only the dormant `PythonEvent` family remains unused.
-- `ProgressEvent` is still emitted 35 times without a dedicated consumer — reinforcing the need for Phase 3 progress consolidation.
+- `ProgressEvent` is emitted 35 times and now feeds the CLI progress renderer introduced during Phase 3 consolidation.
 - Errors most frequently constructed: `InstallError::InvalidPackageFile` (84 uses), `StorageError::IoError` (66), `PlatformError::FilesystemOperationFailed` (41).
 
 ## 3. Overlap & Redundancy Report
@@ -142,4 +142,4 @@ Domain events stay lightweight milestones, while the progress tracker will shift
 - **CI gates:** run `cargo fmt`, `cargo clippy --all-targets --all-features`, `cargo test --workspace`, `cargo-udeps` to guarantee no resurrected dead code, and optional `cargo-semver-checks` for public crates.
 
 ---
-**Next actions:** focus on PR #3 (progress tracker consolidation) and socialize the structured error adoption plan with CLI/platform teams ahead of Phase 4.
+**Next actions:** proceed with PR #4 (structured error adoption) and socialize the error contract changes with CLI/platform teams now that the progress tracker consolidation is in place.

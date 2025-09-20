@@ -359,6 +359,7 @@ async fn install_remote_packages_parallel(
     };
 
     let progress_id = progress_manager.create_install_tracker(install_config);
+    progress_manager.emit_started(&progress_id, ctx);
 
     // The new standardized progress tracker handles the initial event emission.
 
@@ -398,7 +399,7 @@ async fn install_remote_packages_parallel(
     let execution_plan = resolution_result.execution_plan;
     let resolved_packages = resolution_result.nodes;
 
-    progress_manager.update_phase_to_done(&progress_id, "Resolve", &ctx.tx);
+    progress_manager.update_phase_to_done(&progress_id, "Resolve", ctx);
 
     // Phase 2-4: Parallel execution (download, store, prepare)
     // Use the same approach as the regular installer with ParallelExecutor
@@ -442,7 +443,7 @@ async fn install_remote_packages_parallel(
         }
     };
 
-    progress_manager.update_phase_to_done(&progress_id, "Download", &ctx.tx);
+    progress_manager.update_phase_to_done(&progress_id, "Download", ctx);
 
     // Phase 5: Atomic installation
     ctx.emit_debug("DEBUG: Starting atomic installation");
@@ -464,7 +465,7 @@ async fn install_remote_packages_parallel(
     ctx.emit_debug("DEBUG: Atomic installation completed");
 
     // Complete progress tracking
-    progress_manager.complete_operation(&progress_id, &ctx.tx);
+    progress_manager.complete_operation(&progress_id, ctx);
 
     // Send comprehensive completion metrics
     ctx.emit_debug(format!(

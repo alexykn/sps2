@@ -18,6 +18,7 @@ pub async fn update_vulndb(ctx: &OpsCtx) -> Result<String, Error> {
         sources_count: 3, // NVD, OSV, GitHub
     };
     let progress_id = progress_manager.create_vulndb_tracker(vulndb_config);
+    progress_manager.emit_started(&progress_id, ctx);
 
     // Initialize vulnerability database manager
     let mut vulndb = sps2_audit::VulnDbManager::new(sps2_audit::VulnDbManager::default_path())?;
@@ -28,7 +29,7 @@ pub async fn update_vulndb(ctx: &OpsCtx) -> Result<String, Error> {
     // Update the database from all sources with event reporting
     vulndb.update_with_events(Some(&ctx.tx)).await?;
 
-    progress_manager.complete_operation(&progress_id, &ctx.tx);
+    progress_manager.complete_operation(&progress_id, ctx);
     Ok("Vulnerability database updated successfully".to_string())
 }
 

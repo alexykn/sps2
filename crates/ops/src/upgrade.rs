@@ -41,6 +41,7 @@ pub async fn upgrade(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRe
         is_upgrade: true,
     };
     let progress_id = progress_manager.create_update_tracker(update_config);
+    progress_manager.emit_started(&progress_id, ctx);
 
     ctx.emit(AppEvent::Update(UpdateEvent::Started {
         operation_type: UpdateOperationType::Upgrade,
@@ -136,7 +137,7 @@ fn create_upgrade_report(
         duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
     };
 
-    progress_manager.complete_operation(progress_id, &ctx.tx);
+    progress_manager.complete_operation(progress_id, ctx);
 
     ctx.emit(AppEvent::Update(UpdateEvent::Completed {
         operation_type: UpdateOperationType::Upgrade,
