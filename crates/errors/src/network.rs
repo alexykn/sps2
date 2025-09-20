@@ -1,6 +1,12 @@
 //! Network-related error types
 
+use std::borrow::Cow;
+
+use crate::UserFacingError;
 use thiserror::Error;
+
+const HINT_CHECK_CONNECTION: &str = "Check your network connection and retry.";
+const HINT_RETRY_LATER: &str = "Retry the operation; the service may recover shortly.";
 
 #[derive(Debug, Clone, Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -50,4 +56,39 @@ pub enum NetworkError {
 
     #[error("unsupported protocol: {protocol}")]
     UnsupportedProtocol { protocol: String },
+}
+
+impl UserFacingError for NetworkError {
+    fn user_message(&self) -> Cow<'_, str> {
+        Cow::Owned(self.to_string())
+    }
+
+    fn user_hint(&self) -> Option<&'static str> {
+        match self {
+            Self::Timeout { .. } | Self::NetworkUnavailable => Some(HINT_CHECK_CONNECTION),
+            Self::RateLimited { .. } => Some("Wait for the rate limit window to expire."),
+            Self::PartialContentNotSupported | Self::RangeRequestFailed { .. } => {
+                Some("Retry without resume or select a different mirror.")
+            }
+            Self::StreamInterrupted { .. } => Some(HINT_RETRY_LATER),
+            Self::ChecksumMismatch { .. } => {
+                Some("Retry with `--no-cache` or verify the artifact.")
+            }
+            _ => None,
+        }
+    }
+
+    fn is_retryable(&self) -> bool {
+        matches!(
+            self,
+            Self::Timeout { .. }
+                | Self::DownloadFailed(_)
+                | Self::ConnectionRefused(_)
+                | Self::NetworkUnavailable
+                | Self::RateLimited { .. }
+                | Self::PartialContentNotSupported
+                | Self::ContentLengthMismatch { .. }
+                | Self::StreamInterrupted { .. }
+        )
+    }
 }

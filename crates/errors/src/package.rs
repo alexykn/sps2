@@ -1,5 +1,8 @@
 //! Package-related error types
 
+use std::borrow::Cow;
+
+use crate::UserFacingError;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
@@ -50,4 +53,42 @@ pub enum PackageError {
 
     #[error("source not available: {package}")]
     SourceNotAvailable { package: String },
+}
+
+impl UserFacingError for PackageError {
+    fn user_message(&self) -> Cow<'_, str> {
+        Cow::Owned(self.to_string())
+    }
+
+    fn user_hint(&self) -> Option<&'static str> {
+        match self {
+            Self::NotFound { .. } => Some("Run `sps2 reposync` or check the package name."),
+            Self::MissingDependency { .. } => {
+                Some("Add the missing dependency to your install request or build recipe.")
+            }
+            Self::DependencyConflict { .. } | Self::DependencyCycle { .. } => {
+                Some("Adjust your requested package versions to resolve the dependency conflict.")
+            }
+            Self::SignatureVerificationFailed { .. } | Self::UnsignedPackage => {
+                Some("Verify the package signature or supply trusted keys before proceeding.")
+            }
+            Self::AlreadyInstalled { .. } => {
+                Some("Use `sps2 update` or `sps2 upgrade` if you want a newer version.")
+            }
+            Self::ResolutionTimeout { .. } => {
+                Some("Retry the operation with fewer packages or increase the resolver timeout.")
+            }
+            Self::SourceNotAvailable { .. } => {
+                Some("Ensure the source repository is reachable or configured.")
+            }
+            _ => None,
+        }
+    }
+
+    fn is_retryable(&self) -> bool {
+        matches!(
+            self,
+            Self::ResolutionTimeout { .. } | Self::SourceNotAvailable { .. }
+        )
+    }
 }

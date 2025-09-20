@@ -1,5 +1,8 @@
 //! Build system error types
 
+use std::borrow::Cow;
+
+use crate::UserFacingError;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
@@ -148,4 +151,46 @@ pub enum BuildError {
 
     #[error("disallowed command: {command}")]
     DisallowedCommand { command: String },
+}
+
+impl UserFacingError for BuildError {
+    fn user_message(&self) -> Cow<'_, str> {
+        Cow::Owned(self.to_string())
+    }
+
+    fn user_hint(&self) -> Option<&'static str> {
+        match self {
+            Self::MissingBuildDep { .. } => {
+                Some("Install the missing build dependency or declare it in the recipe.")
+            }
+            Self::FetchFailed { .. } | Self::InvalidUrl { .. } | Self::NetworkDisabled { .. } => {
+                Some("Check network access or provide local source artifacts for the build.")
+            }
+            Self::NetworkAccessDenied => {
+                Some("Allow network access for the build or supply pre-fetched sources.")
+            }
+            Self::PatchFailed { .. } => {
+                Some("Update the patch so it applies cleanly to the current sources.")
+            }
+            Self::Timeout { .. } | Self::BuildTimeout { .. } => {
+                Some("Increase the build timeout or reduce parallelism, then retry.")
+            }
+            Self::SigningError { .. } => {
+                Some("Verify signing configuration and ensure the required keys are available.")
+            }
+            Self::RecipeError { .. }
+            | Self::InvalidPath { .. }
+            | Self::InvalidUrlValidation { .. } => {
+                Some("Correct the recipe definition before retrying the build.")
+            }
+            _ => None,
+        }
+    }
+
+    fn is_retryable(&self) -> bool {
+        matches!(
+            self,
+            Self::FetchFailed { .. } | Self::Timeout { .. } | Self::BuildTimeout { .. }
+        )
+    }
 }

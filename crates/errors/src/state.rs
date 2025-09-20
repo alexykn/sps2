@@ -1,5 +1,8 @@
 //! State management error types
 
+use std::borrow::Cow;
+
+use crate::UserFacingError;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
@@ -32,4 +35,28 @@ pub enum StateError {
 
     #[error("migration failed: {message}")]
     MigrationFailed { message: String },
+}
+
+impl UserFacingError for StateError {
+    fn user_message(&self) -> Cow<'_, str> {
+        Cow::Owned(self.to_string())
+    }
+
+    fn user_hint(&self) -> Option<&'static str> {
+        match self {
+            Self::Conflict { .. } => Some("Retry once the concurrent operation has completed."),
+            Self::StateNotFound { .. } => Some("List available states with `sps2 history --all`."),
+            Self::ActiveStateMissing => {
+                Some("Run `sps2 check-health` to rebuild the active state.")
+            }
+            Self::MigrationFailed { .. } => {
+                Some("Review the migration logs and rerun `sps2 check-health`.")
+            }
+            _ => None,
+        }
+    }
+
+    fn is_retryable(&self) -> bool {
+        matches!(self, Self::Conflict { .. } | Self::TransactionFailed { .. })
+    }
 }

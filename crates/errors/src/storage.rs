@@ -1,5 +1,8 @@
 //! Storage and filesystem-related error types
 
+use std::borrow::Cow;
+
+use crate::UserFacingError;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
@@ -70,5 +73,28 @@ impl StorageError {
                 message: format!("{}: {}", path.display(), err),
             },
         }
+    }
+}
+
+impl UserFacingError for StorageError {
+    fn user_message(&self) -> Cow<'_, str> {
+        Cow::Owned(self.to_string())
+    }
+
+    fn user_hint(&self) -> Option<&'static str> {
+        match self {
+            Self::DiskFull { .. } => Some("Free up disk space under /opt/pm and retry."),
+            Self::PermissionDenied { .. } => {
+                Some("Adjust filesystem permissions or retry with elevated privileges.")
+            }
+            Self::LockFailed { .. } => {
+                Some("Wait for other package-manager operations to finish, then retry.")
+            }
+            _ => None,
+        }
+    }
+
+    fn is_retryable(&self) -> bool {
+        matches!(self, Self::LockFailed { .. } | Self::IoError { .. })
     }
 }

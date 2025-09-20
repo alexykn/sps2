@@ -1,6 +1,12 @@
 //! Operation orchestration error types
 
+use std::borrow::Cow;
+
+use crate::UserFacingError;
 use thiserror::Error;
+
+const HINT_PROVIDE_PACKAGE: &str =
+    "Provide at least one package spec (e.g. `sps2 install ripgrep`).";
 
 #[derive(Debug, Clone, Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -53,4 +59,22 @@ pub enum OpsError {
 
     #[error("invalid staging directory {path}: {reason}")]
     InvalidStagingDirectory { path: String, reason: String },
+}
+
+impl UserFacingError for OpsError {
+    fn user_message(&self) -> Cow<'_, str> {
+        Cow::Owned(self.to_string())
+    }
+
+    fn user_hint(&self) -> Option<&'static str> {
+        match self {
+            Self::NoPackagesSpecified => Some(HINT_PROVIDE_PACKAGE),
+            Self::NoPreviousState => Some("Create a state snapshot before attempting rollback."),
+            _ => None,
+        }
+    }
+
+    fn is_retryable(&self) -> bool {
+        matches!(self, Self::NoPackagesSpecified | Self::NoPreviousState)
+    }
 }

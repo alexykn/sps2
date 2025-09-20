@@ -1,6 +1,8 @@
 //! Platform-specific operation errors
 
-use crate::{BuildError, StorageError};
+use std::borrow::Cow;
+
+use crate::{BuildError, StorageError, UserFacingError};
 use thiserror::Error;
 
 /// Errors that can occur during platform-specific operations
@@ -85,6 +87,43 @@ impl From<PlatformError> for BuildError {
                 message: err.to_string(),
             },
         }
+    }
+}
+
+impl UserFacingError for PlatformError {
+    fn user_message(&self) -> Cow<'_, str> {
+        Cow::Owned(self.to_string())
+    }
+
+    fn user_hint(&self) -> Option<&'static str> {
+        match self {
+            Self::CommandNotFound { .. }
+            | Self::ToolNotFound { .. }
+            | Self::MultipleToolsNotFound { .. } => {
+                Some("Install the required tool or adjust your PATH, then retry.")
+            }
+            Self::CapabilityUnavailable { .. } => {
+                Some("Enable the required platform capability or use an alternative workflow.")
+            }
+            Self::PermissionDenied { .. } => {
+                Some("Adjust filesystem permissions or rerun the command with elevated privileges.")
+            }
+            _ => None,
+        }
+    }
+
+    fn is_retryable(&self) -> bool {
+        matches!(
+            self,
+            Self::BinaryOperationFailed { .. }
+                | Self::FilesystemOperationFailed { .. }
+                | Self::ProcessExecutionFailed { .. }
+                | Self::CommandFailed { .. }
+                | Self::CommandNotFound { .. }
+                | Self::ToolNotFound { .. }
+                | Self::MultipleToolsNotFound { .. }
+                | Self::PermissionDenied { .. }
+        )
     }
 }
 

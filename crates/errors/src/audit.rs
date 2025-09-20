@@ -1,5 +1,8 @@
 //! Audit system error types
 
+use std::borrow::Cow;
+
+use crate::UserFacingError;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
@@ -50,4 +53,34 @@ pub enum AuditError {
         component: String,
         timeout_seconds: u64,
     },
+}
+
+impl UserFacingError for AuditError {
+    fn user_message(&self) -> Cow<'_, str> {
+        Cow::Owned(self.to_string())
+    }
+
+    fn user_hint(&self) -> Option<&'static str> {
+        match self {
+            Self::CveFetchError { .. } | Self::ConnectionFailed { .. } => {
+                Some("Check network connectivity to the vulnerability database and retry.")
+            }
+            Self::SbomNotFound { .. } => Some("Provide a valid SBOM file path or generate one before auditing."),
+            Self::Timeout { .. } | Self::ScanTimeout { .. } => Some("Increase the audit timeout or retry when the system is idle."),
+            Self::CriticalVulnerabilitiesFound { .. } => {
+                Some("Address the critical vulnerabilities or acknowledge them with the appropriate flag.")
+            }
+            _ => None,
+        }
+    }
+
+    fn is_retryable(&self) -> bool {
+        matches!(
+            self,
+            Self::CveFetchError { .. }
+                | Self::ConnectionFailed { .. }
+                | Self::Timeout { .. }
+                | Self::ScanTimeout { .. }
+        )
+    }
 }

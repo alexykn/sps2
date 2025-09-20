@@ -1,5 +1,8 @@
 //! Guard-specific error types for state verification and healing operations
 
+use std::borrow::Cow;
+
+use crate::UserFacingError;
 use thiserror::Error;
 
 /// Severity levels for guard-related errors and discrepancies.
@@ -118,4 +121,45 @@ pub enum GuardError {
         expected_state: Option<String>,
         recovery_possible: bool,
     },
+}
+
+impl UserFacingError for GuardError {
+    fn user_message(&self) -> Cow<'_, str> {
+        Cow::Owned(self.to_string())
+    }
+
+    fn user_hint(&self) -> Option<&'static str> {
+        match self {
+            Self::VerificationFailed { .. } => {
+                Some("Inspect the reported discrepancies and rerun `sps2 verify --heal`.")
+            }
+            Self::HealingFailed { .. } => {
+                Some("Review the affected file and resolve the discrepancy before retrying.")
+            }
+            Self::ConfigurationError { .. } => {
+                Some("Fix the guard configuration option noted in the error message.")
+            }
+            Self::PermissionError { .. } => {
+                Some("Adjust filesystem permissions or rerun with elevated privileges.")
+            }
+            Self::ScopeError { .. } => Some("Adjust the verification scope to a supported value."),
+            Self::TimeoutError { .. } => {
+                Some("Increase the guard timeout or retry when the system is less busy.")
+            }
+            Self::ResourceExhausted { .. } => {
+                Some("Free up the constrained resource and retry the verification.")
+            }
+            _ => None,
+        }
+    }
+
+    fn is_retryable(&self) -> bool {
+        match self {
+            Self::HealingFailed { recoverable, .. } => *recoverable,
+            Self::CacheError { .. }
+            | Self::TimeoutError { .. }
+            | Self::ResourceExhausted { .. } => true,
+            _ => false,
+        }
+    }
 }

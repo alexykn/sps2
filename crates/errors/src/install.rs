@@ -1,6 +1,14 @@
 //! Installation system error types
 
+use std::borrow::Cow;
+
+use crate::UserFacingError;
 use thiserror::Error;
+
+const HINT_WAIT_AND_RETRY: &str = "Wait for pending operations to finish, then retry.";
+const HINT_RETRY_LATER: &str = "Retry the operation; the service may recover shortly.";
+const HINT_DOWNLOAD_TIMEOUT: &str =
+    "Retry the download or increase the timeout with --download-timeout.";
 
 #[derive(Debug, Clone, Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -67,4 +75,32 @@ pub enum InstallError {
 
     #[error("no progress detected: {message}")]
     NoProgress { message: String },
+}
+
+impl UserFacingError for InstallError {
+    fn user_message(&self) -> Cow<'_, str> {
+        Cow::Owned(self.to_string())
+    }
+
+    fn user_hint(&self) -> Option<&'static str> {
+        match self {
+            Self::ConcurrencyError { .. } => Some(HINT_WAIT_AND_RETRY),
+            Self::OperationTimeout { .. } | Self::NoProgress { .. } => Some(HINT_RETRY_LATER),
+            Self::DownloadTimeout { .. } => Some(HINT_DOWNLOAD_TIMEOUT),
+            Self::MissingDownloadUrl { .. } | Self::MissingLocalPath { .. } => {
+                Some("Ensure the package manifest includes a valid source.")
+            }
+            _ => None,
+        }
+    }
+
+    fn is_retryable(&self) -> bool {
+        matches!(
+            self,
+            Self::ConcurrencyError { .. }
+                | Self::OperationTimeout { .. }
+                | Self::NoProgress { .. }
+                | Self::DownloadTimeout { .. }
+        )
+    }
 }
