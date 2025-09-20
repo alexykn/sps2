@@ -1,0 +1,2738 @@
+[
+  {
+    "domain": "Acquisition",
+    "event_type": "AcquisitionEvent",
+    "variant": "Completed",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 376,
+        "line_text": "context.emit(AppEvent::Acquisition(AcquisitionEvent::Completed {"
+      }
+    ]
+  },
+  {
+    "domain": "Acquisition",
+    "event_type": "AcquisitionEvent",
+    "variant": "Failed",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/events/src/events/mod.rs",
+        "line": 116,
+        "line_text": "| AppEvent::Acquisition(AcquisitionEvent::Failed { .. })"
+      }
+    ]
+  },
+  {
+    "domain": "Audit",
+    "event_type": "AuditEvent",
+    "variant": "Completed",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/audit/src/lib.rs",
+        "line": 130,
+        "line_text": "sender.emit(AppEvent::Audit(AuditEvent::Completed {"
+      },
+      {
+        "path": "crates/ops/src/security.rs",
+        "line": 124,
+        "line_text": "ctx.emit(AppEvent::Audit(AuditEvent::Completed {"
+      }
+    ]
+  },
+  {
+    "domain": "Audit",
+    "event_type": "AuditEvent",
+    "variant": "PackageCompleted",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/audit/src/lib.rs",
+        "line": 120,
+        "line_text": "sender.emit(AppEvent::Audit(AuditEvent::PackageCompleted {"
+      },
+      {
+        "path": "crates/ops/src/security.rs",
+        "line": 117,
+        "line_text": "ctx.emit(AppEvent::Audit(AuditEvent::PackageCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "Audit",
+    "event_type": "AuditEvent",
+    "variant": "Starting",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/audit/src/lib.rs",
+        "line": 97,
+        "line_text": "sender.emit(AppEvent::Audit(AuditEvent::Starting {"
+      },
+      {
+        "path": "crates/ops/src/security.rs",
+        "line": 99,
+        "line_text": "ctx.emit(AppEvent::Audit(AuditEvent::Starting { package_count: 1 }));"
+      }
+    ]
+  },
+  {
+    "domain": "Audit",
+    "event_type": "AuditEvent",
+    "variant": "VulnDbSourceUpdateCompleted",
+    "count": 3,
+    "occurrences": [
+      {
+        "path": "crates/audit/src/vulndb/updater.rs",
+        "line": 66,
+        "line_text": "sender.emit(AppEvent::Audit(AuditEvent::VulnDbSourceUpdateCompleted {"
+      },
+      {
+        "path": "crates/audit/src/vulndb/updater.rs",
+        "line": 103,
+        "line_text": "sender.emit(AppEvent::Audit(AuditEvent::VulnDbSourceUpdateCompleted {"
+      },
+      {
+        "path": "crates/audit/src/vulndb/updater.rs",
+        "line": 140,
+        "line_text": "sender.emit(AppEvent::Audit(AuditEvent::VulnDbSourceUpdateCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "Audit",
+    "event_type": "AuditEvent",
+    "variant": "VulnDbSourceUpdateFailed",
+    "count": 3,
+    "occurrences": [
+      {
+        "path": "crates/audit/src/vulndb/updater.rs",
+        "line": 76,
+        "line_text": "sender.emit(AppEvent::Audit(AuditEvent::VulnDbSourceUpdateFailed {"
+      },
+      {
+        "path": "crates/audit/src/vulndb/updater.rs",
+        "line": 113,
+        "line_text": "sender.emit(AppEvent::Audit(AuditEvent::VulnDbSourceUpdateFailed {"
+      },
+      {
+        "path": "crates/audit/src/vulndb/updater.rs",
+        "line": 150,
+        "line_text": "sender.emit(AppEvent::Audit(AuditEvent::VulnDbSourceUpdateFailed {"
+      }
+    ]
+  },
+  {
+    "domain": "Audit",
+    "event_type": "AuditEvent",
+    "variant": "VulnDbSourceUpdateStarting",
+    "count": 3,
+    "occurrences": [
+      {
+        "path": "crates/audit/src/vulndb/updater.rs",
+        "line": 55,
+        "line_text": "sender.emit(AppEvent::Audit(AuditEvent::VulnDbSourceUpdateStarting {"
+      },
+      {
+        "path": "crates/audit/src/vulndb/updater.rs",
+        "line": 92,
+        "line_text": "sender.emit(AppEvent::Audit(AuditEvent::VulnDbSourceUpdateStarting {"
+      },
+      {
+        "path": "crates/audit/src/vulndb/updater.rs",
+        "line": 129,
+        "line_text": "sender.emit(AppEvent::Audit(AuditEvent::VulnDbSourceUpdateStarting {"
+      }
+    ]
+  },
+  {
+    "domain": "Audit",
+    "event_type": "AuditEvent",
+    "variant": "VulnDbUpdateCompleted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/audit/src/vulndb/updater.rs",
+        "line": 39,
+        "line_text": "sender.emit(AppEvent::Audit(AuditEvent::VulnDbUpdateCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "Audit",
+    "event_type": "AuditEvent",
+    "variant": "VulnDbUpdateStarting",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/audit/src/vulndb/updater.rs",
+        "line": 19,
+        "line_text": "sender.emit(AppEvent::Audit(AuditEvent::VulnDbUpdateStarting));"
+      }
+    ]
+  },
+  {
+    "domain": "Build",
+    "event_type": "BuildEvent",
+    "variant": "CacheCleaned",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/builder/src/cache.rs",
+        "line": 94,
+        "line_text": "self.emit(AppEvent::Build(BuildEvent::CacheCleaned {"
+      }
+    ]
+  },
+  {
+    "domain": "Build",
+    "event_type": "BuildEvent",
+    "variant": "CommandStarted",
+    "count": 4,
+    "occurrences": [
+      {
+        "path": "crates/builder/src/environment/execution.rs",
+        "line": 72,
+        "line_text": "self.emit(AppEvent::Build(BuildEvent::CommandStarted {"
+      },
+      {
+        "path": "crates/builder/src/stages/executors.rs",
+        "line": 363,
+        "line_text": "AppEvent::Build(BuildEvent::CommandStarted {"
+      },
+      {
+        "path": "crates/builder/src/utils/executor.rs",
+        "line": 243,
+        "line_text": "AppEvent::Build(BuildEvent::CommandStarted {"
+      },
+      {
+        "path": "crates/builder/src/utils/executor.rs",
+        "line": 367,
+        "line_text": "AppEvent::Build(BuildEvent::CommandStarted {"
+      }
+    ]
+  },
+  {
+    "domain": "Build",
+    "event_type": "BuildEvent",
+    "variant": "Completed",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/events/src/lib.rs",
+        "line": 202,
+        "line_text": "self.emit(AppEvent::Build(BuildEvent::Completed {"
+      },
+      {
+        "path": "crates/ops/src/build.rs",
+        "line": 134,
+        "line_text": "ctx.emit(AppEvent::Build(BuildEvent::Completed {"
+      }
+    ]
+  },
+  {
+    "domain": "Build",
+    "event_type": "BuildEvent",
+    "variant": "Failed",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/events/src/events/mod.rs",
+        "line": 107,
+        "line_text": "| AppEvent::Build(BuildEvent::Failed { .. })"
+      }
+    ]
+  },
+  {
+    "domain": "Build",
+    "event_type": "BuildEvent",
+    "variant": "OrchestrationPhaseCompleted",
+    "count": 7,
+    "occurrences": [
+      {
+        "path": "crates/builder/src/utils/executor.rs",
+        "line": 51,
+        "line_text": "AppEvent::Build(BuildEvent::OrchestrationPhaseCompleted {"
+      },
+      {
+        "path": "crates/builder/src/utils/executor.rs",
+        "line": 165,
+        "line_text": "AppEvent::Build(BuildEvent::OrchestrationPhaseCompleted {"
+      },
+      {
+        "path": "crates/builder/src/utils/executor.rs",
+        "line": 180,
+        "line_text": "AppEvent::Build(BuildEvent::OrchestrationPhaseCompleted {"
+      },
+      {
+        "path": "crates/builder/src/utils/executor.rs",
+        "line": 232,
+        "line_text": "AppEvent::Build(BuildEvent::OrchestrationPhaseCompleted {"
+      },
+      {
+        "path": "crates/builder/src/utils/executor.rs",
+        "line": 261,
+        "line_text": "AppEvent::Build(BuildEvent::OrchestrationPhaseCompleted {"
+      },
+      {
+        "path": "crates/builder/src/utils/executor.rs",
+        "line": 324,
+        "line_text": "AppEvent::Build(BuildEvent::OrchestrationPhaseCompleted {"
+      },
+      {
+        "path": "crates/builder/src/utils/executor.rs",
+        "line": 392,
+        "line_text": "AppEvent::Build(BuildEvent::OrchestrationPhaseCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "Build",
+    "event_type": "BuildEvent",
+    "variant": "OrchestrationPhaseStarted",
+    "count": 7,
+    "occurrences": [
+      {
+        "path": "crates/builder/src/utils/executor.rs",
+        "line": 36,
+        "line_text": "AppEvent::Build(BuildEvent::OrchestrationPhaseStarted {"
+      },
+      {
+        "path": "crates/builder/src/utils/executor.rs",
+        "line": 120,
+        "line_text": "AppEvent::Build(BuildEvent::OrchestrationPhaseStarted {"
+      },
+      {
+        "path": "crates/builder/src/utils/executor.rs",
+        "line": 155,
+        "line_text": "AppEvent::Build(BuildEvent::OrchestrationPhaseStarted {"
+      },
+      {
+        "path": "crates/builder/src/utils/executor.rs",
+        "line": 203,
+        "line_text": "AppEvent::Build(BuildEvent::OrchestrationPhaseStarted {"
+      },
+      {
+        "path": "crates/builder/src/utils/executor.rs",
+        "line": 221,
+        "line_text": "AppEvent::Build(BuildEvent::OrchestrationPhaseStarted {"
+      },
+      {
+        "path": "crates/builder/src/utils/executor.rs",
+        "line": 285,
+        "line_text": "AppEvent::Build(BuildEvent::OrchestrationPhaseStarted {"
+      },
+      {
+        "path": "crates/builder/src/utils/executor.rs",
+        "line": 348,
+        "line_text": "AppEvent::Build(BuildEvent::OrchestrationPhaseStarted {"
+      }
+    ]
+  },
+  {
+    "domain": "Build",
+    "event_type": "BuildEvent",
+    "variant": "ResourceUsage",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/events/src/events/mod.rs",
+        "line": 144,
+        "line_text": "AppEvent::Build(BuildEvent::ResourceUsage { .. })"
+      }
+    ]
+  },
+  {
+    "domain": "Build",
+    "event_type": "BuildEvent",
+    "variant": "SessionStarted",
+    "count": 3,
+    "occurrences": [
+      {
+        "path": "crates/events/src/lib.rs",
+        "line": 185,
+        "line_text": "self.emit(AppEvent::Build(BuildEvent::SessionStarted {"
+      },
+      {
+        "path": "crates/ops/src/build.rs",
+        "line": 49,
+        "line_text": "ctx.emit(AppEvent::Build(BuildEvent::SessionStarted {"
+      },
+      {
+        "path": "crates/ops/src/build.rs",
+        "line": 64,
+        "line_text": "ctx.emit(AppEvent::Build(BuildEvent::SessionStarted {"
+      }
+    ]
+  },
+  {
+    "domain": "Build",
+    "event_type": "BuildEvent",
+    "variant": "StepOutput",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/events/src/events/mod.rs",
+        "line": 139,
+        "line_text": "| AppEvent::Build(BuildEvent::StepOutput { .. })"
+      }
+    ]
+  },
+  {
+    "domain": "Build",
+    "event_type": "BuildEvent",
+    "variant": "Warning",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/events/src/events/mod.rs",
+        "line": 130,
+        "line_text": "| AppEvent::Build(BuildEvent::Warning { .. })"
+      }
+    ]
+  },
+  {
+    "domain": "Download",
+    "event_type": "DownloadEvent",
+    "variant": "Completed",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/events/src/lib.rs",
+        "line": 168,
+        "line_text": "self.emit(AppEvent::Download(DownloadEvent::Completed {"
+      },
+      {
+        "path": "crates/net/src/download/core.rs",
+        "line": 494,
+        "line_text": "tx.emit(AppEvent::Download(DownloadEvent::Completed {"
+      }
+    ]
+  },
+  {
+    "domain": "Download",
+    "event_type": "DownloadEvent",
+    "variant": "Failed",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/events/src/events/mod.rs",
+        "line": 106,
+        "line_text": "| AppEvent::Download(DownloadEvent::Failed { .. })"
+      }
+    ]
+  },
+  {
+    "domain": "Download",
+    "event_type": "DownloadEvent",
+    "variant": "PackageCompleted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/net/src/download/core.rs",
+        "line": 142,
+        "line_text": "tx.emit(AppEvent::Download(DownloadEvent::PackageCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "Download",
+    "event_type": "DownloadEvent",
+    "variant": "PackageStarted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/net/src/download/core.rs",
+        "line": 85,
+        "line_text": "tx.emit(AppEvent::Download(DownloadEvent::PackageStarted {"
+      }
+    ]
+  },
+  {
+    "domain": "Download",
+    "event_type": "DownloadEvent",
+    "variant": "Progress",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/events/src/events/mod.rs",
+        "line": 138,
+        "line_text": "| AppEvent::Download(DownloadEvent::Progress { .. })"
+      }
+    ]
+  },
+  {
+    "domain": "Download",
+    "event_type": "DownloadEvent",
+    "variant": "Resuming",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/net/src/download/core.rs",
+        "line": 421,
+        "line_text": "tx.emit(AppEvent::Download(DownloadEvent::Resuming {"
+      }
+    ]
+  },
+  {
+    "domain": "Download",
+    "event_type": "DownloadEvent",
+    "variant": "SignatureCompleted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/net/src/download/core.rs",
+        "line": 215,
+        "line_text": "tx.emit(AppEvent::Download(DownloadEvent::SignatureCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "Download",
+    "event_type": "DownloadEvent",
+    "variant": "Stalled",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/events/src/events/mod.rs",
+        "line": 131,
+        "line_text": "| AppEvent::Download(DownloadEvent::Stalled { .. })"
+      }
+    ]
+  },
+  {
+    "domain": "Download",
+    "event_type": "DownloadEvent",
+    "variant": "Started",
+    "count": 3,
+    "occurrences": [
+      {
+        "path": "crates/builder/src/environment/dependencies.rs",
+        "line": 130,
+        "line_text": "self.send_event(AppEvent::Download(DownloadEvent::Started {"
+      },
+      {
+        "path": "crates/events/src/lib.rs",
+        "line": 152,
+        "line_text": "self.emit(AppEvent::Download(DownloadEvent::Started {"
+      },
+      {
+        "path": "crates/net/src/download/core.rs",
+        "line": 472,
+        "line_text": "tx.emit(AppEvent::Download(DownloadEvent::Started {"
+      }
+    ]
+  },
+  {
+    "domain": "General",
+    "event_type": "GeneralEvent",
+    "variant": "CheckModePreview",
+    "count": 18,
+    "occurrences": [
+      {
+        "path": "crates/install/src/operations.rs",
+        "line": 525,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::CheckModePreview {"
+      },
+      {
+        "path": "crates/install/src/operations.rs",
+        "line": 550,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::CheckModePreview {"
+      },
+      {
+        "path": "crates/ops/src/install.rs",
+        "line": 215,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {"
+      },
+      {
+        "path": "crates/ops/src/install.rs",
+        "line": 249,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {"
+      },
+      {
+        "path": "crates/ops/src/install.rs",
+        "line": 292,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {"
+      },
+      {
+        "path": "crates/ops/src/maintenance.rs",
+        "line": 446,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {"
+      },
+      {
+        "path": "crates/ops/src/uninstall.rs",
+        "line": 110,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {"
+      },
+      {
+        "path": "crates/ops/src/uninstall.rs",
+        "line": 132,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {"
+      },
+      {
+        "path": "crates/ops/src/uninstall.rs",
+        "line": 148,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {"
+      },
+      {
+        "path": "crates/ops/src/uninstall.rs",
+        "line": 172,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {"
+      },
+      {
+        "path": "crates/ops/src/update.rs",
+        "line": 203,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {"
+      },
+      {
+        "path": "crates/ops/src/update.rs",
+        "line": 245,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {"
+      },
+      {
+        "path": "crates/ops/src/update.rs",
+        "line": 305,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {"
+      },
+      {
+        "path": "crates/ops/src/update.rs",
+        "line": 331,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {"
+      },
+      {
+        "path": "crates/ops/src/upgrade.rs",
+        "line": 204,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {"
+      },
+      {
+        "path": "crates/ops/src/upgrade.rs",
+        "line": 239,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {"
+      },
+      {
+        "path": "crates/ops/src/upgrade.rs",
+        "line": 299,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {"
+      },
+      {
+        "path": "crates/ops/src/upgrade.rs",
+        "line": 325,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {"
+      }
+    ]
+  },
+  {
+    "domain": "General",
+    "event_type": "GeneralEvent",
+    "variant": "CheckModeSummary",
+    "count": 5,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/install.rs",
+        "line": 323,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::CheckModeSummary {"
+      },
+      {
+        "path": "crates/ops/src/maintenance.rs",
+        "line": 466,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::CheckModeSummary {"
+      },
+      {
+        "path": "crates/ops/src/uninstall.rs",
+        "line": 200,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::CheckModeSummary {"
+      },
+      {
+        "path": "crates/ops/src/update.rs",
+        "line": 355,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::CheckModeSummary {"
+      },
+      {
+        "path": "crates/ops/src/upgrade.rs",
+        "line": 349,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::CheckModeSummary {"
+      }
+    ]
+  },
+  {
+    "domain": "General",
+    "event_type": "GeneralEvent",
+    "variant": "DebugLog",
+    "count": 43,
+    "occurrences": [
+      {
+        "path": "crates/events/src/events/mod.rs",
+        "line": 137,
+        "line_text": "AppEvent::General(GeneralEvent::DebugLog { .. })"
+      },
+      {
+        "path": "crates/install/src/atomic/installer.rs",
+        "line": 485,
+        "line_text": "let _ = sender.send(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/atomic/installer.rs",
+        "line": 516,
+        "line_text": "let _ = sender.send(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 91,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 108,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 119,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 129,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 139,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 155,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 165,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 198,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 207,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 225,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 259,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 342,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 407,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 418,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 438,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 453,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 471,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 588,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/pipeline/decompress.rs",
+        "line": 278,
+        "line_text": "tx.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/pipeline/decompress.rs",
+        "line": 291,
+        "line_text": "tx.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/pipeline/staging.rs",
+        "line": 108,
+        "line_text": "tx.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/pipeline/staging.rs",
+        "line": 117,
+        "line_text": "tx.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/pipeline/staging.rs",
+        "line": 138,
+        "line_text": "tx.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/pipeline/staging.rs",
+        "line": 147,
+        "line_text": "tx.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/pipeline/staging.rs",
+        "line": 156,
+        "line_text": "tx.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/pipeline/staging.rs",
+        "line": 177,
+        "line_text": "tx.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/staging/utils.rs",
+        "line": 47,
+        "line_text": "sender.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/staging/validation.rs",
+        "line": 25,
+        "line_text": "sender.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/staging/validation.rs",
+        "line": 39,
+        "line_text": "sender.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/staging/validation.rs",
+        "line": 51,
+        "line_text": "sender.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/staging/validation.rs",
+        "line": 65,
+        "line_text": "sender.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/staging/validation.rs",
+        "line": 75,
+        "line_text": "sender.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/staging/validation.rs",
+        "line": 87,
+        "line_text": "sender.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/staging/validation.rs",
+        "line": 113,
+        "line_text": "sender.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/staging/validation.rs",
+        "line": 124,
+        "line_text": "sender.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/staging/validation.rs",
+        "line": 150,
+        "line_text": "sender.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/staging/validation.rs",
+        "line": 161,
+        "line_text": "sender.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/staging/validation.rs",
+        "line": 185,
+        "line_text": "sender.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/install/src/staging/validation.rs",
+        "line": 194,
+        "line_text": "sender.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      },
+      {
+        "path": "crates/net/src/download/core.rs",
+        "line": 383,
+        "line_text": "tx.emit(AppEvent::General(GeneralEvent::DebugLog {"
+      }
+    ]
+  },
+  {
+    "domain": "General",
+    "event_type": "GeneralEvent",
+    "variant": "Error",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/events/src/events/mod.rs",
+        "line": 105,
+        "line_text": "AppEvent::General(GeneralEvent::Error { .. })"
+      }
+    ]
+  },
+  {
+    "domain": "General",
+    "event_type": "GeneralEvent",
+    "variant": "OperationCompleted",
+    "count": 23,
+    "occurrences": [
+      {
+        "path": "crates/builder/src/artifact_qa/mod.rs",
+        "line": 212,
+        "line_text": "AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/builder/src/artifact_qa/patchers/binary_string.rs",
+        "line": 174,
+        "line_text": "AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/builder/src/core/builder.rs",
+        "line": 131,
+        "line_text": "AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/builder/src/core/builder.rs",
+        "line": 301,
+        "line_text": "AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/builder/src/packaging/manifest.rs",
+        "line": 36,
+        "line_text": "AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/builder/src/packaging/manifest.rs",
+        "line": 58,
+        "line_text": "AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/builder/src/packaging/mod.rs",
+        "line": 50,
+        "line_text": "AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/builder/src/packaging/mod.rs",
+        "line": 95,
+        "line_text": "AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/builder/src/packaging/mod.rs",
+        "line": 202,
+        "line_text": "AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/builder/src/packaging/mod.rs",
+        "line": 246,
+        "line_text": "AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/builder/src/packaging/mod.rs",
+        "line": 267,
+        "line_text": "AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/builder/src/packaging/mod.rs",
+        "line": 314,
+        "line_text": "AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/builder/src/packaging/mod.rs",
+        "line": 324,
+        "line_text": "AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/events/src/lib.rs",
+        "line": 131,
+        "line_text": "self.emit(AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/guard/src/store_verification.rs",
+        "line": 337,
+        "line_text": "events.emit(AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/install/src/pipeline/decompress.rs",
+        "line": 261,
+        "line_text": "tx.emit(AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/install/src/pipeline/mod.rs",
+        "line": 225,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/install/src/pipeline/mod.rs",
+        "line": 396,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/ops/src/draft.rs",
+        "line": 90,
+        "line_text": ".send(AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/ops/src/repository.rs",
+        "line": 322,
+        "line_text": "let _ = tx.send(AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/store/src/archive.rs",
+        "line": 241,
+        "line_text": "sender.emit(AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/store/src/archive.rs",
+        "line": 249,
+        "line_text": "sender.emit(AppEvent::General(GeneralEvent::OperationCompleted {"
+      },
+      {
+        "path": "crates/store/src/archive.rs",
+        "line": 292,
+        "line_text": "sender.emit(AppEvent::General(GeneralEvent::OperationCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "General",
+    "event_type": "GeneralEvent",
+    "variant": "OperationFailed",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/events/src/lib.rs",
+        "line": 139,
+        "line_text": "self.emit(AppEvent::General(GeneralEvent::OperationFailed {"
+      }
+    ]
+  },
+  {
+    "domain": "General",
+    "event_type": "GeneralEvent",
+    "variant": "OperationStarted",
+    "count": 16,
+    "occurrences": [
+      {
+        "path": "crates/builder/src/core/builder.rs",
+        "line": 97,
+        "line_text": "AppEvent::General(GeneralEvent::OperationStarted {"
+      },
+      {
+        "path": "crates/builder/src/core/builder.rs",
+        "line": 117,
+        "line_text": "AppEvent::General(GeneralEvent::OperationStarted {"
+      },
+      {
+        "path": "crates/builder/src/core/builder.rs",
+        "line": 199,
+        "line_text": "AppEvent::General(GeneralEvent::OperationStarted {"
+      },
+      {
+        "path": "crates/builder/src/core/builder.rs",
+        "line": 247,
+        "line_text": "AppEvent::General(GeneralEvent::OperationStarted {"
+      },
+      {
+        "path": "crates/builder/src/packaging/manifest.rs",
+        "line": 29,
+        "line_text": "AppEvent::General(GeneralEvent::OperationStarted {"
+      },
+      {
+        "path": "crates/builder/src/packaging/manifest.rs",
+        "line": 45,
+        "line_text": "AppEvent::General(GeneralEvent::OperationStarted {"
+      },
+      {
+        "path": "crates/builder/src/packaging/mod.rs",
+        "line": 43,
+        "line_text": "AppEvent::General(GeneralEvent::OperationStarted {"
+      },
+      {
+        "path": "crates/builder/src/packaging/mod.rs",
+        "line": 75,
+        "line_text": "AppEvent::General(GeneralEvent::OperationStarted {"
+      },
+      {
+        "path": "crates/builder/src/packaging/mod.rs",
+        "line": 190,
+        "line_text": "AppEvent::General(GeneralEvent::OperationStarted {"
+      },
+      {
+        "path": "crates/builder/src/packaging/mod.rs",
+        "line": 211,
+        "line_text": "AppEvent::General(GeneralEvent::OperationStarted {"
+      },
+      {
+        "path": "crates/builder/src/packaging/mod.rs",
+        "line": 255,
+        "line_text": "AppEvent::General(GeneralEvent::OperationStarted {"
+      },
+      {
+        "path": "crates/builder/src/packaging/mod.rs",
+        "line": 297,
+        "line_text": "AppEvent::General(GeneralEvent::OperationStarted {"
+      },
+      {
+        "path": "crates/events/src/lib.rs",
+        "line": 124,
+        "line_text": "self.emit(AppEvent::General(GeneralEvent::OperationStarted {"
+      },
+      {
+        "path": "crates/install/src/pipeline/decompress.rs",
+        "line": 225,
+        "line_text": "tx.emit(AppEvent::General(GeneralEvent::OperationStarted {"
+      },
+      {
+        "path": "crates/install/src/pipeline/mod.rs",
+        "line": 146,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::OperationStarted {"
+      },
+      {
+        "path": "crates/install/src/pipeline/mod.rs",
+        "line": 379,
+        "line_text": "context.emit(AppEvent::General(GeneralEvent::OperationStarted {"
+      }
+    ]
+  },
+  {
+    "domain": "General",
+    "event_type": "GeneralEvent",
+    "variant": "Warning",
+    "count": 3,
+    "occurrences": [
+      {
+        "path": "crates/events/src/events/mod.rs",
+        "line": 129,
+        "line_text": "AppEvent::General(GeneralEvent::Warning { .. })"
+      },
+      {
+        "path": "crates/ops/src/repository.rs",
+        "line": 311,
+        "line_text": "let _ = tx.send(AppEvent::General(GeneralEvent::Warning {"
+      },
+      {
+        "path": "crates/state/src/manager.rs",
+        "line": 592,
+        "line_text": "self.tx.emit(AppEvent::General(GeneralEvent::Warning {"
+      }
+    ]
+  },
+  {
+    "domain": "General",
+    "event_type": "GeneralEvent",
+    "variant": "debug",
+    "count": 25,
+    "occurrences": [
+      {
+        "path": "crates/builder/src/artifact_qa/mod.rs",
+        "line": 168,
+        "line_text": "AppEvent::General(GeneralEvent::debug(\"Artifact QA pipeline completed\")),"
+      },
+      {
+        "path": "crates/builder/src/artifact_qa/scanners/hardcoded.rs",
+        "line": 27,
+        "line_text": "AppEvent::General(GeneralEvent::debug(format!("
+      },
+      {
+        "path": "crates/builder/src/core/api.rs",
+        "line": 1350,
+        "line_text": "AppEvent::General(GeneralEvent::debug(format!("
+      },
+      {
+        "path": "crates/builder/src/core/api.rs",
+        "line": 1404,
+        "line_text": "AppEvent::General(GeneralEvent::debug(format!("
+      },
+      {
+        "path": "crates/builder/src/core/api.rs",
+        "line": 1427,
+        "line_text": "AppEvent::General(GeneralEvent::debug(format!("
+      },
+      {
+        "path": "crates/builder/src/core/api.rs",
+        "line": 1451,
+        "line_text": "AppEvent::General(GeneralEvent::debug(format!("
+      },
+      {
+        "path": "crates/builder/src/core/api.rs",
+        "line": 1482,
+        "line_text": "AppEvent::General(GeneralEvent::debug(format!(\"fix_permissions: {stdout}\"))),"
+      },
+      {
+        "path": "crates/builder/src/core/api.rs",
+        "line": 1487,
+        "line_text": "AppEvent::General(GeneralEvent::debug(format!("
+      },
+      {
+        "path": "crates/builder/src/core/builder.rs",
+        "line": 141,
+        "line_text": "AppEvent::General(GeneralEvent::debug(result.stdout)),"
+      },
+      {
+        "path": "crates/builder/src/core/builder.rs",
+        "line": 293,
+        "line_text": "AppEvent::General(GeneralEvent::debug(format!("
+      },
+      {
+        "path": "crates/builder/src/environment/dependencies.rs",
+        "line": 80,
+        "line_text": "self.send_event(AppEvent::General(GeneralEvent::debug(format!("
+      },
+      {
+        "path": "crates/builder/src/environment/hermetic.rs",
+        "line": 77,
+        "line_text": "sender.emit(AppEvent::General(GeneralEvent::debug(\"Build step started\")));"
+      },
+      {
+        "path": "crates/builder/src/environment/hermetic.rs",
+        "line": 109,
+        "line_text": "sender.emit(AppEvent::General(GeneralEvent::debug("
+      },
+      {
+        "path": "crates/builder/src/packaging/mod.rs",
+        "line": 219,
+        "line_text": "AppEvent::General(GeneralEvent::debug(format!("
+      },
+      {
+        "path": "crates/builder/src/stages/executors.rs",
+        "line": 323,
+        "line_text": "AppEvent::General(GeneralEvent::debug(format!("
+      },
+      {
+        "path": "crates/builder/src/stages/executors.rs",
+        "line": 336,
+        "line_text": "AppEvent::General(GeneralEvent::debug(format!("
+      },
+      {
+        "path": "crates/builder/src/utils/executor.rs",
+        "line": 130,
+        "line_text": "AppEvent::General(GeneralEvent::debug(format!("
+      },
+      {
+        "path": "crates/builder/src/utils/fileops.rs",
+        "line": 65,
+        "line_text": "AppEvent::General(GeneralEvent::debug(\"Cleaning up temporary files\")),"
+      },
+      {
+        "path": "crates/builder/src/utils/fileops.rs",
+        "line": 80,
+        "line_text": "AppEvent::General(GeneralEvent::debug(format!("
+      },
+      {
+        "path": "crates/builder/src/utils/fileops.rs",
+        "line": 92,
+        "line_text": "AppEvent::General(GeneralEvent::debug(format!("
+      },
+      {
+        "path": "crates/events/src/lib.rs",
+        "line": 84,
+        "line_text": "self.emit(AppEvent::General(GeneralEvent::debug(message)));"
+      },
+      {
+        "path": "crates/net/src/lib.rs",
+        "line": 58,
+        "line_text": "tx.emit(AppEvent::General(GeneralEvent::debug(format!("
+      },
+      {
+        "path": "crates/net/src/lib.rs",
+        "line": 95,
+        "line_text": "tx.emit(AppEvent::General(GeneralEvent::debug(format!("
+      },
+      {
+        "path": "crates/net/src/lib.rs",
+        "line": 108,
+        "line_text": "tx.emit(AppEvent::General(GeneralEvent::debug("
+      },
+      {
+        "path": "crates/net/src/lib.rs",
+        "line": 148,
+        "line_text": "tx.emit(AppEvent::General(GeneralEvent::debug(format!("
+      }
+    ]
+  },
+  {
+    "domain": "General",
+    "event_type": "GeneralEvent",
+    "variant": "debug_with_context",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/builder/src/core/builder.rs",
+        "line": 258,
+        "line_text": "AppEvent::General(GeneralEvent::debug_with_context("
+      },
+      {
+        "path": "crates/events/src/lib.rs",
+        "line": 93,
+        "line_text": "self.emit(AppEvent::General(GeneralEvent::debug_with_context("
+      }
+    ]
+  },
+  {
+    "domain": "General",
+    "event_type": "GeneralEvent",
+    "variant": "error",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/events/src/lib.rs",
+        "line": 112,
+        "line_text": "self.emit(AppEvent::General(GeneralEvent::error(message)));"
+      }
+    ]
+  },
+  {
+    "domain": "General",
+    "event_type": "GeneralEvent",
+    "variant": "error_with_details",
+    "count": 5,
+    "occurrences": [
+      {
+        "path": "crates/events/src/lib.rs",
+        "line": 117,
+        "line_text": "self.emit(AppEvent::General(GeneralEvent::error_with_details("
+      },
+      {
+        "path": "crates/ops/src/install.rs",
+        "line": 82,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::error_with_details("
+      },
+      {
+        "path": "crates/ops/src/install.rs",
+        "line": 101,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::error_with_details("
+      },
+      {
+        "path": "crates/ops/src/install.rs",
+        "line": 380,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::error_with_details("
+      },
+      {
+        "path": "crates/ops/src/install.rs",
+        "line": 423,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::error_with_details("
+      }
+    ]
+  },
+  {
+    "domain": "General",
+    "event_type": "GeneralEvent",
+    "variant": "warning",
+    "count": 4,
+    "occurrences": [
+      {
+        "path": "crates/builder/src/artifact_qa/patchers/rpath.rs",
+        "line": 445,
+        "line_text": "AppEvent::General(GeneralEvent::warning(\"Install name fix failed\")),"
+      },
+      {
+        "path": "crates/builder/src/build_systems/go.rs",
+        "line": 250,
+        "line_text": "ctx.env.emit(AppEvent::General(GeneralEvent::warning("
+      },
+      {
+        "path": "crates/builder/src/environment/core.rs",
+        "line": 288,
+        "line_text": "sender.emit(AppEvent::General(GeneralEvent::warning("
+      },
+      {
+        "path": "crates/events/src/lib.rs",
+        "line": 100,
+        "line_text": "self.emit(AppEvent::General(GeneralEvent::warning(message)));"
+      }
+    ]
+  },
+  {
+    "domain": "General",
+    "event_type": "GeneralEvent",
+    "variant": "warning_with_context",
+    "count": 7,
+    "occurrences": [
+      {
+        "path": "crates/builder/src/artifact_qa/patchers/binary_string.rs",
+        "line": 156,
+        "line_text": "AppEvent::General(GeneralEvent::warning_with_context("
+      },
+      {
+        "path": "crates/builder/src/artifact_qa/scanners/archive.rs",
+        "line": 100,
+        "line_text": "AppEvent::General(GeneralEvent::warning_with_context("
+      },
+      {
+        "path": "crates/builder/src/artifact_qa/scanners/hardcoded.rs",
+        "line": 71,
+        "line_text": "AppEvent::General(GeneralEvent::warning_with_context("
+      },
+      {
+        "path": "crates/builder/src/artifact_qa/scanners/macho.rs",
+        "line": 62,
+        "line_text": "AppEvent::General(GeneralEvent::warning_with_context("
+      },
+      {
+        "path": "crates/builder/src/core/api.rs",
+        "line": 1206,
+        "line_text": "env.emit(AppEvent::General(GeneralEvent::warning_with_context("
+      },
+      {
+        "path": "crates/events/src/lib.rs",
+        "line": 105,
+        "line_text": "self.emit(AppEvent::General(GeneralEvent::warning_with_context("
+      },
+      {
+        "path": "crates/ops/src/maintenance.rs",
+        "line": 251,
+        "line_text": "ctx.emit(AppEvent::General(GeneralEvent::warning_with_context("
+      }
+    ]
+  },
+  {
+    "domain": "Guard",
+    "event_type": "GuardEvent",
+    "variant": "DiscrepancyFound",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/guard/src/error_context.rs",
+        "line": 131,
+        "line_text": ".send(AppEvent::Guard(GuardEvent::DiscrepancyFound("
+      },
+      {
+        "path": "crates/guard/src/error_context.rs",
+        "line": 162,
+        "line_text": ".send(AppEvent::Guard(GuardEvent::DiscrepancyFound("
+      }
+    ]
+  },
+  {
+    "domain": "Guard",
+    "event_type": "GuardEvent",
+    "variant": "ErrorSummary",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/guard/src/error_context.rs",
+        "line": 246,
+        "line_text": ".send(AppEvent::Guard(GuardEvent::ErrorSummary {"
+      },
+      {
+        "path": "crates/guard/src/error_context.rs",
+        "line": 281,
+        "line_text": ".send(AppEvent::Guard(GuardEvent::ErrorSummary {"
+      }
+    ]
+  },
+  {
+    "domain": "Guard",
+    "event_type": "GuardEvent",
+    "variant": "HealingCompleted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/guard/src/core/guard.rs",
+        "line": 686,
+        "line_text": "self.emit(AppEvent::Guard(GuardEvent::HealingCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "Guard",
+    "event_type": "GuardEvent",
+    "variant": "HealingProgress",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/guard/src/core/guard.rs",
+        "line": 567,
+        "line_text": "self.emit(AppEvent::Guard(GuardEvent::HealingProgress {"
+      }
+    ]
+  },
+  {
+    "domain": "Guard",
+    "event_type": "GuardEvent",
+    "variant": "HealingResult",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/guard/src/error_context.rs",
+        "line": 346,
+        "line_text": ".send(AppEvent::Guard(GuardEvent::HealingResult {"
+      }
+    ]
+  },
+  {
+    "domain": "Guard",
+    "event_type": "GuardEvent",
+    "variant": "HealingStarted",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/guard/src/core/guard.rs",
+        "line": 544,
+        "line_text": "self.emit(AppEvent::Guard(GuardEvent::HealingStarted {"
+      },
+      {
+        "path": "crates/guard/src/core/guard.rs",
+        "line": 776,
+        "line_text": "self.emit(AppEvent::Guard(GuardEvent::HealingStarted {"
+      }
+    ]
+  },
+  {
+    "domain": "Guard",
+    "event_type": "GuardEvent",
+    "variant": "VerificationCompleted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/guard/src/error_context.rs",
+        "line": 322,
+        "line_text": ".send(AppEvent::Guard(GuardEvent::VerificationCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "Guard",
+    "event_type": "GuardEvent",
+    "variant": "VerificationFailed",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/guard/src/core/guard.rs",
+        "line": 424,
+        "line_text": "self.emit(AppEvent::Guard(GuardEvent::VerificationFailed {"
+      }
+    ]
+  },
+  {
+    "domain": "Guard",
+    "event_type": "GuardEvent",
+    "variant": "VerificationProgress",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/events/src/events/mod.rs",
+        "line": 141,
+        "line_text": "| AppEvent::Guard(GuardEvent::VerificationProgress { .. }) => Level::DEBUG,"
+      }
+    ]
+  },
+  {
+    "domain": "Guard",
+    "event_type": "GuardEvent",
+    "variant": "VerificationStarted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/guard/src/error_context.rs",
+        "line": 302,
+        "line_text": ".send(AppEvent::Guard(GuardEvent::VerificationStarted {"
+      }
+    ]
+  },
+  {
+    "domain": "Install",
+    "event_type": "InstallEvent",
+    "variant": "BatchCompleted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/install/src/operations.rs",
+        "line": 123,
+        "line_text": "context.emit(AppEvent::Install(InstallEvent::BatchCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "Install",
+    "event_type": "InstallEvent",
+    "variant": "BatchStarted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/install/src/operations.rs",
+        "line": 63,
+        "line_text": "context.emit(AppEvent::Install(InstallEvent::BatchStarted {"
+      }
+    ]
+  },
+  {
+    "domain": "Install",
+    "event_type": "InstallEvent",
+    "variant": "Completed",
+    "count": 3,
+    "occurrences": [
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 427,
+        "line_text": "context.emit(AppEvent::Install(InstallEvent::Completed {"
+      },
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 479,
+        "line_text": "context.emit(AppEvent::Install(InstallEvent::Completed {"
+      },
+      {
+        "path": "crates/install/src/pipeline/staging.rs",
+        "line": 161,
+        "line_text": "tx.emit(AppEvent::Install(InstallEvent::Completed {"
+      }
+    ]
+  },
+  {
+    "domain": "Install",
+    "event_type": "InstallEvent",
+    "variant": "StagingCompleted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/install/src/staging/manager.rs",
+        "line": 317,
+        "line_text": "context.emit(AppEvent::Install(InstallEvent::StagingCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "Install",
+    "event_type": "InstallEvent",
+    "variant": "StagingStarted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/install/src/staging/manager.rs",
+        "line": 221,
+        "line_text": "context.emit(AppEvent::Install(InstallEvent::StagingStarted {"
+      }
+    ]
+  },
+  {
+    "domain": "Install",
+    "event_type": "InstallEvent",
+    "variant": "Started",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/builder/src/environment/dependencies.rs",
+        "line": 118,
+        "line_text": "self.send_event(AppEvent::Install(InstallEvent::Started {"
+      },
+      {
+        "path": "crates/install/src/parallel.rs",
+        "line": 350,
+        "line_text": "context.emit(AppEvent::Install(InstallEvent::Started {"
+      }
+    ]
+  },
+  {
+    "domain": "Install",
+    "event_type": "InstallEvent",
+    "variant": "ValidationCompleted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/install/src/staging/manager.rs",
+        "line": 366,
+        "line_text": "context.emit(AppEvent::Install(InstallEvent::ValidationCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "Install",
+    "event_type": "InstallEvent",
+    "variant": "ValidationStarted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/install/src/staging/manager.rs",
+        "line": 335,
+        "line_text": "context.emit(AppEvent::Install(InstallEvent::ValidationStarted {"
+      }
+    ]
+  },
+  {
+    "domain": "Package",
+    "event_type": "PackageEvent",
+    "variant": "CleanupCompleted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/maintenance.rs",
+        "line": 243,
+        "line_text": "ctx.emit(AppEvent::Package(PackageEvent::CleanupCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "Package",
+    "event_type": "PackageEvent",
+    "variant": "CleanupStarting",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/maintenance.rs",
+        "line": 178,
+        "line_text": "ctx.emit(AppEvent::Package(PackageEvent::CleanupStarting));"
+      }
+    ]
+  },
+  {
+    "domain": "Package",
+    "event_type": "PackageEvent",
+    "variant": "HealthCheckCompleted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/health.rs",
+        "line": 82,
+        "line_text": "ctx.emit(AppEvent::Package(PackageEvent::HealthCheckCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "Package",
+    "event_type": "PackageEvent",
+    "variant": "HealthCheckStarting",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/health.rs",
+        "line": 19,
+        "line_text": "ctx.emit(AppEvent::Package(PackageEvent::HealthCheckStarting));"
+      }
+    ]
+  },
+  {
+    "domain": "Package",
+    "event_type": "PackageEvent",
+    "variant": "ListCompleted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/query.rs",
+        "line": 104,
+        "line_text": "ctx.emit(AppEvent::Package(PackageEvent::ListCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "Package",
+    "event_type": "PackageEvent",
+    "variant": "ListStarting",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/query.rs",
+        "line": 15,
+        "line_text": "ctx.emit(AppEvent::Package(PackageEvent::ListStarting));"
+      }
+    ]
+  },
+  {
+    "domain": "Package",
+    "event_type": "PackageEvent",
+    "variant": "SearchCompleted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/query.rs",
+        "line": 214,
+        "line_text": "ctx.emit(AppEvent::Package(PackageEvent::SearchCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "Package",
+    "event_type": "PackageEvent",
+    "variant": "SearchStarting",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/query.rs",
+        "line": 184,
+        "line_text": "ctx.emit(AppEvent::Package(PackageEvent::SearchStarting {"
+      }
+    ]
+  },
+  {
+    "domain": "Package",
+    "event_type": "PackageEvent",
+    "variant": "SelfUpdateAlreadyLatest",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/self_update.rs",
+        "line": 34,
+        "line_text": "ctx.emit(AppEvent::Package(PackageEvent::SelfUpdateAlreadyLatest {"
+      }
+    ]
+  },
+  {
+    "domain": "Package",
+    "event_type": "PackageEvent",
+    "variant": "SelfUpdateCheckingVersion",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/self_update.rs",
+        "line": 22,
+        "line_text": "ctx.emit(AppEvent::Package(PackageEvent::SelfUpdateCheckingVersion {"
+      }
+    ]
+  },
+  {
+    "domain": "Package",
+    "event_type": "PackageEvent",
+    "variant": "SelfUpdateCompleted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/self_update.rs",
+        "line": 97,
+        "line_text": "ctx.emit(AppEvent::Package(PackageEvent::SelfUpdateCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "Package",
+    "event_type": "PackageEvent",
+    "variant": "SelfUpdateDownloading",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/self_update.rs",
+        "line": 53,
+        "line_text": "ctx.emit(AppEvent::Package(PackageEvent::SelfUpdateDownloading {"
+      }
+    ]
+  },
+  {
+    "domain": "Package",
+    "event_type": "PackageEvent",
+    "variant": "SelfUpdateInstalling",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/self_update.rs",
+        "line": 89,
+        "line_text": "ctx.emit(AppEvent::Package(PackageEvent::SelfUpdateInstalling {"
+      }
+    ]
+  },
+  {
+    "domain": "Package",
+    "event_type": "PackageEvent",
+    "variant": "SelfUpdateStarting",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/self_update.rs",
+        "line": 21,
+        "line_text": "ctx.emit(AppEvent::Package(PackageEvent::SelfUpdateStarting));"
+      }
+    ]
+  },
+  {
+    "domain": "Package",
+    "event_type": "PackageEvent",
+    "variant": "SelfUpdateVerifying",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/self_update.rs",
+        "line": 74,
+        "line_text": "ctx.emit(AppEvent::Package(PackageEvent::SelfUpdateVerifying {"
+      }
+    ]
+  },
+  {
+    "domain": "Platform",
+    "event_type": "PlatformEvent",
+    "variant": "BinaryOperationFailed",
+    "count": 9,
+    "occurrences": [
+      {
+        "path": "crates/platform/src/implementations/macos/binary.rs",
+        "line": 95,
+        "line_text": "ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationFailed {"
+      },
+      {
+        "path": "crates/platform/src/implementations/macos/binary.rs",
+        "line": 178,
+        "line_text": "ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationFailed {"
+      },
+      {
+        "path": "crates/platform/src/implementations/macos/binary.rs",
+        "line": 259,
+        "line_text": "ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationFailed {"
+      },
+      {
+        "path": "crates/platform/src/implementations/macos/binary.rs",
+        "line": 336,
+        "line_text": "ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationFailed {"
+      },
+      {
+        "path": "crates/platform/src/implementations/macos/binary.rs",
+        "line": 408,
+        "line_text": "ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationFailed {"
+      },
+      {
+        "path": "crates/platform/src/implementations/macos/binary.rs",
+        "line": 480,
+        "line_text": "ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationFailed {"
+      },
+      {
+        "path": "crates/platform/src/implementations/macos/binary.rs",
+        "line": 566,
+        "line_text": "ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationFailed {"
+      },
+      {
+        "path": "crates/platform/src/implementations/macos/binary.rs",
+        "line": 627,
+        "line_text": "ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationFailed {"
+      },
+      {
+        "path": "crates/platform/src/implementations/macos/binary.rs",
+        "line": 698,
+        "line_text": "ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationFailed {"
+      }
+    ]
+  },
+  {
+    "domain": "Platform",
+    "event_type": "PlatformEvent",
+    "variant": "BinaryOperationStarted",
+    "count": 9,
+    "occurrences": [
+      {
+        "path": "crates/platform/src/implementations/macos/binary.rs",
+        "line": 42,
+        "line_text": "ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationStarted {"
+      },
+      {
+        "path": "crates/platform/src/implementations/macos/binary.rs",
+        "line": 118,
+        "line_text": "ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationStarted {"
+      },
+      {
+        "path": "crates/platform/src/implementations/macos/binary.rs",
+        "line": 200,
+        "line_text": "ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationStarted {"
+      },
+      {
+        "path": "crates/platform/src/implementations/macos/binary.rs",
+        "line": 283,
+        "line_text": "ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationStarted {"
+      },
+      {
+        "path": "crates/platform/src/implementations/macos/binary.rs",
+        "line": 359,
+        "line_text": "ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationStarted {"
+      },
+      {
+        "path": "crates/platform/src/implementations/macos/binary.rs",
+        "line": 431,
+        "line_text": "ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationStarted {"
+      },
+      {
+        "path": "crates/platform/src/implementations/macos/binary.rs",
+        "line": 502,
+        "line_text": "ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationStarted {"
+      },
+      {
+        "path": "crates/platform/src/implementations/macos/binary.rs",
+        "line": 588,
+        "line_text": "ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationStarted {"
+      },
+      {
+        "path": "crates/platform/src/implementations/macos/binary.rs",
+        "line": 651,
+        "line_text": "ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationStarted {"
+      }
+    ]
+  },
+  {
+    "domain": "Platform",
+    "event_type": "PlatformEvent",
+    "variant": "ProcessExecutionFailed",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/platform/src/implementations/macos/process.rs",
+        "line": 100,
+        "line_text": "ctx.emit_event(AppEvent::Platform(PlatformEvent::ProcessExecutionFailed {"
+      }
+    ]
+  },
+  {
+    "domain": "Platform",
+    "event_type": "PlatformEvent",
+    "variant": "ProcessExecutionStarted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/platform/src/implementations/macos/process.rs",
+        "line": 43,
+        "line_text": "ctx.emit_event(AppEvent::Platform(PlatformEvent::ProcessExecutionStarted {"
+      }
+    ]
+  },
+  {
+    "domain": "Platform",
+    "event_type": "PlatformEvent",
+    "variant": "ToolDiscovered",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/platform/src/core/mod.rs",
+        "line": 355,
+        "line_text": "self.emit_event(AppEvent::Platform(PlatformEvent::ToolDiscovered {"
+      },
+      {
+        "path": "crates/platform/src/core/mod.rs",
+        "line": 662,
+        "line_text": "self.emit_event(AppEvent::Platform(PlatformEvent::ToolDiscovered {"
+      }
+    ]
+  },
+  {
+    "domain": "Platform",
+    "event_type": "PlatformEvent",
+    "variant": "ToolDiscoveryStarted",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/platform/src/core/mod.rs",
+        "line": 315,
+        "line_text": "self.emit_event(AppEvent::Platform(PlatformEvent::ToolDiscoveryStarted {"
+      },
+      {
+        "path": "crates/platform/src/core/mod.rs",
+        "line": 460,
+        "line_text": "self.emit_event(AppEvent::Platform(PlatformEvent::ToolDiscoveryStarted {"
+      }
+    ]
+  },
+  {
+    "domain": "Platform",
+    "event_type": "PlatformEvent",
+    "variant": "ToolNotFound",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/platform/src/core/mod.rs",
+        "line": 412,
+        "line_text": "self.emit_event(AppEvent::Platform(PlatformEvent::ToolNotFound {"
+      },
+      {
+        "path": "crates/platform/src/core/mod.rs",
+        "line": 482,
+        "line_text": "self.emit_event(AppEvent::Platform(PlatformEvent::ToolNotFound {"
+      }
+    ]
+  },
+  {
+    "domain": "Progress",
+    "event_type": "ProgressEvent",
+    "variant": "Completed",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/guard/src/store_verification.rs",
+        "line": 326,
+        "line_text": "events.emit(AppEvent::Progress(ProgressEvent::Completed {"
+      },
+      {
+        "path": "crates/install/src/staging/manager.rs",
+        "line": 309,
+        "line_text": "context.emit(AppEvent::Progress(ProgressEvent::Completed {"
+      }
+    ]
+  },
+  {
+    "domain": "Progress",
+    "event_type": "ProgressEvent",
+    "variant": "Failed",
+    "count": 7,
+    "occurrences": [
+      {
+        "path": "crates/events/src/events/mod.rs",
+        "line": 117,
+        "line_text": "| AppEvent::Progress(ProgressEvent::Failed { .. })"
+      },
+      {
+        "path": "crates/events/src/progress/mod.rs",
+        "line": 197,
+        "line_text": "//!         tx.emit(AppEvent::Progress(ProgressEvent::Failed {"
+      },
+      {
+        "path": "crates/install/src/staging/manager.rs",
+        "line": 194,
+        "line_text": "context.emit(AppEvent::Progress(ProgressEvent::Failed {"
+      },
+      {
+        "path": "crates/install/src/staging/manager.rs",
+        "line": 245,
+        "line_text": "context.emit(AppEvent::Progress(ProgressEvent::Failed {"
+      },
+      {
+        "path": "crates/install/src/staging/manager.rs",
+        "line": 297,
+        "line_text": "context.emit(AppEvent::Progress(ProgressEvent::Failed {"
+      },
+      {
+        "path": "crates/ops/src/install.rs",
+        "line": 386,
+        "line_text": "ctx.emit(AppEvent::Progress(ProgressEvent::Failed {"
+      },
+      {
+        "path": "crates/ops/src/install.rs",
+        "line": 432,
+        "line_text": "ctx.emit(AppEvent::Progress(ProgressEvent::Failed {"
+      }
+    ]
+  },
+  {
+    "domain": "Progress",
+    "event_type": "ProgressEvent",
+    "variant": "Paused",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/net/src/download/core.rs",
+        "line": 373,
+        "line_text": "tx.emit(AppEvent::Progress(sps2_events::ProgressEvent::Paused {"
+      }
+    ]
+  },
+  {
+    "domain": "Progress",
+    "event_type": "ProgressEvent",
+    "variant": "Resumed",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/net/src/download/core.rs",
+        "line": 394,
+        "line_text": "tx.emit(AppEvent::Progress(sps2_events::ProgressEvent::Resumed {"
+      }
+    ]
+  },
+  {
+    "domain": "Progress",
+    "event_type": "ProgressEvent",
+    "variant": "Started",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/guard/src/store_verification.rs",
+        "line": 140,
+        "line_text": "events.emit(AppEvent::Progress(ProgressEvent::Started {"
+      },
+      {
+        "path": "crates/install/src/staging/manager.rs",
+        "line": 165,
+        "line_text": "context.emit(AppEvent::Progress(ProgressEvent::Started {"
+      }
+    ]
+  },
+  {
+    "domain": "Progress",
+    "event_type": "ProgressEvent",
+    "variant": "StatisticsUpdated",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/events/src/events/mod.rs",
+        "line": 145,
+        "line_text": "| AppEvent::Progress(ProgressEvent::StatisticsUpdated { .. }) => Level::TRACE,"
+      }
+    ]
+  },
+  {
+    "domain": "Progress",
+    "event_type": "ProgressEvent",
+    "variant": "Updated",
+    "count": 7,
+    "occurrences": [
+      {
+        "path": "crates/events/src/events/mod.rs",
+        "line": 140,
+        "line_text": "| AppEvent::Progress(ProgressEvent::Updated { .. })"
+      },
+      {
+        "path": "crates/guard/src/store_verification.rs",
+        "line": 152,
+        "line_text": "events.emit(AppEvent::Progress(ProgressEvent::Updated {"
+      },
+      {
+        "path": "crates/guard/src/store_verification.rs",
+        "line": 169,
+        "line_text": "events.emit(AppEvent::Progress(ProgressEvent::Updated {"
+      },
+      {
+        "path": "crates/guard/src/store_verification.rs",
+        "line": 306,
+        "line_text": "events.emit(AppEvent::Progress(ProgressEvent::Updated {"
+      },
+      {
+        "path": "crates/install/src/staging/manager.rs",
+        "line": 180,
+        "line_text": "context.emit(AppEvent::Progress(ProgressEvent::Updated {"
+      },
+      {
+        "path": "crates/install/src/staging/manager.rs",
+        "line": 230,
+        "line_text": "context.emit(AppEvent::Progress(ProgressEvent::Updated {"
+      },
+      {
+        "path": "crates/install/src/staging/manager.rs",
+        "line": 282,
+        "line_text": "context.emit(AppEvent::Progress(ProgressEvent::Updated {"
+      }
+    ]
+  },
+  {
+    "domain": "Progress",
+    "event_type": "ProgressEvent",
+    "variant": "completed",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/events/src/lib.rs",
+        "line": 232,
+        "line_text": "self.emit(AppEvent::Progress(ProgressEvent::completed(id, duration)));"
+      }
+    ]
+  },
+  {
+    "domain": "Progress",
+    "event_type": "ProgressEvent",
+    "variant": "failed",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/events/src/lib.rs",
+        "line": 237,
+        "line_text": "self.emit(AppEvent::Progress(ProgressEvent::failed(id, error)));"
+      }
+    ]
+  },
+  {
+    "domain": "Progress",
+    "event_type": "ProgressEvent",
+    "variant": "started",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/events/src/lib.rs",
+        "line": 218,
+        "line_text": "self.emit(AppEvent::Progress(ProgressEvent::started("
+      }
+    ]
+  },
+  {
+    "domain": "Progress",
+    "event_type": "ProgressEvent",
+    "variant": "updated",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/events/src/lib.rs",
+        "line": 225,
+        "line_text": "self.emit(AppEvent::Progress(ProgressEvent::updated("
+      }
+    ]
+  },
+  {
+    "domain": "Qa",
+    "event_type": "QaEvent",
+    "variant": "CheckCompleted",
+    "count": 10,
+    "occurrences": [
+      {
+        "path": "crates/builder/src/artifact_qa/mod.rs",
+        "line": 242,
+        "line_text": "AppEvent::Qa(QaEvent::CheckCompleted {"
+      },
+      {
+        "path": "crates/builder/src/artifact_qa/mod.rs",
+        "line": 281,
+        "line_text": "AppEvent::Qa(QaEvent::CheckCompleted {"
+      },
+      {
+        "path": "crates/builder/src/artifact_qa/patchers/codesigner.rs",
+        "line": 104,
+        "line_text": "AppEvent::Qa(QaEvent::CheckCompleted {"
+      },
+      {
+        "path": "crates/builder/src/artifact_qa/patchers/la_cleaner.rs",
+        "line": 53,
+        "line_text": "AppEvent::Qa(QaEvent::CheckCompleted {"
+      },
+      {
+        "path": "crates/builder/src/artifact_qa/patchers/object_cleaner.rs",
+        "line": 53,
+        "line_text": "AppEvent::Qa(QaEvent::CheckCompleted {"
+      },
+      {
+        "path": "crates/builder/src/artifact_qa/patchers/permissions.rs",
+        "line": 219,
+        "line_text": "AppEvent::Qa(QaEvent::CheckCompleted {"
+      },
+      {
+        "path": "crates/builder/src/artifact_qa/patchers/placeholder.rs",
+        "line": 108,
+        "line_text": "AppEvent::Qa(QaEvent::CheckCompleted {"
+      },
+      {
+        "path": "crates/builder/src/artifact_qa/patchers/python_bytecode_cleanup.rs",
+        "line": 228,
+        "line_text": "AppEvent::Qa(QaEvent::CheckCompleted {"
+      },
+      {
+        "path": "crates/builder/src/artifact_qa/patchers/rpath.rs",
+        "line": 393,
+        "line_text": "AppEvent::Qa(QaEvent::CheckCompleted {"
+      },
+      {
+        "path": "crates/builder/src/artifact_qa/patchers/rpath.rs",
+        "line": 556,
+        "line_text": "AppEvent::Qa(QaEvent::CheckCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "Qa",
+    "event_type": "QaEvent",
+    "variant": "CheckFailed",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/events/src/events/mod.rs",
+        "line": 121,
+        "line_text": "| AppEvent::Qa(QaEvent::CheckFailed { .. })"
+      }
+    ]
+  },
+  {
+    "domain": "Qa",
+    "event_type": "QaEvent",
+    "variant": "CheckStarted",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/builder/src/artifact_qa/mod.rs",
+        "line": 234,
+        "line_text": "AppEvent::Qa(QaEvent::CheckStarted {"
+      },
+      {
+        "path": "crates/builder/src/artifact_qa/mod.rs",
+        "line": 273,
+        "line_text": "AppEvent::Qa(QaEvent::CheckStarted {"
+      }
+    ]
+  },
+  {
+    "domain": "Qa",
+    "event_type": "QaEvent",
+    "variant": "FindingReported",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/builder/src/artifact_qa/patchers/rpath.rs",
+        "line": 357,
+        "line_text": "AppEvent::Qa(QaEvent::FindingReported {"
+      }
+    ]
+  },
+  {
+    "domain": "Repo",
+    "event_type": "RepoEvent",
+    "variant": "SyncCompleted",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/repository.rs",
+        "line": 253,
+        "line_text": "let _ = ctx.tx.send(AppEvent::Repo(RepoEvent::SyncCompleted {"
+      },
+      {
+        "path": "crates/ops/src/repository.rs",
+        "line": 289,
+        "line_text": "ctx.emit(AppEvent::Repo(RepoEvent::SyncCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "Repo",
+    "event_type": "RepoEvent",
+    "variant": "SyncStarted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/repository.rs",
+        "line": 37,
+        "line_text": "ctx.emit(AppEvent::Repo(RepoEvent::SyncStarted {"
+      }
+    ]
+  },
+  {
+    "domain": "Repo",
+    "event_type": "RepoEvent",
+    "variant": "SyncStarting",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/repository.rs",
+        "line": 19,
+        "line_text": "ctx.emit(AppEvent::Repo(RepoEvent::SyncStarting));"
+      }
+    ]
+  },
+  {
+    "domain": "Resolver",
+    "event_type": "ResolverEvent",
+    "variant": "ResolutionCompleted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/builder/src/environment/dependencies.rs",
+        "line": 29,
+        "line_text": "self.send_event(AppEvent::Resolver(ResolverEvent::ResolutionCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "Resolver",
+    "event_type": "ResolverEvent",
+    "variant": "ResolutionStarted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/install.rs",
+        "line": 364,
+        "line_text": "ctx.emit(AppEvent::Resolver(ResolverEvent::ResolutionStarted {"
+      }
+    ]
+  },
+  {
+    "domain": "Resolver",
+    "event_type": "ResolverEvent",
+    "variant": "conflict_detected",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/resolver/src/sat/mod.rs",
+        "line": 284,
+        "line_text": "sender.emit(AppEvent::Resolver(ResolverEvent::conflict_detected("
+      }
+    ]
+  },
+  {
+    "domain": "Resolver",
+    "event_type": "ResolverEvent",
+    "variant": "conflict_suggestions",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/resolver/src/sat/mod.rs",
+        "line": 292,
+        "line_text": "sender.emit(AppEvent::Resolver(ResolverEvent::conflict_suggestions("
+      }
+    ]
+  },
+  {
+    "domain": "State",
+    "event_type": "StateEvent",
+    "variant": "CleanupCompleted",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/state/src/manager.rs",
+        "line": 506,
+        "line_text": "self.tx.emit(AppEvent::State(StateEvent::CleanupCompleted {"
+      },
+      {
+        "path": "crates/state/src/manager.rs",
+        "line": 599,
+        "line_text": "self.tx.emit(AppEvent::State(StateEvent::CleanupCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "State",
+    "event_type": "StateEvent",
+    "variant": "CleanupStarted",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/state/src/manager.rs",
+        "line": 433,
+        "line_text": "self.tx.emit(AppEvent::State(StateEvent::CleanupStarted {"
+      },
+      {
+        "path": "crates/state/src/manager.rs",
+        "line": 563,
+        "line_text": "self.tx.emit(AppEvent::State(StateEvent::CleanupStarted {"
+      }
+    ]
+  },
+  {
+    "domain": "State",
+    "event_type": "StateEvent",
+    "variant": "Initializing",
+    "count": 3,
+    "occurrences": [
+      {
+        "path": "crates/install/src/atomic/installer.rs",
+        "line": 285,
+        "line_text": "context.emit(AppEvent::State(StateEvent::Initializing {"
+      },
+      {
+        "path": "crates/state/src/manager.rs",
+        "line": 386,
+        "line_text": "self.tx.emit(AppEvent::State(StateEvent::Initializing {"
+      },
+      {
+        "path": "crates/state/src/manager.rs",
+        "line": 393,
+        "line_text": "self.tx.emit(AppEvent::State(StateEvent::Initializing {"
+      }
+    ]
+  },
+  {
+    "domain": "State",
+    "event_type": "StateEvent",
+    "variant": "RollbackCompleted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/maintenance.rs",
+        "line": 317,
+        "line_text": "let _ = ctx.tx.send(AppEvent::State(StateEvent::RollbackCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "State",
+    "event_type": "StateEvent",
+    "variant": "RollbackExecuting",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/maintenance.rs",
+        "line": 287,
+        "line_text": "ctx.emit(AppEvent::State(StateEvent::RollbackExecuting {"
+      }
+    ]
+  },
+  {
+    "domain": "State",
+    "event_type": "StateEvent",
+    "variant": "TransitionCompleted",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/install/src/atomic/installer.rs",
+        "line": 381,
+        "line_text": "context.emit(AppEvent::State(StateEvent::TransitionCompleted {"
+      },
+      {
+        "path": "crates/install/src/atomic/installer.rs",
+        "line": 596,
+        "line_text": "context.emit(AppEvent::State(StateEvent::TransitionCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "State",
+    "event_type": "StateEvent",
+    "variant": "TwoPhaseCommitCompleted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/install/src/atomic/installer.rs",
+        "line": 213,
+        "line_text": "context.emit(AppEvent::State(StateEvent::TwoPhaseCommitCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "State",
+    "event_type": "StateEvent",
+    "variant": "TwoPhaseCommitFailed",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/install/src/atomic/installer.rs",
+        "line": 170,
+        "line_text": "context.emit(AppEvent::State(StateEvent::TwoPhaseCommitFailed {"
+      },
+      {
+        "path": "crates/install/src/atomic/installer.rs",
+        "line": 202,
+        "line_text": "context.emit(AppEvent::State(StateEvent::TwoPhaseCommitFailed {"
+      }
+    ]
+  },
+  {
+    "domain": "State",
+    "event_type": "StateEvent",
+    "variant": "TwoPhaseCommitStarting",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/install/src/atomic/installer.rs",
+        "line": 128,
+        "line_text": "context.emit(AppEvent::State(StateEvent::TwoPhaseCommitStarting {"
+      }
+    ]
+  },
+  {
+    "domain": "Uninstall",
+    "event_type": "UninstallEvent",
+    "variant": "BatchCompleted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/install/src/operations.rs",
+        "line": 305,
+        "line_text": "context.emit(AppEvent::Uninstall(UninstallEvent::BatchCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "Uninstall",
+    "event_type": "UninstallEvent",
+    "variant": "BatchStarted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/install/src/operations.rs",
+        "line": 249,
+        "line_text": "context.emit(AppEvent::Uninstall(UninstallEvent::BatchStarted {"
+      }
+    ]
+  },
+  {
+    "domain": "Uninstall",
+    "event_type": "UninstallEvent",
+    "variant": "Failed",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/events/src/events/mod.rs",
+        "line": 114,
+        "line_text": "| AppEvent::Uninstall(UninstallEvent::Failed { .. })"
+      }
+    ]
+  },
+  {
+    "domain": "Update",
+    "event_type": "UpdateEvent",
+    "variant": "BatchCompleted",
+    "count": 3,
+    "occurrences": [
+      {
+        "path": "crates/install/src/operations.rs",
+        "line": 391,
+        "line_text": "context.emit(AppEvent::Update(UpdateEvent::BatchCompleted {"
+      },
+      {
+        "path": "crates/install/src/operations.rs",
+        "line": 582,
+        "line_text": "context.emit(AppEvent::Update(UpdateEvent::BatchCompleted {"
+      },
+      {
+        "path": "crates/install/src/operations.rs",
+        "line": 621,
+        "line_text": "context.emit(AppEvent::Update(UpdateEvent::BatchCompleted {"
+      }
+    ]
+  },
+  {
+    "domain": "Update",
+    "event_type": "UpdateEvent",
+    "variant": "BatchStarted",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/install/src/operations.rs",
+        "line": 359,
+        "line_text": "context.emit(AppEvent::Update(UpdateEvent::BatchStarted {"
+      }
+    ]
+  },
+  {
+    "domain": "Update",
+    "event_type": "UpdateEvent",
+    "variant": "Completed",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/update.rs",
+        "line": 138,
+        "line_text": "ctx.emit(AppEvent::Update(UpdateEvent::Completed {"
+      },
+      {
+        "path": "crates/ops/src/upgrade.rs",
+        "line": 139,
+        "line_text": "ctx.emit(AppEvent::Update(UpdateEvent::Completed {"
+      }
+    ]
+  },
+  {
+    "domain": "Update",
+    "event_type": "UpdateEvent",
+    "variant": "Failed",
+    "count": 1,
+    "occurrences": [
+      {
+        "path": "crates/events/src/events/mod.rs",
+        "line": 115,
+        "line_text": "| AppEvent::Update(UpdateEvent::Failed { .. })"
+      }
+    ]
+  },
+  {
+    "domain": "Update",
+    "event_type": "UpdateEvent",
+    "variant": "Started",
+    "count": 2,
+    "occurrences": [
+      {
+        "path": "crates/ops/src/update.rs",
+        "line": 42,
+        "line_text": "ctx.emit(AppEvent::Update(UpdateEvent::Started {"
+      },
+      {
+        "path": "crates/ops/src/upgrade.rs",
+        "line": 43,
+        "line_text": "ctx.emit(AppEvent::Update(UpdateEvent::Started {"
+      }
+    ]
+  }
+]

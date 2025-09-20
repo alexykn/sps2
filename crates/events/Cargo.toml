@@ -13,6 +13,7 @@ tokio = { workspace = true, features = ["sync"] }
 serde = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 tracing = { workspace = true }
+chrono = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }

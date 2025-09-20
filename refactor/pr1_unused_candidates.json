@@ -1,0 +1,1886 @@
+[
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "BatchAcquisitionCompleted",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 248
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "BatchAcquisitionProgress",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 238
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "BatchAcquisitionStarted",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 230
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "CacheHit",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 107
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "CacheLookupStarted",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 100
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "CacheMiss",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 116
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "CacheStorageCompleted",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 132
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "CacheStorageStarted",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 124
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "ChecksumMismatch",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 194
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "ChecksumVerificationCompleted",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 183
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "ChecksumVerificationStarted",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 175
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "DownloadCompleted",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 59
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "DownloadProgress",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 50
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "DownloadStarted",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 41
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "LocalFileProcessingCompleted",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 84
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "LocalFileProcessingFailed",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 93
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "LocalFileProcessingStarted",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 69
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "LocalFileValidationProgress",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 77
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "QuotaExceeded",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 284
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "QuotaWarning",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 275
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "SignatureVerificationCompleted",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 212
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "SignatureVerificationFailed",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 221
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "SignatureVerificationStarted",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 204
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "SourceAvailabilityCheck",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 258
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "SourceFailover",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 266
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "Started",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 11
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "VerificationCompleted",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 156
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "VerificationFailed",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 165
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "VerificationProgress",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 148
+  },
+  {
+    "event_type": "AcquisitionEvent",
+    "variant": "VerificationStarted",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 140
+  },
+  {
+    "event_type": "AcquisitionSource",
+    "variant": "Cache",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 301
+  },
+  {
+    "event_type": "AcquisitionSource",
+    "variant": "GitRepository",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 311
+  },
+  {
+    "event_type": "AcquisitionSource",
+    "variant": "Local",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 299
+  },
+  {
+    "event_type": "AcquisitionSource",
+    "variant": "NetworkShare",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 306
+  },
+  {
+    "event_type": "AcquisitionSource",
+    "variant": "Remote",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 297
+  },
+  {
+    "event_type": "AuditEvent",
+    "variant": "ScanProgress",
+    "path": "crates/events/src/events/audit.rs",
+    "line": 11
+  },
+  {
+    "event_type": "AuditEvent",
+    "variant": "VulnDbSourceUpdateProgress",
+    "path": "crates/events/src/events/audit.rs",
+    "line": 36
+  },
+  {
+    "event_type": "AuditEvent",
+    "variant": "VulnDbStatisticsUpdated",
+    "path": "crates/events/src/events/audit.rs",
+    "line": 60
+  },
+  {
+    "event_type": "BatchUpdateStrategy",
+    "variant": "AllOrNothing",
+    "path": "crates/events/src/events/update.rs",
+    "line": 312
+  },
+  {
+    "event_type": "BatchUpdateStrategy",
+    "variant": "DependencyOrder",
+    "path": "crates/events/src/events/update.rs",
+    "line": 306
+  },
+  {
+    "event_type": "BatchUpdateStrategy",
+    "variant": "Parallel",
+    "path": "crates/events/src/events/update.rs",
+    "line": 308
+  },
+  {
+    "event_type": "BatchUpdateStrategy",
+    "variant": "Sequential",
+    "path": "crates/events/src/events/update.rs",
+    "line": 310
+  },
+  {
+    "event_type": "BuildEvent",
+    "variant": "CacheHit",
+    "path": "crates/events/src/events/build.rs",
+    "line": 202
+  },
+  {
+    "event_type": "BuildEvent",
+    "variant": "CacheMiss",
+    "path": "crates/events/src/events/build.rs",
+    "line": 208
+  },
+  {
+    "event_type": "BuildEvent",
+    "variant": "CacheStrategy",
+    "path": "crates/events/src/events/build.rs",
+    "line": 194
+  },
+  {
+    "event_type": "BuildEvent",
+    "variant": "CacheUpdated",
+    "path": "crates/events/src/events/build.rs",
+    "line": 211
+  },
+  {
+    "event_type": "BuildEvent",
+    "variant": "CheckpointCreated",
+    "path": "crates/events/src/events/build.rs",
+    "line": 223
+  },
+  {
+    "event_type": "BuildEvent",
+    "variant": "CheckpointRestored",
+    "path": "crates/events/src/events/build.rs",
+    "line": 231
+  },
+  {
+    "event_type": "BuildEvent",
+    "variant": "CommandCompleted",
+    "path": "crates/events/src/events/build.rs",
+    "line": 125
+  },
+  {
+    "event_type": "BuildEvent",
+    "variant": "DependencyInstalled",
+    "path": "crates/events/src/events/build.rs",
+    "line": 141
+  },
+  {
+    "event_type": "BuildEvent",
+    "variant": "DependencyResolutionStarted",
+    "path": "crates/events/src/events/build.rs",
+    "line": 134
+  },
+  {
+    "event_type": "BuildEvent",
+    "variant": "EnvironmentConfigured",
+    "path": "crates/events/src/events/build.rs",
+    "line": 185
+  },
+  {
+    "event_type": "BuildEvent",
+    "variant": "PhaseProgress",
+    "path": "crates/events/src/events/build.rs",
+    "line": 87
+  },
+  {
+    "event_type": "BuildEvent",
+    "variant": "Queued",
+    "path": "crates/events/src/events/build.rs",
+    "line": 70
+  },
+  {
+    "event_type": "BuildEvent",
+    "variant": "Retrying",
+    "path": "crates/events/src/events/build.rs",
+    "line": 168
+  },
+  {
+    "event_type": "BuildEvent",
+    "variant": "SessionCompleted",
+    "path": "crates/events/src/events/build.rs",
+    "line": 60
+  },
+  {
+    "event_type": "BuildPhase",
+    "variant": "Build",
+    "path": "crates/events/src/events/build.rs",
+    "line": 23
+  },
+  {
+    "event_type": "BuildPhase",
+    "variant": "Package",
+    "path": "crates/events/src/events/build.rs",
+    "line": 25
+  },
+  {
+    "event_type": "BuildPhase",
+    "variant": "PostProcess",
+    "path": "crates/events/src/events/build.rs",
+    "line": 24
+  },
+  {
+    "event_type": "BuildPhase",
+    "variant": "Source",
+    "path": "crates/events/src/events/build.rs",
+    "line": 22
+  },
+  {
+    "event_type": "BuildSystem",
+    "variant": "Autotools",
+    "path": "crates/events/src/events/build.rs",
+    "line": 10
+  },
+  {
+    "event_type": "BuildSystem",
+    "variant": "CMake",
+    "path": "crates/events/src/events/build.rs",
+    "line": 11
+  },
+  {
+    "event_type": "BuildSystem",
+    "variant": "Cargo",
+    "path": "crates/events/src/events/build.rs",
+    "line": 12
+  },
+  {
+    "event_type": "BuildSystem",
+    "variant": "Custom",
+    "path": "crates/events/src/events/build.rs",
+    "line": 15
+  },
+  {
+    "event_type": "BuildSystem",
+    "variant": "Make",
+    "path": "crates/events/src/events/build.rs",
+    "line": 13
+  },
+  {
+    "event_type": "BuildSystem",
+    "variant": "Ninja",
+    "path": "crates/events/src/events/build.rs",
+    "line": 14
+  },
+  {
+    "event_type": "CacheStrategy",
+    "variant": "Populate",
+    "path": "crates/events/src/events/build.rs",
+    "line": 33
+  },
+  {
+    "event_type": "CacheStrategy",
+    "variant": "Skip",
+    "path": "crates/events/src/events/build.rs",
+    "line": 32
+  },
+  {
+    "event_type": "CacheStrategy",
+    "variant": "Use",
+    "path": "crates/events/src/events/build.rs",
+    "line": 34
+  },
+  {
+    "event_type": "CleanupStatus",
+    "variant": "Complete",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 304
+  },
+  {
+    "event_type": "CleanupStatus",
+    "variant": "Failed",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 308
+  },
+  {
+    "event_type": "CleanupStatus",
+    "variant": "NotAttempted",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 310
+  },
+  {
+    "event_type": "CleanupStatus",
+    "variant": "Partial",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 306
+  },
+  {
+    "event_type": "ConstraintStrategy",
+    "variant": "AllowPreRelease",
+    "path": "crates/events/src/events/update.rs",
+    "line": 296
+  },
+  {
+    "event_type": "ConstraintStrategy",
+    "variant": "Force",
+    "path": "crates/events/src/events/update.rs",
+    "line": 298
+  },
+  {
+    "event_type": "ConstraintStrategy",
+    "variant": "IgnoreUpperBounds",
+    "path": "crates/events/src/events/update.rs",
+    "line": 294
+  },
+  {
+    "event_type": "ConstraintStrategy",
+    "variant": "Strict",
+    "path": "crates/events/src/events/update.rs",
+    "line": 292
+  },
+  {
+    "event_type": "DependencyConflictType",
+    "variant": "CircularDependency",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 287
+  },
+  {
+    "event_type": "DependencyConflictType",
+    "variant": "ConstraintViolation",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 291
+  },
+  {
+    "event_type": "DependencyConflictType",
+    "variant": "MissingDependency",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 289
+  },
+  {
+    "event_type": "DependencyConflictType",
+    "variant": "MutualExclusion",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 285
+  },
+  {
+    "event_type": "DependencyConflictType",
+    "variant": "PlatformIncompatibility",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 293
+  },
+  {
+    "event_type": "DependencyConflictType",
+    "variant": "VersionIncompatibility",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 283
+  },
+  {
+    "event_type": "EventLevel",
+    "variant": "Debug",
+    "path": "crates/events/src/meta.rs",
+    "line": 82
+  },
+  {
+    "event_type": "EventLevel",
+    "variant": "Error",
+    "path": "crates/events/src/meta.rs",
+    "line": 85
+  },
+  {
+    "event_type": "EventLevel",
+    "variant": "Info",
+    "path": "crates/events/src/meta.rs",
+    "line": 83
+  },
+  {
+    "event_type": "EventLevel",
+    "variant": "Trace",
+    "path": "crates/events/src/meta.rs",
+    "line": 81
+  },
+  {
+    "event_type": "EventLevel",
+    "variant": "Warn",
+    "path": "crates/events/src/meta.rs",
+    "line": 84
+  },
+  {
+    "event_type": "GeneralEvent",
+    "variant": "ConfigurationError",
+    "path": "crates/events/src/events/general.rs",
+    "line": 59
+  },
+  {
+    "event_type": "GeneralEvent",
+    "variant": "ConfigurationValidated",
+    "path": "crates/events/src/events/general.rs",
+    "line": 53
+  },
+  {
+    "event_type": "GeneralEvent",
+    "variant": "PerformanceMetric",
+    "path": "crates/events/src/events/general.rs",
+    "line": 66
+  },
+  {
+    "event_type": "GeneralEvent",
+    "variant": "RateLimitApplied",
+    "path": "crates/events/src/events/general.rs",
+    "line": 82
+  },
+  {
+    "event_type": "GeneralEvent",
+    "variant": "ResourceUsage",
+    "path": "crates/events/src/events/general.rs",
+    "line": 74
+  },
+  {
+    "event_type": "GeneralEvent",
+    "variant": "SystemNotification",
+    "path": "crates/events/src/events/general.rs",
+    "line": 46
+  },
+  {
+    "event_type": "GeneralEvent",
+    "variant": "UserConfirmationReceived",
+    "path": "crates/events/src/events/general.rs",
+    "line": 43
+  },
+  {
+    "event_type": "GeneralEvent",
+    "variant": "UserConfirmationRequired",
+    "path": "crates/events/src/events/general.rs",
+    "line": 36
+  },
+  {
+    "event_type": "GuardEvent",
+    "variant": "CacheInvalidated",
+    "path": "crates/events/src/events/guard.rs",
+    "line": 130
+  },
+  {
+    "event_type": "GuardEvent",
+    "variant": "CacheWarming",
+    "path": "crates/events/src/events/guard.rs",
+    "line": 115
+  },
+  {
+    "event_type": "GuardEvent",
+    "variant": "CacheWarmingCompleted",
+    "path": "crates/events/src/events/guard.rs",
+    "line": 122
+  },
+  {
+    "event_type": "GuardEvent",
+    "variant": "ConfigurationError",
+    "path": "crates/events/src/events/guard.rs",
+    "line": 158
+  },
+  {
+    "event_type": "GuardEvent",
+    "variant": "ConfigurationValidated",
+    "path": "crates/events/src/events/guard.rs",
+    "line": 149
+  },
+  {
+    "event_type": "GuardEvent",
+    "variant": "RecoveryAttempt",
+    "path": "crates/events/src/events/guard.rs",
+    "line": 166
+  },
+  {
+    "event_type": "GuardEvent",
+    "variant": "RecoveryFailed",
+    "path": "crates/events/src/events/guard.rs",
+    "line": 184
+  },
+  {
+    "event_type": "GuardEvent",
+    "variant": "RecoverySuccess",
+    "path": "crates/events/src/events/guard.rs",
+    "line": 175
+  },
+  {
+    "event_type": "HealthStatus",
+    "variant": "Error",
+    "path": "crates/events/src/events/package.rs",
+    "line": 102
+  },
+  {
+    "event_type": "HealthStatus",
+    "variant": "Healthy",
+    "path": "crates/events/src/events/package.rs",
+    "line": 100
+  },
+  {
+    "event_type": "HealthStatus",
+    "variant": "Warning",
+    "path": "crates/events/src/events/package.rs",
+    "line": 101
+  },
+  {
+    "event_type": "InstallConflictType",
+    "variant": "DependencyConflict",
+    "path": "crates/events/src/events/install.rs",
+    "line": 239
+  },
+  {
+    "event_type": "InstallConflictType",
+    "variant": "FileConflict",
+    "path": "crates/events/src/events/install.rs",
+    "line": 235
+  },
+  {
+    "event_type": "InstallConflictType",
+    "variant": "PermissionConflict",
+    "path": "crates/events/src/events/install.rs",
+    "line": 243
+  },
+  {
+    "event_type": "InstallConflictType",
+    "variant": "SpaceConflict",
+    "path": "crates/events/src/events/install.rs",
+    "line": 241
+  },
+  {
+    "event_type": "InstallConflictType",
+    "variant": "SystemConflict",
+    "path": "crates/events/src/events/install.rs",
+    "line": 245
+  },
+  {
+    "event_type": "InstallConflictType",
+    "variant": "VersionConflict",
+    "path": "crates/events/src/events/install.rs",
+    "line": 237
+  },
+  {
+    "event_type": "InstallEvent",
+    "variant": "BatchFailed",
+    "path": "crates/events/src/events/install.rs",
+    "line": 152
+  },
+  {
+    "event_type": "InstallEvent",
+    "variant": "ConflictDetected",
+    "path": "crates/events/src/events/install.rs",
+    "line": 185
+  },
+  {
+    "event_type": "InstallEvent",
+    "variant": "ConflictResolution",
+    "path": "crates/events/src/events/install.rs",
+    "line": 194
+  },
+  {
+    "event_type": "InstallEvent",
+    "variant": "FileInstallationCompleted",
+    "path": "crates/events/src/events/install.rs",
+    "line": 88
+  },
+  {
+    "event_type": "InstallEvent",
+    "variant": "FileInstallationStarted",
+    "path": "crates/events/src/events/install.rs",
+    "line": 80
+  },
+  {
+    "event_type": "InstallEvent",
+    "variant": "MetadataRegistrationCompleted",
+    "path": "crates/events/src/events/install.rs",
+    "line": 103
+  },
+  {
+    "event_type": "InstallEvent",
+    "variant": "MetadataRegistrationStarted",
+    "path": "crates/events/src/events/install.rs",
+    "line": 96
+  },
+  {
+    "event_type": "InstallEvent",
+    "variant": "PermissionAdjustment",
+    "path": "crates/events/src/events/install.rs",
+    "line": 202
+  },
+  {
+    "event_type": "InstallEvent",
+    "variant": "PreparationCompleted",
+    "path": "crates/events/src/events/install.rs",
+    "line": 71
+  },
+  {
+    "event_type": "InstallEvent",
+    "variant": "PreparationStarted",
+    "path": "crates/events/src/events/install.rs",
+    "line": 63
+  },
+  {
+    "event_type": "InstallEvent",
+    "variant": "RollbackCompleted",
+    "path": "crates/events/src/events/install.rs",
+    "line": 169
+  },
+  {
+    "event_type": "InstallEvent",
+    "variant": "RollbackFailed",
+    "path": "crates/events/src/events/install.rs",
+    "line": 177
+  },
+  {
+    "event_type": "InstallEvent",
+    "variant": "RollbackStarted",
+    "path": "crates/events/src/events/install.rs",
+    "line": 161
+  },
+  {
+    "event_type": "InstallEvent",
+    "variant": "StagingFailed",
+    "path": "crates/events/src/events/install.rs",
+    "line": 55
+  },
+  {
+    "event_type": "InstallPhase",
+    "variant": "Acquisition",
+    "path": "crates/events/src/events/install.rs",
+    "line": 215
+  },
+  {
+    "event_type": "InstallPhase",
+    "variant": "FileInstallation",
+    "path": "crates/events/src/events/install.rs",
+    "line": 221
+  },
+  {
+    "event_type": "InstallPhase",
+    "variant": "MetadataRegistration",
+    "path": "crates/events/src/events/install.rs",
+    "line": 223
+  },
+  {
+    "event_type": "InstallPhase",
+    "variant": "Preparation",
+    "path": "crates/events/src/events/install.rs",
+    "line": 219
+  },
+  {
+    "event_type": "InstallPhase",
+    "variant": "Rollback",
+    "path": "crates/events/src/events/install.rs",
+    "line": 227
+  },
+  {
+    "event_type": "InstallPhase",
+    "variant": "Staging",
+    "path": "crates/events/src/events/install.rs",
+    "line": 217
+  },
+  {
+    "event_type": "InstallPhase",
+    "variant": "Validation",
+    "path": "crates/events/src/events/install.rs",
+    "line": 225
+  },
+  {
+    "event_type": "IsolationLevel",
+    "variant": "Full",
+    "path": "crates/events/src/events/build.rs",
+    "line": 43
+  },
+  {
+    "event_type": "IsolationLevel",
+    "variant": "Network",
+    "path": "crates/events/src/events/build.rs",
+    "line": 42
+  },
+  {
+    "event_type": "IsolationLevel",
+    "variant": "None",
+    "path": "crates/events/src/events/build.rs",
+    "line": 41
+  },
+  {
+    "event_type": "PackageEvent",
+    "variant": "Building",
+    "path": "crates/events/src/events/package.rs",
+    "line": 18
+  },
+  {
+    "event_type": "PackageEvent",
+    "variant": "CleanupProgress",
+    "path": "crates/events/src/events/package.rs",
+    "line": 83
+  },
+  {
+    "event_type": "PackageEvent",
+    "variant": "HealthCheckProgress",
+    "path": "crates/events/src/events/package.rs",
+    "line": 39
+  },
+  {
+    "event_type": "PackageEvent",
+    "variant": "HealthCheckStarted",
+    "path": "crates/events/src/events/package.rs",
+    "line": 36
+  },
+  {
+    "event_type": "PackageEvent",
+    "variant": "Installing",
+    "path": "crates/events/src/events/package.rs",
+    "line": 9
+  },
+  {
+    "event_type": "PackageEvent",
+    "variant": "Removed",
+    "path": "crates/events/src/events/package.rs",
+    "line": 15
+  },
+  {
+    "event_type": "PackageEvent",
+    "variant": "Removing",
+    "path": "crates/events/src/events/package.rs",
+    "line": 12
+  },
+  {
+    "event_type": "PackageUpdateType",
+    "variant": "Major",
+    "path": "crates/events/src/events/update.rs",
+    "line": 264
+  },
+  {
+    "event_type": "PackageUpdateType",
+    "variant": "Minor",
+    "path": "crates/events/src/events/update.rs",
+    "line": 262
+  },
+  {
+    "event_type": "PackageUpdateType",
+    "variant": "Patch",
+    "path": "crates/events/src/events/update.rs",
+    "line": 260
+  },
+  {
+    "event_type": "PackageUpdateType",
+    "variant": "PreRelease",
+    "path": "crates/events/src/events/update.rs",
+    "line": 266
+  },
+  {
+    "event_type": "PlatformEvent",
+    "variant": "CapabilityCheckCompleted",
+    "path": "crates/events/src/events/platform.rs",
+    "line": 119
+  },
+  {
+    "event_type": "PlatformEvent",
+    "variant": "CapabilityCheckStarted",
+    "path": "crates/events/src/events/platform.rs",
+    "line": 113
+  },
+  {
+    "event_type": "ProgressEvent",
+    "variant": "BatchProgress",
+    "path": "crates/events/src/events/progress.rs",
+    "line": 82
+  },
+  {
+    "event_type": "ProgressEvent",
+    "variant": "EstimateRefined",
+    "path": "crates/events/src/events/progress.rs",
+    "line": 121
+  },
+  {
+    "event_type": "PythonEvent",
+    "variant": "VenvCloned",
+    "path": "crates/events/src/events/python.rs",
+    "line": 55
+  },
+  {
+    "event_type": "PythonEvent",
+    "variant": "VenvCloning",
+    "path": "crates/events/src/events/python.rs",
+    "line": 47
+  },
+  {
+    "event_type": "PythonEvent",
+    "variant": "VenvCreated",
+    "path": "crates/events/src/events/python.rs",
+    "line": 16
+  },
+  {
+    "event_type": "PythonEvent",
+    "variant": "VenvCreating",
+    "path": "crates/events/src/events/python.rs",
+    "line": 9
+  },
+  {
+    "event_type": "PythonEvent",
+    "variant": "VenvRemoved",
+    "path": "crates/events/src/events/python.rs",
+    "line": 70
+  },
+  {
+    "event_type": "PythonEvent",
+    "variant": "VenvRemoving",
+    "path": "crates/events/src/events/python.rs",
+    "line": 63
+  },
+  {
+    "event_type": "PythonEvent",
+    "variant": "WheelInstalled",
+    "path": "crates/events/src/events/python.rs",
+    "line": 30
+  },
+  {
+    "event_type": "PythonEvent",
+    "variant": "WheelInstalling",
+    "path": "crates/events/src/events/python.rs",
+    "line": 23
+  },
+  {
+    "event_type": "PythonEvent",
+    "variant": "WrapperCreated",
+    "path": "crates/events/src/events/python.rs",
+    "line": 40
+  },
+  {
+    "event_type": "PythonEvent",
+    "variant": "WrapperCreating",
+    "path": "crates/events/src/events/python.rs",
+    "line": 33
+  },
+  {
+    "event_type": "QaEvent",
+    "variant": "PatchingPhaseCompleted",
+    "path": "crates/events/src/events/qa.rs",
+    "line": 77
+  },
+  {
+    "event_type": "QaEvent",
+    "variant": "PatchingPhaseStarted",
+    "path": "crates/events/src/events/qa.rs",
+    "line": 74
+  },
+  {
+    "event_type": "QaEvent",
+    "variant": "ReportGenerated",
+    "path": "crates/events/src/events/qa.rs",
+    "line": 56
+  },
+  {
+    "event_type": "QaEvent",
+    "variant": "ValidationPhaseCompleted",
+    "path": "crates/events/src/events/qa.rs",
+    "line": 68
+  },
+  {
+    "event_type": "QaEvent",
+    "variant": "ValidationPhaseStarted",
+    "path": "crates/events/src/events/qa.rs",
+    "line": 62
+  },
+  {
+    "event_type": "RemovalConflictType",
+    "variant": "FileInUse",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 285
+  },
+  {
+    "event_type": "RemovalConflictType",
+    "variant": "ModifiedFile",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 279
+  },
+  {
+    "event_type": "RemovalConflictType",
+    "variant": "NonEmptyDirectory",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 281
+  },
+  {
+    "event_type": "RemovalConflictType",
+    "variant": "PermissionDenied",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 283
+  },
+  {
+    "event_type": "RemovalConflictType",
+    "variant": "SharedFile",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 277
+  },
+  {
+    "event_type": "RepoEvent",
+    "variant": "CacheInvalidated",
+    "path": "crates/events/src/events/repo.rs",
+    "line": 79
+  },
+  {
+    "event_type": "RepoEvent",
+    "variant": "CacheUpdated",
+    "path": "crates/events/src/events/repo.rs",
+    "line": 72
+  },
+  {
+    "event_type": "RepoEvent",
+    "variant": "IndexUpdateCompleted",
+    "path": "crates/events/src/events/repo.rs",
+    "line": 44
+  },
+  {
+    "event_type": "RepoEvent",
+    "variant": "IndexUpdateFailed",
+    "path": "crates/events/src/events/repo.rs",
+    "line": 52
+  },
+  {
+    "event_type": "RepoEvent",
+    "variant": "IndexUpdateProgress",
+    "path": "crates/events/src/events/repo.rs",
+    "line": 38
+  },
+  {
+    "event_type": "RepoEvent",
+    "variant": "IndexUpdateStarting",
+    "path": "crates/events/src/events/repo.rs",
+    "line": 35
+  },
+  {
+    "event_type": "RepoEvent",
+    "variant": "MirrorHealthCheck",
+    "path": "crates/events/src/events/repo.rs",
+    "line": 93
+  },
+  {
+    "event_type": "RepoEvent",
+    "variant": "MirrorSwitched",
+    "path": "crates/events/src/events/repo.rs",
+    "line": 86
+  },
+  {
+    "event_type": "RepoEvent",
+    "variant": "SyncFailed",
+    "path": "crates/events/src/events/repo.rs",
+    "line": 28
+  },
+  {
+    "event_type": "RepoEvent",
+    "variant": "SyncProgress",
+    "path": "crates/events/src/events/repo.rs",
+    "line": 14
+  },
+  {
+    "event_type": "RepoEvent",
+    "variant": "ValidationCompleted",
+    "path": "crates/events/src/events/repo.rs",
+    "line": 65
+  },
+  {
+    "event_type": "RepoEvent",
+    "variant": "ValidationProgress",
+    "path": "crates/events/src/events/repo.rs",
+    "line": 58
+  },
+  {
+    "event_type": "RepoEvent",
+    "variant": "ValidationStarted",
+    "path": "crates/events/src/events/repo.rs",
+    "line": 55
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "ConflictAnalysisCompleted",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 126
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "ConflictAnalysisStarted",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 120
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "ConstraintPropagationCompleted",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 243
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "ConstraintPropagationStarted",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 230
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "CycleDetected",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 160
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "DependencyChainAnalyzed",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 199
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "DependencyConflictSuggestions",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 113
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "DependencyGraphBuilding",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 133
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "DependencyGraphBuilt",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 139
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "ExecutionPlanGenerated",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 167
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "InstalledPackageCheckFailed",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 49
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "InstalledPackageCheckStarted",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 38
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "InstalledPackageSatisfied",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 41
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "LocalManifestExtracted",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 214
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "LocalPackageProcessingFailed",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 223
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "LocalPackageProcessingStarted",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 208
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "ResolutionFailed",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 24
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "ResolutionTimedOut",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 31
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "SatConflictDetected",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 74
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "SatRestartTriggered",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 82
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "SatSolvingCompleted",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 97
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "SatSolvingProgress",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 64
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "SatSolvingStarted",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 56
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "SatVariableAssigned",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 89
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "SolutionValidationCompleted",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 256
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "SolutionValidationStarted",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 250
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "TopologicalSortCompleted",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 153
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "TopologicalSortStarted",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 147
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "TransitiveDependencyDiscovered",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 190
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "UnitClauseDetected",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 236
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "VersionConstraintProcessing",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 175
+  },
+  {
+    "event_type": "ResolverEvent",
+    "variant": "VersionConstraintResolved",
+    "path": "crates/events/src/events/resolver.rs",
+    "line": 182
+  },
+  {
+    "event_type": "RollbackStatus",
+    "variant": "Completed",
+    "path": "crates/events/src/events/update.rs",
+    "line": 368
+  },
+  {
+    "event_type": "RollbackStatus",
+    "variant": "Failed",
+    "path": "crates/events/src/events/update.rs",
+    "line": 372
+  },
+  {
+    "event_type": "RollbackStatus",
+    "variant": "InProgress",
+    "path": "crates/events/src/events/update.rs",
+    "line": 374
+  },
+  {
+    "event_type": "RollbackStatus",
+    "variant": "NotRequired",
+    "path": "crates/events/src/events/update.rs",
+    "line": 366
+  },
+  {
+    "event_type": "RollbackStatus",
+    "variant": "Partial",
+    "path": "crates/events/src/events/update.rs",
+    "line": 370
+  },
+  {
+    "event_type": "StateEvent",
+    "variant": "Activated",
+    "path": "crates/events/src/events/state.rs",
+    "line": 30
+  },
+  {
+    "event_type": "StateEvent",
+    "variant": "Activating",
+    "path": "crates/events/src/events/state.rs",
+    "line": 24
+  },
+  {
+    "event_type": "StateEvent",
+    "variant": "RollbackInitiated",
+    "path": "crates/events/src/events/state.rs",
+    "line": 83
+  },
+  {
+    "event_type": "StateEvent",
+    "variant": "RollbackValidating",
+    "path": "crates/events/src/events/state.rs",
+    "line": 91
+  },
+  {
+    "event_type": "StateEvent",
+    "variant": "TransitionExecuting",
+    "path": "crates/events/src/events/state.rs",
+    "line": 59
+  },
+  {
+    "event_type": "StateEvent",
+    "variant": "TransitionPreparing",
+    "path": "crates/events/src/events/state.rs",
+    "line": 36
+  },
+  {
+    "event_type": "StateEvent",
+    "variant": "TransitionValidating",
+    "path": "crates/events/src/events/state.rs",
+    "line": 44
+  },
+  {
+    "event_type": "StateEvent",
+    "variant": "TransitionValidationComplete",
+    "path": "crates/events/src/events/state.rs",
+    "line": 51
+  },
+  {
+    "event_type": "SystemIntegrityStatus",
+    "variant": "Consistent",
+    "path": "crates/events/src/events/update.rs",
+    "line": 382
+  },
+  {
+    "event_type": "SystemIntegrityStatus",
+    "variant": "MajorInconsistencies",
+    "path": "crates/events/src/events/update.rs",
+    "line": 386
+  },
+  {
+    "event_type": "SystemIntegrityStatus",
+    "variant": "MinorInconsistencies",
+    "path": "crates/events/src/events/update.rs",
+    "line": 384
+  },
+  {
+    "event_type": "SystemIntegrityStatus",
+    "variant": "Unknown",
+    "path": "crates/events/src/events/update.rs",
+    "line": 388
+  },
+  {
+    "event_type": "TrendDirection",
+    "variant": "Accelerating",
+    "path": "crates/events/src/progress/config.rs",
+    "line": 92
+  },
+  {
+    "event_type": "TrendDirection",
+    "variant": "Decelerating",
+    "path": "crates/events/src/progress/config.rs",
+    "line": 94
+  },
+  {
+    "event_type": "TrendDirection",
+    "variant": "Stable",
+    "path": "crates/events/src/progress/config.rs",
+    "line": 96
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "BatchFailed",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 211
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "BatchProgress",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 191
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "ConflictDetected",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 220
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "ConflictResolution",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 229
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "DependencyCheckCompleted",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 54
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "DependencyCheckFailed",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 64
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "DependencyCheckProgress",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 46
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "DependencyCheckStarted",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 39
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "DependentsDetected",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 72
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "MetadataCleanupCompleted",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 154
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "MetadataCleanupStarted",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 147
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "OrphanCleanupCompleted",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 176
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "OrphanCleanupStarted",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 170
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "OrphanDetected",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 162
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "PostRemovalVerification",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 238
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "PostRemovalVerified",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 245
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "PreparationCompleted",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 113
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "PreparationStarted",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 105
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "RemovalExecutionCompleted",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 138
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "RemovalExecutionStarted",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 121
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "RemovalProgress",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 129
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "ValidationCompleted",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 87
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "ValidationFailed",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 96
+  },
+  {
+    "event_type": "UninstallEvent",
+    "variant": "ValidationStarted",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 80
+  },
+  {
+    "event_type": "UninstallPhase",
+    "variant": "DependencyCheck",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 259
+  },
+  {
+    "event_type": "UninstallPhase",
+    "variant": "MetadataCleanup",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 267
+  },
+  {
+    "event_type": "UninstallPhase",
+    "variant": "PostRemovalVerification",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 269
+  },
+  {
+    "event_type": "UninstallPhase",
+    "variant": "Preparation",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 263
+  },
+  {
+    "event_type": "UninstallPhase",
+    "variant": "RemovalExecution",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 265
+  },
+  {
+    "event_type": "UninstallPhase",
+    "variant": "Validation",
+    "path": "crates/events/src/events/uninstall.rs",
+    "line": 261
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "BatchFailed",
+    "path": "crates/events/src/events/update.rs",
+    "line": 154
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "BatchProgress",
+    "path": "crates/events/src/events/update.rs",
+    "line": 134
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "BreakingChangesDetected",
+    "path": "crates/events/src/events/update.rs",
+    "line": 180
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "ConstraintAnalysisStarted",
+    "path": "crates/events/src/events/update.rs",
+    "line": 103
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "ConstraintConflictDetected",
+    "path": "crates/events/src/events/update.rs",
+    "line": 109
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "ConstraintOverrideApplied",
+    "path": "crates/events/src/events/update.rs",
+    "line": 118
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "DependencyCascadeCompleted",
+    "path": "crates/events/src/events/update.rs",
+    "line": 204
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "DependencyCascadeProgress",
+    "path": "crates/events/src/events/update.rs",
+    "line": 196
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "DependencyCascadeStarted",
+    "path": "crates/events/src/events/update.rs",
+    "line": 189
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "PackageUpdateCompleted",
+    "path": "crates/events/src/events/update.rs",
+    "line": 82
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "PackageUpdateFailed",
+    "path": "crates/events/src/events/update.rs",
+    "line": 92
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "PackageUpdateProgress",
+    "path": "crates/events/src/events/update.rs",
+    "line": 74
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "PackageUpdateStarted",
+    "path": "crates/events/src/events/update.rs",
+    "line": 66
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "PlanGenerated",
+    "path": "crates/events/src/events/update.rs",
+    "line": 50
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "PlanningFailed",
+    "path": "crates/events/src/events/update.rs",
+    "line": 59
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "PlanningProgress",
+    "path": "crates/events/src/events/update.rs",
+    "line": 42
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "RollbackCompleted",
+    "path": "crates/events/src/events/update.rs",
+    "line": 226
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "RollbackFailed",
+    "path": "crates/events/src/events/update.rs",
+    "line": 233
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "RollbackProgress",
+    "path": "crates/events/src/events/update.rs",
+    "line": 219
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "RollbackStarted",
+    "path": "crates/events/src/events/update.rs",
+    "line": 212
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "UpgradePathAnalysisStarted",
+    "path": "crates/events/src/events/update.rs",
+    "line": 163
+  },
+  {
+    "event_type": "UpdateEvent",
+    "variant": "UpgradePathFound",
+    "path": "crates/events/src/events/update.rs",
+    "line": 170
+  },
+  {
+    "event_type": "UpdateOperationType",
+    "variant": "Downgrade",
+    "path": "crates/events/src/events/update.rs",
+    "line": 250
+  },
+  {
+    "event_type": "UpdateOperationType",
+    "variant": "Reinstall",
+    "path": "crates/events/src/events/update.rs",
+    "line": 252
+  },
+  {
+    "event_type": "UpdateOperationType",
+    "variant": "Update",
+    "path": "crates/events/src/events/update.rs",
+    "line": 246
+  },
+  {
+    "event_type": "UpdateOperationType",
+    "variant": "Upgrade",
+    "path": "crates/events/src/events/update.rs",
+    "line": 248
+  },
+  {
+    "event_type": "UpdatePhase",
+    "variant": "Acquisition",
+    "path": "crates/events/src/events/update.rs",
+    "line": 276
+  },
+  {
+    "event_type": "UpdatePhase",
+    "variant": "Backup",
+    "path": "crates/events/src/events/update.rs",
+    "line": 278
+  },
+  {
+    "event_type": "UpdatePhase",
+    "variant": "Cleanup",
+    "path": "crates/events/src/events/update.rs",
+    "line": 284
+  },
+  {
+    "event_type": "UpdatePhase",
+    "variant": "Installation",
+    "path": "crates/events/src/events/update.rs",
+    "line": 280
+  },
+  {
+    "event_type": "UpdatePhase",
+    "variant": "Planning",
+    "path": "crates/events/src/events/update.rs",
+    "line": 274
+  },
+  {
+    "event_type": "UpdatePhase",
+    "variant": "Verification",
+    "path": "crates/events/src/events/update.rs",
+    "line": 282
+  },
+  {
+    "event_type": "UpdateUrgency",
+    "variant": "Critical",
+    "path": "crates/events/src/events/update.rs",
+    "line": 343
+  },
+  {
+    "event_type": "UpdateUrgency",
+    "variant": "High",
+    "path": "crates/events/src/events/update.rs",
+    "line": 345
+  },
+  {
+    "event_type": "UpdateUrgency",
+    "variant": "Low",
+    "path": "crates/events/src/events/update.rs",
+    "line": 349
+  },
+  {
+    "event_type": "UpdateUrgency",
+    "variant": "Normal",
+    "path": "crates/events/src/events/update.rs",
+    "line": 347
+  },
+  {
+    "event_type": "ValidationWarningLevel",
+    "variant": "Critical",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 359
+  },
+  {
+    "event_type": "ValidationWarningLevel",
+    "variant": "High",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 357
+  },
+  {
+    "event_type": "ValidationWarningLevel",
+    "variant": "Low",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 353
+  },
+  {
+    "event_type": "ValidationWarningLevel",
+    "variant": "Medium",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 355
+  },
+  {
+    "event_type": "ValidationWarningLevel",
+    "variant": "None",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 351
+  },
+  {
+    "event_type": "VerificationType",
+    "variant": "Checksum",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 323
+  },
+  {
+    "event_type": "VerificationType",
+    "variant": "FileIntegrity",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 333
+  },
+  {
+    "event_type": "VerificationType",
+    "variant": "FormatValidation",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 327
+  },
+  {
+    "event_type": "VerificationType",
+    "variant": "ManifestValidation",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 329
+  },
+  {
+    "event_type": "VerificationType",
+    "variant": "SecurityScanning",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 331
+  },
+  {
+    "event_type": "VerificationType",
+    "variant": "Signature",
+    "path": "crates/events/src/events/acquisition.rs",
+    "line": 325
+  }
+]

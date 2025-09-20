@@ -15,6 +15,9 @@
 //! - **Tracing integration**: Built-in structured logging with intelligent log levels
 //! - **Progress tracking**: Sophisticated algorithms with ETA, speed calculation, and phases
 
+pub mod meta;
+pub use meta::{EventLevel, EventMeta, EventSource};
+
 // Re-export the progress tracking system
 pub mod progress;
 pub use progress::*;

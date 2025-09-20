@@ -18,6 +18,7 @@ pub mod platform;
 pub mod signing;
 pub mod state;
 pub mod storage;
+pub mod structured;
 pub mod version;
 
 // Re-export all error types at the root
@@ -35,6 +36,7 @@ pub use platform::PlatformError;
 pub use signing::SigningError;
 pub use state::StateError;
 pub use storage::StorageError;
+pub use structured::{ErrorCode, ErrorContext, ErrorSeverity, StructuredError};
 pub use version::VersionError;
 
 use thiserror::Error;

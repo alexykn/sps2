@@ -3430,6 +3430,7 @@ dependencies = [
 name = "sps2-events"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "serde",
  "sps2-types",
  "tokio",
