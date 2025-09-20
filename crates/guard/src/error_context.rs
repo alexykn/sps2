@@ -4,7 +4,8 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-use sps2_errors::{DiscrepancySeverity, GuardError, GuardErrorSummary};
+use crate::diagnostics::{GuardErrorExt, GuardErrorSummary};
+use sps2_errors::{DiscrepancySeverity, GuardError};
 use sps2_events::events::GuardDiscrepancyParams;
 use sps2_events::{AppEvent, EventEmitter, EventSender, GuardEvent};
 
@@ -259,17 +260,17 @@ impl GuardErrorContext {
         let mut recommended_actions = summary.recommended_actions.clone();
 
         if self.verbosity_level.include_detailed_context() {
-            // Add detailed recommendations
-            if !summary.recoverable_errors.is_empty() {
+            if summary.recoverable_count > 0 {
                 recommended_actions.push(format!(
                     "Use 'sps2 verify --heal' to automatically fix {} issue(s)",
-                    summary.recoverable_errors.len()
+                    summary.recoverable_count
                 ));
             }
 
-            if !summary.manual_intervention_required.is_empty() {
-                recommended_actions
-                    .push("Check individual error details for manual resolution steps".to_string());
+            if summary.manual_count > 0 {
+                recommended_actions.push(
+                    "Inspect individual discrepancies for manual resolution steps".to_string(),
+                );
             }
         }
 
@@ -277,8 +278,8 @@ impl GuardErrorContext {
             .emit(AppEvent::Guard(GuardEvent::ErrorSummary {
                 operation_id: self.operation_id.clone(),
                 total_errors: summary.total_errors,
-                recoverable_errors: summary.recoverable_errors.len(),
-                manual_intervention_required: summary.manual_intervention_required.len(),
+                recoverable_errors: summary.recoverable_count,
+                manual_intervention_required: summary.manual_count,
                 overall_severity: format!("{:?}", summary.overall_severity),
                 user_friendly_summary: summary.summary_message(),
                 recommended_actions,

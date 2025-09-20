@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use sps2_errors::UserFacingError;
+
 /// CLI-specific error type
 #[derive(Debug)]
 pub enum CliError {
@@ -22,7 +24,17 @@ impl fmt::Display for CliError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CliError::Config(e) => write!(f, "Configuration error: {e}"),
-            CliError::Ops(e) => write!(f, "{e}"),
+            CliError::Ops(e) => {
+                let message = e.user_message();
+                write!(f, "{message}")?;
+                if let Some(hint) = e.user_hint() {
+                    write!(f, "\n  Hint: {hint}")?;
+                }
+                if e.is_retryable() {
+                    write!(f, "\n  Retry: safe to retry this operation.")?;
+                }
+                Ok(())
+            }
             CliError::Setup(msg) => write!(f, "System setup error: {msg}"),
 
             CliError::InvalidArguments(msg) => write!(f, "Invalid arguments: {msg}"),

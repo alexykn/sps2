@@ -15,27 +15,6 @@ pub enum OpsError {
     #[error("invalid operation: {operation}")]
     InvalidOperation { operation: String },
 
-    #[error("dependency error: {message}")]
-    DependencyError { message: String },
-
-    #[error("initialization failed: {message}")]
-    InitializationFailed { message: String },
-
-    #[error("command execution failed: {command}: {message}")]
-    CommandFailed { command: String, message: String },
-
-    #[error("health check failed: {component}: {message}")]
-    HealthCheckFailed { component: String, message: String },
-
-    #[error("context creation failed: {message}")]
-    ContextCreationFailed { message: String },
-
-    #[error("operation not supported: {operation}")]
-    NotSupported { operation: String },
-
-    #[error("concurrent operation limit exceeded")]
-    ConcurrencyLimitExceeded,
-
     #[error("serialization error: {message}")]
     SerializationError { message: String },
 
@@ -53,9 +32,6 @@ pub enum OpsError {
 
     #[error("no previous state")]
     NoPreviousState,
-
-    #[error("no current state")]
-    NoCurrentState,
 
     #[error("state not found: {state_id}")]
     StateNotFound { state_id: uuid::Uuid },
@@ -77,7 +53,4 @@ pub enum OpsError {
 
     #[error("invalid staging directory {path}: {reason}")]
     InvalidStagingDirectory { path: String, reason: String },
-
-    #[error("event channel closed")]
-    EventChannelClosed,
 }

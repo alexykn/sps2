@@ -1,7 +1,8 @@
 //! Type definitions for state verification and healing
 
+use crate::diagnostics::{DiscrepancyContext, RecommendedAction};
 use sps2_config::DiscrepancyHandling;
-use sps2_errors::{DiscrepancyContext, DiscrepancySeverity, RecommendedAction};
+use sps2_errors::DiscrepancySeverity;
 use sps2_events::{EventEmitter, EventSender};
 use std::path::{Path, PathBuf};
 use std::time::Duration;

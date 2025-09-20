@@ -10,14 +10,15 @@
 - All event APIs now emit `EventMessage { meta, event }` envelopes; helper constructors ensure a fresh `EventMeta` is attached when call-sites do not provide one explicitly.
 - `EventEmitter` exposes `emit_with_meta`, and the default `emit` path auto-generates metadata (ids, levels, correlation) before forwarding to the sender.
 - CLI/logging consume the metadata directly, relying on `EventMeta::tracing_level()` / `EventSource::as_str()` for structured output and span correlation.
+- The consolidated `ProgressManager` emits `ProgressEvent`s through the same envelope, with deterministic `parent_id`/`correlation_id` values that drive the TTY progress UI and JSON output.
 
-## Structured Error Envelope (crates/errors/src/structured.rs)
-- `StructuredError` provides a durable `ErrorCode`, `ErrorSeverity`, friendly message, optional details, metadata map, and an `ErrorContext` block.
-- `ErrorCode::as_str()` surfaces stable identifiers (e.g. `PM0201`) for UI and telemetry.
-- `ErrorContext` captures operation/package/resource hints plus arbitrary labels and human hints.
-- Builders (`with_details`, `with_metadata`, `with_context`) keep construction ergonomic while encouraging small payloads.
+## Error Handling Direction
+- Domain error enums remain simple `thiserror` enums returning descriptive messages.
+- The root `Error` type wraps domain enums and a handful of ad-hoc cases (`Internal`, `Cancelled`, `Io`).
+- The previous `StructuredError` experiment is no longer in use; any future enrichment should focus on lightweight helpers or trait-based formatting rather than envelope types.
 
 ### Integration strategy
-1. Domain error enums will grow conversions to `StructuredError`, mapping existing variants to standardised codes/severity.
-2. High-level operations (`ops`, `install`, `resolver`) will return `StructuredError` (or wrap them in `Error`) enabling the CLI to display codes + hints.
-3. Event failure variants will carry `ErrorCode` (or the entire `StructuredError`) instead of raw strings.
+1. Prefer returning domain errors directly; only upcast to the root `Error` at cross-crate boundaries.
+2. Keep CLI rendering straightforward (`Display` derived from the error enums). Add helper formatting only if it materially improves UX without adding heavy machinery.
+3. Ensure events that surface failures carry context by including relevant fields in the event payload, not via auxiliary error envelopes.
+4. Guard-specific diagnostics (context builders, summaries, hints) now live alongside the guard implementation in `crates/guard/src/diagnostics.rs`; the shared errors crate only defines the lightweight `GuardError` enum and `DiscrepancySeverity` type.

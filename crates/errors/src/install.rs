@@ -6,47 +6,14 @@ use thiserror::Error;
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum InstallError {
-    #[error("installation failed: {message}")]
-    Failed { message: String },
-
-    #[error("dependency resolution failed: {message}")]
-    ResolutionFailed { message: String },
-
     #[error("package not found: {package}")]
     PackageNotFound { package: String },
-
-    #[error("version conflict: {message}")]
-    VersionConflict { message: String },
-
-    #[error("circular dependency detected: {packages}")]
-    CircularDependency { packages: String },
-
-    #[error("download failed: {url}")]
-    DownloadFailed { url: String },
-
-    #[error("verification failed: {package}")]
-    VerificationFailed { package: String },
 
     #[error("extraction failed: {message}")]
     ExtractionFailed { message: String },
 
     #[error("atomic operation failed: {message}")]
     AtomicOperationFailed { message: String },
-
-    #[error("rollback failed: {message}")]
-    RollbackFailed { message: String },
-
-    #[error("insufficient disk space: {required} bytes required")]
-    InsufficientSpace { required: u64 },
-
-    #[error("installation cancelled by user")]
-    Cancelled,
-
-    #[error("parallel installation failed: {message}")]
-    ParallelFailed { message: String },
-
-    #[error("state transition failed: {message}")]
-    StateTransitionFailed { message: String },
 
     #[error("filesystem operation failed: {operation} on {path}: {message}")]
     FilesystemError {
@@ -76,9 +43,6 @@ pub enum InstallError {
     #[error("package not installed: {package}")]
     PackageNotInstalled { package: String },
 
-    #[error("package already installed: {package}")]
-    PackageAlreadyInstalled { package: String },
-
     #[error("concurrency error: {message}")]
     ConcurrencyError { message: String },
 
@@ -103,13 +67,4 @@ pub enum InstallError {
 
     #[error("no progress detected: {message}")]
     NoProgress { message: String },
-
-    #[error("python venv creation failed for {package}: {message}")]
-    PythonVenvCreationError { package: String, message: String },
-
-    #[error("python venv activation failed for {package}: {message}")]
-    PythonVenvActivationError { package: String, message: String },
-
-    #[error("python venv dependency error for {package}: {message}")]
-    PythonVenvDependencyError { package: String, message: String },
 }

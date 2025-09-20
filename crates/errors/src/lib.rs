@@ -6,6 +6,10 @@
 //! This crate provides fine-grained error types organized by domain.
 //! All error types implement Clone where possible for easier handling.
 
+use std::borrow::Cow;
+
+use thiserror::Error;
+
 pub mod audit;
 pub mod build;
 pub mod config;
@@ -18,16 +22,13 @@ pub mod platform;
 pub mod signing;
 pub mod state;
 pub mod storage;
-pub mod structured;
 pub mod version;
 
 // Re-export all error types at the root
 pub use audit::AuditError;
 pub use build::BuildError;
 pub use config::ConfigError;
-pub use guard::{
-    DiscrepancyContext, DiscrepancySeverity, GuardError, GuardErrorSummary, RecommendedAction,
-};
+pub use guard::{DiscrepancySeverity, GuardError};
 pub use install::InstallError;
 pub use network::NetworkError;
 pub use ops::OpsError;
@@ -36,10 +37,7 @@ pub use platform::PlatformError;
 pub use signing::SigningError;
 pub use state::StateError;
 pub use storage::StorageError;
-pub use structured::{ErrorCode, ErrorContext, ErrorSeverity, StructuredError};
 pub use version::VersionError;
-
-use thiserror::Error;
 
 /// Generic error type for cross-crate boundaries
 #[derive(Debug, Clone, Error)]
@@ -158,6 +156,144 @@ impl From<minisign_verify::Error> for Error {
 
 /// Result type alias for sps2 operations
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// Minimal interface for rendering user-facing error information without
+/// requiring heavyweight envelopes.
+pub trait UserFacingError {
+    /// Short message suitable for CLI output.
+    fn user_message(&self) -> Cow<'_, str>;
+
+    /// Optional remediation hint.
+    fn user_hint(&self) -> Option<&'static str> {
+        None
+    }
+
+    /// Whether retrying the same operation is likely to succeed.
+    fn is_retryable(&self) -> bool {
+        false
+    }
+}
+
+const HINT_CHECK_CONNECTION: &str = "Check your network connection and retry.";
+const HINT_WAIT_AND_RETRY: &str = "Wait for pending operations to finish, then retry.";
+const HINT_PROVIDE_PACKAGE: &str =
+    "Provide at least one package spec (e.g. `sps2 install ripgrep`).";
+const HINT_RETRY_LATER: &str = "Retry the operation; the service may recover shortly.";
+const HINT_DOWNLOAD_TIMEOUT: &str =
+    "Retry the download or increase the timeout with --download-timeout.";
+
+impl UserFacingError for InstallError {
+    fn user_message(&self) -> Cow<'_, str> {
+        Cow::Owned(self.to_string())
+    }
+
+    fn user_hint(&self) -> Option<&'static str> {
+        match self {
+            Self::ConcurrencyError { .. } => Some(HINT_WAIT_AND_RETRY),
+            Self::OperationTimeout { .. } | Self::NoProgress { .. } => Some(HINT_RETRY_LATER),
+            Self::DownloadTimeout { .. } => Some(HINT_DOWNLOAD_TIMEOUT),
+            Self::MissingDownloadUrl { .. } | Self::MissingLocalPath { .. } => {
+                Some("Ensure the package manifest includes a valid source.")
+            }
+            _ => None,
+        }
+    }
+
+    fn is_retryable(&self) -> bool {
+        matches!(
+            self,
+            Self::ConcurrencyError { .. }
+                | Self::OperationTimeout { .. }
+                | Self::NoProgress { .. }
+                | Self::DownloadTimeout { .. }
+        )
+    }
+}
+
+impl UserFacingError for NetworkError {
+    fn user_message(&self) -> Cow<'_, str> {
+        Cow::Owned(self.to_string())
+    }
+
+    fn user_hint(&self) -> Option<&'static str> {
+        match self {
+            Self::Timeout { .. } | Self::NetworkUnavailable => Some(HINT_CHECK_CONNECTION),
+            Self::RateLimited { .. } => Some("Wait for the rate limit window to expire."),
+            Self::PartialContentNotSupported | Self::RangeRequestFailed { .. } => {
+                Some("Retry without resume or select a different mirror.")
+            }
+            Self::StreamInterrupted { .. } => Some(HINT_RETRY_LATER),
+            Self::ChecksumMismatch { .. } => {
+                Some("Retry with `--no-cache` or verify the artifact.")
+            }
+            _ => None,
+        }
+    }
+
+    fn is_retryable(&self) -> bool {
+        matches!(
+            self,
+            Self::Timeout { .. }
+                | Self::DownloadFailed(_)
+                | Self::ConnectionRefused(_)
+                | Self::NetworkUnavailable
+                | Self::RateLimited { .. }
+                | Self::PartialContentNotSupported
+                | Self::ContentLengthMismatch { .. }
+                | Self::StreamInterrupted { .. }
+        )
+    }
+}
+
+impl UserFacingError for OpsError {
+    fn user_message(&self) -> Cow<'_, str> {
+        Cow::Owned(self.to_string())
+    }
+
+    fn user_hint(&self) -> Option<&'static str> {
+        match self {
+            Self::NoPackagesSpecified => Some(HINT_PROVIDE_PACKAGE),
+            Self::NoPreviousState => Some("Create a state snapshot before attempting rollback."),
+            _ => None,
+        }
+    }
+
+    fn is_retryable(&self) -> bool {
+        matches!(self, Self::NoPackagesSpecified | Self::NoPreviousState)
+    }
+}
+
+impl UserFacingError for Error {
+    fn user_message(&self) -> Cow<'_, str> {
+        match self {
+            Error::Network(err) => err.user_message(),
+            Error::Install(err) => err.user_message(),
+            Error::Ops(err) => err.user_message(),
+            Error::Io { message, .. } => Cow::Owned(message.clone()),
+            _ => Cow::Owned(self.to_string()),
+        }
+    }
+
+    fn user_hint(&self) -> Option<&'static str> {
+        match self {
+            Error::Network(err) => err.user_hint(),
+            Error::Install(err) => err.user_hint(),
+            Error::Ops(err) => err.user_hint(),
+            Error::Config(_) => Some("Check your sps2 configuration file."),
+            _ => None,
+        }
+    }
+
+    fn is_retryable(&self) -> bool {
+        match self {
+            Error::Network(err) => err.is_retryable(),
+            Error::Install(err) => err.is_retryable(),
+            Error::Ops(err) => err.is_retryable(),
+            Error::Io { .. } => true,
+            _ => false,
+        }
+    }
+}
 
 // Serde helper modules for optional path and io::ErrorKind as string
 #[cfg(feature = "serde")]

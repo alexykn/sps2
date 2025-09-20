@@ -4,7 +4,7 @@
 //! staging directory creation, validation, and cleanup operations.
 
 use crate::{validate_sp_file, ValidationResult};
-use sps2_errors::{Error, InstallError};
+use sps2_errors::{Error, InstallError, UserFacingError};
 use sps2_events::{AppEvent, EventEmitter, InstallEvent, ProgressEvent};
 use sps2_resolver::PackageId;
 use sps2_resources::ResourceManager;
@@ -22,6 +22,27 @@ use super::{
         verify_package_identity,
     },
 };
+
+fn emit_progress_failure<E: EventEmitter>(
+    emitter: &E,
+    progress_id: &str,
+    error: &impl UserFacingError,
+    completed_items: u64,
+) {
+    let message = error.user_message().into_owned();
+    let hint = error.user_hint().map(str::to_string);
+    let retryable = error.is_retryable();
+
+    emitter.emit(AppEvent::Progress(ProgressEvent::Failed {
+        id: progress_id.to_string(),
+        code: String::new(),
+        message,
+        hint,
+        retryable,
+        completed_items,
+        partial_duration: std::time::Duration::default(),
+    }));
+}
 
 /// Staging directory manager for secure package extraction
 pub struct StagingManager {
@@ -190,19 +211,14 @@ impl StagingManager {
 
             let result = validate_sp_file(file_path, context.event_sender()).await?;
             if !result.is_valid {
-                if let Some(ref progress_id) = staging_progress_id {
-                    context.emit(AppEvent::Progress(ProgressEvent::Failed {
-                        id: progress_id.clone(),
-                        error: "Package validation failed".to_string(),
-                        completed_items: 1,
-                        partial_duration: std::time::Duration::from_secs(0),
-                    }));
-                }
-                return Err(InstallError::InvalidPackageFile {
+                let install_error = InstallError::InvalidPackageFile {
                     path: file_path.display().to_string(),
                     message: "package validation failed".to_string(),
+                };
+                if let Some(ref progress_id) = staging_progress_id {
+                    emit_progress_failure(context, progress_id, &install_error, 1);
                 }
-                .into());
+                return Err(install_error.into());
             }
             result
         } else {
@@ -241,17 +257,13 @@ impl StagingManager {
         extract_package_with_events(file_path, &staging_dir.path, context.event_sender())
             .await
             .map_err(|e| {
-                if let Some(ref progress_id) = staging_progress_id {
-                    context.emit(AppEvent::Progress(ProgressEvent::Failed {
-                        id: progress_id.clone(),
-                        error: format!("Extraction failed: {e}"),
-                        completed_items: 2,
-                        partial_duration: std::time::Duration::from_secs(0),
-                    }));
-                }
-                InstallError::ExtractionFailed {
+                let install_error = InstallError::ExtractionFailed {
                     message: format!("failed to extract to staging: {e}"),
+                };
+                if let Some(ref progress_id) = staging_progress_id {
+                    emit_progress_failure(context, progress_id, &install_error, 2);
                 }
+                install_error
             })?;
 
         context.emit_debug(format!(
@@ -292,16 +304,10 @@ impl StagingManager {
 
         self.validate_extracted_content(&mut staging_dir, &adjusted_validation_result, context)
             .await
-            .map_err(|e| {
+            .inspect_err(|e| {
                 if let Some(ref progress_id) = staging_progress_id {
-                    context.emit(AppEvent::Progress(ProgressEvent::Failed {
-                        id: progress_id.clone(),
-                        error: format!("Post-validation failed: {e}"),
-                        completed_items: 3,
-                        partial_duration: std::time::Duration::from_secs(0),
-                    }));
+                    emit_progress_failure(context, progress_id, e, 3);
                 }
-                e
             })?;
 
         // Complete staging progress

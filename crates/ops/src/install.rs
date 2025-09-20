@@ -4,7 +4,7 @@
 //! Delegates to `sps2_install` crate for the actual installation logic.
 
 use crate::{InstallReport, InstallRequest, OpsCtx};
-use sps2_errors::{Error, OpsError};
+use sps2_errors::{Error, OpsError, UserFacingError};
 use sps2_events::{AppEvent, EventEmitter, GeneralEvent, ProgressEvent, ResolverEvent};
 use sps2_guard::{OperationResult as GuardOperationResult, PackageChange as GuardPackageChange};
 use sps2_install::{InstallConfig, InstallContext, Installer};
@@ -379,18 +379,26 @@ async fn install_remote_packages_parallel(
     let resolution_result = match ctx.resolver.resolve_with_sat(resolution_context).await {
         Ok(result) => result,
         Err(e) => {
-            // Emit helpful error event for resolution failures
-            ctx.emit(AppEvent::General(GeneralEvent::error_with_details(
-                "Dependency resolution failed".to_string(),
-                format!("Error: {e}"),
-            )));
+            let message = e.user_message().into_owned();
+            let hint = e.user_hint().map(str::to_string);
+            let retryable = e.is_retryable();
 
-            // Mark progress as failed
+            ctx.emit_operation_failed(
+                "install",
+                String::new(),
+                message.clone(),
+                hint.clone(),
+                retryable,
+            );
+
             ctx.emit(AppEvent::Progress(ProgressEvent::Failed {
                 id: progress_id.clone(),
-                error: format!("Pipeline execution failed: {e}"),
+                code: String::new(),
+                message,
+                hint,
+                retryable,
                 completed_items: 0,
-                partial_duration: std::time::Duration::from_secs(0),
+                partial_duration: std::time::Duration::default(),
             }));
 
             return Err(e);
@@ -422,21 +430,26 @@ async fn install_remote_packages_parallel(
     {
         Ok(prepared_packages) => prepared_packages,
         Err(e) => {
-            // Send helpful error context
-            ctx.emit(AppEvent::General(GeneralEvent::error_with_details(
-                "Installation failed during download/validation phase".to_string(),
-                format!(
-                    "Error: {e}. This may be due to network issues, package corruption, or insufficient disk space. \
-                    Try running 'sps2 cleanup' to free space or check your network connection."
-                ),
-            )));
+            let message = e.user_message().into_owned();
+            let hint = e.user_hint().map(str::to_string);
+            let retryable = e.is_retryable();
 
-            // Mark progress as failed
+            ctx.emit_operation_failed(
+                "install",
+                String::new(),
+                message.clone(),
+                hint.clone(),
+                retryable,
+            );
+
             ctx.emit(AppEvent::Progress(ProgressEvent::Failed {
                 id: progress_id.clone(),
-                error: format!("Installation failed: {e}"),
+                code: String::new(),
+                message,
+                hint,
+                retryable,
                 completed_items: 0,
-                partial_duration: std::time::Duration::from_secs(0),
+                partial_duration: std::time::Duration::default(),
             }));
 
             return Err(e);

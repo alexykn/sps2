@@ -1,6 +1,7 @@
 //! State verification guard for ensuring database/filesystem consistency
 
 mod core;
+mod diagnostics;
 mod error_context;
 mod healing;
 mod orphan;
@@ -10,6 +11,7 @@ mod verification;
 
 // Re-export public types
 pub use core::{StateVerificationGuard, StateVerificationGuardBuilder};
+pub use diagnostics::{DiscrepancyContext, GuardErrorExt, GuardErrorSummary, RecommendedAction};
 pub use error_context::{
     ContextSummaryStats, GuardErrorContext, VerbosityLevel, VerbosityLevelExt,
 };
