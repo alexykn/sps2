@@ -1,15 +1,3 @@
-#![deny(clippy::pedantic, unsafe_code)]
-#![allow(
-    clippy::module_name_repetitions,
-    clippy::cast_precision_loss,        // Mathematical calculations require f64
-    clippy::cast_possible_truncation,   // Intentional for progress calculations
-    clippy::cast_sign_loss,            // Weights are always positive
-    clippy::similar_names,              // Mathematical variable naming is clear
-    clippy::missing_panics_doc,         // Mutex::lock panics are documented as safe
-    clippy::must_use_candidate,         // Many builder methods are self-evident
-    clippy::uninlined_format_args       // Format args are clear in context
-)]
-
 //! Speed calculation algorithms with smoothing and outlier detection
 
 use super::config::TrendDirection;
