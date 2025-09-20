@@ -6,7 +6,7 @@ use crate::{
     UninstallContext, UpdateContext,
 };
 use sps2_errors::{Error, InstallError};
-use sps2_events::events::{BatchUpdateStrategy, GeneralEvent, PackageUpdateType, UpdateResult};
+use sps2_events::events::{GeneralEvent, PackageUpdateType, UpdateResult};
 use sps2_events::{AppEvent, EventEmitter, InstallEvent, UninstallEvent, UpdateEvent};
 
 use sps2_resolver::{NodeAction, ResolutionContext, ResolutionResult, Resolver};
@@ -363,7 +363,6 @@ impl UpdateOperation {
                 context.packages.clone()
             },
             operation_id: operation_id.clone(),
-            update_strategy: BatchUpdateStrategy::DependencyOrder,
             concurrent_limit: 4, // Default concurrent limit
         }));
 

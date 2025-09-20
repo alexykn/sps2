@@ -20,48 +20,6 @@ pub enum StateEvent {
         operation: String,
     },
 
-    /// State activation in progress
-    Activating {
-        state_id: StateId,
-        from_state: Option<StateId>,
-    },
-
-    /// State activated successfully
-    Activated {
-        state_id: StateId,
-        from_state: Option<StateId>,
-    },
-
-    /// State transition preparation
-    TransitionPreparing {
-        from: StateId,
-        to: StateId,
-        operation: String,
-        packages_affected: usize,
-    },
-
-    /// State transition validation
-    TransitionValidating {
-        from: StateId,
-        to: StateId,
-        validation_checks: usize,
-    },
-
-    /// State transition validation complete
-    TransitionValidationComplete {
-        from: StateId,
-        to: StateId,
-        checks_passed: usize,
-        warnings: usize,
-    },
-
-    /// State transition executing
-    TransitionExecuting {
-        from: StateId,
-        to: StateId,
-        operation: String,
-    },
-
     /// State transition completed successfully
     TransitionCompleted {
         from: StateId,
@@ -77,20 +35,6 @@ pub enum StateEvent {
         operation: String,
         error: String,
         rollback_available: bool,
-    },
-
-    /// Rollback initiated
-    RollbackInitiated {
-        from: StateId,
-        to: StateId,
-        reason: String,
-        automatic: bool,
-    },
-
-    /// Rollback validation in progress
-    RollbackValidating {
-        target_state: StateId,
-        safety_checks: usize,
     },
 
     /// Rollback executing

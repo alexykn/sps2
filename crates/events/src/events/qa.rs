@@ -51,28 +51,4 @@ pub enum QaEvent {
         file_path: Option<String>,
         line: Option<usize>,
     },
-
-    /// QA report generated
-    ReportGenerated {
-        format: String,
-        path: Option<String>,
-    },
-
-    /// QA validation phase started
-    ValidationPhaseStarted {
-        phase: String,
-        validators: Vec<String>,
-    },
-
-    /// QA validation phase completed
-    ValidationPhaseCompleted {
-        phase: String,
-        findings_count: usize,
-    },
-
-    /// QA patching phase started
-    PatchingPhaseStarted { patchers: Vec<String> },
-
-    /// QA patching phase completed
-    PatchingPhaseCompleted { patches_applied: usize },
 }

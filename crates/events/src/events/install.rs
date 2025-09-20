@@ -3,7 +3,7 @@ use sps2_types::Version;
 use std::path::PathBuf;
 use std::time::Duration;
 
-/// Installation domain events - maps to install crate and `sps2 install` command
+/// Installation domain events consumed by the CLI and guard rails
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum InstallEvent {
@@ -29,7 +29,7 @@ pub enum InstallEvent {
     Failed {
         package: String,
         version: Version,
-        phase: InstallPhase,
+        phase: Option<String>,
         error: String,
         cleanup_required: bool,
     },
@@ -49,61 +49,6 @@ pub enum InstallEvent {
         files_staged: usize,
         staging_size: u64,
         staging_path: PathBuf,
-    },
-
-    /// Package staging failed
-    StagingFailed {
-        package: String,
-        version: Version,
-        error: String,
-        files_partially_extracted: usize,
-    },
-
-    /// Installation preparation phase
-    PreparationStarted {
-        package: String,
-        version: Version,
-        target_path: PathBuf,
-        backup_existing: bool,
-    },
-
-    /// Preparation phase completed
-    PreparationCompleted {
-        package: String,
-        version: Version,
-        backup_created: Option<PathBuf>,
-        space_required: u64,
-        space_available: u64,
-    },
-
-    /// File installation phase executing
-    FileInstallationStarted {
-        package: String,
-        version: Version,
-        files_to_install: usize,
-        estimated_size: u64,
-    },
-
-    /// File installation completed
-    FileInstallationCompleted {
-        package: String,
-        version: Version,
-        files_installed: usize,
-        bytes_written: u64,
-    },
-
-    /// Metadata registration started
-    MetadataRegistrationStarted {
-        package: String,
-        version: Version,
-        dependencies: usize,
-    },
-
-    /// Metadata registration completed
-    MetadataRegistrationCompleted {
-        package: String,
-        version: Version,
-        database_records: usize,
     },
 
     /// Post-installation validation started
@@ -147,140 +92,4 @@ pub enum InstallEvent {
         total_duration: Duration,
         total_disk_usage: u64,
     },
-
-    /// Batch installation failed
-    BatchFailed {
-        operation_id: String,
-        error: String,
-        completed_packages: Vec<String>,
-        failed_packages: Vec<(String, String)>,
-        rollback_initiated: bool,
-    },
-
-    /// Rollback started due to installation failure
-    RollbackStarted {
-        package: String,
-        version: Version,
-        reason: String,
-        backup_path: Option<PathBuf>,
-    },
-
-    /// Rollback completed
-    RollbackCompleted {
-        package: String,
-        version: Version,
-        files_restored: usize,
-        cleanup_successful: bool,
-    },
-
-    /// Rollback failed
-    RollbackFailed {
-        package: String,
-        version: Version,
-        error: String,
-        manual_cleanup_required: bool,
-    },
-
-    /// Package conflict detected during installation
-    ConflictDetected {
-        package: String,
-        version: Version,
-        conflict_type: InstallConflictType,
-        conflicting_package: Option<String>,
-        conflicting_files: Vec<PathBuf>,
-    },
-
-    /// Conflict resolution attempted
-    ConflictResolution {
-        package: String,
-        version: Version,
-        resolution_strategy: String,
-        backup_created: bool,
-    },
-
-    /// Permission adjustment required
-    PermissionAdjustment {
-        package: String,
-        files_affected: usize,
-        permission_type: String, // "executable", "readable", "ownership"
-        requires_root: bool,
-    },
-}
-
-/// Installation phases for error reporting and progress tracking
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum InstallPhase {
-    /// Package acquisition and validation
-    Acquisition,
-    /// Extracting and staging files
-    Staging,
-    /// Preparing for installation
-    Preparation,
-    /// Installing files to final location
-    FileInstallation,
-    /// Registering package metadata
-    MetadataRegistration,
-    /// Post-installation validation
-    Validation,
-    /// Rollback due to failure
-    Rollback,
-}
-
-/// Types of installation conflicts
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum InstallConflictType {
-    /// File already exists and owned by another package
-    FileConflict,
-    /// Package version already installed
-    VersionConflict,
-    /// Dependency version conflicts with existing installation
-    DependencyConflict,
-    /// Insufficient disk space
-    SpaceConflict,
-    /// Permission denied for required operation
-    PermissionConflict,
-    /// System compatibility issues
-    SystemConflict,
-}
-
-impl InstallEvent {
-    /// Create a basic installation started event
-    pub fn started(package: impl Into<String>, version: Version, install_path: PathBuf) -> Self {
-        Self::Started {
-            package: package.into(),
-            version,
-            install_path,
-            force_reinstall: false,
-        }
-    }
-
-    /// Create a basic installation completed event
-    pub fn completed(
-        package: impl Into<String>,
-        version: Version,
-        files: usize,
-        install_path: PathBuf,
-    ) -> Self {
-        Self::Completed {
-            package: package.into(),
-            version,
-            installed_files: files,
-            install_path,
-            duration: Duration::from_secs(0),
-            disk_usage: 0,
-        }
-    }
-
-    /// Create a basic installation failed event
-    pub fn failed(package: impl Into<String>, version: Version, error: impl Into<String>) -> Self {
-        Self::Failed {
-            package: package.into(),
-            version,
-            phase: InstallPhase::FileInstallation,
-            error: error.into(),
-            cleanup_required: false,
-        }
-    }
 }

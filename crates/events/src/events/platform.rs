@@ -109,22 +109,6 @@ pub enum PlatformEvent {
         duration_ms: u64,
     },
 
-    /// Platform capability check started
-    CapabilityCheckStarted {
-        /// Capability being checked (e.g., `codesign_available`)
-        capability: String,
-    },
-
-    /// Platform capability check completed
-    CapabilityCheckCompleted {
-        /// Capability that was checked
-        capability: String,
-        /// Whether the capability is available
-        available: bool,
-        /// Additional details about the capability
-        details: HashMap<String, String>,
-    },
-
     /// Tool discovery started
     ToolDiscoveryStarted {
         /// Name of the tool being discovered

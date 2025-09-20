@@ -1,22 +1,9 @@
 use serde::{Deserialize, Serialize};
-use sps2_types::Version;
 
-/// Package operation events
+/// Package operation events surfaced by ops/CLI
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum PackageEvent {
-    /// Package installing
-    Installing { name: String, version: Version },
-
-    /// Package removing
-    Removing { name: String, version: Version },
-
-    /// Package removed
-    Removed { name: String, version: Version },
-
-    /// Package building
-    Building { name: String, version: Version },
-
     /// List operation starting
     ListStarting,
 
@@ -31,16 +18,6 @@ pub enum PackageEvent {
 
     /// Health check starting
     HealthCheckStarting,
-
-    /// Health check started
-    HealthCheckStarted,
-
-    /// Health check progress
-    HealthCheckProgress {
-        component: String,
-        status: HealthStatus,
-        message: Option<String>,
-    },
 
     /// Health check completed
     HealthCheckCompleted { healthy: bool, issues: Vec<String> },
@@ -79,12 +56,6 @@ pub enum PackageEvent {
     /// Cleanup starting
     CleanupStarting,
 
-    /// Cleanup progress
-    CleanupProgress {
-        items_processed: usize,
-        total_items: usize,
-    },
-
     /// Cleanup completed
     CleanupCompleted {
         states_removed: usize,
@@ -93,7 +64,7 @@ pub enum PackageEvent {
     },
 }
 
-/// Health status for components
+/// Health status for components used by health reports
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum HealthStatus {

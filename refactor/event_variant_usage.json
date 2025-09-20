@@ -340,13 +340,13 @@
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 185,
+        "line": 184,
         "line_text": "self.emit(AppEvent::Build(BuildEvent::SessionStarted {",
         "qualifier": "AppEvent"
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 202,
+        "line": 201,
         "line_text": "self.emit(AppEvent::Build(BuildEvent::Completed {",
         "qualifier": "AppEvent"
       },
@@ -437,13 +437,13 @@
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 152,
+        "line": 151,
         "line_text": "self.emit(AppEvent::Download(DownloadEvent::Started {",
         "qualifier": "AppEvent"
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 168,
+        "line": 167,
         "line_text": "self.emit(AppEvent::Download(DownloadEvent::Completed {",
         "qualifier": "AppEvent"
       },
@@ -858,55 +858,55 @@
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 84,
+        "line": 83,
         "line_text": "self.emit(AppEvent::General(GeneralEvent::debug(message)));",
         "qualifier": "AppEvent"
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 93,
+        "line": 92,
         "line_text": "self.emit(AppEvent::General(GeneralEvent::debug_with_context(",
         "qualifier": "AppEvent"
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 100,
+        "line": 99,
         "line_text": "self.emit(AppEvent::General(GeneralEvent::warning(message)));",
         "qualifier": "AppEvent"
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 105,
+        "line": 104,
         "line_text": "self.emit(AppEvent::General(GeneralEvent::warning_with_context(",
         "qualifier": "AppEvent"
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 112,
+        "line": 111,
         "line_text": "self.emit(AppEvent::General(GeneralEvent::error(message)));",
         "qualifier": "AppEvent"
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 117,
+        "line": 116,
         "line_text": "self.emit(AppEvent::General(GeneralEvent::error_with_details(",
         "qualifier": "AppEvent"
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 124,
+        "line": 123,
         "line_text": "self.emit(AppEvent::General(GeneralEvent::OperationStarted {",
         "qualifier": "AppEvent"
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 131,
+        "line": 130,
         "line_text": "self.emit(AppEvent::General(GeneralEvent::OperationCompleted {",
         "qualifier": "AppEvent"
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 139,
+        "line": 138,
         "line_text": "self.emit(AppEvent::General(GeneralEvent::OperationFailed {",
         "qualifier": "AppEvent"
       },
@@ -930,25 +930,25 @@
       },
       {
         "path": "crates/install/src/operations.rs",
-        "line": 440,
+        "line": 439,
         "line_text": "context.emit(AppEvent::General(",
         "qualifier": "AppEvent"
       },
       {
         "path": "crates/install/src/operations.rs",
-        "line": 486,
+        "line": 485,
         "line_text": "context.emit(AppEvent::General(",
         "qualifier": "AppEvent"
       },
       {
         "path": "crates/install/src/operations.rs",
-        "line": 525,
+        "line": 524,
         "line_text": "context.emit(AppEvent::General(GeneralEvent::CheckModePreview {",
         "qualifier": "AppEvent"
       },
       {
         "path": "crates/install/src/operations.rs",
-        "line": 550,
+        "line": 549,
         "line_text": "context.emit(AppEvent::General(GeneralEvent::CheckModePreview {",
         "qualifier": "AppEvent"
       },
@@ -2357,25 +2357,25 @@
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 218,
+        "line": 217,
         "line_text": "self.emit(AppEvent::Progress(ProgressEvent::started(",
         "qualifier": "AppEvent"
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 225,
+        "line": 224,
         "line_text": "self.emit(AppEvent::Progress(ProgressEvent::updated(",
         "qualifier": "AppEvent"
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 232,
+        "line": 231,
         "line_text": "self.emit(AppEvent::Progress(ProgressEvent::completed(id, duration)));",
         "qualifier": "AppEvent"
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 237,
+        "line": 236,
         "line_text": "self.emit(AppEvent::Progress(ProgressEvent::failed(id, error)));",
         "qualifier": "AppEvent"
       },
@@ -2982,19 +2982,19 @@
       },
       {
         "path": "crates/install/src/operations.rs",
-        "line": 391,
+        "line": 390,
         "line_text": "context.emit(AppEvent::Update(UpdateEvent::BatchCompleted {",
         "qualifier": "AppEvent"
       },
       {
         "path": "crates/install/src/operations.rs",
-        "line": 582,
+        "line": 581,
         "line_text": "context.emit(AppEvent::Update(UpdateEvent::BatchCompleted {",
         "qualifier": "AppEvent"
       },
       {
         "path": "crates/install/src/operations.rs",
-        "line": 621,
+        "line": 620,
         "line_text": "context.emit(AppEvent::Update(UpdateEvent::BatchCompleted {",
         "qualifier": "AppEvent"
       },
@@ -3258,7 +3258,7 @@
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 202,
+        "line": 201,
         "line_text": "self.emit(AppEvent::Build(BuildEvent::Completed {",
         "qualifier": "BuildEvent"
       },
@@ -3451,7 +3451,7 @@
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 185,
+        "line": 184,
         "line_text": "self.emit(AppEvent::Build(BuildEvent::SessionStarted {",
         "qualifier": "BuildEvent"
       },
@@ -3520,7 +3520,7 @@
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 168,
+        "line": 167,
         "line_text": "self.emit(AppEvent::Download(DownloadEvent::Completed {",
         "qualifier": "DownloadEvent"
       },
@@ -3672,7 +3672,7 @@
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 152,
+        "line": 151,
         "line_text": "self.emit(AppEvent::Download(DownloadEvent::Started {",
         "qualifier": "DownloadEvent"
       },
@@ -3697,25 +3697,25 @@
       },
       {
         "path": "crates/install/src/operations.rs",
-        "line": 441,
+        "line": 440,
         "line_text": "GeneralEvent::CheckModePreview {",
         "qualifier": "GeneralEvent"
       },
       {
         "path": "crates/install/src/operations.rs",
-        "line": 487,
+        "line": 486,
         "line_text": "GeneralEvent::CheckModePreview {",
         "qualifier": "GeneralEvent"
       },
       {
         "path": "crates/install/src/operations.rs",
-        "line": 525,
+        "line": 524,
         "line_text": "context.emit(AppEvent::General(GeneralEvent::CheckModePreview {",
         "qualifier": "GeneralEvent"
       },
       {
         "path": "crates/install/src/operations.rs",
-        "line": 550,
+        "line": 549,
         "line_text": "context.emit(AppEvent::General(GeneralEvent::CheckModePreview {",
         "qualifier": "GeneralEvent"
       },
@@ -4331,7 +4331,7 @@
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 131,
+        "line": 130,
         "line_text": "self.emit(AppEvent::General(GeneralEvent::OperationCompleted {",
         "qualifier": "GeneralEvent"
       },
@@ -4428,7 +4428,7 @@
     "occurrences": [
       {
         "path": "crates/events/src/lib.rs",
-        "line": 139,
+        "line": 138,
         "line_text": "self.emit(AppEvent::General(GeneralEvent::OperationFailed {",
         "qualifier": "GeneralEvent"
       }
@@ -4525,7 +4525,7 @@
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 124,
+        "line": 123,
         "line_text": "self.emit(AppEvent::General(GeneralEvent::OperationStarted {",
         "qualifier": "GeneralEvent"
       },
@@ -4731,7 +4731,7 @@
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 84,
+        "line": 83,
         "line_text": "self.emit(AppEvent::General(GeneralEvent::debug(message)));",
         "qualifier": "GeneralEvent"
       },
@@ -4774,7 +4774,7 @@
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 93,
+        "line": 92,
         "line_text": "self.emit(AppEvent::General(GeneralEvent::debug_with_context(",
         "qualifier": "GeneralEvent"
       }
@@ -4787,7 +4787,7 @@
     "occurrences": [
       {
         "path": "crates/events/src/lib.rs",
-        "line": 112,
+        "line": 111,
         "line_text": "self.emit(AppEvent::General(GeneralEvent::error(message)));",
         "qualifier": "GeneralEvent"
       }
@@ -4800,7 +4800,7 @@
     "occurrences": [
       {
         "path": "crates/events/src/lib.rs",
-        "line": 117,
+        "line": 116,
         "line_text": "self.emit(AppEvent::General(GeneralEvent::error_with_details(",
         "qualifier": "GeneralEvent"
       },
@@ -4855,7 +4855,7 @@
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 100,
+        "line": 99,
         "line_text": "self.emit(AppEvent::General(GeneralEvent::warning(message)));",
         "qualifier": "GeneralEvent"
       }
@@ -4898,7 +4898,7 @@
       },
       {
         "path": "crates/events/src/lib.rs",
-        "line": 105,
+        "line": 104,
         "line_text": "self.emit(AppEvent::General(GeneralEvent::warning_with_context(",
         "qualifier": "GeneralEvent"
       },
@@ -6292,7 +6292,7 @@
     "occurrences": [
       {
         "path": "crates/events/src/lib.rs",
-        "line": 232,
+        "line": 231,
         "line_text": "self.emit(AppEvent::Progress(ProgressEvent::completed(id, duration)));",
         "qualifier": "ProgressEvent"
       }
@@ -6305,7 +6305,7 @@
     "occurrences": [
       {
         "path": "crates/events/src/lib.rs",
-        "line": 237,
+        "line": 236,
         "line_text": "self.emit(AppEvent::Progress(ProgressEvent::failed(id, error)));",
         "qualifier": "ProgressEvent"
       }
@@ -6318,7 +6318,7 @@
     "occurrences": [
       {
         "path": "crates/events/src/lib.rs",
-        "line": 218,
+        "line": 217,
         "line_text": "self.emit(AppEvent::Progress(ProgressEvent::started(",
         "qualifier": "ProgressEvent"
       }
@@ -6331,7 +6331,7 @@
     "occurrences": [
       {
         "path": "crates/events/src/lib.rs",
-        "line": 225,
+        "line": 224,
         "line_text": "self.emit(AppEvent::Progress(ProgressEvent::updated(",
         "qualifier": "ProgressEvent"
       }
@@ -7004,19 +7004,19 @@
     "occurrences": [
       {
         "path": "crates/install/src/operations.rs",
-        "line": 391,
+        "line": 390,
         "line_text": "context.emit(AppEvent::Update(UpdateEvent::BatchCompleted {",
         "qualifier": "UpdateEvent"
       },
       {
         "path": "crates/install/src/operations.rs",
-        "line": 582,
+        "line": 581,
         "line_text": "context.emit(AppEvent::Update(UpdateEvent::BatchCompleted {",
         "qualifier": "UpdateEvent"
       },
       {
         "path": "crates/install/src/operations.rs",
-        "line": 621,
+        "line": 620,
         "line_text": "context.emit(AppEvent::Update(UpdateEvent::BatchCompleted {",
         "qualifier": "UpdateEvent"
       }

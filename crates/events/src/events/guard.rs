@@ -111,29 +111,6 @@ pub enum GuardEvent {
         duration_ms: u64,
     },
 
-    /// Guard cache warming
-    CacheWarming {
-        operation_id: String,
-        operation_type: String,
-        cache_entries_loading: usize,
-    },
-
-    /// Guard cache warming completed
-    CacheWarmingCompleted {
-        operation_id: String,
-        cache_entries_loaded: usize,
-        cache_hit_rate_improvement: f64,
-        duration_ms: u64,
-    },
-
-    /// Guard cache invalidated
-    CacheInvalidated {
-        operation_id: String,
-        operation_type: String,
-        invalidated_entries: usize,
-        reason: String,
-    },
-
     /// Guard error summary
     ErrorSummary {
         operation_id: String,
@@ -143,50 +120,6 @@ pub enum GuardEvent {
         overall_severity: String,
         user_friendly_summary: String,
         recommended_actions: Vec<String>,
-    },
-
-    /// Guard configuration validated
-    ConfigurationValidated {
-        approach: String, // "top-level" or "nested"
-        enabled: bool,
-        verification_level: String,
-        auto_heal: bool,
-        validation_warnings: Vec<String>,
-    },
-
-    /// Guard configuration error
-    ConfigurationError {
-        field: String,
-        error: String,
-        suggested_fix: Option<String>,
-        current_value: Option<String>,
-    },
-
-    /// Guard recovery attempt
-    RecoveryAttempt {
-        operation_id: String,
-        error_category: String,
-        recovery_strategy: String,
-        attempt_number: usize,
-        max_attempts: usize,
-    },
-
-    /// Guard recovery success
-    RecoverySuccess {
-        operation_id: String,
-        error_category: String,
-        recovery_strategy: String,
-        attempt_number: usize,
-        recovery_duration_ms: u64,
-    },
-
-    /// Guard recovery failed
-    RecoveryFailed {
-        operation_id: String,
-        error_category: String,
-        recovery_strategy: String,
-        attempts_made: usize,
-        final_error: String,
     },
 }
 
@@ -253,21 +186,6 @@ impl GuardEvent {
             healing_action: healing_action.into(),
             error,
             duration_ms,
-        }
-    }
-
-    /// Create a guard configuration error event
-    pub fn configuration_error(
-        field: impl Into<String>,
-        error: impl Into<String>,
-        suggested_fix: Option<String>,
-        current_value: Option<String>,
-    ) -> Self {
-        Self::ConfigurationError {
-            field: field.into(),
-            error: error.into(),
-            suggested_fix,
-            current_value,
         }
     }
 }

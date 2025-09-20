@@ -21,7 +21,7 @@
 
 ## 2. Event & Error Inventory
 Artifacts generated in `refactor/`:
-- `EVENTS_INVENTORY.json` — 60 type definitions extracted from `crates/events`.
+- `EVENTS_INVENTORY.json` — 43 type definitions extracted from `crates/events` (post-prune).
 - `event_variant_usage.json` — call-site map with 170 variant references.
 - `ERRORS_INVENTORY.json` — 54 type definitions from `crates/errors`.
 - `error_call_sites.json` — 154 distinct error references.
@@ -30,16 +30,20 @@ Artifacts generated in `refactor/`:
 
 | Event enum | Module | Variants | Used | Unused |
 | --- | --- | ---: | ---: | ---: |
-| ResolverEvent | events::resolver | 35 | 3 | 32 |
-| AcquisitionEvent | events::acquisition | 32 | 2 | 30 |
-| UninstallEvent | events::uninstall | 29 | 5 | 24 |
-| UpdateEvent | events::update | 28 | 6 | 22 |
-| BuildEvent | events::build | 27 | 13 | 14 |
-| StateEvent | events::state | 25 | 17 | 8 |
-| InstallEvent | events::install | 24 | 10 | 14 |
-| PackageEvent | events::package | 23 | 16 | 7 |
-| DownloadEvent | events::download | 22 | 9 | 13 |
-| GuardEvent | events::guard | 19 | 11 | 8 |
+| AppEvent | events::mod | 17 | 17 | 0 |
+| StateEvent | events::state | 17 | 17 | 0 |
+| PackageEvent | events::package | 16 | 16 | 0 |
+| ProgressEvent | events::progress | 14 | 12 | 2 |
+| BuildEvent | events::build | 13 | 13 | 0 |
+| PlatformEvent | events::platform | 12 | 12 | 0 |
+| GuardEvent | events::guard | 11 | 11 | 0 |
+| InstallEvent | events::install | 10 | 10 | 0 |
+| PythonEvent | events::python | 10 | 0 | 10 |
+| DownloadEvent | events::download | 9 | 9 | 0 |
+| AuditEvent | events::audit | 8 | 8 | 0 |
+| GeneralEvent | events::general | 8 | 8 | 0 |
+
+Total variants across the event surface now sit at **207**, with **49** still unused (all concentrated in legacy progress helpers and the dormant `PythonEvent` domain).
 
 **Error density (full list):**
 
@@ -60,8 +64,8 @@ Artifacts generated in `refactor/`:
 | VersionError | version | 5 | 3 | 2 |
 
 **Call-site insights:**
-- CLI handles only 4 `DownloadEvent` variants and 6 `InstallEvent` variants; the remainder never reach the UI (`apps/sps2/src/events.rs`, `logging.rs`).
-- `ProgressEvent` is emitted 35 times but never matched by any consumer — progress updates do not surface.
+- Download/install/build/guard domains now map 1:1 between emitted variants and CLI consumers; only the dormant `PythonEvent` family remains unused.
+- `ProgressEvent` is still emitted 35 times without a dedicated consumer — reinforcing the need for Phase 3 progress consolidation.
 - Errors most frequently constructed: `InstallError::InvalidPackageFile` (84 uses), `StorageError::IoError` (66), `PlatformError::FilesystemOperationFailed` (41).
 
 ## 3. Overlap & Redundancy Report

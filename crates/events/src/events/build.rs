@@ -25,25 +25,7 @@ pub enum BuildPhase {
     Package,
 }
 
-/// Build cache strategies
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CacheStrategy {
-    Skip,
-    Populate,
-    Use,
-}
-
-/// Build isolation levels
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum IsolationLevel {
-    None,
-    Network,
-    Full,
-}
-
-/// Build-specific events for the event system
+/// Build-specific events consumed by the CLI and logging pipeline
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum BuildEvent {
@@ -56,41 +38,12 @@ pub enum BuildEvent {
         cache_enabled: bool,
     },
 
-    /// Build session completed
-    SessionCompleted {
-        session_id: String,
-        package: String,
-        version: Version,
-        duration: Duration,
-        artifacts_created: usize,
-        cache_populated: bool,
-    },
-
-    /// Build queued awaiting dependencies
-    Queued {
-        session_id: String,
-        package: String,
-        version: Version,
-        position_in_queue: usize,
-        build_dependencies: Vec<String>,
-    },
-
     /// Build phase started
     PhaseStarted {
         session_id: String,
         package: String,
         phase: BuildPhase,
         estimated_duration: Option<Duration>,
-    },
-
-    /// Build phase progress update
-    PhaseProgress {
-        session_id: String,
-        package: String,
-        phase: BuildPhase,
-        current_step: usize,
-        total_steps: usize,
-        current_step_name: String,
     },
 
     /// Build phase completed
@@ -121,30 +74,6 @@ pub enum BuildEvent {
         is_stderr: bool,
     },
 
-    /// Build command completed
-    CommandCompleted {
-        session_id: String,
-        package: String,
-        command_id: String,
-        exit_code: i32,
-        duration: Duration,
-    },
-
-    /// Build dependency resolution started
-    DependencyResolutionStarted {
-        session_id: String,
-        package: String,
-        build_deps_count: usize,
-    },
-
-    /// Build dependency installed
-    DependencyInstalled {
-        session_id: String,
-        package: String,
-        dependency: String,
-        dependency_version: Version,
-    },
-
     /// Build completed successfully
     Completed {
         session_id: String,
@@ -164,15 +93,6 @@ pub enum BuildEvent {
         recovery_suggestions: Vec<String>,
     },
 
-    /// Build retrying after failure
-    Retrying {
-        session_id: String,
-        package: String,
-        attempt: usize,
-        max_attempts: usize,
-        reason: String,
-    },
-
     /// Build warning encountered
     Warning {
         session_id: String,
@@ -181,58 +101,10 @@ pub enum BuildEvent {
         source: Option<String>,
     },
 
-    /// Build environment configured
-    EnvironmentConfigured {
-        session_id: String,
-        package: String,
-        isolation_level: IsolationLevel,
-        network_enabled: bool,
-        env_vars_count: usize,
-    },
-
-    /// Build cache strategy determined
-    CacheStrategy {
-        session_id: String,
-        package: String,
-        strategy: CacheStrategy,
-        cache_key: String,
-    },
-
-    /// Build cache hit
-    CacheHit {
-        cache_key: String,
-        artifacts_count: usize,
-    },
-
-    /// Build cache miss
-    CacheMiss { cache_key: String, reason: String },
-
-    /// Build cache updated
-    CacheUpdated {
-        cache_key: String,
-        artifacts_count: usize,
-    },
-
     /// Build cache cleaned
     CacheCleaned {
         removed_items: usize,
         freed_bytes: u64,
-    },
-
-    /// Build checkpoint created
-    CheckpointCreated {
-        session_id: String,
-        package: String,
-        checkpoint_id: String,
-        stage: String,
-    },
-
-    /// Build checkpoint restored
-    CheckpointRestored {
-        session_id: String,
-        package: String,
-        checkpoint_id: String,
-        stage: String,
     },
 
     /// Build cleaned up

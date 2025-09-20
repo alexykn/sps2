@@ -36,7 +36,6 @@ pub use events::{
     GeneralEvent,
     GuardEvent,
     // Support types that don't conflict
-    InstallConflictType,
     InstallEvent,
     PackageEvent,
     ProgressEvent,

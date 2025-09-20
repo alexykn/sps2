@@ -32,59 +32,6 @@ pub enum GeneralEvent {
     /// Generic operation failure with error details
     OperationFailed { operation: String, error: String },
 
-    /// User confirmation request for interactive operations
-    UserConfirmationRequired {
-        prompt: String,
-        default: Option<bool>,
-        timeout_seconds: Option<u64>,
-    },
-
-    /// User confirmation response received
-    UserConfirmationReceived { response: bool },
-
-    /// System-level status notification
-    SystemNotification {
-        level: String,
-        message: String,
-        category: String,
-    },
-
-    /// Configuration validation results
-    ConfigurationValidated {
-        source: String,
-        warnings: Vec<String>,
-    },
-
-    /// Configuration validation error
-    ConfigurationError {
-        field: String,
-        error: String,
-        suggested_fix: Option<String>,
-    },
-
-    /// Performance metric update
-    PerformanceMetric {
-        name: String,
-        value: f64,
-        unit: String,
-        timestamp: Option<std::time::SystemTime>,
-    },
-
-    /// System resource usage update
-    ResourceUsage {
-        resource_type: String, // "memory", "disk", "network"
-        used: u64,
-        total: Option<u64>,
-        unit: String,
-    },
-
-    /// Rate limiting applied to operation
-    RateLimitApplied {
-        operation: String,
-        delay_ms: u64,
-        reason: String,
-    },
-
     /// Check mode preview of planned action
     CheckModePreview {
         operation: String,

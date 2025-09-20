@@ -7,12 +7,6 @@ pub enum AuditEvent {
     /// Audit scan starting
     Starting { package_count: usize },
 
-    /// Audit scan progress
-    ScanProgress {
-        packages_scanned: usize,
-        total_packages: usize,
-    },
-
     /// Audit package completed
     PackageCompleted {
         package: String,
@@ -32,13 +26,6 @@ pub enum AuditEvent {
     /// Vulnerability database source update starting
     VulnDbSourceUpdateStarting { source: String },
 
-    /// Vulnerability database source update progress
-    VulnDbSourceUpdateProgress {
-        source: String,
-        processed: usize,
-        total: Option<usize>,
-    },
-
     /// Vulnerability database source update completed
     VulnDbSourceUpdateCompleted {
         source: String,
@@ -54,11 +41,5 @@ pub enum AuditEvent {
         total_vulnerabilities: usize,
         sources_updated: usize,
         duration_ms: u64,
-    },
-
-    /// Vulnerability database statistics updated
-    VulnDbStatisticsUpdated {
-        vulnerability_count: usize,
-        size_bytes: u64,
     },
 }
