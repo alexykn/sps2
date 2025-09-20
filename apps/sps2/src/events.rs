@@ -729,6 +729,24 @@ impl EventHandler {
                         };
                         self.show_operation(&meta, message.to_string(), icon, severity);
                     }
+                    GeneralEvent::OperationFailed {
+                        operation,
+                        code,
+                        message,
+                        hint,
+                        retryable,
+                    } => {
+                        let mut text = format!("[{code}] {message}");
+                        if let Some(hint) = hint {
+                            text.push_str(&format!(" (hint: {hint})"));
+                        }
+                        let severity = if retryable {
+                            EventSeverity::Warning
+                        } else {
+                            EventSeverity::Error
+                        };
+                        self.show_operation(&meta, text, &operation, severity);
+                    }
                     GeneralEvent::Warning { message, .. } => {
                         self.show_meta_message(&meta, message, EventSeverity::Warning);
                     }
@@ -769,16 +787,6 @@ impl EventHandler {
                         categories,
                     } => {
                         self.show_check_summary(&operation, &total_changes, &categories);
-                    }
-                    _ => {
-                        // Handle other general events with debug output
-                        if self.debug_enabled {
-                            self.show_meta_message(
-                                &meta,
-                                format!("General event: {general_event:?}"),
-                                EventSeverity::Debug,
-                            );
-                        }
                     }
                 }
             }
@@ -1178,23 +1186,41 @@ impl EventHandler {
             }
             ProgressEvent::Failed {
                 id,
-                error,
+                code,
+                message,
+                hint,
+                retryable,
                 partial_duration,
                 ..
             } => {
                 let message = if let Some(state) = self.progress_states.remove(&id) {
                     format!(
-                        "{} failed after {}: {error}",
+                        "{} failed after {}: [{}] {}{}",
                         state.operation,
-                        format_duration(partial_duration)
+                        format_duration(partial_duration),
+                        code,
+                        message,
+                        hint.as_ref()
+                            .map(|h| format!(" (hint: {h})"))
+                            .unwrap_or_default()
                     )
                 } else {
                     format!(
-                        "Progress {id} failed after {}: {error}",
-                        format_duration(partial_duration)
+                        "Progress {id} failed after {}: [{}] {}{}",
+                        format_duration(partial_duration),
+                        code,
+                        message,
+                        hint.as_ref()
+                            .map(|h| format!(" (hint: {h})"))
+                            .unwrap_or_default()
                     )
                 };
-                self.show_meta_message(meta, message, EventSeverity::Error);
+                let severity = if retryable {
+                    EventSeverity::Warning
+                } else {
+                    EventSeverity::Error
+                };
+                self.show_meta_message(meta, message, severity);
             }
             ProgressEvent::Paused { id, reason, .. } => {
                 if self.debug_enabled {
