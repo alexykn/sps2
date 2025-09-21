@@ -21,7 +21,7 @@ pub enum AuditEvent {
     },
 
     /// Audit scan failed
-    ScanFailed { retryable: bool },
+    ScanFailed { failure: super::FailureContext },
 
     /// Vulnerability database update started
     VulnDbUpdateStarted,
@@ -34,5 +34,5 @@ pub enum AuditEvent {
     },
 
     /// Vulnerability database update failed
-    VulnDbUpdateFailed { retryable: bool },
+    VulnDbUpdateFailed { failure: super::FailureContext },
 }

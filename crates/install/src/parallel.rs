@@ -8,7 +8,8 @@ use dashmap::DashMap;
 use sps2_errors::{Error, InstallError};
 use sps2_events::events::AcquisitionSource;
 use sps2_events::{
-    AcquisitionEvent, AppEvent, EventEmitter, EventSender, GeneralEvent, InstallEvent,
+    AcquisitionEvent, AppEvent, EventEmitter, EventSender, FailureContext, GeneralEvent,
+    InstallEvent,
 };
 use sps2_net::{PackageDownloadConfig, PackageDownloader};
 use sps2_resolver::{ExecutionPlan, NodeAction, PackageId, ResolvedNode};
@@ -382,6 +383,7 @@ impl ParallelExecutor {
                             }));
                         }
                         Ok(Err(e)) => {
+                            let failure = FailureContext::from_error(&e);
                             context.emit(AppEvent::Acquisition(AcquisitionEvent::Failed {
                                 package: package_id.name.clone(),
                                 version: package_id.version.clone(),
@@ -389,11 +391,18 @@ impl ParallelExecutor {
                                     url: url.clone(),
                                     mirror_priority: 0,
                                 },
-                                retryable: true, // Assuming retryable, this could be improved
+                                failure,
                             }));
                             return Err(e);
                         }
                         Err(_) => {
+                            let err: Error = InstallError::DownloadTimeout {
+                                package: package_id.name.clone(),
+                                url: url.to_string(),
+                                timeout_seconds: timeout_duration.as_secs(),
+                            }
+                            .into();
+                            let failure = FailureContext::from_error(&err);
                             context.emit(AppEvent::Acquisition(AcquisitionEvent::Failed {
                                 package: package_id.name.clone(),
                                 version: package_id.version.clone(),
@@ -401,14 +410,9 @@ impl ParallelExecutor {
                                     url: url.clone(),
                                     mirror_priority: 0,
                                 },
-                                retryable: true,
+                                failure,
                             }));
-                            return Err(InstallError::DownloadTimeout {
-                                package: package_id.name.clone(),
-                                url: url.to_string(),
-                                timeout_seconds: timeout_duration.as_secs(),
-                            }
-                            .into());
+                            return Err(err);
                         }
                     }
                 } else {

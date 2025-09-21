@@ -1,7 +1,7 @@
 //! Database update and synchronization logic
 
 use sps2_errors::Error;
-use sps2_events::{AppEvent, AuditEvent, EventEmitter, EventSender};
+use sps2_events::{AppEvent, AuditEvent, EventEmitter, EventSender, FailureContext};
 use sqlx::SqlitePool;
 
 use super::sources::{update_from_github, update_from_nvd, update_from_osv};
@@ -30,7 +30,7 @@ pub async fn update_database_from_sources(
     {
         if let Some(sender) = &event_sender {
             sender.emit(AppEvent::Audit(AuditEvent::VulnDbUpdateFailed {
-                retryable: true,
+                failure: FailureContext::from_error(&e),
             }));
         }
         return Err(e);

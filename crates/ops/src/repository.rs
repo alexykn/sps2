@@ -5,7 +5,7 @@ use crate::{keys::KeyManager, OpsCtx};
 use dialoguer::{theme::ColorfulTheme, Confirm};
 use sps2_config::{Config, RepositoryConfig};
 use sps2_errors::{ConfigError, Error, OpsError, SigningError};
-use sps2_events::{AppEvent, EventEmitter, GeneralEvent, RepoEvent};
+use sps2_events::{AppEvent, EventEmitter, FailureContext, GeneralEvent, RepoEvent};
 use std::path::PathBuf;
 use std::time::Instant;
 /// Sync repository index
@@ -21,17 +21,18 @@ pub async fn reposync(ctx: &OpsCtx, yes: bool) -> Result<String, Error> {
     let start = Instant::now();
     let _correlation = ctx.push_correlation("reposync");
 
-    let base_url_option = get_base_url(ctx);
-    if base_url_option.is_none() {
+    let base_url = if let Some(url) = get_base_url(ctx) {
+        url
+    } else {
+        let err = Error::Config(ConfigError::MissingField {
+            field: "repositories".to_string(),
+        });
         ctx.emit(AppEvent::Repo(RepoEvent::SyncFailed {
             url: None,
-            retryable: false,
+            failure: FailureContext::from_error(&err),
         }));
-        return Err(Error::Config(ConfigError::MissingField {
-            field: "repositories".to_string(),
-        }));
-    }
-    let base_url = base_url_option.unwrap();
+        return Err(err);
+    };
 
     ctx.emit(AppEvent::Repo(RepoEvent::SyncStarted {
         url: Some(base_url.to_string()),
@@ -41,9 +42,10 @@ pub async fn reposync(ctx: &OpsCtx, yes: bool) -> Result<String, Error> {
     let index_json = match index_result {
         Ok(json) => json,
         Err(e) => {
+            let failure = FailureContext::from_error(&e);
             ctx.emit(AppEvent::Repo(RepoEvent::SyncFailed {
                 url: Some(base_url.to_string()),
-                retryable: false,
+                failure,
             }));
             return Err(e);
         }
@@ -55,18 +57,19 @@ pub async fn reposync(ctx: &OpsCtx, yes: bool) -> Result<String, Error> {
         let age = now.signed_duration_since(parsed_index.metadata.timestamp);
         let max_days = i64::from(ctx.config.security.index_max_age_days);
         if age.num_days() > max_days {
-            ctx.emit(AppEvent::Repo(RepoEvent::SyncFailed {
-                url: Some(base_url.to_string()),
-                retryable: false,
-            }));
-            return Err(OpsError::RepoSyncFailed {
+            let err = OpsError::RepoSyncFailed {
                 message: format!(
                     "Repository index is stale: {} days old (max {} days)",
                     age.num_days(),
                     max_days
                 ),
             }
-            .into());
+            .into();
+            ctx.emit(AppEvent::Repo(RepoEvent::SyncFailed {
+                url: Some(base_url.to_string()),
+                failure: FailureContext::from_error(&err),
+            }));
+            return Err(err);
         }
     }
 

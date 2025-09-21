@@ -17,6 +17,6 @@ pub enum RepoEvent {
     /// Repository synchronization failed
     SyncFailed {
         url: Option<String>,
-        retryable: bool,
+        failure: super::FailureContext,
     },
 }

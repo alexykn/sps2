@@ -25,7 +25,7 @@ pub enum AcquisitionEvent {
         package: String,
         version: Version,
         source: AcquisitionSource,
-        retryable: bool,
+        failure: super::FailureContext,
     },
 }
 
