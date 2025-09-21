@@ -9,7 +9,10 @@
 
 use semver::Version;
 use sps2_errors::{Error, PackageError};
-use sps2_events::{AppEvent, EventEmitter, EventSender, ResolverEvent};
+use sps2_events::{
+    events::{DependencyConflict, DependencyConflictType, ResolutionFailureReason, ResolverEvent},
+    AppEvent, EventEmitter, EventSender,
+};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -167,29 +170,22 @@ impl DependencySolution {
     }
 }
 
-/// Conflict explanation for unsatisfiable problems
-#[derive(Debug, Clone)]
 pub struct ConflictExplanation {
-    /// Conflicting packages
-    pub conflicting_packages: Vec<(String, String)>,
-    /// Human-readable explanation
+    pub conflicting_packages: Vec<(String, String)>, // (package, version)
     pub message: String,
-    /// Suggested resolutions
+    #[allow(dead_code)]
+    pub conflict_type: DependencyConflictType,
+    #[allow(dead_code)]
     pub suggestions: Vec<String>,
 }
 
 impl ConflictExplanation {
-    /// Create new conflict explanation
-    #[must_use]
-    pub fn new(
-        conflicting_packages: Vec<(String, String)>,
-        message: String,
-        suggestions: Vec<String>,
-    ) -> Self {
+    fn new(conflicting_packages: Vec<(String, String)>, message: String) -> Self {
         Self {
             conflicting_packages,
             message,
-            suggestions,
+            conflict_type: DependencyConflictType::VersionIncompatibility,
+            suggestions: vec![],
         }
     }
 }
@@ -277,22 +273,15 @@ pub async fn solve_dependencies(
         // Extract conflict information
         let conflict = solver.analyze_conflict(&problem);
 
-        // Emit conflict events if sender is available
+        // Emit conflict event if sender is available
         if let Some(sender) = event_sender {
-            // Emit detailed conflict information
-            if !conflict.conflicting_packages.is_empty() {
-                sender.emit(AppEvent::Resolver(ResolverEvent::conflict_detected(
-                    conflict.conflicting_packages.clone(),
-                    conflict.message.clone(),
-                )));
-            }
-
-            // Emit suggestions for resolution
-            if !conflict.suggestions.is_empty() {
-                sender.emit(AppEvent::Resolver(ResolverEvent::conflict_suggestions(
-                    conflict.suggestions.clone(),
-                )));
-            }
+            sender.emit(AppEvent::Resolver(ResolverEvent::ResolutionFailed {
+                reason: ResolutionFailureReason::Conflict(DependencyConflict {
+                    conflicting_packages: conflict.conflicting_packages.clone(),
+                    message: conflict.message.clone(),
+                    conflict_type: DependencyConflictType::VersionIncompatibility, // Defaulting this for now
+                }),
+            }));
         }
 
         Err(PackageError::DependencyConflict {

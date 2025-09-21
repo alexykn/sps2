@@ -1,21 +1,23 @@
 use serde::{Deserialize, Serialize};
 use sps2_types::Version;
-use std::path::PathBuf;
-use std::time::Duration;
 
 /// Package acquisition domain events - higher-level package acquisition from various sources
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum AcquisitionEvent {
+    /// Package acquisition started
+    Started {
+        package: String,
+        version: Version,
+        source: AcquisitionSource,
+    },
+
     /// Package acquisition completed successfully
     Completed {
         package: String,
         version: Version,
         source: AcquisitionSource,
-        final_path: PathBuf,
         size: u64,
-        duration: Duration,
-        verification_passed: bool,
     },
 
     /// Package acquisition failed
@@ -23,9 +25,7 @@ pub enum AcquisitionEvent {
         package: String,
         version: Version,
         source: AcquisitionSource,
-        error: String,
-        retry_possible: bool,
-        partial_download: bool,
+        retryable: bool,
     },
 }
 

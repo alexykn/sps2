@@ -9,31 +9,34 @@ pub enum ResolverEvent {
         runtime_deps: usize,
         build_deps: usize,
         local_files: usize,
-        timeout_seconds: u64,
     },
 
     /// Resolution completed successfully
     ResolutionCompleted {
         total_packages: usize,
-        execution_batches: usize,
         duration_ms: u64,
-        packages_resolved: Vec<String>,
     },
 
-    /// Dependency conflict detected
-    DependencyConflictDetected {
-        conflicting_packages: Vec<(String, String)>, // (package, version)
-        message: String,
-        conflict_type: DependencyConflictType,
-        suggestion_count: usize,
-    },
+    /// Resolution failed
+    ResolutionFailed { reason: ResolutionFailureReason },
+}
 
-    /// Conflict resolution suggestions generated
-    DependencyConflictSuggestions {
-        suggestions: Vec<String>,
-        automated_resolution_possible: bool,
-        confidence_score: f64,
-    },
+/// Reasons for resolution failure
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResolutionFailureReason {
+    /// A dependency conflict was detected
+    Conflict(DependencyConflict),
+    /// The resolution process timed out
+    Timeout,
+}
+
+/// Details of a dependency conflict
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DependencyConflict {
+    pub conflicting_packages: Vec<(String, String)>, // (package, version)
+    pub message: String,
+    pub conflict_type: DependencyConflictType,
 }
 
 /// Types of dependency conflicts for categorization
@@ -52,27 +55,4 @@ pub enum DependencyConflictType {
     ConstraintViolation,
     /// Platform or architecture incompatibility
     PlatformIncompatibility,
-}
-
-impl ResolverEvent {
-    /// Create a conflict detected event with basic info
-    #[must_use]
-    pub fn conflict_detected(packages: Vec<(String, String)>, message: String) -> Self {
-        Self::DependencyConflictDetected {
-            conflicting_packages: packages,
-            message,
-            conflict_type: DependencyConflictType::VersionIncompatibility,
-            suggestion_count: 0,
-        }
-    }
-
-    /// Create a conflict suggestions event
-    #[must_use]
-    pub fn conflict_suggestions(suggestions: Vec<String>) -> Self {
-        Self::DependencyConflictSuggestions {
-            suggestions,
-            automated_resolution_possible: false,
-            confidence_score: 0.5,
-        }
-    }
 }

@@ -422,8 +422,7 @@ impl StateVerificationGuard {
             }
             Err(_) => {
                 self.emit(AppEvent::Guard(GuardEvent::VerificationFailed {
-                    operation_id: error_ctx.operation_id().to_string(),
-                    error: "Verification operation failed".to_string(),
+                    retryable: false,
                     packages_verified: 0,
                     files_verified: 0,
                     duration_ms: 0,
@@ -542,7 +541,6 @@ impl StateVerificationGuard {
             verification_result.discrepancies.len() - auto_heal_count - confirmation_required;
 
         self.emit(AppEvent::Guard(GuardEvent::HealingStarted {
-            operation_id: healing_ctx_events.operation_id().to_string(),
             discrepancies_count: verification_result.discrepancies.len(),
             auto_heal_count,
             confirmation_required_count: confirmation_required,
@@ -562,16 +560,7 @@ impl StateVerificationGuard {
 
         // Process each discrepancy
         let discrepancies = verification_result.discrepancies.clone();
-        for (idx, discrepancy) in discrepancies.iter().enumerate() {
-            // Emit healing progress
-            self.emit(AppEvent::Guard(GuardEvent::HealingProgress {
-                operation_id: healing_ctx_events.operation_id().to_string(),
-                completed: idx,
-                total: discrepancies.len(),
-                current_operation: discrepancy.short_description().to_string(),
-                current_file: Some(discrepancy.file_path().to_string()),
-            }));
-
+        for discrepancy in discrepancies.iter() {
             match discrepancy {
                 Discrepancy::MissingFile {
                     package_name,
@@ -684,7 +673,6 @@ impl StateVerificationGuard {
 
         // Emit healing completion event
         self.emit(AppEvent::Guard(GuardEvent::HealingCompleted {
-            operation_id: healing_ctx_events.operation_id().to_string(),
             healed_count,
             failed_count: failed_healings.len(),
             skipped_count: 0,
@@ -774,7 +762,6 @@ impl StateVerificationGuard {
             verification_result.discrepancies.len() - auto_heal_count - confirmation_required;
 
         self.emit(AppEvent::Guard(GuardEvent::HealingStarted {
-            operation_id: healing_ctx_events.operation_id().to_string(),
             discrepancies_count: verification_result.discrepancies.len(),
             auto_heal_count,
             confirmation_required_count: confirmation_required,

@@ -4,37 +4,27 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum AuditEvent {
-    /// Audit scan starting
-    Starting { package_count: usize },
+    /// Audit scan started
+    ScanStarted { package_count: usize },
 
-    /// Audit package completed
-    PackageCompleted {
+    /// Audit of a single package completed
+    ScanPackageCompleted {
         package: String,
         vulnerabilities_found: usize,
     },
 
     /// Audit scan completed
-    Completed {
+    ScanCompleted {
         packages_scanned: usize,
         vulnerabilities_found: usize,
         critical_count: usize,
     },
 
-    /// Vulnerability database update starting
-    VulnDbUpdateStarting,
+    /// Audit scan failed
+    ScanFailed { retryable: bool },
 
-    /// Vulnerability database source update starting
-    VulnDbSourceUpdateStarting { source: String },
-
-    /// Vulnerability database source update completed
-    VulnDbSourceUpdateCompleted {
-        source: String,
-        vulnerabilities_added: usize,
-        duration_ms: u64,
-    },
-
-    /// Vulnerability database source update failed
-    VulnDbSourceUpdateFailed { source: String, error: String },
+    /// Vulnerability database update started
+    VulnDbUpdateStarted,
 
     /// Vulnerability database update completed
     VulnDbUpdateCompleted {
@@ -42,4 +32,7 @@ pub enum AuditEvent {
         sources_updated: usize,
         duration_ms: u64,
     },
+
+    /// Vulnerability database update failed
+    VulnDbUpdateFailed { retryable: bool },
 }

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-use crate::diagnostics::{GuardErrorExt, GuardErrorSummary};
+use crate::diagnostics::GuardErrorExt;
 use sps2_errors::{DiscrepancySeverity, GuardError};
 use sps2_events::events::GuardDiscrepancyParams;
 use sps2_events::{AppEvent, EventEmitter, EventSender, GuardEvent};
@@ -131,7 +131,6 @@ impl GuardErrorContext {
             self.event_sender
                 .emit(AppEvent::Guard(GuardEvent::DiscrepancyFound(
                     GuardDiscrepancyParams {
-                        operation_id: self.operation_id.clone(),
                         discrepancy_type: format!("{error:?}"),
                         severity: format!("{:?}", error.severity()),
                         file_path: String::new(), // No specific file path for general errors
@@ -161,7 +160,6 @@ impl GuardErrorContext {
             self.event_sender
                 .emit(AppEvent::Guard(GuardEvent::DiscrepancyFound(
                     GuardDiscrepancyParams {
-                        operation_id: self.operation_id.clone(),
                         discrepancy_type: discrepancy.short_description().to_string(),
                         severity: format!("{:?}", discrepancy.severity()),
                         file_path: discrepancy.file_path().to_string(),
@@ -221,69 +219,7 @@ impl GuardErrorContext {
 
     /// Create and emit an error summary based on collected errors and discrepancies
     pub fn emit_error_summary(&self) {
-        let all_errors: Vec<GuardError> = self
-            .discrepancies
-            .iter()
-            .map(|d| {
-                let context = d.user_context();
-                GuardError::VerificationFailed {
-                    operation: format!("{:?}", self.operation_type),
-                    details: context.user_message.clone(),
-                    discrepancies_count: 1,
-                    state_id: "unknown".to_string(),
-                    duration_ms: self.start_time.elapsed().as_millis() as u64,
-                }
-            })
-            .chain(self.errors.iter().cloned())
-            .collect();
-
-        if all_errors.is_empty() {
-            // No errors to report
-            if self.verbosity_level.include_detailed_context() {
-                self.event_sender
-                    .emit(AppEvent::Guard(GuardEvent::ErrorSummary {
-                        operation_id: self.operation_id.clone(),
-                        total_errors: 0,
-                        recoverable_errors: 0,
-                        manual_intervention_required: 0,
-                        overall_severity: "Low".to_string(),
-                        user_friendly_summary: "No issues found".to_string(),
-                        recommended_actions: vec!["No action required".to_string()],
-                    }));
-            }
-            return;
-        }
-
-        let summary = GuardErrorSummary::new(all_errors);
-
-        // Create verbosity-appropriate recommended actions
-        let mut recommended_actions = summary.recommended_actions.clone();
-
-        if self.verbosity_level.include_detailed_context() {
-            if summary.recoverable_count > 0 {
-                recommended_actions.push(format!(
-                    "Use 'sps2 verify --heal' to automatically fix {} issue(s)",
-                    summary.recoverable_count
-                ));
-            }
-
-            if summary.manual_count > 0 {
-                recommended_actions.push(
-                    "Inspect individual discrepancies for manual resolution steps".to_string(),
-                );
-            }
-        }
-
-        self.event_sender
-            .emit(AppEvent::Guard(GuardEvent::ErrorSummary {
-                operation_id: self.operation_id.clone(),
-                total_errors: summary.total_errors,
-                recoverable_errors: summary.recoverable_count,
-                manual_intervention_required: summary.manual_count,
-                overall_severity: format!("{:?}", summary.overall_severity),
-                user_friendly_summary: summary.summary_message(),
-                recommended_actions,
-            }));
+        // ErrorSummary event has been removed.
     }
 
     /// Emit operation start event
@@ -296,7 +232,6 @@ impl GuardErrorContext {
     ) {
         self.event_sender
             .emit(AppEvent::Guard(GuardEvent::VerificationStarted {
-                operation_id: self.operation_id.clone(),
                 scope: scope.to_string(),
                 level: level.to_string(),
                 packages_count,
@@ -315,7 +250,6 @@ impl GuardErrorContext {
 
         self.event_sender
             .emit(AppEvent::Guard(GuardEvent::VerificationCompleted {
-                operation_id: self.operation_id.clone(),
                 total_discrepancies: self.discrepancies.len(),
                 by_severity,
                 duration_ms: self.start_time.elapsed().as_millis() as u64,
@@ -338,7 +272,6 @@ impl GuardErrorContext {
 
         self.event_sender
             .emit(AppEvent::Guard(GuardEvent::HealingResult {
-                operation_id: self.operation_id.clone(),
                 discrepancy_type: discrepancy_type.to_string(),
                 file_path: file_path.to_string(),
                 success,

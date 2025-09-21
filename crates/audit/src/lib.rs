@@ -94,7 +94,7 @@ impl AuditSystem {
         let installed_packages = state_manager.get_installed_packages().await?;
 
         if let Some(sender) = self.event_sender() {
-            sender.emit(AppEvent::Audit(AuditEvent::Starting {
+            sender.emit(AppEvent::Audit(AuditEvent::ScanStarted {
                 package_count: installed_packages.len(),
             }));
         }
@@ -117,7 +117,7 @@ impl AuditSystem {
             package_audits.push(audit);
 
             if let Some(sender) = self.event_sender() {
-                sender.emit(AppEvent::Audit(AuditEvent::PackageCompleted {
+                sender.emit(AppEvent::Audit(AuditEvent::ScanPackageCompleted {
                     package: package.name.clone(),
                     vulnerabilities_found: vuln_count,
                 }));
@@ -127,7 +127,7 @@ impl AuditSystem {
         let report = AuditReport::new(package_audits);
 
         if let Some(sender) = self.event_sender() {
-            sender.emit(AppEvent::Audit(AuditEvent::Completed {
+            sender.emit(AppEvent::Audit(AuditEvent::ScanCompleted {
                 packages_scanned: installed_packages.len(),
                 vulnerabilities_found: report.total_vulnerabilities(),
                 critical_count: report.critical_count(),

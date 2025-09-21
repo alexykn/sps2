@@ -13,90 +13,41 @@ use std::time::Instant;
 /// # Errors
 ///
 /// Returns an error if index synchronization fails.
+///
+/// # Panics
+///
+/// Panics if `base_url` is None after validation (should never happen).
 pub async fn reposync(ctx: &OpsCtx, yes: bool) -> Result<String, Error> {
     let start = Instant::now();
-
     let _correlation = ctx.push_correlation("reposync");
 
-    ctx.emit(AppEvent::Repo(RepoEvent::SyncStarting));
-
-    let mut candidates: Vec<&sps2_config::RepositoryConfig> = ctx.config.repos.get_all();
-    candidates.sort_by_key(|r| r.priority);
-
-    let base_url = match candidates.first() {
-        Some(repo) => repo.url.clone(),
-        None => {
-            return Err(Error::Config(ConfigError::MissingField {
-                field: "repositories".to_string(),
-            }))
-        }
-    };
-
-    let index_url = format!("{base_url}/index.json");
-    let index_sig_url = format!("{base_url}/index.json.minisig");
-    let keys_url = format!("{base_url}/keys.json");
+    let base_url_option = get_base_url(ctx);
+    if base_url_option.is_none() {
+        ctx.emit(AppEvent::Repo(RepoEvent::SyncFailed {
+            url: None,
+            retryable: false,
+        }));
+        return Err(Error::Config(ConfigError::MissingField {
+            field: "repositories".to_string(),
+        }));
+    }
+    let base_url = base_url_option.unwrap();
 
     ctx.emit(AppEvent::Repo(RepoEvent::SyncStarted {
-        url: base_url.to_string(),
+        url: Some(base_url.to_string()),
     }));
 
-    let cached_etag = ctx.index.cache.load_etag().await.unwrap_or(None);
-    let index_json =
-        download_index_conditional(ctx, &index_url, cached_etag.as_deref(), start).await?;
-
-    let index_signature = sps2_net::fetch_text(&ctx.net, &index_sig_url, &ctx.tx).await?;
-
-    let mut trusted_keys = fetch_and_verify_keys(ctx, &ctx.net, &keys_url, &ctx.tx).await?;
-
-    if let Err(e) = sps2_signing::verify_minisign_bytes_with_keys(
-        index_json.as_bytes(),
-        &index_signature,
-        &trusted_keys,
-    ) {
-        match e {
-            SigningError::NoTrustedKeyFound { key_id } => {
-                let repo_keys: keys::RepositoryKeys =
-                    sps2_net::fetch_json(&ctx.net, &keys_url, &ctx.tx).await?;
-                let key_to_trust = repo_keys.keys.iter().find(|k| k.key_id == key_id);
-
-                if let Some(key) = key_to_trust {
-                    let prompt = format!(
-                        "The repository index is signed with a new key: {key_id}. Do you want to trust it?"
-                    );
-                    if yes
-                        || Confirm::with_theme(&ColorfulTheme::default())
-                            .with_prompt(prompt)
-                            .interact()
-                            .map_err(|e| {
-                                Error::internal(format!("Failed to get user confirmation: {e}"))
-                            })?
-                    {
-                        let mut key_manager =
-                            KeyManager::new(PathBuf::from(sps2_config::fixed_paths::KEYS_DIR));
-                        key_manager.load_trusted_keys().await?;
-                        key_manager.import_key(key).await?;
-                        trusted_keys = key_manager.get_trusted_keys();
-                        // Re-verify
-                        sps2_signing::verify_minisign_bytes_with_keys(
-                            index_json.as_bytes(),
-                            &index_signature,
-                            &trusted_keys,
-                        )?;
-                    } else {
-                        return Err(Error::Signing(SigningError::NoTrustedKeyFound { key_id }));
-                    }
-                } else {
-                    return Err(Error::Signing(SigningError::NoTrustedKeyFound { key_id }));
-                }
-            }
-            other_error => {
-                return Err(OpsError::RepoSyncFailed {
-                    message: format!("Index signature verification failed: {other_error}"),
-                }
-                .into());
-            }
+    let index_result = sync_and_verify_index(ctx, &base_url, start, yes).await;
+    let index_json = match index_result {
+        Ok(json) => json,
+        Err(e) => {
+            ctx.emit(AppEvent::Repo(RepoEvent::SyncFailed {
+                url: Some(base_url.to_string()),
+                retryable: false,
+            }));
+            return Err(e);
         }
-    }
+    };
 
     // Enforce index freshness based on security policy
     if let Ok(parsed_index) = sps2_index::Index::from_json(&index_json) {
@@ -104,6 +55,10 @@ pub async fn reposync(ctx: &OpsCtx, yes: bool) -> Result<String, Error> {
         let age = now.signed_duration_since(parsed_index.metadata.timestamp);
         let max_days = i64::from(ctx.config.security.index_max_age_days);
         if age.num_days() > max_days {
+            ctx.emit(AppEvent::Repo(RepoEvent::SyncFailed {
+                url: Some(base_url.to_string()),
+                retryable: false,
+            }));
             return Err(OpsError::RepoSyncFailed {
                 message: format!(
                     "Repository index is stale: {} days old (max {} days)",
@@ -116,6 +71,104 @@ pub async fn reposync(ctx: &OpsCtx, yes: bool) -> Result<String, Error> {
     }
 
     finalize_index_update(ctx, &index_json, start).await
+}
+
+fn get_base_url(ctx: &OpsCtx) -> Option<String> {
+    let mut candidates: Vec<&sps2_config::RepositoryConfig> = ctx.config.repos.get_all();
+    candidates.sort_by_key(|r| r.priority);
+    candidates.first().map(|repo| repo.url.clone())
+}
+
+async fn sync_and_verify_index(
+    ctx: &OpsCtx,
+    base_url: &str,
+    start: Instant,
+    yes: bool,
+) -> Result<String, Error> {
+    let index_url = format!("{base_url}/index.json");
+    let index_sig_url = format!("{base_url}/index.json.minisig");
+    let keys_url = format!("{base_url}/keys.json");
+
+    let cached_etag = ctx.index.cache.load_etag().await.unwrap_or(None);
+    let index_json =
+        download_index_conditional(ctx, &index_url, cached_etag.as_deref(), start).await?;
+    let index_signature = sps2_net::fetch_text(&ctx.net, &index_sig_url, &ctx.tx).await?;
+    let mut trusted_keys = fetch_and_verify_keys(ctx, &ctx.net, &keys_url, &ctx.tx).await?;
+
+    if let Err(e) = sps2_signing::verify_minisign_bytes_with_keys(
+        index_json.as_bytes(),
+        &index_signature,
+        &trusted_keys,
+    ) {
+        handle_signature_verification_error(
+            ctx,
+            e,
+            &keys_url,
+            &index_json,
+            &index_signature,
+            yes,
+            &mut trusted_keys,
+        )
+        .await?;
+    }
+
+    Ok(index_json)
+}
+
+async fn handle_signature_verification_error(
+    ctx: &OpsCtx,
+    e: SigningError,
+    keys_url: &str,
+    index_json: &str,
+    index_signature: &str,
+    yes: bool,
+    trusted_keys: &mut Vec<sps2_signing::PublicKeyRef>,
+) -> Result<(), Error> {
+    match e {
+        SigningError::NoTrustedKeyFound { key_id } => {
+            let repo_keys: keys::RepositoryKeys =
+                sps2_net::fetch_json(&ctx.net, keys_url, &ctx.tx).await?;
+            let key_to_trust = repo_keys.keys.iter().find(|k| k.key_id == key_id);
+
+            if let Some(key) = key_to_trust {
+                let prompt = format!(
+                    "The repository index is signed with a new key: {key_id}. Do you want to trust it?"
+                );
+                if yes
+                    || Confirm::with_theme(&ColorfulTheme::default())
+                        .with_prompt(prompt)
+                        .interact()
+                        .map_err(|e| {
+                            Error::internal(format!("Failed to get user confirmation: {e}"))
+                        })?
+                {
+                    let mut key_manager =
+                        KeyManager::new(PathBuf::from(sps2_config::fixed_paths::KEYS_DIR));
+                    key_manager.load_trusted_keys().await?;
+                    key_manager.import_key(key).await?;
+                    *trusted_keys = key_manager.get_trusted_keys();
+                    // Re-verify
+                    sps2_signing::verify_minisign_bytes_with_keys(
+                        index_json.as_bytes(),
+                        index_signature,
+                        trusted_keys,
+                    )?;
+                } else {
+                    return Err(Error::Signing(SigningError::NoTrustedKeyFound { key_id }));
+                }
+            } else {
+                return Err(Error::Signing(SigningError::NoTrustedKeyFound { key_id }));
+            }
+        }
+        other_error => {
+            return Err(OpsError::RepoSyncFailed {
+                message: format!("Index signature verification failed: {other_error}"),
+            }
+            .into());
+        }
+    }
+
+    Ok(())
 }
 
 /// Add a new repository to the user's configuration.
@@ -257,10 +310,7 @@ async fn download_index_conditional(
             duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
             bytes_transferred: 0,
         }));
-        Err(OpsError::RepoSyncFailed {
-            message: "Repository index is unchanged (304 Not Modified)".to_string(),
-        }
-        .into())
+        Ok("Repository index is unchanged (304 Not Modified)".to_string())
     }
 }
 

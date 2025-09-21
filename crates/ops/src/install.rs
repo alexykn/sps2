@@ -368,7 +368,6 @@ async fn install_remote_packages_parallel(
         runtime_deps: specs.len(),
         build_deps: 0,
         local_files: 0,
-        timeout_seconds: 300, // 5 minute timeout
     }));
 
     let mut resolution_context = sps2_resolver::ResolutionContext::new();

@@ -4,16 +4,19 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum RepoEvent {
-    /// Repository synchronization starting
-    SyncStarting,
-
-    /// Repository synchronization started with URL
-    SyncStarted { url: String },
+    /// Repository synchronization started
+    SyncStarted { url: Option<String> },
 
     /// Repository synchronization completed
     SyncCompleted {
         packages_updated: usize,
         duration_ms: u64,
         bytes_transferred: u64,
+    },
+
+    /// Repository synchronization failed
+    SyncFailed {
+        url: Option<String>,
+        retryable: bool,
     },
 }

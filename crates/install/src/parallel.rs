@@ -370,22 +370,39 @@ impl ParallelExecutor {
                     .await;
 
                     match download_result {
-                        Ok(Ok(())) => {
+                        Ok(Ok(size)) => {
                             context.emit(AppEvent::Acquisition(AcquisitionEvent::Completed {
                                 package: package_id.name.clone(),
                                 version: package_id.version.clone(),
                                 source: AcquisitionSource::Remote {
-                                    url: "https://example.com".to_string(), // TODO: Use actual URL
+                                    url: url.clone(),
                                     mirror_priority: 0,
                                 },
-                                final_path: std::path::PathBuf::from("/tmp"), // TODO: Use actual path
-                                size: 0, // TODO: Use actual size
-                                duration: std::time::Duration::from_secs(0),
-                                verification_passed: true, // TODO: Track actual verification
+                                size,
                             }));
                         }
-                        Ok(Err(e)) => return Err(e),
+                        Ok(Err(e)) => {
+                            context.emit(AppEvent::Acquisition(AcquisitionEvent::Failed {
+                                package: package_id.name.clone(),
+                                version: package_id.version.clone(),
+                                source: AcquisitionSource::Remote {
+                                    url: url.clone(),
+                                    mirror_priority: 0,
+                                },
+                                retryable: true, // Assuming retryable, this could be improved
+                            }));
+                            return Err(e);
+                        }
                         Err(_) => {
+                            context.emit(AppEvent::Acquisition(AcquisitionEvent::Failed {
+                                package: package_id.name.clone(),
+                                version: package_id.version.clone(),
+                                source: AcquisitionSource::Remote {
+                                    url: url.clone(),
+                                    mirror_priority: 0,
+                                },
+                                retryable: true,
+                            }));
                             return Err(InstallError::DownloadTimeout {
                                 package: package_id.name.clone(),
                                 url: url.to_string(),
@@ -502,7 +519,16 @@ impl ParallelExecutor {
         store: &PackageStore,
         context: &ExecutionContext,
         prepared_packages: &Arc<DashMap<PackageId, PreparedPackage>>,
-    ) -> Result<(), Error> {
+    ) -> Result<u64, Error> {
+        context.emit(AppEvent::Acquisition(AcquisitionEvent::Started {
+            package: package_id.name.clone(),
+            version: package_id.version.clone(),
+            source: AcquisitionSource::Remote {
+                url: url.to_string(),
+                mirror_priority: 0,
+            },
+        }));
+
         // Create a temporary directory for the download
         let temp_dir = tempfile::tempdir().map_err(|e| InstallError::TempFileError {
             message: e.to_string(),
@@ -586,9 +612,13 @@ impl ParallelExecutor {
                 ),
                 context: std::collections::HashMap::new(),
             }));
+            Ok(size)
+        } else {
+            Err(InstallError::AtomicOperationFailed {
+                message: "failed to get hash from downloaded package".to_string(),
+            }
+            .into())
         }
-
-        Ok(())
     }
 
     /// Wait for at least one task to complete

@@ -444,15 +444,15 @@ impl EventHandler {
 
             // Resolver events
             AppEvent::Resolver(resolver_event) => {
-                use sps2_events::ResolverEvent;
+                use sps2_events::events::{ResolutionFailureReason, ResolverEvent};
                 match resolver_event {
                     ResolverEvent::ResolutionStarted {
                         runtime_deps,
                         build_deps,
                         local_files,
-                        ..
                     } => {
-                        self.show_operation(&meta,
+                        self.show_operation(
+                            &meta,
                             format!(
                                 "Resolving dependencies ({runtime_deps} runtime, {build_deps} build, {local_files} local)"
                             ),
@@ -460,41 +460,44 @@ impl EventHandler {
                             EventSeverity::Info,
                         );
                     }
-                    ResolverEvent::ResolutionCompleted { total_packages, .. } => {
+                    ResolverEvent::ResolutionCompleted {
+                        total_packages,
+                        duration_ms,
+                    } => {
                         self.show_operation(
                             &meta,
-                            format!("Resolved {total_packages} dependencies successfully"),
+                            format!("Resolved {total_packages} dependencies successfully in {duration_ms}ms"),
                             "resolve",
                             EventSeverity::Success,
                         );
                     }
-                    ResolverEvent::DependencyConflictDetected {
-                        conflicting_packages,
-                        message,
-                        ..
-                    } => {
-                        let package_list = conflicting_packages
-                            .iter()
-                            .map(|(name, version)| format!("{name}:{version}"))
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        self.show_operation(
-                            &meta,
-                            format!("Dependency conflict detected: {message} ({package_list})"),
-                            "resolve",
-                            EventSeverity::Warning,
-                        );
-                    }
-                    _ => {
-                        // Handle other resolver events with debug output
-                        if self.debug_enabled {
-                            self.show_meta_message(
+                    ResolverEvent::ResolutionFailed { reason } => match reason {
+                        ResolutionFailureReason::Conflict(conflict) => {
+                            let package_list = conflict
+                                .conflicting_packages
+                                .iter()
+                                .map(|(name, version)| format!("{name}:{version}"))
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            self.show_operation(
                                 &meta,
-                                format!("Resolver event: {resolver_event:?}"),
-                                EventSeverity::Debug,
+                                format!(
+                                    "Dependency conflict detected: {} ({})",
+                                    conflict.message, package_list
+                                ),
+                                "resolve",
+                                EventSeverity::Error,
                             );
                         }
-                    }
+                        ResolutionFailureReason::Timeout => {
+                            self.show_operation(
+                                &meta,
+                                "Dependency resolution timed out".to_string(),
+                                "resolve",
+                                EventSeverity::Error,
+                            );
+                        }
+                    },
                 }
             }
 

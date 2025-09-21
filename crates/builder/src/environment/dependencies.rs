@@ -28,9 +28,7 @@ impl BuildEnvironment {
 
         self.send_event(AppEvent::Resolver(ResolverEvent::ResolutionCompleted {
             total_packages: 1,
-            execution_batches: 1,
             duration_ms: 0, // Duration tracking removed as per architectural decision
-            packages_resolved: vec![format!("{}:{}", self.context.name, self.context.version)],
         }));
 
         // Get installed packages to check before resolving from repository

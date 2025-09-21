@@ -151,8 +151,7 @@ impl AppEvent {
             // Debug-level events (progress updates, internal state)
             AppEvent::General(GeneralEvent::DebugLog { .. })
             | AppEvent::Build(BuildEvent::StepOutput { .. })
-            | AppEvent::Progress(ProgressEvent::Updated { .. })
-            | AppEvent::Guard(GuardEvent::VerificationProgress { .. }) => Level::DEBUG,
+            | AppEvent::Progress(ProgressEvent::Updated { .. }) => Level::DEBUG,
 
             // Trace-level events (very detailed internal operations)
             AppEvent::Build(BuildEvent::ResourceUsage { .. })

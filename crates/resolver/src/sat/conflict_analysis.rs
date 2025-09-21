@@ -192,7 +192,7 @@ impl ConflictAnalysis {
             "Consider removing conflicting packages or finding compatible versions".to_string(),
         );
 
-        ConflictExplanation::new(conflicting_packages, message, suggestions)
+        ConflictExplanation::new(conflicting_packages, message)
     }
 }
 
