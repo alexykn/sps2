@@ -21,9 +21,7 @@ pub async fn reposync(ctx: &OpsCtx, yes: bool) -> Result<String, Error> {
     let start = Instant::now();
     let _correlation = ctx.push_correlation("reposync");
 
-    let base_url = if let Some(url) = get_base_url(ctx) {
-        url
-    } else {
+    let Some(base_url) = get_base_url(ctx) else {
         let err = Error::Config(ConfigError::MissingField {
             field: "repositories".to_string(),
         });
