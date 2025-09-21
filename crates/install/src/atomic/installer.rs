@@ -5,7 +5,7 @@ use std::sync::Arc;
 // Removed Python venv handling - Python packages are now handled like regular packages
 use crate::{InstallContext, InstallResult, PreparedPackage, StagingManager};
 use sps2_errors::{Error, InstallError};
-use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent, StateEvent};
+use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent, StateEvent, UninstallEvent};
 use sps2_platform::{core::PlatformContext, PlatformManager};
 
 use sps2_resolver::{PackageId, ResolvedNode};
@@ -122,22 +122,14 @@ impl AtomicInstaller {
         transition: &StateTransition,
         context: &T,
     ) -> Result<(), Error> {
-        let parent_id = transition.parent_id.unwrap_or_default();
+        let source = transition.parent_id;
+        let target = transition.staging_id;
 
-        // Emit 2PC start event
-        context.emit(AppEvent::State(StateEvent::TwoPhaseCommitStarting {
-            state_id: transition.staging_id,
-            parent_state_id: parent_id,
+        context.emit(AppEvent::State(StateEvent::TransitionStarted {
             operation: transition.operation.clone(),
+            source,
+            target,
         }));
-
-        // Phase 1: Prepare and commit the database changes
-        context.emit(AppEvent::State(
-            StateEvent::TwoPhaseCommitPhaseOneStarting {
-                state_id: transition.staging_id,
-                operation: transition.operation.clone(),
-            },
-        ));
 
         let transition_data = sps2_state::TransactionData {
             package_refs: &transition.package_refs,
@@ -150,70 +142,44 @@ impl AtomicInstaller {
             .state_manager
             .prepare_transaction(
                 &transition.staging_id,
-                &parent_id,
+                &transition.parent_id.unwrap_or_default(),
                 &transition.staging_path,
                 &transition.operation,
                 &transition_data,
             )
             .await
         {
-            Ok(journal) => {
-                context.emit(AppEvent::State(
-                    StateEvent::TwoPhaseCommitPhaseOneCompleted {
-                        state_id: transition.staging_id,
-                        operation: transition.operation.clone(),
-                    },
-                ));
-                journal
-            }
+            Ok(journal) => journal,
             Err(e) => {
-                context.emit(AppEvent::State(StateEvent::TwoPhaseCommitFailed {
-                    state_id: transition.staging_id,
+                context.emit(AppEvent::State(StateEvent::TransitionFailed {
                     operation: transition.operation.clone(),
-                    error: e.to_string(),
-                    phase: "phase_one".to_string(),
+                    source,
+                    target: Some(target),
+                    retryable: false,
                 }));
                 return Err(e);
             }
         };
 
-        // Phase 2: Execute filesystem swap and finalize
-        context.emit(AppEvent::State(
-            StateEvent::TwoPhaseCommitPhaseTwoStarting {
-                state_id: transition.staging_id,
-                operation: transition.operation.clone(),
-            },
-        ));
-
-        match self
+        if let Err(e) = self
             .state_manager
             .execute_filesystem_swap_and_finalize(journal)
             .await
         {
-            Ok(()) => {
-                context.emit(AppEvent::State(
-                    StateEvent::TwoPhaseCommitPhaseTwoCompleted {
-                        state_id: transition.staging_id,
-                        operation: transition.operation.clone(),
-                    },
-                ));
-            }
-            Err(e) => {
-                context.emit(AppEvent::State(StateEvent::TwoPhaseCommitFailed {
-                    state_id: transition.staging_id,
-                    operation: transition.operation.clone(),
-                    error: e.to_string(),
-                    phase: "phase_two".to_string(),
-                }));
-                return Err(e);
-            }
+            context.emit(AppEvent::State(StateEvent::TransitionFailed {
+                operation: transition.operation.clone(),
+                source,
+                target: Some(target),
+                retryable: false,
+            }));
+            return Err(e);
         }
 
-        // Emit 2PC completion event
-        context.emit(AppEvent::State(StateEvent::TwoPhaseCommitCompleted {
-            state_id: transition.staging_id,
-            parent_state_id: parent_id,
+        context.emit(AppEvent::State(StateEvent::TransitionCompleted {
             operation: transition.operation.clone(),
+            source,
+            target,
+            duration: None,
         }));
 
         Ok(())
@@ -281,12 +247,6 @@ impl AtomicInstaller {
 
         // Set event sender on transition
         transition.event_sender = context.event_sender().cloned();
-
-        context.emit(AppEvent::State(StateEvent::Initializing {
-            state_id: transition.staging_id,
-            operation: "Creating new state".to_string(),
-            estimated_duration: None,
-        }));
 
         // Clone current state to staging directory
         self.create_staging_directory(&self.live_path, &transition.staging_path)
@@ -377,13 +337,6 @@ impl AtomicInstaller {
 
         // Execute two-phase commit
         self.execute_two_phase_commit(&transition, context).await?;
-
-        context.emit(AppEvent::State(StateEvent::TransitionCompleted {
-            from: transition.parent_id.unwrap_or_default(),
-            to: transition.staging_id,
-            operation: "install".to_string(),
-            duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
-        }));
 
         Ok(result)
     }
@@ -557,6 +510,13 @@ impl AtomicInstaller {
         // We only need to remove the packages being uninstalled and carry forward other package references.
         let mut result = InstallResult::new(transition.staging_id);
 
+        for pkg in packages_to_remove {
+            context.emit(AppEvent::Uninstall(UninstallEvent::Started {
+                package: pkg.name.clone(),
+                version: pkg.version.clone(),
+            }));
+        }
+
         // Remove packages from staging and track them in result
         let parent_packages = if let Some(parent_id) = transition.parent_id {
             self.state_manager
@@ -593,12 +553,13 @@ impl AtomicInstaller {
         // Execute two-phase commit
         self.execute_two_phase_commit(&transition, context).await?;
 
-        context.emit(AppEvent::State(StateEvent::TransitionCompleted {
-            from: transition.parent_id.unwrap_or_default(),
-            to: transition.staging_id,
-            operation: "uninstall".to_string(),
-            duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
-        }));
+        for pkg in &result.removed_packages {
+            context.emit(AppEvent::Uninstall(UninstallEvent::Completed {
+                package: pkg.name.clone(),
+                version: pkg.version.clone(),
+                files_removed: 0,
+            }));
+        }
 
         Ok(result)
     }

@@ -161,10 +161,7 @@ impl StagingPipeline {
         tx.emit(AppEvent::Install(InstallEvent::Completed {
             package: decompress_result.package_id.name.clone(),
             version: decompress_result.package_id.version.clone(),
-            installed_files: decompress_result.validation_result.file_count,
-            install_path: staging_dir.path().to_path_buf(),
-            duration: std::time::Duration::from_secs(0), // placeholder
-            disk_usage: decompress_result.validation_result.extracted_size,
+            files_installed: decompress_result.validation_result.file_count,
         }));
 
         // Get the hash from the stored package

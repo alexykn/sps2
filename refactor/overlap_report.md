@@ -1,23 +1,21 @@
 # Event/Error Overlap & Redundancy Findings
 
 ## Snapshot Metrics
-- **207** event enum variants defined across 43 exported enums; **49 (24%)** remain without call-sites after the Phase 1 trims (`event_variant_usage.json`). The stragglers live almost entirely inside the dormant `PythonEvent` domain and legacy `ProgressEvent` helpers.
+- **174** event enum variants defined across 42 exported enums after trimming download/install/uninstall/state; roughly **30** remain without call-sites (primarily legacy `ProgressEvent` helpers and acquisition/resolver progress variants).
 - **229** error enum variants across 13 enums; **93 (41%)** still have zero call-site references (`error_call_sites.json`).
-- Progress-style data now appears in **12** domain variants (down from 45) thanks to pruning, but the gap between progress streams and domain milestones persists.
+- Progress-style data is now confined to acquisition/resolver batches and a few analytics helpers; core lifecycle domains emit only milestone triads.
 
 ## Progress Leakage Into Domain Events
-- `DownloadEvent::{Progress,BatchProgress,SpeedUpdate,Stalled}` duplicate the granular metrics already modeled by `ProgressEvent::{Updated,BatchProgress,StatisticsUpdated,BottleneckDetected}`.
-- `InstallEvent` and `AcquisitionEvent` expose phase/step updates (`StagingStarted`, `ValidationStarted`, `BatchAcquisitionProgress`, etc.) that are now redundant because the CLI renders progress solely from `ProgressEvent`; most of these variants are never emitted.
-- Progress IDs (`id`, `phase`, `operation`) are still recomputed per call-site; even with the shared `EventMeta` envelope providing `event_id`/`parent_id`, emitters have not yet standardised on reusing those fields for correlation when they keep legacy variants alive.
+- Acquisition/resolver still publish batch-oriented progress variants (`BatchAcquisitionProgress`, `ResolverEvent::ResolutionProgress`) even though the CLI ignores them in favour of `ProgressEvent`.
+- Remaining `ProgressEvent::*` helpers such as `StatisticsUpdated` and `BottleneckDetected` are emitted rarely and have no consumers; they can be removed once telemetry needs are documented.
 
 ## Error Semantics Bleeding Into Events
-- Nearly every domain event has a terminal `*Failed { error: String, .. }` variant. This transports raw strings instead of the structured `sps2_errors::Error`; consumers cannot distinguish retryable vs fatal conditions.
-- Examples: `InstallEvent::Failed`, `DownloadEvent::Failed`, `GuardEvent::HealingFailed`, `UpdateEvent::Failed`, `ProgressEvent::Failed`. Payloads carry fields such as `error_category`, `phase`, `cleanup_required` that mirror data already present in the corresponding error enums.
-- The CLI does not branch on these variants; it logs the string and then relies on the propagated `Result<T, Error>`, so the extra event adds noise without signal.
+- Several domains now expose `retryable` booleans instead of raw strings (download/install/uninstall), but acquisition/guard/repo still emit `error: String` payloads that duplicate information already present in `sps2_errors`.
+- `ProgressEvent::Failed` continues to carry a string payload; consumers rely on the accompanying `Result<T, Error>` to surface hints, so the field adds noise without signal.
 
 ## Dead & Partially Dead Surface Area
-- Most high-churn domains now map 1:1 with consumers; the remaining dead surface is concentrated in `PythonEvent` (10 variants, zero emitters) and the lower-case `ProgressEvent::*` helpers.
-- `ProgressEvent` updates now feed the CLI progress renderer, but the unused helper variants remain in the codebase until we prune or deprecate them.
+- High-churn domains (download/install/uninstall/state) now map 1:1 with consumers; the remaining dead surface is concentrated in dormant progress helpers and acquisition/resolver batch events.
+- `ProgressEvent` updates feed the CLI progress renderer, but analytics-only helpers (statistics/bottleneck) remain unused and should be pruned or moved behind telemetry flags.
 
 ## Payloads With No Consumers
 - Remaining payload-heavy variants are limited to analytics-style data that CLI currently ignores (`ProgressEvent::StatisticsUpdated`, `GuardEvent::ErrorSummary`, etc.); the next phase should either wire them into telemetry or slim them further.
@@ -34,7 +32,7 @@
 - **Observability gaps**: Durable failure context is still stringly, so even with rendered progress and correlation IDs the UI/logs struggle to surface retryability or remediation guidance.
 
 ## Quick Wins Identified
-1. Finish collapsing the dormant `PythonEvent` family and the lower-case `ProgressEvent::*` helpers, then guard against regressions with a lint/check.
-2. Route progress information exclusively through a slim `ProgressEvent` (or forthcoming `ProgressUpdate`) channel and strip the remaining progress-shaped variants.
-3. Replace `error: String` payloads with domain error references (surfaced through `UserFacingError`) or rely on `Result<T, Error>` propagation; reserve events for milestones (`InstallCompleted`, `InstallRolledBack`).
-4. Leverage the shared `EventMeta` (id, source component, severity, correlation id) by threading deterministic parent/correlation identifiers through the progress tracker and consumers.
+1. Collapse acquisition/resolver progress batches to `ProgressEvent`, matching the triads now used elsewhere.
+2. Drop the unused `ProgressEvent::{StatisticsUpdated,BottleneckDetected}` helpers or move them behind telemetry-specific features.
+3. Replace remaining `error: String` payloads in acquisition/guard/repo events with retryability flags or structured context derived from `sps2_errors`.
+4. Regenerate the inventories so contributors no longer see the removed variants (Python, staging/validation) in the analysis artefacts.

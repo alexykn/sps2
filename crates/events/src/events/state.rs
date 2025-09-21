@@ -2,128 +2,49 @@ use serde::{Deserialize, Serialize};
 use sps2_types::StateId;
 use std::time::Duration;
 
-/// State management events for atomic operations and rollback
+/// State management milestones for atomic operations and cleanup
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum StateEvent {
-    /// State initialization started
-    Initializing {
-        state_id: StateId,
+    /// A state transition started.
+    TransitionStarted {
         operation: String,
-        estimated_duration: Option<Duration>,
+        source: Option<StateId>,
+        target: StateId,
     },
 
-    /// State created successfully
-    Created {
-        state_id: StateId,
-        parent_id: Option<StateId>,
-        operation: String,
-    },
-
-    /// State transition completed successfully
+    /// A state transition completed successfully.
     TransitionCompleted {
-        from: StateId,
-        to: StateId,
         operation: String,
-        duration: Duration,
+        source: Option<StateId>,
+        target: StateId,
+        duration: Option<Duration>,
     },
 
-    /// State transition failed
+    /// A state transition failed.
     TransitionFailed {
-        from: StateId,
-        to: StateId,
         operation: String,
-        error: String,
-        rollback_available: bool,
+        source: Option<StateId>,
+        target: Option<StateId>,
+        retryable: bool,
     },
 
-    /// Rollback executing
-    RollbackExecuting {
-        from: StateId,
-        to: StateId,
-        packages_affected: usize,
-    },
+    /// A rollback operation started.
+    RollbackStarted { from: StateId, to: StateId },
 
-    /// Rollback completed successfully
+    /// A rollback operation completed.
     RollbackCompleted {
         from: StateId,
         to: StateId,
-        duration: Duration,
-        packages_reverted: usize,
+        duration: Option<Duration>,
     },
 
-    /// Rollback failed
-    RollbackFailed {
-        from: StateId,
-        to: StateId,
-        error: String,
-        recovery_options: Vec<String>,
-    },
+    /// Cleanup pass started.
+    CleanupStarted { planned_states: usize },
 
-    /// State cleanup started
-    CleanupStarted {
-        states_to_remove: usize,
-        estimated_space_freed: u64,
-    },
-
-    /// State cleanup progress
-    CleanupProgress {
-        states_processed: usize,
-        total_states: usize,
-        space_freed: u64,
-    },
-
-    /// State cleanup completed
+    /// Cleanup pass completed.
     CleanupCompleted {
-        states_pruned: usize,
-        states_removed: usize,
+        removed_states: usize,
         space_freed: u64,
-        duration: Duration,
-    },
-
-    /// Two-phase commit started
-    TwoPhaseCommitStarting {
-        state_id: StateId,
-        parent_state_id: StateId,
-        operation: String,
-    },
-
-    /// Two-phase commit phase one started
-    TwoPhaseCommitPhaseOneStarting {
-        state_id: StateId,
-        operation: String,
-    },
-
-    /// Two-phase commit phase one completed
-    TwoPhaseCommitPhaseOneCompleted {
-        state_id: StateId,
-        operation: String,
-    },
-
-    /// Two-phase commit phase two started
-    TwoPhaseCommitPhaseTwoStarting {
-        state_id: StateId,
-        operation: String,
-    },
-
-    /// Two-phase commit phase two completed
-    TwoPhaseCommitPhaseTwoCompleted {
-        state_id: StateId,
-        operation: String,
-    },
-
-    /// Two-phase commit completed
-    TwoPhaseCommitCompleted {
-        state_id: StateId,
-        parent_state_id: StateId,
-        operation: String,
-    },
-
-    /// Two-phase commit failed
-    TwoPhaseCommitFailed {
-        state_id: StateId,
-        operation: String,
-        error: String,
-        phase: String,
     },
 }

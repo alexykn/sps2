@@ -2,22 +2,22 @@
 
 ## 1. Executive Summary
 **Top issues (severity ordered):**
-1. Residual progress duplication: domain enums still emit progress-shaped variants even though the consolidated `ProgressEvent` channel now drives CLI rendering, keeping the surface larger than necessary.
-2. Error leakage into events: `*Failed { error: String }` variants persist across domains, discarding structured context from `sps2_errors` and preventing users from seeing retryability or remediation hints.
-3. Unused surface area: 49 event variants and 93 error variants have no call-sites post-trim, continuing to obscure the active contract for contributors.
-4. Payload inflation: large `Vec`, `PathBuf`, and `Duration` payloads remain in events without consumers, complicating stabilization and adding serialization cost.
-5. Domain error enums lack consistent `UserFacingError` implementations, so CLI/JSON output cannot yet surface hints uniformly without ad-hoc formatting.
+1. Acquisition/resolver batches still ship verbose progress-style variants; now that download/install/uninstall/state emit milestone triads, those remaining domains stand out as the last large surfaces.
+2. Several failure events (e.g., acquisition, guard, repo) continue to carry `error: String` payloads, preventing consumers from surfacing retryability hints supplied by `sps2_errors`.
+3. The generated inventories (`EVENTS_INVENTORY.json`, `event_variant_usage.json`) lag behind the trimmed surface, so contributors still see Python/progress variants that no longer exist.
+4. A handful of event payloads (resolver/acquisition) retain heavyweight vectors and `PathBuf`s even though the CLI/logging ignore them.
+5. Progress/state contract tests are still missing; without snapshots/property checks it is easy to reintroduce noisy variants.
 
 **High-impact wins (1–2 week effort):**
-- Prune or deprecate the lingering progress-shaped domain variants now that `ProgressEvent` updates are fully wired through the CLI and logging.
-- Extend the lightweight `UserFacingError` trait to the remaining domain enums so callers can surface hints and retryability without heavy envelopes.
-- Continue pruning/deprecating unused variants (focus on `PythonEvent` and legacy progress helpers) to keep the surface comprehensible.
-- Add payload size guardrails (lint/tests) to prevent regressions as the event surface shrinks.
+- Collapse acquisition/resolver batch events to the same `Started/Completed/Failed + ProgressEvent` contract now used for install/uninstall.
+- Normalize failure payloads in guard/repo/acquisition to expose `retryable`/`UserFacingError` data instead of free-form strings.
+- Regenerate the inventories in `refactor/` so the analysis artefacts match the slimmer surface (download/install/uninstall/state).
+- Add payload size guardrails and event-stream snapshots for install/update/remove to lock in the triad pattern.
 
 **30 / 60 / 90-day refactor roadmap:**
-- **30 days:** retire duplicated domain progress variants, fill in `UserFacingError` gaps, and remove the most obvious unused enums (starting with `PythonEvent`).
-- **60 days:** slim the remaining domain enums to milestone triads, replace stringly failure payloads with structured context, and update CLI consumers accordingly.
-- **90 days:** remove deprecated variants, finalize diagnostics taxonomy, and backstop with snapshot/property tests plus doc updates for contributor guidelines.
+- **30 days:** finish pruning acquisition/resolver progress variants, refresh the inventories/docs, and land event-stream snapshots for install/update/remove.
+- **60 days:** migrate remaining failure payloads to structured context, wire retryability into CLI/logging everywhere, and harden progress/drop metrics.
+- **90 days:** remove any compatibility shims, finalize contributor guidance, and add automated checks (lint/tests) that prevent large payloads or stringly failure fields from returning.
 
 ## 2. Event & Error Inventory
 Artifacts generated in `refactor/`:
@@ -30,20 +30,20 @@ Artifacts generated in `refactor/`:
 
 | Event enum | Module | Variants | Used | Unused |
 | --- | --- | ---: | ---: | ---: |
-| AppEvent | events::mod | 17 | 17 | 0 |
-| StateEvent | events::state | 17 | 17 | 0 |
+| AppEvent | events::mod | 16 | 16 | 0 |
+| StateEvent | events::state | 7 | 7 | 0 |
 | PackageEvent | events::package | 16 | 16 | 0 |
 | ProgressEvent | events::progress | 14 | 12 | 2 |
 | BuildEvent | events::build | 13 | 13 | 0 |
 | PlatformEvent | events::platform | 12 | 12 | 0 |
 | GuardEvent | events::guard | 11 | 11 | 0 |
-| InstallEvent | events::install | 10 | 10 | 0 |
-| PythonEvent | events::python | 10 | 0 | 10 |
-| DownloadEvent | events::download | 9 | 9 | 0 |
+| InstallEvent | events::install | 3 | 3 | 0 |
+| DownloadEvent | events::download | 3 | 3 | 0 |
+| UninstallEvent | events::uninstall | 3 | 3 | 0 |
 | AuditEvent | events::audit | 8 | 8 | 0 |
 | GeneralEvent | events::general | 8 | 8 | 0 |
 
-Total variants across the event surface now sit at **207**, with **49** still unused (all concentrated in legacy progress helpers and the dormant `PythonEvent` domain).
+After trimming the milestone events, the surface drops to **174** variants, with the remaining unused items concentrated in legacy progress helpers (e.g., `ProgressEvent::StatisticsUpdated`).
 
 **Error density (full list):**
 
@@ -64,8 +64,8 @@ Total variants across the event surface now sit at **207**, with **49** still un
 | VersionError | version | 5 | 3 | 2 |
 
 **Call-site insights:**
-- Download/install/build/guard domains now map 1:1 between emitted variants and CLI consumers; only the dormant `PythonEvent` family remains unused.
-- `ProgressEvent` is emitted 35 times and now feeds the CLI progress renderer introduced during Phase 3 consolidation.
+- Download/install/uninstall/state now emit only milestone triads; CLI/logging paths consume them directly.
+- Progress updates continue to flow through `ProgressEvent` (35 emissions) and drive the TTY progress UI.
 - Errors most frequently constructed: `InstallError::InvalidPackageFile` (84 uses), `StorageError::IoError` (66), `PlatformError::FilesystemOperationFailed` (41).
 
 ## 3. Overlap & Redundancy Report

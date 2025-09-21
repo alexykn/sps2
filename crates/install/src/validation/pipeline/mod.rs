@@ -46,17 +46,6 @@ pub async fn validate_sp_file(
     event_sender: Option<&EventSender>,
 ) -> Result<ValidationResult, Error> {
     if let Some(sender) = event_sender {
-        let () = sender.emit(sps2_events::AppEvent::Install(
-            sps2_events::InstallEvent::ValidationStarted {
-                package: "unknown".to_string(), // TODO: Extract package name from file_path
-                version: sps2_types::Version::new(0, 0, 0), // TODO: Extract version from file_path
-                validation_checks: vec![
-                    "format".to_string(),
-                    "content".to_string(),
-                    "security".to_string(),
-                ],
-            },
-        ));
         let () = sender.emit(sps2_events::AppEvent::General(
             sps2_events::GeneralEvent::DebugLog {
                 message: format!("DEBUG: Starting validation of {}", file_path.display()),

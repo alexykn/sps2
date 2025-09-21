@@ -383,18 +383,8 @@ impl StateManager {
 
         // Clone current state to staging (or create empty staging for first install)
         if sps2_root::exists(&self.live_path).await {
-            self.tx.emit(AppEvent::State(StateEvent::Initializing {
-                state_id: staging_id,
-                operation: "Cloning current state".to_string(),
-                estimated_duration: None,
-            }));
             sps2_root::clone_directory(&self.live_path, &staging_path).await?;
         } else {
-            self.tx.emit(AppEvent::State(StateEvent::Initializing {
-                state_id: staging_id,
-                operation: "Creating initial staging directory".to_string(),
-                estimated_duration: None,
-            }));
             sps2_root::create_dir_all(&staging_path).await?;
         }
 
@@ -430,11 +420,6 @@ impl StateManager {
         retention_count: usize,
         retention_days: u32,
     ) -> Result<CleanupResult, Error> {
-        self.tx.emit(AppEvent::State(StateEvent::CleanupStarted {
-            states_to_remove: 0,      // Will be calculated
-            estimated_space_freed: 0, // Will be calculated
-        }));
-
         let mut tx = self.pool.begin().await?;
 
         // Determine states to prune (visibility) using policy
@@ -458,6 +443,10 @@ impl StateManager {
         // Legacy directories to remove (IDs beyond newest N)
         let states_to_remove =
             queries::get_states_for_cleanup_strict(&mut tx, retention_count).await?;
+
+        self.tx.emit(AppEvent::State(StateEvent::CleanupStarted {
+            planned_states: states_to_remove.len(),
+        }));
 
         let mut space_freed = 0u64;
         let mut removed_count: usize = 0;
@@ -504,10 +493,8 @@ impl StateManager {
         tx.commit().await?;
 
         self.tx.emit(AppEvent::State(StateEvent::CleanupCompleted {
-            states_pruned,
-            states_removed: removed_count,
+            removed_states: removed_count,
             space_freed,
-            duration: std::time::Duration::from_millis(0), // TODO: Add proper timing
         }));
 
         Ok(CleanupResult {
@@ -560,11 +547,6 @@ impl StateManager {
         &self,
         store: &sps2_store::PackageStore,
     ) -> Result<usize, Error> {
-        self.tx.emit(AppEvent::State(StateEvent::CleanupStarted {
-            states_to_remove: 0,      // Will be calculated
-            estimated_space_freed: 0, // Will be calculated
-        }));
-
         let mut tx = self.pool.begin().await?;
 
         // Get unreferenced items
@@ -573,6 +555,9 @@ impl StateManager {
         let hash_strings: Vec<String> = unreferenced.iter().map(|item| item.hash.clone()).collect();
 
         let packages_removed = unreferenced.len();
+        self.tx.emit(AppEvent::State(StateEvent::CleanupStarted {
+            planned_states: packages_removed,
+        }));
 
         // Delete from database first
         queries::delete_unreferenced_store_items(&mut tx, &hash_strings).await?;
@@ -596,11 +581,14 @@ impl StateManager {
             }
         }
 
+        let space_freed_bytes: u64 = unreferenced
+            .iter()
+            .map(|item| u64::try_from(item.size).unwrap_or(0))
+            .sum();
+
         self.tx.emit(AppEvent::State(StateEvent::CleanupCompleted {
-            states_pruned: 0,
-            states_removed: 0, // GC doesn't remove states directly
-            space_freed: packages_removed as u64, // Packages removed
-            duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
+            removed_states: packages_removed,
+            space_freed: space_freed_bytes,
         }));
 
         Ok(packages_removed)

@@ -272,22 +272,21 @@ pub async fn rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<StateI
         return preview_rollback(ctx, target_state).await;
     }
 
+    let current_before = ctx.state.get_current_state_id().await?;
+
     // If no target specified, rollback to previous state
     let target_id = if let Some(id) = target_state {
         id
     } else {
-        let current_id = ctx.state.get_current_state_id().await?;
-
         ctx.state
-            .get_parent_state_id(&current_id)
+            .get_parent_state_id(&current_before)
             .await?
             .ok_or(OpsError::NoPreviousState)?
     };
 
-    ctx.emit(AppEvent::State(StateEvent::RollbackExecuting {
-        from: ctx.state.get_current_state_id().await?,
+    ctx.emit(AppEvent::State(StateEvent::RollbackStarted {
+        from: current_before,
         to: target_id,
-        packages_affected: 0, // Will be updated during execution
     }));
 
     // Verify target state exists in database
@@ -301,8 +300,7 @@ pub async fn rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<StateI
     // Filesystem snapshot presence is no longer required; rollback reconstructs incrementally.
 
     // Calculate changes BEFORE rollback (current -> target)
-    let current_id = ctx.state.get_current_state_id().await?;
-    let rollback_changes = calculate_state_changes(ctx, &current_id, &target_id).await?;
+    let rollback_changes = calculate_state_changes(ctx, &current_before, &target_id).await?;
 
     // Perform rollback using atomic installer
     let mut atomic_installer =
@@ -315,10 +313,9 @@ pub async fn rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<StateI
     let state_info = get_rollback_state_info_with_changes(ctx, target_id, rollback_changes).await?;
 
     ctx.tx.emit(AppEvent::State(StateEvent::RollbackCompleted {
-        from: ctx.state.get_current_state_id().await?,
+        from: current_before,
         to: target_id,
-        duration: start.elapsed(),
-        packages_reverted: 0, // TODO: Track actual packages reverted
+        duration: Some(start.elapsed()),
     }));
 
     Ok(state_info)

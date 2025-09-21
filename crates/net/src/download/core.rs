@@ -82,12 +82,6 @@ impl PackageDownloader {
     ) -> Result<PackageDownloadResult, Error> {
         let start_time = Instant::now();
 
-        tx.emit(AppEvent::Download(DownloadEvent::PackageStarted {
-            name: package_name.to_string(),
-            version: version.clone(),
-            url: package_url.to_string(),
-        }));
-
         // Create destination paths
         // Extract filename from URL instead of constructing it
         let package_filename = package_url
@@ -122,6 +116,7 @@ impl PackageDownloader {
             expected_hash,
             tracker_id,
             parent_progress_id.clone(),
+            Some(package_name.to_string()),
             tx.clone(),
         );
 
@@ -139,15 +134,10 @@ impl PackageDownloader {
 
         let download_time = start_time.elapsed();
 
-        tx.emit(AppEvent::Download(DownloadEvent::PackageCompleted {
-            name: package_name.to_string(),
-            version: version.clone(),
-        }));
-
         // Verify signature if available
         let signature_verified = if let Some(sig_path) = &signature_path {
             if sig_path.exists() {
-                self.verify_package_signature(&package_path, sig_path, package_name, version, tx)
+                self.verify_package_signature(&package_path, sig_path)
                     .await?
             } else {
                 false
@@ -171,9 +161,6 @@ impl PackageDownloader {
         &self,
         package_path: &Path,
         signature_path: &Path,
-        package_name: &str,
-        version: &Version,
-        tx: &EventSender,
     ) -> Result<bool, NetworkError> {
         let sig_str = tokio::fs::read_to_string(signature_path)
             .await
@@ -212,11 +199,6 @@ impl PackageDownloader {
             sps2_signing::verify_minisign_file_with_keys(package_path, &sig_str, &allowed).is_ok()
         };
 
-        tx.emit(AppEvent::Download(DownloadEvent::SignatureCompleted {
-            name: package_name.to_string(),
-            version: version.clone(),
-            verified,
-        }));
         Ok(verified)
     }
 
@@ -322,6 +304,7 @@ impl PackageDownloader {
     ///
     /// Returns an error if the download fails, network issues occur,
     /// hash verification fails, or file I/O operations fail.
+    #[allow(clippy::too_many_arguments)]
     pub async fn download_with_resume(
         &self,
         url: &str,
@@ -329,6 +312,7 @@ impl PackageDownloader {
         expected_hash: Option<&Hash>,
         progress_tracker_id: String,
         parent_progress_id: Option<String>,
+        package: Option<String>,
         tx: EventSender,
     ) -> Result<DownloadResult, Error> {
         let url = validate_url(url)?;
@@ -344,6 +328,7 @@ impl PackageDownloader {
                     expected_hash,
                     progress_tracker_id.clone(),
                     parent_progress_id.clone(),
+                    package.as_deref(),
                     &tx,
                 )
                 .await
@@ -399,12 +384,19 @@ impl PackageDownloader {
             }
         }
 
+        tx.emit(AppEvent::Download(DownloadEvent::Failed {
+            url: url.to_string(),
+            package: package.clone(),
+            retryable: false,
+        }));
+
         Err(last_error.unwrap_or_else(|| {
             NetworkError::DownloadFailed("Maximum retries exceeded".to_string()).into()
         }))
     }
 
     /// Attempt a single download with resume capability
+    #[allow(clippy::too_many_arguments)]
     async fn try_download_with_resume(
         &self,
         url: &str,
@@ -412,19 +404,11 @@ impl PackageDownloader {
         expected_hash: Option<&Hash>,
         progress_tracker_id: String,
         parent_progress_id: Option<String>,
+        package: Option<&str>,
         tx: &EventSender,
     ) -> Result<DownloadResult, Error> {
         // Check if partial file exists
         let resume_offset = get_resume_offset(&self.config, dest_path).await?;
-
-        if resume_offset > 0 {
-            tx.emit(AppEvent::Download(DownloadEvent::Resuming {
-                url: url.to_string(),
-                resume_offset,
-                total_size: None,
-                attempts_so_far: 0,
-            }));
-        }
 
         // Prepare request with range header if resuming
         let mut headers = Vec::new();
@@ -471,11 +455,8 @@ impl PackageDownloader {
 
         tx.emit(AppEvent::Download(DownloadEvent::Started {
             url: url.to_string(),
-            package: None,
-            total_size: Some(total_size),
-            supports_resume: resume_offset == 0
-                || response.status() == reqwest::StatusCode::PARTIAL_CONTENT,
-            connection_time: Duration::from_millis(0), // TODO: Track actual connection time
+            package: package.map(str::to_string),
+            total_bytes: Some(total_size),
         }));
 
         // Download with streaming and progress
@@ -493,11 +474,8 @@ impl PackageDownloader {
 
         tx.emit(AppEvent::Download(DownloadEvent::Completed {
             url: url.to_string(),
-            package: None,
-            final_size: result.size,
-            total_time: Duration::from_millis(0), // TODO: Track actual total time
-            average_speed: 0.0,                   // TODO: Calculate from actual download time
-            hash: result.hash.to_string(),
+            package: package.map(str::to_string),
+            bytes_downloaded: result.size,
         }));
 
         Ok(result)

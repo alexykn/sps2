@@ -183,14 +183,12 @@ pub trait EventEmitter {
         &self,
         url: impl Into<String>,
         package: Option<String>,
-        total_size: Option<u64>,
+        total_bytes: Option<u64>,
     ) {
         self.emit(AppEvent::Download(DownloadEvent::Started {
             url: url.into(),
             package,
-            total_size,
-            supports_resume: false, // Default - can be overridden with direct emit
-            connection_time: std::time::Duration::from_secs(0),
+            total_bytes,
         }));
     }
 
@@ -199,15 +197,12 @@ pub trait EventEmitter {
         &self,
         url: impl Into<String>,
         package: Option<String>,
-        final_size: u64,
+        bytes_downloaded: u64,
     ) {
         self.emit(AppEvent::Download(DownloadEvent::Completed {
             url: url.into(),
             package,
-            final_size,
-            total_time: std::time::Duration::from_secs(0),
-            average_speed: 0.0,
-            hash: String::new(),
+            bytes_downloaded,
         }));
     }
 

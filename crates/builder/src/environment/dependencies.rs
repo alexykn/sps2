@@ -118,8 +118,6 @@ impl BuildEnvironment {
         self.send_event(AppEvent::Install(InstallEvent::Started {
             package: node.name.clone(),
             version: node.version.clone(),
-            install_path: std::path::PathBuf::from(sps2_config::fixed_paths::LIVE_DIR),
-            force_reinstall: false,
         }));
 
         // Install the build dependency to the isolated deps prefix
@@ -130,9 +128,7 @@ impl BuildEnvironment {
                     self.send_event(AppEvent::Download(DownloadEvent::Started {
                         url: url.clone(),
                         package: Some(format!("{}:{}", node.name, node.version)),
-                        total_size: None,
-                        supports_resume: false,
-                        connection_time: std::time::Duration::from_secs(0), // Connection time tracking removed
+                        total_bytes: None,
                     }));
 
                     // Download the .sp file to a temporary location

@@ -189,33 +189,30 @@ impl EventHandler {
                 use sps2_events::DownloadEvent;
                 match download_event {
                     DownloadEvent::Started {
-                        url, total_size, ..
-                    } => {
-                        self.handle_download_started(&meta, &url, total_size);
-                    }
-                    DownloadEvent::Progress {
                         url,
-                        bytes_downloaded,
+                        package,
                         total_bytes,
-                        ..
                     } => {
-                        self.handle_download_progress(&meta, &url, bytes_downloaded, total_bytes);
+                        self.handle_download_started(&meta, &url, package.as_deref(), total_bytes);
                     }
-                    DownloadEvent::Completed { url, .. } => {
-                        self.handle_download_completed(&meta, &url);
+                    DownloadEvent::Completed {
+                        url,
+                        package,
+                        bytes_downloaded,
+                    } => {
+                        self.handle_download_completed(
+                            &meta,
+                            &url,
+                            package.as_deref(),
+                            bytes_downloaded,
+                        );
                     }
-                    DownloadEvent::Failed { url, error, .. } => {
-                        self.handle_download_failed(&meta, &url, &error);
-                    }
-                    _ => {
-                        // Handle other download events with debug output
-                        if self.debug_enabled {
-                            self.show_meta_message(
-                                &meta,
-                                format!("Download event: {download_event:?}"),
-                                EventSeverity::Debug,
-                            );
-                        }
+                    DownloadEvent::Failed {
+                        url,
+                        package,
+                        retryable,
+                    } => {
+                        self.handle_download_failed(&meta, &url, package.as_deref(), retryable);
                     }
                 }
             }
@@ -224,9 +221,7 @@ impl EventHandler {
             AppEvent::Install(install_event) => {
                 use sps2_events::InstallEvent;
                 match install_event {
-                    InstallEvent::Started {
-                        package, version, ..
-                    } => {
+                    InstallEvent::Started { package, version } => {
                         self.show_operation(
                             &meta,
                             format!("Installing {package} {version}"),
@@ -235,11 +230,13 @@ impl EventHandler {
                         );
                     }
                     InstallEvent::Completed {
-                        package, version, ..
+                        package,
+                        version,
+                        files_installed,
                     } => {
                         self.show_operation(
                             &meta,
-                            format!("Installed {package} {version}"),
+                            format!("Installed {package} {version} ({files_installed} files)"),
                             "install",
                             EventSeverity::Success,
                         );
@@ -247,45 +244,15 @@ impl EventHandler {
                     InstallEvent::Failed {
                         package,
                         version,
-                        error,
-                        ..
+                        retryable,
                     } => {
+                        let retry_text = if retryable { " (retryable)" } else { "" };
                         self.show_operation(
                             &meta,
-                            format!("Failed to install {package} {version}: {error}"),
+                            format!("Failed to install {package} {version}{retry_text}"),
                             "install",
                             EventSeverity::Error,
                         );
-                    }
-                    InstallEvent::StagingStarted {
-                        package, version, ..
-                    } => {
-                        self.show_operation(
-                            &meta,
-                            format!("Staging {package} {version}"),
-                            "install",
-                            EventSeverity::Info,
-                        );
-                    }
-                    InstallEvent::ValidationStarted {
-                        package, version, ..
-                    } => {
-                        self.show_operation(
-                            &meta,
-                            format!("Validating {package} {version}"),
-                            "install",
-                            EventSeverity::Info,
-                        );
-                    }
-                    _ => {
-                        // Handle other install events with debug output
-                        if self.debug_enabled {
-                            self.show_meta_message(
-                                &meta,
-                                format!("Install event: {install_event:?}"),
-                                EventSeverity::Debug,
-                            );
-                        }
                     }
                 }
             }
@@ -294,113 +261,92 @@ impl EventHandler {
             AppEvent::State(state_event) => {
                 use sps2_events::StateEvent;
                 match state_event {
-                    StateEvent::Created {
-                        state_id,
-                        operation,
-                        ..
+                    StateEvent::TransitionStarted {
+                        operation, target, ..
                     } => {
                         self.show_operation(
                             &meta,
-                            format!("Created state {state_id} for {operation}"),
+                            format!("State transition started ({operation} -> {target})"),
                             "state",
                             EventSeverity::Info,
                         );
                     }
                     StateEvent::TransitionCompleted {
-                        from,
-                        to,
                         operation,
-                        ..
+                        source,
+                        target,
+                        duration,
                     } => {
+                        let duration_text = duration
+                            .map(|d| format!(" in {}s", d.as_secs()))
+                            .unwrap_or_default();
+                        let source_text = source
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| "<none>".to_string());
                         self.show_operation(
                             &meta,
-                            format!("State transition completed: {operation} ({from} -> {to})"),
+                            format!(
+                                "State transition completed ({operation}: {source_text} -> {target}){duration_text}"
+                            ),
                             "state",
                             EventSeverity::Success,
                         );
                     }
-                    StateEvent::CleanupStarted {
-                        states_to_remove,
-                        estimated_space_freed,
+                    StateEvent::TransitionFailed {
+                        operation,
+                        retryable,
+                        ..
                     } => {
+                        let retry_text = if retryable { " (retryable)" } else { "" };
                         self.show_operation(
                             &meta,
-                            format!(
-                                "Starting cleanup: {states_to_remove} states (est. {} freed)",
-                                self.format_bytes(estimated_space_freed)
-                            ),
-                            "clean",
+                            format!("State transition failed ({operation}){retry_text}"),
+                            "state",
+                            EventSeverity::Error,
+                        );
+                    }
+                    StateEvent::RollbackStarted { from, to } => {
+                        self.show_operation(
+                            &meta,
+                            format!("Rollback started ({from} -> {to})"),
+                            "rollback",
                             EventSeverity::Info,
                         );
                     }
-                    StateEvent::CleanupProgress {
-                        states_processed,
-                        total_states,
-                        space_freed,
-                    } => {
+                    StateEvent::RollbackCompleted { from, to, duration } => {
+                        let duration_text = duration
+                            .map(|d| format!(" in {}s", d.as_secs()))
+                            .unwrap_or_default();
+                        self.show_operation(
+                            &meta,
+                            format!("Rollback completed ({from} -> {to}){duration_text}"),
+                            "rollback",
+                            EventSeverity::Success,
+                        );
+                    }
+                    StateEvent::CleanupStarted { planned_states } => {
                         if self.debug_enabled {
                             self.show_operation(
                                 &meta,
-                                format!(
-                                    "Cleanup progress: {states_processed}/{total_states} ({} freed)",
-                                    self.format_bytes(space_freed)
-                                ),
+                                format!("Cleanup planned for {planned_states} states"),
                                 "clean",
                                 EventSeverity::Debug,
                             );
                         }
                     }
                     StateEvent::CleanupCompleted {
-                        states_pruned,
-                        states_removed,
+                        removed_states,
                         space_freed,
-                        duration,
                     } => {
-                        self.show_operation(&meta,
+                        self.show_operation(
+                            &meta,
                             format!(
-                                "Cleanup completed: pruned {states_pruned}, removed {states_removed}, {} freed ({}s)",
-                                self.format_bytes(space_freed),
-                                duration.as_secs()
+                                "Cleanup completed: removed {removed_states} states, {} freed",
+                                self.format_bytes(space_freed)
                             ),
                             "clean",
                             EventSeverity::Success,
                         );
-                    }
-                    StateEvent::TwoPhaseCommitStarting {
-                        state_id,
-                        parent_state_id,
-                        operation,
-                    } => {
-                        self.show_operation(&meta,
-                            format!(
-                                "Starting 2PC transaction: {operation} ({parent_state_id} -> {state_id})"
-                            ),
-                            "2pc",
-                            EventSeverity::Info,
-                        );
-                    }
-                    StateEvent::TwoPhaseCommitCompleted {
-                        state_id,
-                        parent_state_id,
-                        operation,
-                    } => {
-                        self.show_operation(&meta,
-                            format!(
-                                "2PC transaction completed: {operation} ({parent_state_id} -> {state_id})"
-                            ),
-                            "2pc",
-                            EventSeverity::Success,
-                        );
-                    }
-                    _ => {
-                        // Handle other state events with debug output
-                        if self.debug_enabled {
-                            self.show_meta_message(
-                                &meta,
-                                format!("State event: {state_event:?}"),
-                                EventSeverity::Debug,
-                            );
-                        }
                     }
                 }
             }
@@ -556,9 +502,7 @@ impl EventHandler {
             AppEvent::Uninstall(uninstall_event) => {
                 use sps2_events::UninstallEvent;
                 match uninstall_event {
-                    UninstallEvent::Started {
-                        package, version, ..
-                    } => {
+                    UninstallEvent::Started { package, version } => {
                         self.show_operation(
                             &meta,
                             format!("Uninstalling {package} {version}"),
@@ -570,15 +514,10 @@ impl EventHandler {
                         package,
                         version,
                         files_removed,
-                        space_freed,
-                        ..
                     } => {
                         self.show_operation(
                             &meta,
-                            format!(
-                                "Uninstalled {package} {version} ({files_removed} files, {} freed)",
-                                self.format_bytes(space_freed)
-                            ),
+                            format!("Uninstalled {package} {version} ({files_removed} files)"),
                             "uninstall",
                             EventSeverity::Success,
                         );
@@ -586,25 +525,15 @@ impl EventHandler {
                     UninstallEvent::Failed {
                         package,
                         version,
-                        error,
-                        ..
+                        retryable,
                     } => {
+                        let retry_text = if retryable { " (retryable)" } else { "" };
                         self.show_operation(
                             &meta,
-                            format!("Failed to uninstall {package} {version}: {error}"),
+                            format!("Failed to uninstall {package} {version}{retry_text}"),
                             "uninstall",
                             EventSeverity::Error,
                         );
-                    }
-                    _ => {
-                        // Handle other uninstall events with debug output
-                        if self.debug_enabled {
-                            self.show_meta_message(
-                                &meta,
-                                format!("Uninstall event: {uninstall_event:?}"),
-                                EventSeverity::Debug,
-                            );
-                        }
                     }
                 }
             }
@@ -1340,9 +1269,16 @@ impl EventHandler {
     }
 
     /// Handle download started event
-    fn handle_download_started(&mut self, meta: &EventMeta, url: &str, size: Option<u64>) {
+    fn handle_download_started(
+        &mut self,
+        meta: &EventMeta,
+        url: &str,
+        package: Option<&str>,
+        total_bytes: Option<u64>,
+    ) {
         let filename = url.split('/').next_back().unwrap_or(url);
-        let size_info = if let Some(total) = size {
+        let name = package.unwrap_or(filename);
+        let size_info = if let Some(total) = total_bytes {
             format!(" ({})", self.format_bytes(total))
         } else {
             String::new()
@@ -1350,40 +1286,47 @@ impl EventHandler {
 
         self.show_operation(
             meta,
-            format!("Downloading {filename}{size_info}"),
+            format!("Downloading {name}{size_info}"),
             "download",
             EventSeverity::Info,
         );
     }
 
-    /// Handle download progress event
-    fn handle_download_progress(
-        &mut self,
-        _meta: &EventMeta,
-        _url: &str,
-        _bytes_downloaded: u64,
-        _total_bytes: u64,
-    ) {
-        // Progress updates are now silent for fast operations
-    }
-
     /// Handle download completed event
-    fn handle_download_completed(&mut self, meta: &EventMeta, url: &str) {
+    fn handle_download_completed(
+        &mut self,
+        meta: &EventMeta,
+        url: &str,
+        package: Option<&str>,
+        bytes_downloaded: u64,
+    ) {
         let filename = url.split('/').next_back().unwrap_or(url);
+        let name = package.unwrap_or(filename);
         self.show_operation(
             meta,
-            format!("Finished downloading {filename}"),
+            format!(
+                "Finished downloading {name} ({} fetched)",
+                self.format_bytes(bytes_downloaded)
+            ),
             "download",
             EventSeverity::Success,
         );
     }
 
     /// Handle download failed event
-    fn handle_download_failed(&mut self, meta: &EventMeta, url: &str, error: &str) {
+    fn handle_download_failed(
+        &mut self,
+        meta: &EventMeta,
+        url: &str,
+        package: Option<&str>,
+        retryable: bool,
+    ) {
         let filename = url.split('/').next_back().unwrap_or(url);
+        let name = package.unwrap_or(filename);
+        let retry_hint = if retryable { " (retryable)" } else { "" };
         self.show_operation(
             meta,
-            format!("Download failed for {filename}: {error}"),
+            format!("Download failed for {name}{retry_hint}"),
             "download",
             EventSeverity::Error,
         );

@@ -42,6 +42,7 @@ pub async fn download_file(
             expected_hash,
             "simple_download".to_string(),
             None,
+            None,
             tx.clone(),
         )
         .await?;

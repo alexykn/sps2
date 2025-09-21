@@ -22,84 +22,49 @@ pub fn log_event_with_tracing(message: &EventMessage) {
             use sps2_events::DownloadEvent;
             match download_event {
                 DownloadEvent::Started {
-                    url, total_size, ..
+                    url,
+                    package,
+                    total_bytes,
                 } => {
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
                         url = %url,
-                        size = ?total_size,
-                        "Download started"
-                    );
-                }
-                DownloadEvent::Progress {
-                    url,
-                    bytes_downloaded,
-                    total_bytes,
-                    ..
-                } => {
-                    let progress_percent = if *total_bytes == 0 {
-                        None
-                    } else {
-                        Some((*bytes_downloaded as f64 / *total_bytes as f64) * 100.0)
-                    };
-                    debug!(
-                        source = meta.source.as_str(),
-                        event_id = %meta.event_id,
-                        correlation = ?meta.correlation_id,
-                        url = %url,
-                        bytes_downloaded = bytes_downloaded,
+                        package = ?package,
                         total_bytes = ?total_bytes,
-                        progress_percent = ?progress_percent,
-                        "Download progress"
+                        "Download started"
                     );
                 }
                 DownloadEvent::Completed {
                     url,
-                    final_size,
-                    total_time,
-                    ..
+                    package,
+                    bytes_downloaded,
                 } => {
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
                         url = %url,
-                        size = final_size,
-                        duration_ms = total_time.as_millis(),
+                        package = ?package,
+                        bytes_downloaded = bytes_downloaded,
                         "Download completed"
                     );
                 }
-                DownloadEvent::Failed { url, error, .. } => {
+                DownloadEvent::Failed {
+                    url,
+                    package,
+                    retryable,
+                } => {
                     error!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
                         url = %url,
-                        error = %error,
+                        package = ?package,
+                        retryable = retryable,
                         "Download failed"
                     );
-                }
-                _ => {
-                    // Fallback for other download events
-                    match level {
-                        tracing::Level::ERROR => {
-                            error!(source = meta.source.as_str(), event_id = %meta.event_id, correlation = ?meta.correlation_id, event = ?download_event, "Download event")
-                        }
-                        tracing::Level::WARN => {
-                            warn!(source = meta.source.as_str(), event_id = %meta.event_id, correlation = ?meta.correlation_id, event = ?download_event, "Download event")
-                        }
-                        tracing::Level::INFO => {
-                            info!(source = meta.source.as_str(), event_id = %meta.event_id, correlation = ?meta.correlation_id, event = ?download_event, "Download event")
-                        }
-                        tracing::Level::DEBUG => {
-                            debug!(source = meta.source.as_str(), event_id = %meta.event_id, correlation = ?meta.correlation_id, event = ?download_event, "Download event")
-                        }
-                        tracing::Level::TRACE => {
-                            trace!(source = meta.source.as_str(), event_id = %meta.event_id, correlation = ?meta.correlation_id, event = ?download_event, "Download event")
-                        }
-                    }
                 }
             }
         }
@@ -108,29 +73,20 @@ pub fn log_event_with_tracing(message: &EventMessage) {
         AppEvent::Install(install_event) => {
             use sps2_events::InstallEvent;
             match install_event {
-                InstallEvent::Started {
-                    package,
-                    version,
-                    install_path,
-                    ..
-                } => {
+                InstallEvent::Started { package, version } => {
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
                         package = %package,
                         version = %version,
-                        install_path = %install_path.display(),
                         "Package installation started"
                     );
                 }
                 InstallEvent::Completed {
                     package,
                     version,
-                    installed_files,
-                    duration,
-                    disk_usage,
-                    ..
+                    files_installed,
                 } => {
                     info!(
                         source = meta.source.as_str(),
@@ -138,18 +94,14 @@ pub fn log_event_with_tracing(message: &EventMessage) {
                         correlation = ?meta.correlation_id,
                         package = %package,
                         version = %version,
-                        installed_files = installed_files,
-                        duration_ms = duration.as_millis(),
-                        disk_usage_bytes = disk_usage,
+                        files_installed = files_installed,
                         "Package installation completed"
                     );
                 }
                 InstallEvent::Failed {
                     package,
                     version,
-                    phase,
-                    error,
-                    ..
+                    retryable,
                 } => {
                     error!(
                         source = meta.source.as_str(),
@@ -157,16 +109,31 @@ pub fn log_event_with_tracing(message: &EventMessage) {
                         correlation = ?meta.correlation_id,
                         package = %package,
                         version = %version,
-                        phase = ?phase,
-                        error = %error,
+                        retryable = retryable,
                         "Package installation failed"
                     );
                 }
-                InstallEvent::StagingStarted {
+            }
+        }
+
+        // Uninstall domain events
+        AppEvent::Uninstall(uninstall_event) => {
+            use sps2_events::UninstallEvent;
+            match uninstall_event {
+                UninstallEvent::Started { package, version } => {
+                    info!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        package = %package,
+                        version = %version,
+                        "Package uninstallation started"
+                    );
+                }
+                UninstallEvent::Completed {
                     package,
                     version,
-                    source_path,
-                    staging_path,
+                    files_removed,
                 } => {
                     info!(
                         source = meta.source.as_str(),
@@ -174,95 +141,24 @@ pub fn log_event_with_tracing(message: &EventMessage) {
                         correlation = ?meta.correlation_id,
                         package = %package,
                         version = %version,
-                        source_path = %source_path.display(),
-                        staging_path = %staging_path.display(),
-                        "Package staging started"
+                        files_removed = files_removed,
+                        "Package uninstallation completed"
                     );
                 }
-                InstallEvent::StagingCompleted {
+                UninstallEvent::Failed {
                     package,
                     version,
-                    files_staged,
-                    staging_size,
-                    ..
+                    retryable,
                 } => {
-                    info!(
+                    error!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
                         package = %package,
                         version = %version,
-                        files_staged = files_staged,
-                        staging_size_bytes = staging_size,
-                        "Package staging completed"
+                        retryable = retryable,
+                        "Package uninstallation failed"
                     );
-                }
-                InstallEvent::ValidationStarted {
-                    package,
-                    version,
-                    validation_checks,
-                } => {
-                    info!(
-                        source = meta.source.as_str(),
-                        event_id = %meta.event_id,
-                        correlation = ?meta.correlation_id,
-                        package = %package,
-                        version = %version,
-                        validation_checks = ?validation_checks,
-                        "Package validation started"
-                    );
-                }
-                InstallEvent::ValidationCompleted {
-                    package,
-                    version,
-                    checks_passed,
-                    warnings,
-                    issues_found,
-                } => {
-                    if *issues_found > 0 {
-                        warn!(
-                            source = meta.source.as_str(),
-                        event_id = %meta.event_id,
-                        correlation = ?meta.correlation_id,
-                            package = %package,
-                            version = %version,
-                            checks_passed = checks_passed,
-                            warnings = warnings,
-                            issues_found = issues_found,
-                            "Package validation completed with issues"
-                        );
-                    } else {
-                        info!(
-                            source = meta.source.as_str(),
-                        event_id = %meta.event_id,
-                        correlation = ?meta.correlation_id,
-                            package = %package,
-                            version = %version,
-                            checks_passed = checks_passed,
-                            warnings = warnings,
-                            "Package validation completed successfully"
-                        );
-                    }
-                }
-                _ => {
-                    // Fallback for other install events
-                    match level {
-                        tracing::Level::ERROR => {
-                            error!(source = meta.source.as_str(), event_id = %meta.event_id, correlation = ?meta.correlation_id, event = ?install_event, "Install event")
-                        }
-                        tracing::Level::WARN => {
-                            warn!(source = meta.source.as_str(), event_id = %meta.event_id, correlation = ?meta.correlation_id, event = ?install_event, "Install event")
-                        }
-                        tracing::Level::INFO => {
-                            info!(source = meta.source.as_str(), event_id = %meta.event_id, correlation = ?meta.correlation_id, event = ?install_event, "Install event")
-                        }
-                        tracing::Level::DEBUG => {
-                            debug!(source = meta.source.as_str(), event_id = %meta.event_id, correlation = ?meta.correlation_id, event = ?install_event, "Install event")
-                        }
-                        tracing::Level::TRACE => {
-                            trace!(source = meta.source.as_str(), event_id = %meta.event_id, correlation = ?meta.correlation_id, event = ?install_event, "Install event")
-                        }
-                    }
                 }
             }
         }
@@ -271,85 +167,97 @@ pub fn log_event_with_tracing(message: &EventMessage) {
         AppEvent::State(state_event) => {
             use sps2_events::StateEvent;
             match state_event {
-                StateEvent::Created {
-                    state_id,
+                StateEvent::TransitionStarted {
                     operation,
-                    ..
+                    source,
+                    target,
                 } => {
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
-                        state_id = %state_id,
                         operation = %operation,
-                        "State created"
+                        source_state = ?source,
+                        target_state = %target,
+                        "State transition started"
                     );
                 }
                 StateEvent::TransitionCompleted {
-                    from,
-                    to,
                     operation,
-                    ..
+                    source,
+                    target,
+                    duration,
                 } => {
+                    info!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        operation = %operation,
+                        source_state = ?source,
+                        target_state = %target,
+                        duration_ms = duration.map(|d| d.as_millis()),
+                        "State transition completed"
+                    );
+                }
+                StateEvent::TransitionFailed {
+                    operation,
+                    source,
+                    target,
+                    retryable,
+                } => {
+                    error!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        operation = %operation,
+                        source_state = ?source,
+                        target_state = ?target,
+                        retryable = retryable,
+                        "State transition failed"
+                    );
+                }
+                StateEvent::RollbackStarted { from, to } => {
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
                         from_state = %from,
                         to_state = %to,
-                        operation = %operation,
-                        "State transition completed"
+                        "Rollback started"
                     );
                 }
-                StateEvent::TwoPhaseCommitStarting {
-                    state_id,
-                    parent_state_id,
-                    operation,
+                StateEvent::RollbackCompleted { from, to, duration } => {
+                    info!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        from_state = %from,
+                        to_state = %to,
+                        duration_ms = duration.map(|d| d.as_millis()),
+                        "Rollback completed"
+                    );
+                }
+                StateEvent::CleanupStarted { planned_states } => {
+                    info!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        planned_states = planned_states,
+                        "Cleanup started"
+                    );
+                }
+                StateEvent::CleanupCompleted {
+                    removed_states,
+                    space_freed,
                 } => {
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
-                        state_id = %state_id,
-                        parent_state_id = %parent_state_id,
-                        operation = %operation,
-                        "Two-phase commit started"
+                        removed_states = removed_states,
+                        space_freed_bytes = space_freed,
+                        "Cleanup completed"
                     );
-                }
-                StateEvent::TwoPhaseCommitCompleted {
-                    state_id,
-                    parent_state_id,
-                    operation,
-                } => {
-                    info!(
-                        source = meta.source.as_str(),
-                        event_id = %meta.event_id,
-                        correlation = ?meta.correlation_id,
-                        state_id = %state_id,
-                        parent_state_id = %parent_state_id,
-                        operation = %operation,
-                        "Two-phase commit completed"
-                    );
-                }
-                _ => {
-                    // Fallback for other state events
-                    match level {
-                        tracing::Level::ERROR => {
-                            error!(source = meta.source.as_str(), event_id = %meta.event_id, correlation = ?meta.correlation_id, event = ?state_event, "State event")
-                        }
-                        tracing::Level::WARN => {
-                            warn!(source = meta.source.as_str(), event_id = %meta.event_id, correlation = ?meta.correlation_id, event = ?state_event, "State event")
-                        }
-                        tracing::Level::INFO => {
-                            info!(source = meta.source.as_str(), event_id = %meta.event_id, correlation = ?meta.correlation_id, event = ?state_event, "State event")
-                        }
-                        tracing::Level::DEBUG => {
-                            debug!(source = meta.source.as_str(), event_id = %meta.event_id, correlation = ?meta.correlation_id, event = ?state_event, "State event")
-                        }
-                        tracing::Level::TRACE => {
-                            trace!(source = meta.source.as_str(), event_id = %meta.event_id, correlation = ?meta.correlation_id, event = ?state_event, "State event")
-                        }
-                    }
                 }
             }
         }

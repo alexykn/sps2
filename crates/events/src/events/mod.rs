@@ -125,12 +125,8 @@ impl AppEvent {
             AppEvent::General(GeneralEvent::Error { .. })
             | AppEvent::Download(DownloadEvent::Failed { .. })
             | AppEvent::Build(BuildEvent::Failed { .. })
-            | AppEvent::State(
-                StateEvent::TransitionFailed { .. } | StateEvent::RollbackFailed { .. },
-            )
-            | AppEvent::Install(
-                InstallEvent::ValidationFailed { .. } | InstallEvent::Failed { .. },
-            )
+            | AppEvent::State(StateEvent::TransitionFailed { .. })
+            | AppEvent::Install(InstallEvent::Failed { .. })
             | AppEvent::Uninstall(UninstallEvent::Failed { .. })
             | AppEvent::Update(UpdateEvent::Failed { .. })
             | AppEvent::Acquisition(AcquisitionEvent::Failed { .. })
@@ -148,14 +144,12 @@ impl AppEvent {
             // Warning-level events
             AppEvent::General(GeneralEvent::Warning { .. })
             | AppEvent::Build(BuildEvent::Warning { .. })
-            | AppEvent::Download(DownloadEvent::Stalled { .. })
             | AppEvent::Progress(
                 ProgressEvent::Stalled { .. } | ProgressEvent::BottleneckDetected { .. },
             ) => Level::WARN,
 
             // Debug-level events (progress updates, internal state)
             AppEvent::General(GeneralEvent::DebugLog { .. })
-            | AppEvent::Download(DownloadEvent::Progress { .. })
             | AppEvent::Build(BuildEvent::StepOutput { .. })
             | AppEvent::Progress(ProgressEvent::Updated { .. })
             | AppEvent::Guard(GuardEvent::VerificationProgress { .. }) => Level::DEBUG,

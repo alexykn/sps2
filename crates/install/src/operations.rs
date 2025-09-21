@@ -7,7 +7,7 @@ use crate::{
 };
 use sps2_errors::{Error, InstallError};
 use sps2_events::events::{GeneralEvent, PackageUpdateType, UpdateResult};
-use sps2_events::{AppEvent, EventEmitter, InstallEvent, UninstallEvent, UpdateEvent};
+use sps2_events::{AppEvent, EventEmitter, UpdateEvent};
 
 use sps2_resolver::{NodeAction, ResolutionContext, ResolutionResult, Resolver};
 use sps2_state::StateManager;
@@ -58,15 +58,6 @@ impl InstallOperation {
     ///
     /// Returns an error if dependency resolution fails, package download fails, or installation fails.
     pub async fn execute(&mut self, context: InstallContext) -> Result<InstallResult, Error> {
-        // Emit batch installation started event
-        let operation_id = uuid::Uuid::new_v4().to_string();
-        context.emit(AppEvent::Install(InstallEvent::BatchStarted {
-            packages: context.packages.iter().map(|p| p.name.clone()).collect(),
-            operation_id,
-            concurrent_limit: 4, // Default concurrent limit
-            estimated_duration: None,
-        }));
-
         // Check local .sp files exist (validation moved to AtomicInstaller)
         self.check_local_packages_exist(&context)?;
 
@@ -117,20 +108,6 @@ impl InstallOperation {
         let result = atomic_installer
             .install(&context, &resolution.nodes, Some(&prepared_packages))
             .await?;
-
-        // Emit batch installation completed event
-        let operation_id = uuid::Uuid::new_v4().to_string(); // In production, this should be tracked from start
-        context.emit(AppEvent::Install(InstallEvent::BatchCompleted {
-            operation_id,
-            successful_packages: result
-                .installed_packages
-                .iter()
-                .map(|id| id.name.clone())
-                .collect(),
-            failed_packages: vec![], // TODO: Track failed packages during execution
-            total_duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
-            total_disk_usage: 0,     // TODO: Calculate actual disk usage
-        }));
 
         Ok(result)
     }
@@ -244,15 +221,6 @@ impl UninstallOperation {
     ///
     /// Returns an error if package removal fails or dependency checks fail.
     pub async fn execute(&mut self, context: UninstallContext) -> Result<InstallResult, Error> {
-        // Emit batch uninstall started event
-        let operation_id = uuid::Uuid::new_v4().to_string();
-        context.emit(AppEvent::Uninstall(UninstallEvent::BatchStarted {
-            packages: context.packages.clone(),
-            operation_id,
-            dependency_order: !context.force, // Use dependency order unless forcing
-            remove_orphans: false,            // Default to not removing orphans
-        }));
-
         // Get currently installed packages
         let current_packages = self.state_manager.get_installed_packages().await?;
 
@@ -299,21 +267,6 @@ impl UninstallOperation {
         let mut atomic_installer =
             AtomicInstaller::new(self.state_manager.clone(), self.store.clone()).await?;
         let result = atomic_installer.uninstall(&package_ids, &context).await?;
-
-        // Emit batch uninstall completed event
-        let operation_id = uuid::Uuid::new_v4().to_string(); // In production, this should be tracked from start
-        context.emit(AppEvent::Uninstall(UninstallEvent::BatchCompleted {
-            operation_id,
-            successful_packages: result
-                .removed_packages
-                .iter()
-                .map(|id| id.name.clone())
-                .collect(),
-            failed_packages: vec![], // TODO: Track failed packages during execution
-            orphans_removed: vec![], // TODO: Track orphaned packages that were removed
-            total_duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
-            total_space_freed: 0,    // TODO: Calculate actual space freed
-        }));
 
         Ok(result)
     }

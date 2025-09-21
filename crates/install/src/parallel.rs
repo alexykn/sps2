@@ -350,8 +350,6 @@ impl ParallelExecutor {
         context.emit(AppEvent::Install(InstallEvent::Started {
             package: package_id.name.clone(),
             version: package_id.version.clone(),
-            install_path: std::path::PathBuf::from(sps2_config::fixed_paths::LIVE_DIR), // Default path
-            force_reinstall: false,
         }));
 
         match node.action {
@@ -427,10 +425,7 @@ impl ParallelExecutor {
                         context.emit(AppEvent::Install(InstallEvent::Completed {
                             package: package_id.name.clone(),
                             version: package_id.version.clone(),
-                            installed_files: 0,
-                            install_path: std::path::PathBuf::new(),
-                            duration: std::time::Duration::from_secs(0),
-                            disk_usage: 0,
+                            files_installed: 0,
                         }));
 
                         return Ok(package_id);
@@ -479,10 +474,7 @@ impl ParallelExecutor {
                         context.emit(AppEvent::Install(InstallEvent::Completed {
                             package: package_id.name.clone(),
                             version: package_id.version.clone(),
-                            installed_files: 0, // TODO: Count actual files
-                            install_path: path.clone(),
-                            duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
-                            disk_usage: 0, // TODO: Calculate actual disk usage
+                            files_installed: 0, // TODO: Count actual files
                         }));
                     } else {
                         return Err(InstallError::AtomicOperationFailed {
@@ -824,7 +816,7 @@ mod tests {
                     InstallEvent::Completed { package, .. } => {
                         sequence.push(("complete", package));
                     }
-                    _ => {}
+                    InstallEvent::Failed { .. } => {}
                 }
             }
         }
