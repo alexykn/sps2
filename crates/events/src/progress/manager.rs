@@ -405,3 +405,347 @@ impl Default for ProgressManager {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::progress::config::ProgressPhase;
+    use crate::{EventMessage, EventSender};
+    use std::sync::Mutex;
+    use uuid::Uuid;
+
+    #[derive(Default)]
+    struct TestEmitter {
+        messages: Mutex<Vec<EventMessage>>,
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    enum ProgressAssertion<'a> {
+        Update { current: u64, phase: usize },
+        PhaseChange { phase: usize, name: &'a str },
+        Completed,
+    }
+
+    impl TestEmitter {
+        fn new() -> Self {
+            Self::default()
+        }
+
+        fn drain(&self) -> Vec<EventMessage> {
+            let mut guard = self.messages.lock().expect("messages lock poisoned");
+            guard.drain(..).collect()
+        }
+    }
+
+    impl EventEmitter for TestEmitter {
+        fn event_sender(&self) -> Option<&EventSender> {
+            None
+        }
+
+        fn emit_with_meta(&self, meta: EventMeta, event: AppEvent) {
+            let mut guard = self.messages.lock().expect("messages lock poisoned");
+            guard.push(EventMessage::new(meta, event));
+        }
+    }
+
+    fn assert_parent_meta(
+        meta: &EventMeta,
+        root_event_id: Uuid,
+        parent_label: &str,
+        is_root: bool,
+    ) {
+        assert_eq!(
+            meta.labels.get("progress_parent").map(String::as_str),
+            Some(parent_label)
+        );
+        if is_root {
+            assert_eq!(meta.event_id, root_event_id);
+            assert!(meta.parent_id.is_none());
+        } else {
+            assert_eq!(meta.parent_id, Some(root_event_id));
+        }
+    }
+
+    fn expect_started_event(
+        event: &AppEvent,
+        total: Option<u64>,
+        expected_phases: &[&str],
+        parent_label: &str,
+    ) {
+        match event {
+            AppEvent::Progress(ProgressEvent::Started {
+                total: event_total,
+                phases,
+                parent_id,
+                ..
+            }) => {
+                assert_eq!(*event_total, total);
+                let names: Vec<&str> = phases.iter().map(|phase| phase.name.as_str()).collect();
+                assert_eq!(names, expected_phases);
+                assert_eq!(parent_id.as_deref(), Some(parent_label));
+            }
+            other => panic!("expected ProgressEvent::Started, got {other:?}"),
+        }
+    }
+
+    fn expect_update_event(
+        event: &AppEvent,
+        current: u64,
+        total: Option<u64>,
+        phase: Option<usize>,
+    ) {
+        match event {
+            AppEvent::Progress(ProgressEvent::Updated {
+                current: event_current,
+                total: event_total,
+                phase: event_phase,
+                ..
+            }) => {
+                assert_eq!(*event_current, current);
+                assert_eq!(*event_total, total);
+                assert_eq!(*event_phase, phase);
+            }
+            other => panic!("expected ProgressEvent::Updated, got {other:?}"),
+        }
+    }
+
+    fn expect_phase_changed_event(event: &AppEvent, phase: usize, name: &str) {
+        match event {
+            AppEvent::Progress(ProgressEvent::PhaseChanged {
+                phase: event_phase,
+                phase_name,
+                ..
+            }) => {
+                assert_eq!(*event_phase, phase);
+                assert_eq!(phase_name, name);
+            }
+            other => panic!("expected ProgressEvent::PhaseChanged, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn started_event_sets_parent_label_and_meta() {
+        let manager = ProgressManager::new();
+        let tracker_id = manager.create_tracker_with_phases(
+            "install".to_string(),
+            "install packages".to_string(),
+            Some(10),
+            vec![],
+            None,
+        );
+        let emitter = TestEmitter::new();
+
+        manager.emit_started(&tracker_id, &emitter, Some("install:pkg"));
+
+        let events = emitter.drain();
+        assert_eq!(events.len(), 1);
+        let EventMessage { meta, event } = &events[0];
+        match event {
+            AppEvent::Progress(ProgressEvent::Started { parent_id, .. }) => {
+                assert_eq!(parent_id.as_deref(), Some("install:pkg"));
+            }
+            other => panic!("expected ProgressEvent::Started, got {other:?}"),
+        }
+        assert_eq!(
+            meta.labels.get("progress_parent").map(String::as_str),
+            Some("install:pkg")
+        );
+        assert!(meta.parent_id.is_none());
+    }
+
+    #[test]
+    fn progress_updates_reference_root_event() {
+        let manager = ProgressManager::new();
+        let tracker_id = manager.create_tracker_with_phases(
+            "install".to_string(),
+            "install packages".to_string(),
+            Some(5),
+            vec![],
+            None,
+        );
+        let emitter = TestEmitter::new();
+        manager.emit_started(&tracker_id, &emitter, Some("install:pkg"));
+        let root_event_id = manager
+            .get_tracker(&tracker_id)
+            .expect("tracker")
+            .root_event_id();
+        emitter.drain();
+
+        manager.update_progress(&tracker_id, 1, Some(5), &emitter);
+        let events = emitter.drain();
+        assert_eq!(events.len(), 1);
+        let EventMessage { meta, event } = &events[0];
+        matches!(event, AppEvent::Progress(ProgressEvent::Updated { .. }));
+        assert_eq!(meta.parent_id, Some(root_event_id));
+        assert_eq!(
+            meta.labels.get("progress_parent").map(String::as_str),
+            Some("install:pkg")
+        );
+    }
+
+    #[test]
+    fn completion_event_attaches_root_parent() {
+        let manager = ProgressManager::new();
+        let tracker_id = manager.create_tracker_with_phases(
+            "install".to_string(),
+            "install packages".to_string(),
+            Some(2),
+            vec![],
+            None,
+        );
+        let emitter = TestEmitter::new();
+        manager.emit_started(&tracker_id, &emitter, Some("install:pkg"));
+        let root_event_id = manager
+            .get_tracker(&tracker_id)
+            .expect("tracker")
+            .root_event_id();
+        emitter.drain();
+
+        manager.complete_operation(&tracker_id, &emitter);
+        let events = emitter.drain();
+        assert_eq!(events.len(), 1);
+        let EventMessage { meta, event } = &events[0];
+        matches!(event, AppEvent::Progress(ProgressEvent::Completed { .. }));
+        assert_eq!(meta.parent_id, Some(root_event_id));
+        assert_eq!(
+            meta.labels.get("progress_parent").map(String::as_str),
+            Some("install:pkg")
+        );
+    }
+
+    #[test]
+    fn multi_phase_operation_produces_consistent_event_sequence() {
+        let manager = ProgressManager::new();
+        let tracker_id = "install-flow".to_string();
+        let phases = vec![
+            ProgressPhase::new("Resolve", "resolve dependencies"),
+            ProgressPhase::new("Fetch", "fetch artifacts"),
+            ProgressPhase::new("Install", "link outputs"),
+        ];
+        manager.create_tracker_with_phases(
+            tracker_id.clone(),
+            "install packages".to_string(),
+            Some(3),
+            phases,
+            None,
+        );
+        let emitter = TestEmitter::new();
+        let parent_label = "install:root";
+
+        manager.emit_started(&tracker_id, &emitter, Some(parent_label));
+
+        let root_event_id = manager
+            .get_tracker(&tracker_id)
+            .expect("tracker")
+            .root_event_id();
+
+        manager.update_progress(&tracker_id, 1, Some(3), &emitter);
+        manager.change_phase(&tracker_id, 1, &emitter);
+        manager.update_progress(&tracker_id, 2, Some(3), &emitter);
+        manager.update_phase_to_done(&tracker_id, "Install", &emitter);
+        manager.update_progress(&tracker_id, 3, Some(3), &emitter);
+        manager.complete_operation(&tracker_id, &emitter);
+
+        let mut events = emitter.drain().into_iter();
+
+        let EventMessage { meta, event } = events.next().expect("started event");
+        expect_started_event(
+            &event,
+            Some(3),
+            &["Resolve", "Fetch", "Install"],
+            parent_label,
+        );
+        assert_parent_meta(&meta, root_event_id, parent_label, true);
+
+        let expectations = [
+            ProgressAssertion::Update {
+                current: 1,
+                phase: 0,
+            },
+            ProgressAssertion::PhaseChange {
+                phase: 1,
+                name: "Fetch",
+            },
+            ProgressAssertion::Update {
+                current: 2,
+                phase: 1,
+            },
+            ProgressAssertion::PhaseChange {
+                phase: 2,
+                name: "Install",
+            },
+            ProgressAssertion::Update {
+                current: 3,
+                phase: 2,
+            },
+            ProgressAssertion::Completed,
+        ];
+
+        for expectation in expectations {
+            let EventMessage { meta, event } = events
+                .next()
+                .unwrap_or_else(|| panic!("missing event for {expectation:?}"));
+            match expectation {
+                ProgressAssertion::Update { current, phase } => {
+                    expect_update_event(&event, current, Some(3), Some(phase));
+                }
+                ProgressAssertion::PhaseChange { phase, name } => {
+                    expect_phase_changed_event(&event, phase, name);
+                }
+                ProgressAssertion::Completed => {
+                    assert!(
+                        matches!(event, AppEvent::Progress(ProgressEvent::Completed { .. })),
+                        "expected completion event, got {event:?}"
+                    );
+                }
+            }
+            assert_parent_meta(&meta, root_event_id, parent_label, false);
+        }
+
+        assert!(events.next().is_none(), "unexpected extra events");
+    }
+
+    #[test]
+    fn change_phase_clamps_index_and_preserves_parent_metadata() {
+        let manager = ProgressManager::new();
+        let tracker_id = manager.create_tracker_with_phases(
+            "batch-job".to_string(),
+            "batch operation".to_string(),
+            Some(4),
+            vec![
+                ProgressPhase::new("Stage", "initial staging"),
+                ProgressPhase::new("Process", "process work"),
+            ],
+            None,
+        );
+        let emitter = TestEmitter::new();
+        let parent_label = "batch:parent";
+
+        manager.emit_started(&tracker_id, &emitter, Some(parent_label));
+        let root_event_id = manager
+            .get_tracker(&tracker_id)
+            .expect("tracker")
+            .root_event_id();
+        emitter.drain();
+
+        manager.change_phase(&tracker_id, 10, &emitter);
+
+        let events = emitter.drain();
+        assert_eq!(events.len(), 1);
+        let EventMessage { meta, event } = &events[0];
+        match event {
+            AppEvent::Progress(ProgressEvent::PhaseChanged {
+                phase, phase_name, ..
+            }) => {
+                assert_eq!(*phase, 1);
+                assert_eq!(phase_name, "Process");
+            }
+            other => panic!("expected clamped phase change, got {other:?}"),
+        }
+        assert_eq!(meta.parent_id, Some(root_event_id));
+        assert_eq!(
+            meta.labels.get("progress_parent").map(String::as_str),
+            Some(parent_label)
+        );
+    }
+}
