@@ -129,7 +129,7 @@ impl EventSource {
     pub const GUARD: Self = Self::const_str("guard");
     pub const QA: Self = Self::const_str("qa");
     pub const AUDIT: Self = Self::const_str("audit");
-    pub const PYTHON: Self = Self::const_str("python");
+
     pub const PACKAGE: Self = Self::const_str("package");
     pub const PLATFORM: Self = Self::const_str("platform");
 

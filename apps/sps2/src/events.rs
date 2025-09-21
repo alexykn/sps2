@@ -1323,7 +1323,6 @@ impl EventHandler {
                 AppEvent::Install(_) => "Install",
                 AppEvent::Package(_) => "Package",
                 AppEvent::Progress(_) => "Progress",
-                AppEvent::Python(_) => "Python",
                 AppEvent::Qa(_) => "Qa",
                 AppEvent::Repo(_) => "Repo",
                 AppEvent::Resolver(_) => "Resolver",

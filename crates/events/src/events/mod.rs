@@ -13,7 +13,6 @@ pub mod install;
 pub mod package;
 pub mod platform;
 pub mod progress;
-pub mod python;
 pub mod qa;
 pub mod repo;
 pub mod resolver;
@@ -32,7 +31,6 @@ pub use install::*;
 pub use package::*;
 pub use platform::*;
 pub use progress::*;
-pub use python::*;
 pub use qa::*;
 pub use repo::*;
 pub use resolver::*;
@@ -86,9 +84,6 @@ pub enum AppEvent {
     /// Audit and vulnerability scanning events
     Audit(AuditEvent),
 
-    /// Python virtual environment events
-    Python(PythonEvent),
-
     /// Package operation events (high-level package operations)
     Package(PackageEvent),
 
@@ -115,7 +110,6 @@ impl AppEvent {
             AppEvent::Guard(_) => EventSource::GUARD,
             AppEvent::Qa(_) => EventSource::QA,
             AppEvent::Audit(_) => EventSource::AUDIT,
-            AppEvent::Python(_) => EventSource::PYTHON,
             AppEvent::Package(_) => EventSource::PACKAGE,
             AppEvent::Platform(_) => EventSource::PLATFORM,
         }
@@ -193,7 +187,6 @@ impl AppEvent {
             AppEvent::Guard(_) => "sps2::events::guard",
             AppEvent::Qa(_) => "sps2::events::qa",
             AppEvent::Audit(_) => "sps2::events::audit",
-            AppEvent::Python(_) => "sps2::events::python",
             AppEvent::Package(_) => "sps2::events::package",
             AppEvent::Platform(_) => "sps2::events::platform",
         }

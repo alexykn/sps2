@@ -41,7 +41,6 @@ pub use events::{
     InstallEvent,
     PackageEvent,
     ProgressEvent,
-    PythonEvent,
     QaEvent,
     RepoEvent,
     ResolverEvent,
