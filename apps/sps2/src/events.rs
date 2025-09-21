@@ -452,60 +452,84 @@ impl EventHandler {
 
             // Resolver events
             AppEvent::Resolver(resolver_event) => {
-                use sps2_events::events::{ResolutionFailureReason, ResolverEvent};
+                use sps2_events::ResolverEvent;
                 match resolver_event {
-                    ResolverEvent::ResolutionStarted {
-                        runtime_deps,
-                        build_deps,
-                        local_files,
+                    ResolverEvent::Started {
+                        runtime_targets,
+                        build_targets,
+                        local_targets,
                     } => {
+                        let mut parts = Vec::new();
+                        if runtime_targets > 0 {
+                            parts.push(format!("{runtime_targets} runtime"));
+                        }
+                        if build_targets > 0 {
+                            parts.push(format!("{build_targets} build"));
+                        }
+                        if local_targets > 0 {
+                            parts.push(format!("{local_targets} local"));
+                        }
+                        if parts.is_empty() {
+                            parts.push("no targets".to_string());
+                        }
                         self.show_operation(
                             &meta,
-                            format!(
-                                "Resolving dependencies ({runtime_deps} runtime, {build_deps} build, {local_files} local)"
-                            ),
+                            format!("Resolving dependencies ({})", parts.join(", ")),
                             "resolve",
                             EventSeverity::Info,
                         );
                     }
-                    ResolverEvent::ResolutionCompleted {
+                    ResolverEvent::Completed {
                         total_packages,
+                        downloaded_packages,
+                        reused_packages,
                         duration_ms,
                     } => {
-                        self.show_operation(
-                            &meta,
-                            format!("Resolved {total_packages} dependencies successfully in {duration_ms}ms"),
-                            "resolve",
-                            EventSeverity::Success,
-                        );
+                        let mut message =
+                            format!("Resolved {total_packages} packages in {duration_ms}ms");
+                        if downloaded_packages > 0 {
+                            message.push_str(&format!(" • downloads: {downloaded_packages}"));
+                        }
+                        if reused_packages > 0 {
+                            message.push_str(&format!(" • reused: {reused_packages}"));
+                        }
+                        self.show_operation(&meta, message, "resolve", EventSeverity::Success);
                     }
-                    ResolverEvent::ResolutionFailed { reason } => match reason {
-                        ResolutionFailureReason::Conflict(conflict) => {
-                            let package_list = conflict
-                                .conflicting_packages
+                    ResolverEvent::Failed {
+                        failure,
+                        conflicting_packages,
+                    } => {
+                        let code_prefix = failure
+                            .code
+                            .as_deref()
+                            .map(|code| format!("[{code}] "))
+                            .unwrap_or_default();
+                        let mut message =
+                            format!("Resolution failed: {code_prefix}{}", failure.message);
+                        if !conflicting_packages.is_empty() {
+                            let sample = conflicting_packages
                                 .iter()
-                                .map(|(name, version)| format!("{name}:{version}"))
-                                .collect::<Vec<_>>()
-                                .join(", ");
-                            self.show_operation(
-                                &meta,
-                                format!(
-                                    "Dependency conflict detected: {} ({})",
-                                    conflict.message, package_list
-                                ),
-                                "resolve",
-                                EventSeverity::Error,
-                            );
+                                .take(3)
+                                .cloned()
+                                .collect::<Vec<_>>();
+                            message.push_str(&format!(" • conflicts: {}", sample.join(", ")));
+                            if conflicting_packages.len() > 3 {
+                                message.push_str(&format!(
+                                    " (+{} more)",
+                                    conflicting_packages.len() - 3
+                                ));
+                            }
                         }
-                        ResolutionFailureReason::Timeout => {
-                            self.show_operation(
-                                &meta,
-                                "Dependency resolution timed out".to_string(),
-                                "resolve",
-                                EventSeverity::Error,
-                            );
+                        if let Some(hint) = &failure.hint {
+                            message.push_str(&format!(" (hint: {hint})"));
                         }
-                    },
+                        let severity = if failure.retryable {
+                            EventSeverity::Warning
+                        } else {
+                            EventSeverity::Error
+                        };
+                        self.show_operation(&meta, message, "resolve", severity);
+                    }
                 }
             }
 
@@ -575,91 +599,93 @@ impl EventHandler {
                 use sps2_events::UpdateEvent;
                 match update_event {
                     UpdateEvent::Started {
-                        packages_specified, ..
+                        operation,
+                        requested,
+                        total_targets,
                     } => {
-                        if packages_specified.len() == 1 && packages_specified[0] == "all" {
-                            self.show_operation(
-                                &meta,
-                                "Updating all packages".to_string(),
-                                "update",
-                                EventSeverity::Info,
-                            );
-                        } else if packages_specified.len() == 1 {
-                            self.show_operation(
-                                &meta,
-                                format!("Updating {}", packages_specified[0]),
-                                "update",
-                                EventSeverity::Info,
-                            );
-                        } else {
-                            self.show_operation(
-                                &meta,
-                                format!("Updating {} packages", packages_specified.len()),
-                                "update",
-                                EventSeverity::Info,
-                            );
-                        }
-                    }
-                    UpdateEvent::Completed {
-                        packages_updated, ..
-                    } => {
-                        if packages_updated.is_empty() {
-                            self.show_operation(
-                                &meta,
-                                "No packages needed updates".to_string(),
-                                "update",
-                                EventSeverity::Info,
-                            );
-                        } else if packages_updated.len() == 1 {
-                            self.show_operation(
-                                &meta,
-                                format!(
-                                    "Updated {} to {}",
-                                    packages_updated[0].package, packages_updated[0].to_version
-                                ),
-                                "update",
-                                EventSeverity::Success,
-                            );
-                        } else {
-                            self.show_operation(
-                                &meta,
-                                format!("Updated {} packages", packages_updated.len()),
-                                "update",
-                                EventSeverity::Success,
-                            );
-                        }
-                    }
-                    UpdateEvent::Failed {
-                        operation_type,
-                        failure,
-                        packages_failed,
-                        ..
-                    } => {
-                        let op = match operation_type {
+                        let op_label = match operation {
                             UpdateOperationType::Update => "update",
                             UpdateOperationType::Upgrade => "upgrade",
                             UpdateOperationType::Downgrade => "downgrade",
                             UpdateOperationType::Reinstall => "reinstall",
                         };
-
+                        let target_text = if requested.is_empty() {
+                            format!("all ({total_targets})")
+                        } else if requested.len() == 1 {
+                            requested[0].clone()
+                        } else {
+                            format!("{} packages", requested.len())
+                        };
+                        self.show_operation(
+                            &meta,
+                            format!("Starting {op_label} for {target_text}"),
+                            "update",
+                            EventSeverity::Info,
+                        );
+                    }
+                    UpdateEvent::Completed {
+                        operation,
+                        updated,
+                        skipped,
+                        duration,
+                        size_difference,
+                    } => {
+                        let op_label = match operation {
+                            UpdateOperationType::Update => "update",
+                            UpdateOperationType::Upgrade => "upgrade",
+                            UpdateOperationType::Downgrade => "downgrade",
+                            UpdateOperationType::Reinstall => "reinstall",
+                        };
+                        let mut message = if updated.is_empty() {
+                            format!("No packages required {op_label}")
+                        } else if updated.len() == 1 {
+                            format!(
+                                "{op_label}d {} to {}",
+                                updated[0].package, updated[0].to_version
+                            )
+                        } else {
+                            format!("{op_label}d {} packages", updated.len())
+                        };
+                        if skipped > 0 {
+                            message.push_str(&format!(" • skipped {skipped}"));
+                        }
+                        if size_difference != 0 {
+                            message.push_str(&format!(" • size Δ {size_difference} bytes"));
+                        }
+                        message.push_str(&format!(" ({:.1}s)", duration.as_secs_f32()));
+                        self.show_operation(&meta, message, "update", EventSeverity::Success);
+                    }
+                    UpdateEvent::Failed {
+                        operation,
+                        failure,
+                        updated,
+                        failed,
+                    } => {
+                        let op_label = match operation {
+                            UpdateOperationType::Update => "update",
+                            UpdateOperationType::Upgrade => "upgrade",
+                            UpdateOperationType::Downgrade => "downgrade",
+                            UpdateOperationType::Reinstall => "reinstall",
+                        };
                         let code_prefix = failure
                             .code
                             .as_deref()
                             .map(|c| format!("[{c}] "))
                             .unwrap_or_default();
-                        let mut message = format!("{op} failed: {code_prefix}{}", failure.message);
-                        if !packages_failed.is_empty() {
-                            let sample = packages_failed
-                                .iter()
-                                .take(3)
-                                .map(|(pkg, _)| pkg.as_str())
-                                .collect::<Vec<_>>()
-                                .join(", ");
-                            message.push_str(&format!(" • packages: {sample}"));
-                            if packages_failed.len() > 3 {
-                                message
-                                    .push_str(&format!(" (+{} more)", packages_failed.len() - 3));
+                        let mut message =
+                            format!("{op_label} failed: {code_prefix}{}", failure.message);
+                        if !failed.is_empty() {
+                            let sample = failed.iter().take(3).cloned().collect::<Vec<_>>();
+                            message.push_str(&format!(" • failed: {}", sample.join(", ")));
+                            if failed.len() > 3 {
+                                message.push_str(&format!(" (+{} more)", failed.len() - 3));
                             }
+                        }
+                        if !updated.is_empty() {
+                            message.push_str(&format!(
+                                " • completed {} before failure",
+                                updated.len()
+                            ));
                         }
                         if let Some(hint) = &failure.hint {
                             message.push_str(&format!(" (hint: {hint})"));
@@ -669,27 +695,7 @@ impl EventHandler {
                         } else {
                             EventSeverity::Error
                         };
-                        self.show_operation(&meta, message, op, severity);
-                    }
-                    UpdateEvent::PlanningStarted {
-                        packages_to_check, ..
-                    } => {
-                        self.show_operation(
-                            &meta,
-                            format!("Planning updates for {} packages", packages_to_check.len()),
-                            "update",
-                            EventSeverity::Info,
-                        );
-                    }
-                    _ => {
-                        // Handle other update events with debug output
-                        if self.debug_enabled {
-                            self.show_meta_message(
-                                &meta,
-                                format!("Update event: {update_event:?}"),
-                                EventSeverity::Debug,
-                            );
-                        }
+                        self.show_operation(&meta, message, "update", severity);
                     }
                 }
             }

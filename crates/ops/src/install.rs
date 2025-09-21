@@ -11,6 +11,7 @@ use sps2_events::{
 use sps2_guard::{OperationResult as GuardOperationResult, PackageChange as GuardPackageChange};
 use sps2_install::{InstallConfig, InstallContext, Installer};
 use sps2_types::{PackageSpec, Version};
+use std::convert::TryFrom;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use uuid::Uuid;
@@ -367,10 +368,11 @@ async fn install_remote_packages_parallel(
     // The new standardized progress tracker handles the initial event emission.
 
     // Phase 1: Dependency resolution
-    ctx.emit(AppEvent::Resolver(ResolverEvent::ResolutionStarted {
-        runtime_deps: specs.len(),
-        build_deps: 0,
-        local_files: 0,
+    let resolve_start = Instant::now();
+    ctx.emit(AppEvent::Resolver(ResolverEvent::Started {
+        runtime_targets: specs.len(),
+        build_targets: 0,
+        local_targets: 0,
     }));
 
     let mut resolution_context = sps2_resolver::ResolutionContext::new();
@@ -385,6 +387,11 @@ async fn install_remote_packages_parallel(
 
             ctx.emit_operation_failed("install", failure.clone());
 
+            ctx.emit(AppEvent::Resolver(ResolverEvent::Failed {
+                failure: failure.clone(),
+                conflicting_packages: Vec::new(),
+            }));
+
             ctx.emit(AppEvent::Progress(ProgressEvent::Failed {
                 id: progress_id.clone(),
                 failure,
@@ -395,8 +402,24 @@ async fn install_remote_packages_parallel(
             return Err(e);
         }
     };
+    let duration_ms = resolve_start.elapsed().as_millis();
+    let duration_ms = u64::try_from(duration_ms).unwrap_or(u64::MAX);
     let execution_plan = resolution_result.execution_plan;
     let resolved_packages = resolution_result.nodes;
+    let mut downloaded_packages = 0usize;
+    let mut reused_packages = 0usize;
+    for node in resolved_packages.values() {
+        match node.action {
+            sps2_resolver::NodeAction::Download => downloaded_packages += 1,
+            sps2_resolver::NodeAction::Local => reused_packages += 1,
+        }
+    }
+    ctx.emit(AppEvent::Resolver(ResolverEvent::Completed {
+        total_packages: resolved_packages.len(),
+        downloaded_packages,
+        reused_packages,
+        duration_ms,
+    }));
 
     progress_manager.update_phase_to_done(&progress_id, "Resolve", ctx);
 

@@ -2,11 +2,15 @@
 
 use super::core::BuildEnvironment;
 use sps2_errors::{BuildError, Error};
-use sps2_events::{AppEvent, DownloadEvent, GeneralEvent, InstallEvent, ResolverEvent};
+use sps2_events::{
+    AppEvent, DownloadEvent, FailureContext, GeneralEvent, InstallEvent, ResolverEvent,
+};
 use sps2_resolver::{InstalledPackage, ResolutionContext};
 use sps2_state::StateManager;
 use sps2_types::package::PackageSpec;
 use sps2_types::Version;
+use std::convert::TryFrom;
+use std::time::Instant;
 
 impl BuildEnvironment {
     /// Setup build dependencies
@@ -26,10 +30,7 @@ impl BuildEnvironment {
             .into());
         };
 
-        self.send_event(AppEvent::Resolver(ResolverEvent::ResolutionCompleted {
-            total_packages: 1,
-            duration_ms: 0, // Duration tracking removed as per architectural decision
-        }));
+        let build_target_count = build_deps.len();
 
         // Get installed packages to check before resolving from repository
         let installed_packages = Self::get_installed_packages().await.unwrap_or_default();
@@ -40,10 +41,45 @@ impl BuildEnvironment {
             resolution_context = resolution_context.add_build_dep(dep);
         }
 
-        // Include installed packages to check before repository resolution
-        resolution_context = resolution_context.with_installed_packages(installed_packages);
+        let local_target_count = installed_packages.len();
 
-        let resolution = resolver.resolve_with_sat(resolution_context).await?;
+        // Include installed packages to check before repository resolution
+        resolution_context = resolution_context.with_installed_packages(installed_packages.clone());
+
+        let resolve_start = Instant::now();
+        self.send_event(AppEvent::Resolver(ResolverEvent::Started {
+            runtime_targets: 0,
+            build_targets: build_target_count,
+            local_targets: local_target_count,
+        }));
+
+        let resolution = match resolver.resolve_with_sat(resolution_context).await {
+            Ok(resolution) => resolution,
+            Err(error) => {
+                self.send_event(AppEvent::Resolver(ResolverEvent::Failed {
+                    failure: FailureContext::from_error(&error),
+                    conflicting_packages: Vec::new(),
+                }));
+                return Err(error);
+            }
+        };
+
+        let duration_ms = resolve_start.elapsed().as_millis();
+        let duration_ms = u64::try_from(duration_ms).unwrap_or(u64::MAX);
+        let mut downloaded_packages = 0usize;
+        let mut reused_packages = 0usize;
+        for node in resolution.nodes.values() {
+            match node.action {
+                sps2_resolver::NodeAction::Download => downloaded_packages += 1,
+                sps2_resolver::NodeAction::Local => reused_packages += 1,
+            }
+        }
+        self.send_event(AppEvent::Resolver(ResolverEvent::Completed {
+            total_packages: resolution.nodes.len(),
+            downloaded_packages,
+            reused_packages,
+            duration_ms,
+        }));
 
         // Install build dependencies to deps prefix
         for node in resolution.packages_in_order() {

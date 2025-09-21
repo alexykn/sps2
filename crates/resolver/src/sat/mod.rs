@@ -9,10 +9,7 @@
 
 use semver::Version;
 use sps2_errors::{Error, PackageError};
-use sps2_events::{
-    events::{DependencyConflict, DependencyConflictType, ResolutionFailureReason, ResolverEvent},
-    AppEvent, EventEmitter, EventSender,
-};
+use sps2_events::{AppEvent, EventEmitter, EventSender, FailureContext, ResolverEvent};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -173,10 +170,6 @@ impl DependencySolution {
 pub struct ConflictExplanation {
     pub conflicting_packages: Vec<(String, String)>, // (package, version)
     pub message: String,
-    #[allow(dead_code)]
-    pub conflict_type: DependencyConflictType,
-    #[allow(dead_code)]
-    pub suggestions: Vec<String>,
 }
 
 impl ConflictExplanation {
@@ -184,8 +177,6 @@ impl ConflictExplanation {
         Self {
             conflicting_packages,
             message,
-            conflict_type: DependencyConflictType::VersionIncompatibility,
-            suggestions: vec![],
         }
     }
 }
@@ -274,19 +265,21 @@ pub async fn solve_dependencies(
         let conflict = solver.analyze_conflict(&problem);
 
         // Emit conflict event if sender is available
+        let error = PackageError::DependencyConflict {
+            message: conflict.message.clone(),
+        };
+
         if let Some(sender) = event_sender {
-            sender.emit(AppEvent::Resolver(ResolverEvent::ResolutionFailed {
-                reason: ResolutionFailureReason::Conflict(DependencyConflict {
-                    conflicting_packages: conflict.conflicting_packages.clone(),
-                    message: conflict.message.clone(),
-                    conflict_type: DependencyConflictType::VersionIncompatibility, // Defaulting this for now
-                }),
+            sender.emit(AppEvent::Resolver(ResolverEvent::Failed {
+                failure: FailureContext::from_error(&error),
+                conflicting_packages: conflict
+                    .conflicting_packages
+                    .iter()
+                    .map(|(name, version)| format!("{name}@{version}"))
+                    .collect(),
             }));
         }
 
-        Err(PackageError::DependencyConflict {
-            message: conflict.message,
-        }
-        .into())
+        Err(error.into())
     }
 }

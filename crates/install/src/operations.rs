@@ -6,16 +6,14 @@ use crate::{
     UninstallContext, UpdateContext,
 };
 use sps2_errors::{Error, InstallError};
-use sps2_events::events::{GeneralEvent, PackageUpdateType, UpdateResult};
-use sps2_events::{AppEvent, EventEmitter, UpdateEvent};
+use sps2_events::events::GeneralEvent;
+use sps2_events::{AppEvent, EventEmitter};
 
 use sps2_resolver::{NodeAction, ResolutionContext, ResolutionResult, Resolver};
 use sps2_state::StateManager;
 use sps2_store::PackageStore;
 use sps2_types::PackageSpec;
 use std::sync::Arc;
-
-// EventEmitter implementations are already defined in atomic/installer.rs
 
 /// Install operation
 pub struct InstallOperation {
@@ -307,18 +305,6 @@ impl UpdateOperation {
     pub async fn execute(&mut self, context: UpdateContext) -> Result<InstallResult, Error> {
         use std::collections::HashMap;
 
-        // Emit batch update started event
-        let operation_id = uuid::Uuid::new_v4().to_string();
-        context.emit(AppEvent::Update(UpdateEvent::BatchStarted {
-            packages: if context.packages.is_empty() {
-                vec!["all".to_string()]
-            } else {
-                context.packages.clone()
-            },
-            operation_id: operation_id.clone(),
-            concurrent_limit: 4, // Default concurrent limit
-        }));
-
         // Get currently installed packages
         let current_packages = self.state_manager.get_installed_packages().await?;
 
@@ -338,16 +324,6 @@ impl UpdateOperation {
         if packages_to_update.is_empty() {
             // No packages to update - return early with empty result
             let result = InstallResult::new(uuid::Uuid::nil());
-
-            // Emit batch update completed event with no changes
-            context.emit(AppEvent::Update(UpdateEvent::BatchCompleted {
-                operation_id: operation_id.clone(),
-                successful_updates: vec![],
-                failed_updates: vec![],
-                skipped_packages: vec![],
-                total_duration: std::time::Duration::from_secs(0),
-                total_size_change: 0,
-            }));
 
             return Ok(result);
         }
@@ -530,16 +506,6 @@ impl UpdateOperation {
         if packages_needing_update.is_empty() {
             let result = InstallResult::new(uuid::Uuid::nil());
 
-            // Emit batch update completed event with no changes
-            context.emit(AppEvent::Update(UpdateEvent::BatchCompleted {
-                operation_id: operation_id.clone(),
-                successful_updates: vec![],
-                failed_updates: vec![],
-                skipped_packages: vec![],
-                total_duration: std::time::Duration::from_secs(0),
-                total_size_change: 0,
-            }));
-
             return Ok(result);
         }
 
@@ -568,29 +534,6 @@ impl UpdateOperation {
 
         // Execute installation (which handles updates)
         let result = self.install_operation.execute(install_context).await?;
-
-        // Emit batch update completed event
-        context.emit(AppEvent::Update(UpdateEvent::BatchCompleted {
-            operation_id,
-            successful_updates: result
-                .updated_packages
-                .iter()
-                .map(|id| {
-                    UpdateResult {
-                        package: id.name.clone(),
-                        from_version: id.version.clone(), // TODO: Track actual from/to versions
-                        to_version: id.version.clone(),
-                        update_type: PackageUpdateType::Patch, // TODO: Determine actual update type
-                        duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
-                        size_change: 0,                        // TODO: Calculate actual size change
-                    }
-                })
-                .collect(),
-            failed_updates: vec![], // TODO: Track failed updates during execution
-            skipped_packages: vec![], // TODO: Track skipped packages
-            total_duration: std::time::Duration::from_secs(0), // TODO: Track actual duration
-            total_size_change: 0,   // TODO: Calculate actual size change
-        }));
 
         Ok(result)
     }

@@ -35,27 +35,6 @@ pub async fn upgrade(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRe
         return preview_upgrade(ctx, package_names).await;
     }
 
-    let progress_manager = ProgressManager::new();
-    let update_config = UpdateProgressConfig {
-        operation_name: "Upgrading packages".to_string(),
-        package_count: package_names.len() as u64,
-        is_upgrade: true,
-    };
-    let progress_id = progress_manager.create_update_tracker(update_config);
-    let correlation = ctx.current_correlation();
-    progress_manager.emit_started(&progress_id, ctx, correlation.as_deref());
-
-    ctx.emit(AppEvent::Update(UpdateEvent::Started {
-        operation_type: UpdateOperationType::Upgrade,
-        packages_specified: if package_names.is_empty() {
-            vec!["all".to_string()]
-        } else {
-            package_names.to_vec()
-        },
-        check_all_packages: package_names.is_empty(),
-        ignore_constraints: true,
-    }));
-
     // Create installer
     let config = InstallConfig::default();
     let mut installer = Installer::new(
@@ -81,6 +60,33 @@ pub async fn upgrade(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRe
         .map(|pkg| (pkg.name.clone(), pkg.version()))
         .collect();
 
+    let total_targets = if package_names.is_empty() {
+        installed_before.len()
+    } else {
+        package_names.len()
+    };
+    let requested_packages: Vec<String> = if package_names.is_empty() {
+        Vec::new()
+    } else {
+        package_names.to_vec()
+    };
+
+    let progress_manager = ProgressManager::new();
+    let update_config = UpdateProgressConfig {
+        operation_name: "Upgrading packages".to_string(),
+        package_count: total_targets as u64,
+        is_upgrade: true,
+    };
+    let progress_id = progress_manager.create_update_tracker(update_config);
+    let correlation = ctx.current_correlation();
+    progress_manager.emit_started(&progress_id, ctx, correlation.as_deref());
+
+    ctx.emit(AppEvent::Update(UpdateEvent::Started {
+        operation: UpdateOperationType::Upgrade,
+        requested: requested_packages.clone(),
+        total_targets,
+    }));
+
     // Execute upgrade
     let result = installer.update(update_context).await.inspect_err(|e| {
         let failure = FailureContext::from_error(e);
@@ -93,21 +99,15 @@ pub async fn upgrade(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRe
             partial_duration: start.elapsed(),
         }));
 
-        let failure_message = failure.message.clone();
-        let packages_failed: Vec<(String, String)> = if package_names.is_empty() {
-            vec![("all".to_string(), failure_message)]
-        } else {
-            package_names
-                .iter()
-                .map(|pkg| (pkg.clone(), failure_message.clone()))
-                .collect()
-        };
-
         ctx.emit(AppEvent::Update(UpdateEvent::Failed {
-            operation_type: UpdateOperationType::Upgrade,
+            operation: UpdateOperationType::Upgrade,
             failure,
-            packages_updated: Vec::new(),
-            packages_failed,
+            updated: Vec::new(),
+            failed: if requested_packages.is_empty() {
+                Vec::new()
+            } else {
+                requested_packages.clone()
+            },
         }));
     })?;
 
@@ -116,10 +116,21 @@ pub async fn upgrade(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRe
         &installed_map,
         start,
         ctx,
-        &progress_id,
-        &progress_manager,
+        UpdateReportContext {
+            progress_id: &progress_id,
+            progress_manager: &progress_manager,
+            total_targets,
+            operation: UpdateOperationType::Upgrade,
+        },
     );
     Ok(report)
+}
+
+struct UpdateReportContext<'a> {
+    progress_id: &'a str,
+    progress_manager: &'a ProgressManager,
+    total_targets: usize,
+    operation: UpdateOperationType,
 }
 
 fn create_upgrade_report(
@@ -127,8 +138,7 @@ fn create_upgrade_report(
     installed_map: &std::collections::HashMap<String, sps2_types::Version>,
     start: std::time::Instant,
     ctx: &OpsCtx,
-    progress_id: &str,
-    progress_manager: &ProgressManager,
+    context: UpdateReportContext<'_>,
 ) -> InstallReport {
     // Convert to report format
     let report = InstallReport {
@@ -166,32 +176,37 @@ fn create_upgrade_report(
         duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
     };
 
-    progress_manager.complete_operation(progress_id, ctx);
+    context
+        .progress_manager
+        .complete_operation(context.progress_id, ctx);
+
+    let updated_results: Vec<UpdateResult> = result
+        .updated_packages
+        .iter()
+        .map(|pkg| UpdateResult {
+            package: pkg.name.clone(),
+            from_version: installed_map
+                .get(&pkg.name)
+                .cloned()
+                .unwrap_or_else(|| pkg.version.clone()),
+            to_version: pkg.version.clone(),
+            update_type: sps2_events::events::PackageUpdateType::Major, // TODO: Determine actual update type
+            duration: std::time::Duration::from_secs(30), // TODO: Track actual duration per package
+            size_change: 0,                               // TODO: Calculate actual space difference
+        })
+        .collect();
+
+    let skipped = context
+        .total_targets
+        .saturating_sub(updated_results.len())
+        .saturating_sub(result.installed_packages.len());
 
     ctx.emit(AppEvent::Update(UpdateEvent::Completed {
-        operation_type: UpdateOperationType::Upgrade,
-        packages_updated: result
-            .updated_packages
-            .iter()
-            .map(|pkg| UpdateResult {
-                package: pkg.name.clone(),
-                from_version: installed_map
-                    .get(&pkg.name)
-                    .cloned()
-                    .unwrap_or_else(|| pkg.version.clone()),
-                to_version: pkg.version.clone(),
-                update_type: sps2_events::events::PackageUpdateType::Major, // TODO: Determine actual update type
-                duration: std::time::Duration::from_secs(30), // TODO: Track actual duration per package
-                size_change: 0,                               // TODO: Calculate actual size change
-            })
-            .collect(),
-        packages_unchanged: result
-            .installed_packages
-            .iter()
-            .map(|pkg| pkg.name.clone())
-            .collect(),
-        total_duration: start.elapsed(),
-        space_difference: 0, // TODO: Calculate actual space difference
+        operation: context.operation,
+        updated: updated_results,
+        skipped,
+        duration: start.elapsed(),
+        size_difference: 0,
     }));
 
     report

@@ -33,7 +33,6 @@ pub use events::{
     AuditEvent,
     BuildEvent,
     BuildSystem,
-    DependencyConflictType,
     DownloadEvent,
     FailureContext,
     GeneralEvent,

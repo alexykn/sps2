@@ -8,50 +8,26 @@ use std::time::Duration;
 pub enum UpdateEvent {
     /// Update operation started
     Started {
-        operation_type: UpdateOperationType,
-        packages_specified: Vec<String>,
-        check_all_packages: bool,
-        ignore_constraints: bool,
-    },
-
-    /// Update planning phase started
-    PlanningStarted {
-        packages_to_check: Vec<String>,
-        include_dependencies: bool,
+        operation: UpdateOperationType,
+        requested: Vec<String>,
+        total_targets: usize,
     },
 
     /// Update operation completed
     Completed {
-        operation_type: UpdateOperationType,
-        packages_updated: Vec<UpdateResult>,
-        packages_unchanged: Vec<String>,
-        total_duration: Duration,
-        space_difference: i64,
+        operation: UpdateOperationType,
+        updated: Vec<UpdateResult>,
+        skipped: usize,
+        duration: Duration,
+        size_difference: i64,
     },
 
     /// Update operation failed
     Failed {
-        operation_type: UpdateOperationType,
+        operation: UpdateOperationType,
         failure: super::FailureContext,
-        packages_updated: Vec<UpdateResult>,
-        packages_failed: Vec<(String, String)>, // (package, error)
-    },
-
-    /// Batch update started
-    BatchStarted {
-        packages: Vec<String>,
-        operation_id: String,
-        concurrent_limit: usize,
-    },
-
-    /// Batch update completed
-    BatchCompleted {
-        operation_id: String,
-        successful_updates: Vec<UpdateResult>,
-        failed_updates: Vec<(String, String)>,
-        skipped_packages: Vec<String>,
-        total_duration: Duration,
-        total_size_change: i64,
+        updated: Vec<UpdateResult>,
+        failed: Vec<String>,
     },
 }
 

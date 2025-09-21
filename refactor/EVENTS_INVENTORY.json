@@ -8,7 +8,7 @@
       "path": "crates/events/src/events/acquisition.rs",
       "start_line": 7,
       "doc": [],
-      "definition": "pub enum AcquisitionEvent {\n    /// Package acquisition started\n    Started {\n        package: String,\n        version: Version,\n        source: AcquisitionSource,\n    },\n\n    /// Package acquisition completed successfully\n    Completed {\n        package: String,\n        version: Version,\n        source: AcquisitionSource,\n        size: u64,\n    },\n\n    /// Package acquisition failed\n    Failed {\n        package: String,\n        version: Version,\n        source: AcquisitionSource,\n        retryable: bool,\n    },\n}",
+      "definition": "pub enum AcquisitionEvent {\n    /// Package acquisition started\n    Started {\n        package: String,\n        version: Version,\n        source: AcquisitionSource,\n    },\n\n    /// Package acquisition completed successfully\n    Completed {\n        package: String,\n        version: Version,\n        source: AcquisitionSource,\n        size: u64,\n    },\n\n    /// Package acquisition failed\n    Failed {\n        package: String,\n        version: Version,\n        source: AcquisitionSource,\n        failure: super::FailureContext,\n    },\n}",
       "variants": [
         {
           "name": "Started",
@@ -32,7 +32,7 @@
           "doc": [
             "Package acquisition failed"
           ],
-          "definition": "Failed {\n        package: String,\n        version: Version,\n        source: AcquisitionSource,\n        retryable: bool,\n    },"
+          "definition": "Failed {\n        package: String,\n        version: Version,\n        source: AcquisitionSource,\n        failure: super::FailureContext,\n    },"
         }
       ]
     },
@@ -43,7 +43,7 @@
       "path": "crates/events/src/events/audit.rs",
       "start_line": 6,
       "doc": [],
-      "definition": "pub enum AuditEvent {\n    /// Audit scan started\n    ScanStarted { package_count: usize },\n\n    /// Audit of a single package completed\n    ScanPackageCompleted {\n        package: String,\n        vulnerabilities_found: usize,\n    },\n\n    /// Audit scan completed\n    ScanCompleted {\n        packages_scanned: usize,\n        vulnerabilities_found: usize,\n        critical_count: usize,\n    },\n\n    /// Audit scan failed\n    ScanFailed { retryable: bool },\n\n    /// Vulnerability database update started\n    VulnDbUpdateStarted,\n\n    /// Vulnerability database update completed\n    VulnDbUpdateCompleted {\n        total_vulnerabilities: usize,\n        sources_updated: usize,\n        duration_ms: u64,\n    },\n\n    /// Vulnerability database update failed\n    VulnDbUpdateFailed { retryable: bool },\n}",
+      "definition": "pub enum AuditEvent {\n    /// Audit scan started\n    ScanStarted { package_count: usize },\n\n    /// Audit of a single package completed\n    ScanPackageCompleted {\n        package: String,\n        vulnerabilities_found: usize,\n    },\n\n    /// Audit scan completed\n    ScanCompleted {\n        packages_scanned: usize,\n        vulnerabilities_found: usize,\n        critical_count: usize,\n    },\n\n    /// Audit scan failed\n    ScanFailed { failure: super::FailureContext },\n\n    /// Vulnerability database update started\n    VulnDbUpdateStarted,\n\n    /// Vulnerability database update completed\n    VulnDbUpdateCompleted {\n        total_vulnerabilities: usize,\n        sources_updated: usize,\n        duration_ms: u64,\n    },\n\n    /// Vulnerability database update failed\n    VulnDbUpdateFailed { failure: super::FailureContext },\n}",
       "variants": [
         {
           "name": "ScanStarted",
@@ -75,7 +75,7 @@
           "doc": [
             "Audit scan failed"
           ],
-          "definition": "ScanFailed { retryable: bool },"
+          "definition": "ScanFailed { failure: super::FailureContext },"
         },
         {
           "name": "VulnDbUpdateStarted",
@@ -99,7 +99,7 @@
           "doc": [
             "Vulnerability database update failed"
           ],
-          "definition": "VulnDbUpdateFailed { retryable: bool },"
+          "definition": "VulnDbUpdateFailed { failure: super::FailureContext },"
         }
       ]
     },
@@ -972,7 +972,7 @@
       "path": "crates/events/src/events/repo.rs",
       "start_line": 6,
       "doc": [],
-      "definition": "pub enum RepoEvent {\n    /// Repository synchronization started\n    SyncStarted { url: Option<String> },\n\n    /// Repository synchronization completed\n    SyncCompleted {\n        packages_updated: usize,\n        duration_ms: u64,\n        bytes_transferred: u64,\n    },\n\n    /// Repository synchronization failed\n    SyncFailed {\n        url: Option<String>,\n        retryable: bool,\n    },\n}",
+      "definition": "pub enum RepoEvent {\n    /// Repository synchronization started\n    SyncStarted { url: Option<String> },\n\n    /// Repository synchronization completed\n    SyncCompleted {\n        packages_updated: usize,\n        duration_ms: u64,\n        bytes_transferred: u64,\n    },\n\n    /// Repository synchronization failed\n    SyncFailed {\n        url: Option<String>,\n        failure: super::FailureContext,\n    },\n}",
       "variants": [
         {
           "name": "SyncStarted",
@@ -996,7 +996,7 @@
           "doc": [
             "Repository synchronization failed"
           ],
-          "definition": "SyncFailed {\n        url: Option<String>,\n        retryable: bool,\n    },"
+          "definition": "SyncFailed {\n        url: Option<String>,\n        failure: super::FailureContext,\n    },"
         }
       ]
     },
@@ -1007,31 +1007,31 @@
       "path": "crates/events/src/events/resolver.rs",
       "start_line": 6,
       "doc": [],
-      "definition": "pub enum ResolverEvent {\n    /// High-level resolution flow started\n    ResolutionStarted {\n        runtime_deps: usize,\n        build_deps: usize,\n        local_files: usize,\n    },\n\n    /// Resolution completed successfully\n    ResolutionCompleted {\n        total_packages: usize,\n        duration_ms: u64,\n    },\n\n    /// Resolution failed\n    ResolutionFailed { reason: ResolutionFailureReason },\n}",
+      "definition": "pub enum ResolverEvent {\n    /// High-level resolution flow started\n    Started {\n        runtime_targets: usize,\n        build_targets: usize,\n        local_targets: usize,\n    },\n\n    /// Resolution completed successfully\n    Completed {\n        total_packages: usize,\n        downloaded_packages: usize,\n        reused_packages: usize,\n        duration_ms: u64,\n    },\n\n    /// Resolution failed\n    Failed {\n        failure: super::FailureContext,\n        conflicting_packages: Vec<String>,\n    },\n}",
       "variants": [
         {
-          "name": "ResolutionStarted",
+          "name": "Started",
           "start_line": 8,
           "doc": [
             "High-level resolution flow started"
           ],
-          "definition": "ResolutionStarted {\n        runtime_deps: usize,\n        build_deps: usize,\n        local_files: usize,\n    },"
+          "definition": "Started {\n        runtime_targets: usize,\n        build_targets: usize,\n        local_targets: usize,\n    },"
         },
         {
-          "name": "ResolutionCompleted",
+          "name": "Completed",
           "start_line": 15,
           "doc": [
             "Resolution completed successfully"
           ],
-          "definition": "ResolutionCompleted {\n        total_packages: usize,\n        duration_ms: u64,\n    },"
+          "definition": "Completed {\n        total_packages: usize,\n        downloaded_packages: usize,\n        reused_packages: usize,\n        duration_ms: u64,\n    },"
         },
         {
-          "name": "ResolutionFailed",
-          "start_line": 21,
+          "name": "Failed",
+          "start_line": 23,
           "doc": [
             "Resolution failed"
           ],
-          "definition": "ResolutionFailed { reason: ResolutionFailureReason },"
+          "definition": "Failed {\n        failure: super::FailureContext,\n        conflicting_packages: Vec<String>,\n    },"
         }
       ]
     },
@@ -1144,7 +1144,7 @@
       "path": "crates/events/src/events/update.rs",
       "start_line": 8,
       "doc": [],
-      "definition": "pub enum UpdateEvent {\n    /// Update operation started\n    Started {\n        operation_type: UpdateOperationType,\n        packages_specified: Vec<String>,\n        check_all_packages: bool,\n        ignore_constraints: bool,\n    },\n\n    /// Update planning phase started\n    PlanningStarted {\n        packages_to_check: Vec<String>,\n        include_dependencies: bool,\n    },\n\n    /// Update operation completed\n    Completed {\n        operation_type: UpdateOperationType,\n        packages_updated: Vec<UpdateResult>,\n        packages_unchanged: Vec<String>,\n        total_duration: Duration,\n        space_difference: i64,\n    },\n\n    /// Update operation failed\n    Failed {\n        operation_type: UpdateOperationType,\n        failure: super::FailureContext,\n        packages_updated: Vec<UpdateResult>,\n        packages_failed: Vec<(String, String)>, // (package, error)\n    },\n\n    /// Batch update started\n    BatchStarted {\n        packages: Vec<String>,\n        operation_id: String,\n        concurrent_limit: usize,\n    },\n\n    /// Batch update completed\n    BatchCompleted {\n        operation_id: String,\n        successful_updates: Vec<UpdateResult>,\n        failed_updates: Vec<(String, String)>,\n        skipped_packages: Vec<String>,\n        total_duration: Duration,\n        total_size_change: i64,\n    },\n}",
+      "definition": "pub enum UpdateEvent {\n    /// Update operation started\n    Started {\n        operation: UpdateOperationType,\n        requested: Vec<String>,\n        total_targets: usize,\n    },\n\n    /// Update operation completed\n    Completed {\n        operation: UpdateOperationType,\n        updated: Vec<UpdateResult>,\n        skipped: usize,\n        duration: Duration,\n        size_difference: i64,\n    },\n\n    /// Update operation failed\n    Failed {\n        operation: UpdateOperationType,\n        failure: super::FailureContext,\n        updated: Vec<UpdateResult>,\n        failed: Vec<String>,\n    },\n}",
       "variants": [
         {
           "name": "Started",
@@ -1152,47 +1152,23 @@
           "doc": [
             "Update operation started"
           ],
-          "definition": "Started {\n        operation_type: UpdateOperationType,\n        packages_specified: Vec<String>,\n        check_all_packages: bool,\n        ignore_constraints: bool,\n    },"
-        },
-        {
-          "name": "PlanningStarted",
-          "start_line": 18,
-          "doc": [
-            "Update planning phase started"
-          ],
-          "definition": "PlanningStarted {\n        packages_to_check: Vec<String>,\n        include_dependencies: bool,\n    },"
+          "definition": "Started {\n        operation: UpdateOperationType,\n        requested: Vec<String>,\n        total_targets: usize,\n    },"
         },
         {
           "name": "Completed",
-          "start_line": 24,
+          "start_line": 17,
           "doc": [
             "Update operation completed"
           ],
-          "definition": "Completed {\n        operation_type: UpdateOperationType,\n        packages_updated: Vec<UpdateResult>,\n        packages_unchanged: Vec<String>,\n        total_duration: Duration,\n        space_difference: i64,\n    },"
+          "definition": "Completed {\n        operation: UpdateOperationType,\n        updated: Vec<UpdateResult>,\n        skipped: usize,\n        duration: Duration,\n        size_difference: i64,\n    },"
         },
         {
           "name": "Failed",
-          "start_line": 33,
+          "start_line": 26,
           "doc": [
             "Update operation failed"
           ],
-          "definition": "Failed {\n        operation_type: UpdateOperationType,\n        failure: super::FailureContext,\n        packages_updated: Vec<UpdateResult>,\n        packages_failed: Vec<(String, String)>, // (package, error)\n    },"
-        },
-        {
-          "name": "BatchStarted",
-          "start_line": 41,
-          "doc": [
-            "Batch update started"
-          ],
-          "definition": "BatchStarted {\n        packages: Vec<String>,\n        operation_id: String,\n        concurrent_limit: usize,\n    },"
-        },
-        {
-          "name": "BatchCompleted",
-          "start_line": 48,
-          "doc": [
-            "Batch update completed"
-          ],
-          "definition": "BatchCompleted {\n        operation_id: String,\n        successful_updates: Vec<UpdateResult>,\n        failed_updates: Vec<(String, String)>,\n        skipped_packages: Vec<String>,\n        total_duration: Duration,\n        total_size_change: i64,\n    },"
+          "definition": "Failed {\n        operation: UpdateOperationType,\n        failure: super::FailureContext,\n        updated: Vec<UpdateResult>,\n        failed: Vec<String>,\n    },"
         }
       ]
     }

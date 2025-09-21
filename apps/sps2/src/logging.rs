@@ -72,6 +72,74 @@ pub fn log_event_with_tracing(message: &EventMessage) {
             }
         }
 
+        AppEvent::Resolver(resolver_event) => {
+            use sps2_events::ResolverEvent;
+            match resolver_event {
+                ResolverEvent::Started {
+                    runtime_targets,
+                    build_targets,
+                    local_targets,
+                } => {
+                    info!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        runtime_targets,
+                        build_targets,
+                        local_targets,
+                        "Dependency resolution started"
+                    );
+                }
+                ResolverEvent::Completed {
+                    total_packages,
+                    downloaded_packages,
+                    reused_packages,
+                    duration_ms,
+                } => {
+                    info!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        total_packages,
+                        downloaded_packages,
+                        reused_packages,
+                        duration_ms,
+                        "Dependency resolution completed"
+                    );
+                }
+                ResolverEvent::Failed {
+                    failure,
+                    conflicting_packages,
+                } => {
+                    if failure.retryable {
+                        warn!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            retryable = failure.retryable,
+                            code = ?failure.code,
+                            message = %failure.message,
+                            hint = ?failure.hint,
+                            conflicts = ?conflicting_packages,
+                            "Dependency resolution failed"
+                        );
+                    } else {
+                        error!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            retryable = failure.retryable,
+                            code = ?failure.code,
+                            message = %failure.message,
+                            hint = ?failure.hint,
+                            conflicts = ?conflicting_packages,
+                            "Dependency resolution failed"
+                        );
+                    }
+                }
+            }
+        }
+
         // Install domain events
         AppEvent::Install(install_event) => {
             use sps2_events::InstallEvent;
@@ -292,48 +360,53 @@ pub fn log_event_with_tracing(message: &EventMessage) {
             use sps2_events::UpdateEvent;
             match update_event {
                 UpdateEvent::Started {
-                    operation_type,
-                    packages_specified,
-                    ..
+                    operation,
+                    requested,
+                    total_targets,
                 } => {
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
-                        operation = ?operation_type,
-                        packages = ?packages_specified,
+                        operation = ?operation,
+                        requested = ?requested,
+                        total_targets,
                         "Update operation started"
                     );
                 }
                 UpdateEvent::Completed {
-                    operation_type,
-                    packages_updated,
-                    total_duration,
-                    ..
+                    operation,
+                    updated,
+                    skipped,
+                    duration,
+                    size_difference,
                 } => {
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
-                        operation = ?operation_type,
-                        updated = packages_updated.len(),
-                        duration_ms = total_duration.as_millis(),
+                        operation = ?operation,
+                        updated = updated.len(),
+                        skipped,
+                        duration_ms = duration.as_millis(),
+                        size_difference,
                         "Update operation completed"
                     );
                 }
                 UpdateEvent::Failed {
-                    operation_type,
+                    operation,
                     failure,
-                    packages_failed,
-                    ..
+                    updated,
+                    failed,
                 } => {
                     if failure.retryable {
                         warn!(
                             source = meta.source.as_str(),
                             event_id = %meta.event_id,
                             correlation = ?meta.correlation_id,
-                            operation = ?operation_type,
-                            failed = packages_failed.len(),
+                            operation = ?operation,
+                            completed = updated.len(),
+                            failed = failed.len(),
                             code = ?failure.code,
                             message = %failure.message,
                             hint = ?failure.hint,
@@ -344,58 +417,15 @@ pub fn log_event_with_tracing(message: &EventMessage) {
                             source = meta.source.as_str(),
                             event_id = %meta.event_id,
                             correlation = ?meta.correlation_id,
-                            operation = ?operation_type,
-                            failed = packages_failed.len(),
+                            operation = ?operation,
+                            completed = updated.len(),
+                            failed = failed.len(),
                             code = ?failure.code,
                             message = %failure.message,
                             hint = ?failure.hint,
                             "Update operation failed"
                         );
                     }
-                }
-                UpdateEvent::PlanningStarted {
-                    packages_to_check, ..
-                } => {
-                    info!(
-                        source = meta.source.as_str(),
-                        event_id = %meta.event_id,
-                        correlation = ?meta.correlation_id,
-                        packages = packages_to_check.len(),
-                        "Update planning started"
-                    );
-                }
-                UpdateEvent::BatchStarted {
-                    operation_id,
-                    packages,
-                    concurrent_limit,
-                } => {
-                    info!(
-                        source = meta.source.as_str(),
-                        event_id = %meta.event_id,
-                        correlation = ?meta.correlation_id,
-                        operation_id = %operation_id,
-                        packages = packages.len(),
-                        concurrent_limit,
-                        "Update batch started"
-                    );
-                }
-                UpdateEvent::BatchCompleted {
-                    operation_id,
-                    successful_updates,
-                    failed_updates,
-                    total_duration,
-                    ..
-                } => {
-                    info!(
-                        source = meta.source.as_str(),
-                        event_id = %meta.event_id,
-                        correlation = ?meta.correlation_id,
-                        operation_id = %operation_id,
-                        successful = successful_updates.len(),
-                        failed = failed_updates.len(),
-                        duration_ms = total_duration.as_millis(),
-                        "Update batch completed"
-                    );
                 }
             }
         }
