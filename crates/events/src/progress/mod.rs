@@ -125,7 +125,13 @@ pub mod patterns {
                 },
             ];
 
-            self.create_tracker_with_phases(id.clone(), operation, config.total_bytes, phases);
+            self.create_tracker_with_phases(
+                id.clone(),
+                operation,
+                config.total_bytes,
+                phases,
+                None,
+            );
             id
         }
 
@@ -176,6 +182,7 @@ pub mod patterns {
                 config.operation_name,
                 Some(config.package_count),
                 phases,
+                None,
             );
             id
         }
@@ -210,6 +217,7 @@ pub mod patterns {
                 config.operation_name,
                 Some(config.package_count),
                 phases,
+                None,
             );
             id
         }
@@ -244,6 +252,7 @@ pub mod patterns {
                 config.operation_name,
                 Some(config.package_count),
                 phases,
+                None,
             );
             id
         }
@@ -278,6 +287,7 @@ pub mod patterns {
                 config.operation_name,
                 Some(config.sources_count),
                 phases,
+                None,
             );
             id
         }

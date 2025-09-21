@@ -2,7 +2,7 @@
 
 use crate::logging::log_event_with_tracing;
 use console::{style, Term};
-use sps2_events::{AppEvent, EventMessage, EventMeta, ProgressEvent};
+use sps2_events::{events::UpdateOperationType, AppEvent, EventMessage, EventMeta, ProgressEvent};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -210,9 +210,9 @@ impl EventHandler {
                     DownloadEvent::Failed {
                         url,
                         package,
-                        retryable,
+                        failure,
                     } => {
-                        self.handle_download_failed(&meta, &url, package.as_deref(), retryable);
+                        self.handle_download_failed(&meta, &url, package.as_deref(), &failure);
                     }
                 }
             }
@@ -244,15 +244,23 @@ impl EventHandler {
                     InstallEvent::Failed {
                         package,
                         version,
-                        retryable,
+                        failure,
                     } => {
+                        let sps2_events::FailureContext {
+                            code: _,
+                            message: failure_message,
+                            hint,
+                            retryable,
+                        } = failure;
+
                         let retry_text = if retryable { " (retryable)" } else { "" };
-                        self.show_operation(
-                            &meta,
-                            format!("Failed to install {package} {version}{retry_text}"),
-                            "install",
-                            EventSeverity::Error,
+                        let mut message = format!(
+                            "Failed to install {package} {version}{retry_text}: {failure_message}"
                         );
+                        if let Some(hint) = hint.as_ref() {
+                            message.push_str(&format!(" (hint: {hint})"));
+                        }
+                        self.show_operation(&meta, message, "install", EventSeverity::Error);
                     }
                 }
             }
@@ -528,15 +536,36 @@ impl EventHandler {
                     UninstallEvent::Failed {
                         package,
                         version,
-                        retryable,
+                        failure,
                     } => {
-                        let retry_text = if retryable { " (retryable)" } else { "" };
-                        self.show_operation(
-                            &meta,
-                            format!("Failed to uninstall {package} {version}{retry_text}"),
-                            "uninstall",
-                            EventSeverity::Error,
+                        let name = package.as_deref().unwrap_or("<unknown>");
+                        let version_text = version
+                            .as_ref()
+                            .map(ToString::to_string)
+                            .unwrap_or_else(|| "<unknown>".to_string());
+                        let retry_suffix = if failure.retryable {
+                            " (retryable)"
+                        } else {
+                            ""
+                        };
+                        let code_prefix = failure
+                            .code
+                            .as_deref()
+                            .map(|c| format!("[{c}] "))
+                            .unwrap_or_default();
+                        let mut message = format!(
+                            "Failed to uninstall {name} {version_text}{retry_suffix}: {code_prefix}{}",
+                            failure.message
                         );
+                        if let Some(hint) = &failure.hint {
+                            message.push_str(&format!(" (hint: {hint})"));
+                        }
+                        let severity = if failure.retryable {
+                            EventSeverity::Warning
+                        } else {
+                            EventSeverity::Error
+                        };
+                        self.show_operation(&meta, message, "uninstall", severity);
                     }
                 }
             }
@@ -600,6 +629,48 @@ impl EventHandler {
                             );
                         }
                     }
+                    UpdateEvent::Failed {
+                        operation_type,
+                        failure,
+                        packages_failed,
+                        ..
+                    } => {
+                        let op = match operation_type {
+                            UpdateOperationType::Update => "update",
+                            UpdateOperationType::Upgrade => "upgrade",
+                            UpdateOperationType::Downgrade => "downgrade",
+                            UpdateOperationType::Reinstall => "reinstall",
+                        };
+
+                        let code_prefix = failure
+                            .code
+                            .as_deref()
+                            .map(|c| format!("[{c}] "))
+                            .unwrap_or_default();
+                        let mut message = format!("{op} failed: {code_prefix}{}", failure.message);
+                        if !packages_failed.is_empty() {
+                            let sample = packages_failed
+                                .iter()
+                                .take(3)
+                                .map(|(pkg, _)| pkg.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            message.push_str(&format!(" • packages: {sample}"));
+                            if packages_failed.len() > 3 {
+                                message
+                                    .push_str(&format!(" (+{} more)", packages_failed.len() - 3));
+                            }
+                        }
+                        if let Some(hint) = &failure.hint {
+                            message.push_str(&format!(" (hint: {hint})"));
+                        }
+                        let severity = if failure.retryable {
+                            EventSeverity::Warning
+                        } else {
+                            EventSeverity::Error
+                        };
+                        self.show_operation(&meta, message, op, severity);
+                    }
                     UpdateEvent::PlanningStarted {
                         packages_to_check, ..
                     } => {
@@ -661,18 +732,15 @@ impl EventHandler {
                         };
                         self.show_operation(&meta, message.to_string(), icon, severity);
                     }
-                    GeneralEvent::OperationFailed {
-                        operation,
-                        code,
-                        message,
-                        hint,
-                        retryable,
-                    } => {
-                        let mut text = format!("[{code}] {message}");
-                        if let Some(hint) = hint {
+                    GeneralEvent::OperationFailed { operation, failure } => {
+                        let mut text = match &failure.code {
+                            Some(code) => format!("[{code}] {}", failure.message),
+                            None => failure.message.clone(),
+                        };
+                        if let Some(hint) = &failure.hint {
                             text.push_str(&format!(" (hint: {hint})"));
                         }
-                        let severity = if retryable {
+                        let severity = if failure.retryable {
                             EventSeverity::Warning
                         } else {
                             EventSeverity::Error
@@ -1118,36 +1186,45 @@ impl EventHandler {
             }
             ProgressEvent::Failed {
                 id,
-                code,
-                message,
-                hint,
-                retryable,
+                failure,
                 partial_duration,
                 ..
             } => {
                 let message = if let Some(state) = self.progress_states.remove(&id) {
                     format!(
-                        "{} failed after {}: [{}] {}{}",
+                        "{} failed after {}: {}{}{}",
                         state.operation,
                         format_duration(partial_duration),
-                        code,
-                        message,
-                        hint.as_ref()
+                        failure
+                            .code
+                            .as_ref()
+                            .map(|c| format!("[{c}] "))
+                            .unwrap_or_default(),
+                        failure.message,
+                        failure
+                            .hint
+                            .as_ref()
                             .map(|h| format!(" (hint: {h})"))
                             .unwrap_or_default()
                     )
                 } else {
                     format!(
-                        "Progress {id} failed after {}: [{}] {}{}",
+                        "Progress {id} failed after {}: {}{}{}",
                         format_duration(partial_duration),
-                        code,
-                        message,
-                        hint.as_ref()
+                        failure
+                            .code
+                            .as_ref()
+                            .map(|c| format!("[{c}] "))
+                            .unwrap_or_default(),
+                        failure.message,
+                        failure
+                            .hint
+                            .as_ref()
                             .map(|h| format!(" (hint: {h})"))
                             .unwrap_or_default()
                     )
                 };
-                let severity = if retryable {
+                let severity = if failure.retryable {
                     EventSeverity::Warning
                 } else {
                     EventSeverity::Error
@@ -1199,15 +1276,6 @@ impl EventHandler {
                     self.show_meta_message(
                         meta,
                         format!("Progress {parent_id} -> child {child_id} {status}"),
-                        EventSeverity::Debug,
-                    );
-                }
-            }
-            other => {
-                if self.debug_enabled {
-                    self.show_meta_message(
-                        meta,
-                        format!("Progress event (debug): {other:?}"),
                         EventSeverity::Debug,
                     );
                 }
@@ -1322,17 +1390,23 @@ impl EventHandler {
         meta: &EventMeta,
         url: &str,
         package: Option<&str>,
-        retryable: bool,
+        failure: &sps2_events::FailureContext,
     ) {
         let filename = url.split('/').next_back().unwrap_or(url);
         let name = package.unwrap_or(filename);
-        let retry_hint = if retryable { " (retryable)" } else { "" };
-        self.show_operation(
-            meta,
-            format!("Download failed for {name}{retry_hint}"),
-            "download",
-            EventSeverity::Error,
+        let retry_hint = if failure.retryable {
+            " (retryable)"
+        } else {
+            ""
+        };
+        let mut text = format!(
+            "Download failed for {name}{retry_hint}: {}",
+            failure.message
         );
+        if let Some(hint) = &failure.hint {
+            text.push_str(&format!(" (hint: {hint})"));
+        }
+        self.show_operation(meta, text, "download", EventSeverity::Error);
     }
 
     /// Show check mode preview

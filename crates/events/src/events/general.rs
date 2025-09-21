@@ -32,10 +32,7 @@ pub enum GeneralEvent {
     /// Generic operation failure with error details
     OperationFailed {
         operation: String,
-        code: String,
-        message: String,
-        hint: Option<String>,
-        retryable: bool,
+        failure: super::FailureContext,
     },
 
     /// Check mode preview of planned action
@@ -106,19 +103,10 @@ impl GeneralEvent {
     }
 
     /// Create an operation failed event with structured error fields
-    pub fn operation_failed(
-        operation: impl Into<String>,
-        code: impl Into<String>,
-        message: impl Into<String>,
-        hint: Option<String>,
-        retryable: bool,
-    ) -> Self {
+    pub fn operation_failed(operation: impl Into<String>, failure: super::FailureContext) -> Self {
         Self::OperationFailed {
             operation: operation.into(),
-            code: code.into(),
-            message: message.into(),
-            hint,
-            retryable,
+            failure,
         }
     }
 }

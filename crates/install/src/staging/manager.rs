@@ -5,7 +5,7 @@
 
 use crate::{validate_sp_file, ValidationResult};
 use sps2_errors::{Error, InstallError, UserFacingError};
-use sps2_events::{AppEvent, EventEmitter, ProgressEvent};
+use sps2_events::{AppEvent, EventEmitter, FailureContext, ProgressEvent};
 use sps2_resolver::PackageId;
 use sps2_resources::ResourceManager;
 use sps2_store::{extract_package_with_events, PackageStore};
@@ -29,16 +29,11 @@ fn emit_progress_failure<E: EventEmitter>(
     error: &impl UserFacingError,
     completed_items: u64,
 ) {
-    let message = error.user_message().into_owned();
-    let hint = error.user_hint().map(str::to_string);
-    let retryable = error.is_retryable();
+    let failure = FailureContext::from_error(error);
 
     emitter.emit(AppEvent::Progress(ProgressEvent::Failed {
         id: progress_id.to_string(),
-        code: String::new(),
-        message,
-        hint,
-        retryable,
+        failure,
         completed_items,
         partial_duration: std::time::Duration::default(),
     }));

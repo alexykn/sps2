@@ -77,4 +77,25 @@ impl UserFacingError for OpsError {
     fn is_retryable(&self) -> bool {
         matches!(self, Self::NoPackagesSpecified | Self::NoPreviousState)
     }
+
+    fn user_code(&self) -> Option<&'static str> {
+        let code = match self {
+            Self::OperationFailed { .. } => "ops.operation_failed",
+            Self::MissingComponent { .. } => "ops.missing_component",
+            Self::InvalidOperation { .. } => "ops.invalid_operation",
+            Self::SerializationError { .. } => "ops.serialization_error",
+            Self::NoPackagesSpecified => "ops.no_packages_specified",
+            Self::RecipeNotFound { .. } => "ops.recipe_not_found",
+            Self::InvalidRecipe { .. } => "ops.invalid_recipe",
+            Self::PackageNotFound { .. } => "ops.package_not_found",
+            Self::NoPreviousState => "ops.no_previous_state",
+            Self::StateNotFound { .. } => "ops.state_not_found",
+            Self::RepoSyncFailed { .. } => "ops.repo_sync_failed",
+            Self::SelfUpdateFailed { .. } => "ops.self_update_failed",
+            Self::VerificationFailed { .. } => "ops.verification_failed",
+            Self::StagingDirectoryNotFound { .. } => "ops.staging_directory_not_found",
+            Self::InvalidStagingDirectory { .. } => "ops.invalid_staging_directory",
+        };
+        Some(code)
+    }
 }

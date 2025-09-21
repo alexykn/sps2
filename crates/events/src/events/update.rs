@@ -32,7 +32,7 @@ pub enum UpdateEvent {
     /// Update operation failed
     Failed {
         operation_type: UpdateOperationType,
-        error: String,
+        failure: super::FailureContext,
         packages_updated: Vec<UpdateResult>,
         packages_failed: Vec<(String, String)>, // (package, error)
     },

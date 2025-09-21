@@ -45,4 +45,15 @@ impl UserFacingError for VersionError {
     fn is_retryable(&self) -> bool {
         false
     }
+
+    fn user_code(&self) -> Option<&'static str> {
+        let code = match self {
+            Self::InvalidVersion { .. } => "version.invalid_version",
+            Self::InvalidConstraint { .. } => "version.invalid_constraint",
+            Self::IncompatibleVersion { .. } => "version.incompatible_version",
+            Self::NoSatisfyingVersion { .. } => "version.no_satisfying_version",
+            Self::ParseError { .. } => "version.parse_error",
+        };
+        Some(code)
+    }
 }

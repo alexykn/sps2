@@ -41,7 +41,8 @@ pub async fn uninstall(ctx: &OpsCtx, package_names: &[String]) -> Result<Install
         package_count: package_names.len() as u64,
     };
     let progress_id = progress_manager.create_uninstall_tracker(uninstall_config);
-    progress_manager.emit_started(&progress_id, ctx);
+    let correlation = ctx.current_correlation();
+    progress_manager.emit_started(&progress_id, ctx, correlation.as_deref());
 
     // Create installer
     let config = InstallConfig::default();

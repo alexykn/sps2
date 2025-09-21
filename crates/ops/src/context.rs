@@ -98,6 +98,12 @@ impl OpsCtx {
         self.push_correlation(identifier)
     }
 
+    /// Get the currently active correlation identifier, if any.
+    #[must_use]
+    pub fn current_correlation(&self) -> Option<String> {
+        self.correlation_id.borrow().clone()
+    }
+
     // No public constructor - use OpsContextBuilder instead
 
     /// Run state verification if guard is enabled

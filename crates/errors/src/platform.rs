@@ -125,6 +125,24 @@ impl UserFacingError for PlatformError {
                 | Self::PermissionDenied { .. }
         )
     }
+
+    fn user_code(&self) -> Option<&'static str> {
+        let code = match self {
+            Self::BinaryOperationFailed { .. } => "platform.binary_operation_failed",
+            Self::FilesystemOperationFailed { .. } => "platform.filesystem_operation_failed",
+            Self::ProcessExecutionFailed { .. } => "platform.process_execution_failed",
+            Self::CapabilityUnavailable { .. } => "platform.capability_unavailable",
+            Self::CommandNotFound { .. } => "platform.command_not_found",
+            Self::InvalidBinaryFormat { .. } => "platform.invalid_binary_format",
+            Self::SigningFailed { .. } => "platform.signing_failed",
+            Self::PermissionDenied { .. } => "platform.permission_denied",
+            Self::ToolNotFound { .. } => "platform.tool_not_found",
+            Self::MultipleToolsNotFound { .. } => "platform.multiple_tools_not_found",
+            Self::CommandFailed { .. } => "platform.command_failed",
+            Self::ConfigError { .. } => "platform.config_error",
+        };
+        Some(code)
+    }
 }
 
 impl From<PlatformError> for StorageError {

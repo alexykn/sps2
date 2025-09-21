@@ -27,6 +27,9 @@ impl fmt::Display for CliError {
             CliError::Ops(e) => {
                 let message = e.user_message();
                 write!(f, "{message}")?;
+                if let Some(code) = e.user_code() {
+                    write!(f, "\n  Code: {code}")?;
+                }
                 if let Some(hint) = e.user_hint() {
                     write!(f, "\n  Hint: {hint}")?;
                 }

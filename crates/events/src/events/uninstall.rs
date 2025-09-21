@@ -17,8 +17,8 @@ pub enum UninstallEvent {
 
     /// Uninstallation failed
     Failed {
-        package: String,
-        version: Version,
-        retryable: bool,
+        package: Option<String>,
+        version: Option<Version>,
+        failure: super::FailureContext,
     },
 }

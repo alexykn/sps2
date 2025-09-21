@@ -91,4 +91,25 @@ impl UserFacingError for PackageError {
             Self::ResolutionTimeout { .. } | Self::SourceNotAvailable { .. }
         )
     }
+
+    fn user_code(&self) -> Option<&'static str> {
+        let code = match self {
+            Self::NotFound { .. } => "package.not_found",
+            Self::Corrupted { .. } => "package.corrupted",
+            Self::MissingDependency { .. } => "package.missing_dependency",
+            Self::DependencyConflict { .. } => "package.dependency_conflict",
+            Self::CircularDependency { .. } => "package.circular_dependency",
+            Self::InvalidManifest { .. } => "package.invalid_manifest",
+            Self::SignatureVerificationFailed { .. } => "package.signature_verification_failed",
+            Self::UnsignedPackage => "package.unsigned",
+            Self::InvalidFormat { .. } => "package.invalid_format",
+            Self::SbomError { .. } => "package.sbom_error",
+            Self::AlreadyInstalled { .. } => "package.already_installed",
+            Self::DependencyCycle { .. } => "package.dependency_cycle",
+            Self::IncompatibleFormat { .. } => "package.incompatible_format",
+            Self::ResolutionTimeout { .. } => "package.resolution_timeout",
+            Self::SourceNotAvailable { .. } => "package.source_not_available",
+        };
+        Some(code)
+    }
 }

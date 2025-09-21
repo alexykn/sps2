@@ -91,4 +91,25 @@ impl UserFacingError for NetworkError {
                 | Self::StreamInterrupted { .. }
         )
     }
+
+    fn user_code(&self) -> Option<&'static str> {
+        let code = match self {
+            Self::Timeout { .. } => "network.timeout",
+            Self::DownloadFailed(_) => "network.download_failed",
+            Self::ConnectionRefused(_) => "network.connection_refused",
+            Self::InvalidUrl(_) => "network.invalid_url",
+            Self::HttpError { .. } => "network.http_error",
+            Self::ChecksumMismatch { .. } => "network.checksum_mismatch",
+            Self::TlsError(_) => "network.tls_error",
+            Self::NetworkUnavailable => "network.unavailable",
+            Self::RateLimited { .. } => "network.rate_limited",
+            Self::PartialContentNotSupported => "network.partial_content_not_supported",
+            Self::ContentLengthMismatch { .. } => "network.content_length_mismatch",
+            Self::RangeRequestFailed { .. } => "network.range_request_failed",
+            Self::FileSizeExceeded { .. } => "network.file_size_exceeded",
+            Self::StreamInterrupted { .. } => "network.stream_interrupted",
+            Self::UnsupportedProtocol { .. } => "network.unsupported_protocol",
+        };
+        Some(code)
+    }
 }

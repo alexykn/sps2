@@ -193,4 +193,54 @@ impl UserFacingError for BuildError {
             Self::FetchFailed { .. } | Self::Timeout { .. } | Self::BuildTimeout { .. }
         )
     }
+
+    fn user_code(&self) -> Option<&'static str> {
+        let code = match self {
+            Self::Failed { .. } => "build.failed",
+            Self::RecipeError { .. } => "build.recipe_error",
+            Self::MissingBuildDep { .. } => "build.missing_build_dep",
+            Self::FetchFailed { .. } => "build.fetch_failed",
+            Self::PatchFailed { .. } => "build.patch_failed",
+            Self::ConfigureFailed { .. } => "build.configure_failed",
+            Self::CompileFailed { .. } => "build.compile_failed",
+            Self::InstallFailed { .. } => "build.install_failed",
+            Self::SandboxViolation { .. } => "build.sandbox_violation",
+            Self::NetworkAccessDenied => "build.network_access_denied",
+            Self::Timeout { .. } => "build.timeout",
+            Self::HashMismatch { .. } => "build.hash_mismatch",
+            Self::SbomError { .. } => "build.sbom_error",
+            Self::BuildTimeout { .. } => "build.build_timeout",
+            Self::ExtractionFailed { .. } => "build.extraction_failed",
+            Self::NetworkDisabled { .. } => "build.network_disabled",
+            Self::InvalidUrl { .. } => "build.invalid_url",
+            Self::SigningError { .. } => "build.signing_error",
+            Self::NoBuildSystemDetected { .. } => "build.no_build_system_detected",
+            Self::DependencyConflict { .. } => "build.dependency_conflict",
+            Self::CompilationFailed { .. } => "build.compilation_failed",
+            Self::TestsFailed { .. } => "build.tests_failed",
+            Self::QualityAssuranceFailed { .. } => "build.quality_assurance_failed",
+            Self::LinterError { .. } => "build.linter_error",
+            Self::SecurityVulnerability { .. } => "build.security_vulnerability",
+            Self::PolicyViolation { .. } => "build.policy_violation",
+            Self::LicenseComplianceError { .. } => "build.license_compliance_error",
+            Self::DraftMetadataFailed { .. } => "build.draft_metadata_failed",
+            Self::DraftTemplateFailed { .. } => "build.draft_template_failed",
+            Self::DraftSourceFailed { .. } => "build.draft_source_failed",
+            Self::UnsupportedArchiveFormat { .. } => "build.unsupported_archive_format",
+            Self::GitCloneFailed { .. } => "build.git_clone_failed",
+            Self::ValidationFailed { .. } => "build.validation_failed",
+            Self::DangerousCommand { .. } => "build.dangerous_command",
+            Self::InvalidPath { .. } => "build.invalid_path",
+            Self::InvalidUrlValidation { .. } => "build.invalid_url_validation",
+            Self::CommandParseError { .. } => "build.command_parse_error",
+            Self::PathEscapeAttempt { .. } => "build.path_escape_attempt",
+            Self::DangerousWrite { .. } => "build.dangerous_write",
+            Self::DangerousExecution { .. } => "build.dangerous_execution",
+            Self::SymlinkLoop { .. } => "build.symlink_loop",
+            Self::TooManySymlinks { .. } => "build.too_many_symlinks",
+            Self::PathTraversalAttempt { .. } => "build.path_traversal_attempt",
+            Self::DisallowedCommand { .. } => "build.disallowed_command",
+        };
+        Some(code)
+    }
 }

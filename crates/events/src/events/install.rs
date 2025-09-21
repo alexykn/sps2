@@ -18,6 +18,6 @@ pub enum InstallEvent {
     Failed {
         package: String,
         version: Version,
-        retryable: bool,
+        failure: super::FailureContext,
     },
 }

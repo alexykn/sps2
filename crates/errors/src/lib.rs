@@ -172,6 +172,11 @@ pub trait UserFacingError {
     fn is_retryable(&self) -> bool {
         false
     }
+
+    /// Stable error code for analytics / structured reporting.
+    fn user_code(&self) -> Option<&'static str> {
+        None
+    }
 }
 
 impl UserFacingError for Error {
@@ -202,6 +207,27 @@ impl UserFacingError for Error {
             Error::Ops(err) => err.is_retryable(),
             Error::Io { .. } => true,
             _ => false,
+        }
+    }
+
+    fn user_code(&self) -> Option<&'static str> {
+        match self {
+            Error::Network(err) => err.user_code(),
+            Error::Storage(err) => err.user_code(),
+            Error::State(err) => err.user_code(),
+            Error::Package(err) => err.user_code(),
+            Error::Version(err) => err.user_code(),
+            Error::Config(err) => err.user_code(),
+            Error::Build(err) => err.user_code(),
+            Error::Audit(err) => err.user_code(),
+            Error::Install(err) => err.user_code(),
+            Error::Ops(err) => err.user_code(),
+            Error::Guard(err) => err.user_code(),
+            Error::Platform(err) => err.user_code(),
+            Error::Signing(err) => err.user_code(),
+            Error::Internal(_) => Some("error.internal"),
+            Error::Cancelled => Some("error.cancelled"),
+            Error::Io { .. } => Some("error.io"),
         }
     }
 }

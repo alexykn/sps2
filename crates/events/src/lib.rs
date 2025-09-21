@@ -35,6 +35,7 @@ pub use events::{
     BuildSystem,
     DependencyConflictType,
     DownloadEvent,
+    FailureContext,
     GeneralEvent,
     GuardEvent,
     // Support types that don't conflict
@@ -165,16 +166,9 @@ pub trait EventEmitter {
     }
 
     /// Emit an operation failed event
-    fn emit_operation_failed(
-        &self,
-        operation: impl Into<String>,
-        code: impl Into<String>,
-        message: impl Into<String>,
-        hint: Option<String>,
-        retryable: bool,
-    ) {
+    fn emit_operation_failed(&self, operation: impl Into<String>, failure: events::FailureContext) {
         self.emit(AppEvent::General(GeneralEvent::operation_failed(
-            operation, code, message, hint, retryable,
+            operation, failure,
         )));
     }
 
@@ -264,17 +258,8 @@ pub trait EventEmitter {
     }
 
     /// Emit a progress failed event
-    fn emit_progress_failed(
-        &self,
-        id: impl Into<String>,
-        code: impl Into<String>,
-        message: impl Into<String>,
-        hint: Option<String>,
-        retryable: bool,
-    ) {
-        self.emit(AppEvent::Progress(ProgressEvent::failed(
-            id, code, message, hint, retryable,
-        )));
+    fn emit_progress_failed(&self, id: impl Into<String>, failure: events::FailureContext) {
+        self.emit(AppEvent::Progress(ProgressEvent::failed(id, failure)));
     }
 }
 

@@ -54,7 +54,7 @@ pub fn log_event_with_tracing(message: &EventMessage) {
                 DownloadEvent::Failed {
                     url,
                     package,
-                    retryable,
+                    failure,
                 } => {
                     error!(
                         source = meta.source.as_str(),
@@ -62,7 +62,10 @@ pub fn log_event_with_tracing(message: &EventMessage) {
                         correlation = ?meta.correlation_id,
                         url = %url,
                         package = ?package,
-                        retryable = retryable,
+                        retryable = failure.retryable,
+                        code = ?failure.code,
+                        message = %failure.message,
+                        hint = ?failure.hint,
                         "Download failed"
                     );
                 }
@@ -101,7 +104,7 @@ pub fn log_event_with_tracing(message: &EventMessage) {
                 InstallEvent::Failed {
                     package,
                     version,
-                    retryable,
+                    failure,
                 } => {
                     error!(
                         source = meta.source.as_str(),
@@ -109,7 +112,10 @@ pub fn log_event_with_tracing(message: &EventMessage) {
                         correlation = ?meta.correlation_id,
                         package = %package,
                         version = %version,
-                        retryable = retryable,
+                        retryable = failure.retryable,
+                        code = ?failure.code,
+                        message = %failure.message,
+                        hint = ?failure.hint,
                         "Package installation failed"
                     );
                 }
@@ -148,17 +154,36 @@ pub fn log_event_with_tracing(message: &EventMessage) {
                 UninstallEvent::Failed {
                     package,
                     version,
-                    retryable,
+                    failure,
                 } => {
-                    error!(
-                        source = meta.source.as_str(),
-                        event_id = %meta.event_id,
-                        correlation = ?meta.correlation_id,
-                        package = %package,
-                        version = %version,
-                        retryable = retryable,
-                        "Package uninstallation failed"
-                    );
+                    let package_ref = package.as_deref();
+                    if failure.retryable {
+                        warn!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            package = ?package_ref,
+                            version = ?version,
+                            retryable = failure.retryable,
+                            code = ?failure.code,
+                            message = %failure.message,
+                            hint = ?failure.hint,
+                            "Package uninstallation failed"
+                        );
+                    } else {
+                        error!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            package = ?package_ref,
+                            version = ?version,
+                            retryable = failure.retryable,
+                            code = ?failure.code,
+                            message = %failure.message,
+                            hint = ?failure.hint,
+                            "Package uninstallation failed"
+                        );
+                    }
                 }
             }
         }
@@ -262,6 +287,119 @@ pub fn log_event_with_tracing(message: &EventMessage) {
             }
         }
 
+        // Update/upgrade events
+        AppEvent::Update(update_event) => {
+            use sps2_events::UpdateEvent;
+            match update_event {
+                UpdateEvent::Started {
+                    operation_type,
+                    packages_specified,
+                    ..
+                } => {
+                    info!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        operation = ?operation_type,
+                        packages = ?packages_specified,
+                        "Update operation started"
+                    );
+                }
+                UpdateEvent::Completed {
+                    operation_type,
+                    packages_updated,
+                    total_duration,
+                    ..
+                } => {
+                    info!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        operation = ?operation_type,
+                        updated = packages_updated.len(),
+                        duration_ms = total_duration.as_millis(),
+                        "Update operation completed"
+                    );
+                }
+                UpdateEvent::Failed {
+                    operation_type,
+                    failure,
+                    packages_failed,
+                    ..
+                } => {
+                    if failure.retryable {
+                        warn!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            operation = ?operation_type,
+                            failed = packages_failed.len(),
+                            code = ?failure.code,
+                            message = %failure.message,
+                            hint = ?failure.hint,
+                            "Update operation failed"
+                        );
+                    } else {
+                        error!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            operation = ?operation_type,
+                            failed = packages_failed.len(),
+                            code = ?failure.code,
+                            message = %failure.message,
+                            hint = ?failure.hint,
+                            "Update operation failed"
+                        );
+                    }
+                }
+                UpdateEvent::PlanningStarted {
+                    packages_to_check, ..
+                } => {
+                    info!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        packages = packages_to_check.len(),
+                        "Update planning started"
+                    );
+                }
+                UpdateEvent::BatchStarted {
+                    operation_id,
+                    packages,
+                    concurrent_limit,
+                } => {
+                    info!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        operation_id = %operation_id,
+                        packages = packages.len(),
+                        concurrent_limit,
+                        "Update batch started"
+                    );
+                }
+                UpdateEvent::BatchCompleted {
+                    operation_id,
+                    successful_updates,
+                    failed_updates,
+                    total_duration,
+                    ..
+                } => {
+                    info!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        operation_id = %operation_id,
+                        successful = successful_updates.len(),
+                        failed = failed_updates.len(),
+                        duration_ms = total_duration.as_millis(),
+                        "Update batch completed"
+                    );
+                }
+            }
+        }
+
         // General domain events
         AppEvent::General(general_event) => {
             use sps2_events::GeneralEvent;
@@ -279,8 +417,8 @@ pub fn log_event_with_tracing(message: &EventMessage) {
                     if *success {
                         info!(
                             source = meta.source.as_str(),
-                        event_id = %meta.event_id,
-                        correlation = ?meta.correlation_id,
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
                             operation = %operation,
                             success = success,
                             "Operation completed successfully"
@@ -288,11 +426,38 @@ pub fn log_event_with_tracing(message: &EventMessage) {
                     } else {
                         warn!(
                             source = meta.source.as_str(),
-                        event_id = %meta.event_id,
-                        correlation = ?meta.correlation_id,
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
                             operation = %operation,
                             success = success,
                             "Operation completed with issues"
+                        );
+                    }
+                }
+                GeneralEvent::OperationFailed { operation, failure } => {
+                    if failure.retryable {
+                        warn!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            operation = %operation,
+                            retryable = failure.retryable,
+                            code = ?failure.code,
+                            message = %failure.message,
+                            hint = ?failure.hint,
+                            "Operation failed"
+                        );
+                    } else {
+                        error!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            operation = %operation,
+                            retryable = failure.retryable,
+                            code = ?failure.code,
+                            message = %failure.message,
+                            hint = ?failure.hint,
+                            "Operation failed"
                         );
                     }
                 }

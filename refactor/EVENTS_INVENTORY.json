@@ -6,51 +6,33 @@
       "name": "AcquisitionEvent",
       "module": "events::acquisition",
       "path": "crates/events/src/events/acquisition.rs",
-      "start_line": 9,
-      "doc": [
-        "Package acquisition domain events - higher-level package acquisition from various sources"
-      ],
-      "definition": "pub enum AcquisitionEvent {\n    /// Package acquisition completed successfully\n    Completed {\n        package: String,\n        version: Version,\n        source: AcquisitionSource,\n        final_path: PathBuf,\n        size: u64,\n        duration: Duration,\n        verification_passed: bool,\n    },\n\n    /// Package acquisition failed\n    Failed {\n        package: String,\n        version: Version,\n        source: AcquisitionSource,\n        error: String,\n        retry_possible: bool,\n        partial_download: bool,\n    },\n}",
+      "start_line": 7,
+      "doc": [],
+      "definition": "pub enum AcquisitionEvent {\n    /// Package acquisition started\n    Started {\n        package: String,\n        version: Version,\n        source: AcquisitionSource,\n    },\n\n    /// Package acquisition completed successfully\n    Completed {\n        package: String,\n        version: Version,\n        source: AcquisitionSource,\n        size: u64,\n    },\n\n    /// Package acquisition failed\n    Failed {\n        package: String,\n        version: Version,\n        source: AcquisitionSource,\n        retryable: bool,\n    },\n}",
       "variants": [
         {
+          "name": "Started",
+          "start_line": 9,
+          "doc": [
+            "Package acquisition started"
+          ],
+          "definition": "Started {\n        package: String,\n        version: Version,\n        source: AcquisitionSource,\n    },"
+        },
+        {
           "name": "Completed",
-          "start_line": 11,
+          "start_line": 16,
           "doc": [
             "Package acquisition completed successfully"
           ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: Version,\nsource: AcquisitionSource,\nfinal_path: PathBuf,\nsize: u64,\nduration: Duration,\nverification_passed: bool,\n}"
+          "definition": "Completed {\n        package: String,\n        version: Version,\n        source: AcquisitionSource,\n        size: u64,\n    },"
         },
         {
           "name": "Failed",
-          "start_line": 22,
+          "start_line": 24,
           "doc": [
             "Package acquisition failed"
           ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: Version,\nsource: AcquisitionSource,\nerror: String,\nretry_possible: bool,\npartial_download: bool,\n}"
-        }
-      ]
-    },
-    {
-      "kind": "enum",
-      "name": "AcquisitionSource",
-      "module": "events::acquisition",
-      "path": "crates/events/src/events/acquisition.rs",
-      "start_line": 35,
-      "doc": [
-        "Package acquisition sources"
-      ],
-      "definition": "pub enum AcquisitionSource {\n    /// Remote HTTP/HTTPS download\n    Remote { url: String, mirror_priority: u8 },\n}",
-      "variants": [
-        {
-          "name": "Remote",
-          "start_line": 37,
-          "doc": [
-            "Remote HTTP/HTTPS download"
-          ],
-          "attributes": [],
-          "payload": "{ url: String, mirror_priority: u8 }"
+          "definition": "Failed {\n        package: String,\n        version: Version,\n        source: AcquisitionSource,\n        retryable: bool,\n    },"
         }
       ]
     },
@@ -60,178 +42,64 @@
       "module": "events::audit",
       "path": "crates/events/src/events/audit.rs",
       "start_line": 6,
-      "doc": [
-        "Audit and vulnerability scanning events"
-      ],
-      "definition": "pub enum AuditEvent {\n    /// Audit scan starting\n    Starting { package_count: usize },\n\n    /// Audit package completed\n    PackageCompleted {\n        package: String,\n        vulnerabilities_found: usize,\n    },\n\n    /// Audit scan completed\n    Completed {\n        packages_scanned: usize,\n        vulnerabilities_found: usize,\n        critical_count: usize,\n    },\n\n    /// Vulnerability database update starting\n    VulnDbUpdateStarting,\n\n    /// Vulnerability database source update starting\n    VulnDbSourceUpdateStarting { source: String },\n\n    /// Vulnerability database source update completed\n    VulnDbSourceUpdateCompleted {\n        source: String,\n        vulnerabilities_added: usize,\n        duration_ms: u64,\n    },\n\n    /// Vulnerability database source update failed\n    VulnDbSourceUpdateFailed { source: String, error: String },\n\n    /// Vulnerability database update completed\n    VulnDbUpdateCompleted {\n        total_vulnerabilities: usize,\n        sources_updated: usize,\n        duration_ms: u64,\n    },\n}",
+      "doc": [],
+      "definition": "pub enum AuditEvent {\n    /// Audit scan started\n    ScanStarted { package_count: usize },\n\n    /// Audit of a single package completed\n    ScanPackageCompleted {\n        package: String,\n        vulnerabilities_found: usize,\n    },\n\n    /// Audit scan completed\n    ScanCompleted {\n        packages_scanned: usize,\n        vulnerabilities_found: usize,\n        critical_count: usize,\n    },\n\n    /// Audit scan failed\n    ScanFailed { retryable: bool },\n\n    /// Vulnerability database update started\n    VulnDbUpdateStarted,\n\n    /// Vulnerability database update completed\n    VulnDbUpdateCompleted {\n        total_vulnerabilities: usize,\n        sources_updated: usize,\n        duration_ms: u64,\n    },\n\n    /// Vulnerability database update failed\n    VulnDbUpdateFailed { retryable: bool },\n}",
       "variants": [
         {
-          "name": "Starting",
+          "name": "ScanStarted",
           "start_line": 8,
           "doc": [
-            "Audit scan starting"
+            "Audit scan started"
           ],
-          "attributes": [],
-          "payload": "{ package_count: usize }"
+          "definition": "ScanStarted { package_count: usize },"
         },
         {
-          "name": "PackageCompleted",
+          "name": "ScanPackageCompleted",
           "start_line": 11,
           "doc": [
-            "Audit package completed"
+            "Audit of a single package completed"
           ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nvulnerabilities_found: usize,\n}"
+          "definition": "ScanPackageCompleted {\n        package: String,\n        vulnerabilities_found: usize,\n    },"
         },
         {
-          "name": "Completed",
+          "name": "ScanCompleted",
           "start_line": 17,
           "doc": [
             "Audit scan completed"
           ],
-          "attributes": [],
-          "payload": "{\npackages_scanned: usize,\nvulnerabilities_found: usize,\ncritical_count: usize,\n}"
+          "definition": "ScanCompleted {\n        packages_scanned: usize,\n        vulnerabilities_found: usize,\n        critical_count: usize,\n    },"
         },
         {
-          "name": "VulnDbUpdateStarting",
+          "name": "ScanFailed",
           "start_line": 24,
           "doc": [
-            "Vulnerability database update starting"
+            "Audit scan failed"
           ],
-          "attributes": [],
-          "payload": ""
+          "definition": "ScanFailed { retryable: bool },"
         },
         {
-          "name": "VulnDbSourceUpdateStarting",
+          "name": "VulnDbUpdateStarted",
           "start_line": 27,
           "doc": [
-            "Vulnerability database source update starting"
+            "Vulnerability database update started"
           ],
-          "attributes": [],
-          "payload": "{ source: String }"
-        },
-        {
-          "name": "VulnDbSourceUpdateCompleted",
-          "start_line": 30,
-          "doc": [
-            "Vulnerability database source update completed"
-          ],
-          "attributes": [],
-          "payload": "{\nsource: String,\nvulnerabilities_added: usize,\nduration_ms: u64,\n}"
-        },
-        {
-          "name": "VulnDbSourceUpdateFailed",
-          "start_line": 37,
-          "doc": [
-            "Vulnerability database source update failed"
-          ],
-          "attributes": [],
-          "payload": "{ source: String, error: String }"
+          "definition": "VulnDbUpdateStarted,"
         },
         {
           "name": "VulnDbUpdateCompleted",
-          "start_line": 40,
+          "start_line": 30,
           "doc": [
             "Vulnerability database update completed"
           ],
-          "attributes": [],
-          "payload": "{\ntotal_vulnerabilities: usize,\nsources_updated: usize,\nduration_ms: u64,\n}"
-        }
-      ]
-    },
-    {
-      "kind": "enum",
-      "name": "BuildSystem",
-      "module": "events::build",
-      "path": "crates/events/src/events/build.rs",
-      "start_line": 9,
-      "doc": [
-        "Build system types supported by sps2"
-      ],
-      "definition": "pub enum BuildSystem {\n    Autotools,\n    CMake,\n    Cargo,\n    Make,\n    Ninja,\n    Custom,\n}",
-      "variants": [
-        {
-          "name": "Autotools",
-          "start_line": 10,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
+          "definition": "VulnDbUpdateCompleted {\n        total_vulnerabilities: usize,\n        sources_updated: usize,\n        duration_ms: u64,\n    },"
         },
         {
-          "name": "CMake",
-          "start_line": 11,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Cargo",
-          "start_line": 12,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Make",
-          "start_line": 13,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Ninja",
-          "start_line": 14,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Custom",
-          "start_line": 15,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        }
-      ]
-    },
-    {
-      "kind": "enum",
-      "name": "BuildPhase",
-      "module": "events::build",
-      "path": "crates/events/src/events/build.rs",
-      "start_line": 21,
-      "doc": [
-        "Build phases for multi-stage operations"
-      ],
-      "definition": "pub enum BuildPhase {\n    Source,\n    Build,\n    PostProcess,\n    Package,\n}",
-      "variants": [
-        {
-          "name": "Source",
-          "start_line": 22,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Build",
-          "start_line": 23,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "PostProcess",
-          "start_line": 24,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Package",
-          "start_line": 25,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
+          "name": "VulnDbUpdateFailed",
+          "start_line": 37,
+          "doc": [
+            "Vulnerability database update failed"
+          ],
+          "definition": "VulnDbUpdateFailed { retryable: bool },"
         }
       ]
     },
@@ -241,9 +109,7 @@
       "module": "events::build",
       "path": "crates/events/src/events/build.rs",
       "start_line": 31,
-      "doc": [
-        "Build-specific events consumed by the CLI and logging pipeline"
-      ],
+      "doc": [],
       "definition": "pub enum BuildEvent {\n    /// Build session started with comprehensive context\n    SessionStarted {\n        session_id: String,\n        package: String,\n        version: Version,\n        build_system: BuildSystem,\n        cache_enabled: bool,\n    },\n\n    /// Build phase started\n    PhaseStarted {\n        session_id: String,\n        package: String,\n        phase: BuildPhase,\n        estimated_duration: Option<Duration>,\n    },\n\n    /// Build phase completed\n    PhaseCompleted {\n        session_id: String,\n        package: String,\n        phase: BuildPhase,\n        duration: Duration,\n    },\n\n    /// Build command started\n    CommandStarted {\n        session_id: String,\n        package: String,\n        command_id: String,\n        build_system: BuildSystem,\n        command: String,\n        working_dir: PathBuf,\n        timeout: Option<Duration>,\n    },\n\n    /// Real-time build output\n    StepOutput {\n        session_id: String,\n        package: String,\n        command_id: String,\n        line: String,\n        is_stderr: bool,\n    },\n\n    /// Build completed successfully\n    Completed {\n        session_id: String,\n        package: String,\n        version: Version,\n        path: PathBuf,\n        duration: Duration,\n    },\n\n    /// Build failed\n    Failed {\n        session_id: String,\n        package: String,\n        version: Version,\n        error: String,\n        phase: Option<BuildPhase>,\n        recovery_suggestions: Vec<String>,\n    },\n\n    /// Build warning encountered\n    Warning {\n        session_id: String,\n        package: String,\n        message: String,\n        source: Option<String>,\n    },\n\n    /// Build cache cleaned\n    CacheCleaned {\n        removed_items: usize,\n        freed_bytes: u64,\n    },\n\n    /// Build cleaned up\n    Cleaned { session_id: String, package: String },\n\n    /// Build resource usage update\n    ResourceUsage {\n        session_id: String,\n        package: String,\n        cpu_percent: f64,\n        memory_mb: u64,\n        disk_usage_mb: u64,\n    },\n\n    /// Build orchestration phase started (recipe parsing, env setup, etc.)\n    OrchestrationPhaseStarted {\n        phase: String,\n        description: Option<String>,\n    },\n\n    /// Build orchestration phase completed\n    OrchestrationPhaseCompleted {\n        phase: String,\n        success: bool,\n        duration: Option<Duration>,\n    },\n}",
       "variants": [
         {
@@ -252,8 +118,7 @@
           "doc": [
             "Build session started with comprehensive context"
           ],
-          "attributes": [],
-          "payload": "{\nsession_id: String,\npackage: String,\nversion: Version,\nbuild_system: BuildSystem,\ncache_enabled: bool,\n}"
+          "definition": "SessionStarted {\n        session_id: String,\n        package: String,\n        version: Version,\n        build_system: BuildSystem,\n        cache_enabled: bool,\n    },"
         },
         {
           "name": "PhaseStarted",
@@ -261,8 +126,7 @@
           "doc": [
             "Build phase started"
           ],
-          "attributes": [],
-          "payload": "{\nsession_id: String,\npackage: String,\nphase: BuildPhase,\nestimated_duration: Option<Duration>,\n}"
+          "definition": "PhaseStarted {\n        session_id: String,\n        package: String,\n        phase: BuildPhase,\n        estimated_duration: Option<Duration>,\n    },"
         },
         {
           "name": "PhaseCompleted",
@@ -270,8 +134,7 @@
           "doc": [
             "Build phase completed"
           ],
-          "attributes": [],
-          "payload": "{\nsession_id: String,\npackage: String,\nphase: BuildPhase,\nduration: Duration,\n}"
+          "definition": "PhaseCompleted {\n        session_id: String,\n        package: String,\n        phase: BuildPhase,\n        duration: Duration,\n    },"
         },
         {
           "name": "CommandStarted",
@@ -279,8 +142,7 @@
           "doc": [
             "Build command started"
           ],
-          "attributes": [],
-          "payload": "{\nsession_id: String,\npackage: String,\ncommand_id: String,\nbuild_system: BuildSystem,\ncommand: String,\nworking_dir: PathBuf,\ntimeout: Option<Duration>,\n}"
+          "definition": "CommandStarted {\n        session_id: String,\n        package: String,\n        command_id: String,\n        build_system: BuildSystem,\n        command: String,\n        working_dir: PathBuf,\n        timeout: Option<Duration>,\n    },"
         },
         {
           "name": "StepOutput",
@@ -288,8 +150,7 @@
           "doc": [
             "Real-time build output"
           ],
-          "attributes": [],
-          "payload": "{\nsession_id: String,\npackage: String,\ncommand_id: String,\nline: String,\nis_stderr: bool,\n}"
+          "definition": "StepOutput {\n        session_id: String,\n        package: String,\n        command_id: String,\n        line: String,\n        is_stderr: bool,\n    },"
         },
         {
           "name": "Completed",
@@ -297,8 +158,7 @@
           "doc": [
             "Build completed successfully"
           ],
-          "attributes": [],
-          "payload": "{\nsession_id: String,\npackage: String,\nversion: Version,\npath: PathBuf,\nduration: Duration,\n}"
+          "definition": "Completed {\n        session_id: String,\n        package: String,\n        version: Version,\n        path: PathBuf,\n        duration: Duration,\n    },"
         },
         {
           "name": "Failed",
@@ -306,8 +166,7 @@
           "doc": [
             "Build failed"
           ],
-          "attributes": [],
-          "payload": "{\nsession_id: String,\npackage: String,\nversion: Version,\nerror: String,\nphase: Option<BuildPhase>,\nrecovery_suggestions: Vec<String>,\n}"
+          "definition": "Failed {\n        session_id: String,\n        package: String,\n        version: Version,\n        error: String,\n        phase: Option<BuildPhase>,\n        recovery_suggestions: Vec<String>,\n    },"
         },
         {
           "name": "Warning",
@@ -315,8 +174,7 @@
           "doc": [
             "Build warning encountered"
           ],
-          "attributes": [],
-          "payload": "{\nsession_id: String,\npackage: String,\nmessage: String,\nsource: Option<String>,\n}"
+          "definition": "Warning {\n        session_id: String,\n        package: String,\n        message: String,\n        source: Option<String>,\n    },"
         },
         {
           "name": "CacheCleaned",
@@ -324,8 +182,7 @@
           "doc": [
             "Build cache cleaned"
           ],
-          "attributes": [],
-          "payload": "{\nremoved_items: usize,\nfreed_bytes: u64,\n}"
+          "definition": "CacheCleaned {\n        removed_items: usize,\n        freed_bytes: u64,\n    },"
         },
         {
           "name": "Cleaned",
@@ -333,8 +190,7 @@
           "doc": [
             "Build cleaned up"
           ],
-          "attributes": [],
-          "payload": "{ session_id: String, package: String }"
+          "definition": "Cleaned { session_id: String, package: String },"
         },
         {
           "name": "ResourceUsage",
@@ -342,8 +198,7 @@
           "doc": [
             "Build resource usage update"
           ],
-          "attributes": [],
-          "payload": "{\nsession_id: String,\npackage: String,\ncpu_percent: f64,\nmemory_mb: u64,\ndisk_usage_mb: u64,\n}"
+          "definition": "ResourceUsage {\n        session_id: String,\n        package: String,\n        cpu_percent: f64,\n        memory_mb: u64,\n        disk_usage_mb: u64,\n    },"
         },
         {
           "name": "OrchestrationPhaseStarted",
@@ -351,8 +206,7 @@
           "doc": [
             "Build orchestration phase started (recipe parsing, env setup, etc.)"
           ],
-          "attributes": [],
-          "payload": "{\nphase: String,\ndescription: Option<String>,\n}"
+          "definition": "OrchestrationPhaseStarted {\n        phase: String,\n        description: Option<String>,\n    },"
         },
         {
           "name": "OrchestrationPhaseCompleted",
@@ -360,8 +214,7 @@
           "doc": [
             "Build orchestration phase completed"
           ],
-          "attributes": [],
-          "payload": "{\nphase: String,\nsuccess: bool,\nduration: Option<Duration>,\n}"
+          "definition": "OrchestrationPhaseCompleted {\n        phase: String,\n        success: bool,\n        duration: Option<Duration>,\n    },"
         }
       ]
     },
@@ -370,92 +223,33 @@
       "name": "DownloadEvent",
       "module": "events::download",
       "path": "crates/events/src/events/download.rs",
-      "start_line": 8,
-      "doc": [
-        "Download-specific events surfaced to the CLI and logging pipeline."
-      ],
-      "definition": "pub enum DownloadEvent {\n    /// Download started with connection info\n    Started {\n        url: String,\n        package: Option<String>,\n        total_size: Option<u64>,\n        supports_resume: bool,\n        connection_time: Duration,\n    },\n\n    /// Download progress update with speed/ETA\n    Progress {\n        url: String,\n        bytes_downloaded: u64,\n        total_bytes: u64,\n        current_speed: f64,\n        average_speed: f64,\n        eta: Option<Duration>,\n    },\n\n    /// Download completed successfully\n    Completed {\n        url: String,\n        package: Option<String>,\n        final_size: u64,\n        total_time: Duration,\n        average_speed: f64,\n        hash: String,\n    },\n\n    /// Download failed with categorized error\n    Failed {\n        url: String,\n        package: Option<String>,\n        error: String,\n        error_category: String, // \"network\", \"filesystem\", \"validation\"\n        bytes_downloaded: u64,\n        recoverable: bool,\n    },\n\n    /// Download resuming from previous attempt\n    Resuming {\n        url: String,\n        resume_offset: u64,\n        total_size: Option<u64>,\n        attempts_so_far: usize,\n    },\n\n    /// Download has stalled\n    Stalled {\n        url: String,\n        stall_duration: Duration,\n        bytes_at_stall: u64,\n        suspected_cause: String,\n    },\n\n    /// Package-specific download started\n    PackageStarted {\n        name: String,\n        version: Version,\n        url: String,\n    },\n\n    /// Package download completed\n    PackageCompleted { name: String, version: Version },\n\n    /// Package signature downloaded\n    SignatureCompleted {\n        name: String,\n        version: Version,\n        verified: bool,\n    },\n}",
+      "start_line": 5,
+      "doc": [],
+      "definition": "pub enum DownloadEvent {\n    /// A download began.\n    Started {\n        url: String,\n        package: Option<String>,\n        total_bytes: Option<u64>,\n    },\n\n    /// The download finished successfully.\n    Completed {\n        url: String,\n        package: Option<String>,\n        bytes_downloaded: u64,\n    },\n\n    /// The download failed.\n    Failed {\n        url: String,\n        package: Option<String>,\n        failure: super::FailureContext,\n    },\n}",
       "variants": [
         {
           "name": "Started",
-          "start_line": 10,
+          "start_line": 7,
           "doc": [
-            "Download started with connection info"
+            "A download began."
           ],
-          "attributes": [],
-          "payload": "{\nurl: String,\npackage: Option<String>,\ntotal_size: Option<u64>,\nsupports_resume: bool,\nconnection_time: Duration,\n}"
-        },
-        {
-          "name": "Progress",
-          "start_line": 19,
-          "doc": [
-            "Download progress update with speed/ETA"
-          ],
-          "attributes": [],
-          "payload": "{\nurl: String,\nbytes_downloaded: u64,\ntotal_bytes: u64,\ncurrent_speed: f64,\naverage_speed: f64,\neta: Option<Duration>,\n}"
+          "definition": "Started {\n        url: String,\n        package: Option<String>,\n        total_bytes: Option<u64>,\n    },"
         },
         {
           "name": "Completed",
-          "start_line": 29,
+          "start_line": 14,
           "doc": [
-            "Download completed successfully"
+            "The download finished successfully."
           ],
-          "attributes": [],
-          "payload": "{\nurl: String,\npackage: Option<String>,\nfinal_size: u64,\ntotal_time: Duration,\naverage_speed: f64,\nhash: String,\n}"
+          "definition": "Completed {\n        url: String,\n        package: Option<String>,\n        bytes_downloaded: u64,\n    },"
         },
         {
           "name": "Failed",
-          "start_line": 39,
+          "start_line": 21,
           "doc": [
-            "Download failed with categorized error"
+            "The download failed."
           ],
-          "attributes": [],
-          "payload": "{\nurl: String,\npackage: Option<String>,\nerror: String,\nerror_category: String, // \"network\", \"filesystem\", \"validation\"\nbytes_downloaded: u64,\nrecoverable: bool,\n}"
-        },
-        {
-          "name": "Resuming",
-          "start_line": 49,
-          "doc": [
-            "Download resuming from previous attempt"
-          ],
-          "attributes": [],
-          "payload": "{\nurl: String,\nresume_offset: u64,\ntotal_size: Option<u64>,\nattempts_so_far: usize,\n}"
-        },
-        {
-          "name": "Stalled",
-          "start_line": 57,
-          "doc": [
-            "Download has stalled"
-          ],
-          "attributes": [],
-          "payload": "{\nurl: String,\nstall_duration: Duration,\nbytes_at_stall: u64,\nsuspected_cause: String,\n}"
-        },
-        {
-          "name": "PackageStarted",
-          "start_line": 65,
-          "doc": [
-            "Package-specific download started"
-          ],
-          "attributes": [],
-          "payload": "{\nname: String,\nversion: Version,\nurl: String,\n}"
-        },
-        {
-          "name": "PackageCompleted",
-          "start_line": 72,
-          "doc": [
-            "Package download completed"
-          ],
-          "attributes": [],
-          "payload": "{ name: String, version: Version }"
-        },
-        {
-          "name": "SignatureCompleted",
-          "start_line": 75,
-          "doc": [
-            "Package signature downloaded"
-          ],
-          "attributes": [],
-          "payload": "{\nname: String,\nversion: Version,\nverified: bool,\n}"
+          "definition": "Failed {\n        url: String,\n        package: Option<String>,\n        failure: super::FailureContext,\n    },"
         }
       ]
     },
@@ -465,10 +259,8 @@
       "module": "events::general",
       "path": "crates/events/src/events/general.rs",
       "start_line": 7,
-      "doc": [
-        "General utility events for warnings, errors, and operations"
-      ],
-      "definition": "pub enum GeneralEvent {\n    /// Generic warning message with optional context\n    Warning {\n        message: String,\n        context: Option<String>,\n    },\n\n    /// Generic error message with optional details\n    Error {\n        message: String,\n        details: Option<String>,\n    },\n\n    /// Debug logging with structured context\n    DebugLog {\n        message: String,\n        context: HashMap<String, String>,\n    },\n\n    /// Generic operation started notification\n    OperationStarted { operation: String },\n\n    /// Generic operation completion with success status\n    OperationCompleted { operation: String, success: bool },\n\n    /// Generic operation failure with error details\n    OperationFailed { operation: String, error: String },\n\n    /// Check mode preview of planned action\n    CheckModePreview {\n        operation: String,\n        action: String,\n        details: std::collections::HashMap<String, String>,\n    },\n\n    /// Check mode summary of all planned changes\n    CheckModeSummary {\n        operation: String,\n        total_changes: usize,\n        categories: std::collections::HashMap<String, usize>,\n    },\n}",
+      "doc": [],
+      "definition": "pub enum GeneralEvent {\n    /// Generic warning message with optional context\n    Warning {\n        message: String,\n        context: Option<String>,\n    },\n\n    /// Generic error message with optional details\n    Error {\n        message: String,\n        details: Option<String>,\n    },\n\n    /// Debug logging with structured context\n    DebugLog {\n        message: String,\n        context: HashMap<String, String>,\n    },\n\n    /// Generic operation started notification\n    OperationStarted { operation: String },\n\n    /// Generic operation completion with success status\n    OperationCompleted { operation: String, success: bool },\n\n    /// Generic operation failure with error details\n    OperationFailed {\n        operation: String,\n        failure: super::FailureContext,\n    },\n\n    /// Check mode preview of planned action\n    CheckModePreview {\n        operation: String,\n        action: String,\n        details: std::collections::HashMap<String, String>,\n    },\n\n    /// Check mode summary of all planned changes\n    CheckModeSummary {\n        operation: String,\n        total_changes: usize,\n        categories: std::collections::HashMap<String, usize>,\n    },\n}",
       "variants": [
         {
           "name": "Warning",
@@ -476,8 +268,7 @@
           "doc": [
             "Generic warning message with optional context"
           ],
-          "attributes": [],
-          "payload": "{\nmessage: String,\ncontext: Option<String>,\n}"
+          "definition": "Warning {\n        message: String,\n        context: Option<String>,\n    },"
         },
         {
           "name": "Error",
@@ -485,8 +276,7 @@
           "doc": [
             "Generic error message with optional details"
           ],
-          "attributes": [],
-          "payload": "{\nmessage: String,\ndetails: Option<String>,\n}"
+          "definition": "Error {\n        message: String,\n        details: Option<String>,\n    },"
         },
         {
           "name": "DebugLog",
@@ -494,8 +284,7 @@
           "doc": [
             "Debug logging with structured context"
           ],
-          "attributes": [],
-          "payload": "{\nmessage: String,\ncontext: HashMap<String, String>,\n}"
+          "definition": "DebugLog {\n        message: String,\n        context: HashMap<String, String>,\n    },"
         },
         {
           "name": "OperationStarted",
@@ -503,8 +292,7 @@
           "doc": [
             "Generic operation started notification"
           ],
-          "attributes": [],
-          "payload": "{ operation: String }"
+          "definition": "OperationStarted { operation: String },"
         },
         {
           "name": "OperationCompleted",
@@ -512,8 +300,7 @@
           "doc": [
             "Generic operation completion with success status"
           ],
-          "attributes": [],
-          "payload": "{ operation: String, success: bool }"
+          "definition": "OperationCompleted { operation: String, success: bool },"
         },
         {
           "name": "OperationFailed",
@@ -521,149 +308,98 @@
           "doc": [
             "Generic operation failure with error details"
           ],
-          "attributes": [],
-          "payload": "{ operation: String, error: String }"
+          "definition": "OperationFailed {\n        operation: String,\n        failure: super::FailureContext,\n    },"
         },
         {
           "name": "CheckModePreview",
-          "start_line": 36,
+          "start_line": 39,
           "doc": [
             "Check mode preview of planned action"
           ],
-          "attributes": [],
-          "payload": "{\noperation: String,\naction: String,\ndetails: std::collections::HashMap<String, String>,\n}"
+          "definition": "CheckModePreview {\n        operation: String,\n        action: String,\n        details: std::collections::HashMap<String, String>,\n    },"
         },
         {
           "name": "CheckModeSummary",
-          "start_line": 43,
+          "start_line": 46,
           "doc": [
             "Check mode summary of all planned changes"
           ],
-          "attributes": [],
-          "payload": "{\noperation: String,\ntotal_changes: usize,\ncategories: std::collections::HashMap<String, usize>,\n}"
+          "definition": "CheckModeSummary {\n        operation: String,\n        total_changes: usize,\n        categories: std::collections::HashMap<String, usize>,\n    },"
         }
       ]
-    },
-    {
-      "kind": "struct",
-      "name": "GuardDiscrepancyParams",
-      "module": "events::guard",
-      "path": "crates/events/src/events/guard.rs",
-      "start_line": 6,
-      "doc": [
-        "Parameters for guard discrepancy found events"
-      ],
-      "definition": "pub struct GuardDiscrepancyParams {\n    pub operation_id: String,\n    pub discrepancy_type: String,\n    pub severity: String,\n    pub file_path: String,\n    pub package: Option<String>,\n    pub package_version: Option<String>,\n    pub user_message: String,\n    pub technical_details: String,\n    pub auto_heal_available: bool,\n    pub requires_confirmation: bool,\n    pub estimated_fix_time_seconds: Option<u64>,\n}"
     },
     {
       "kind": "enum",
       "name": "GuardEvent",
       "module": "events::guard",
       "path": "crates/events/src/events/guard.rs",
-      "start_line": 23,
-      "doc": [
-        "Guard events for filesystem integrity verification"
-      ],
-      "definition": "pub enum GuardEvent {\n    /// Guard verification started\n    VerificationStarted {\n        operation_id: String,\n        scope: String,\n        level: String,\n        packages_count: usize,\n        files_count: Option<usize>,\n    },\n\n    /// Guard verification progress\n    VerificationProgress {\n        operation_id: String,\n        verified_packages: usize,\n        total_packages: usize,\n        verified_files: usize,\n        total_files: usize,\n        current_package: Option<String>,\n        cache_hit_rate: Option<f64>,\n    },\n\n    /// Guard discrepancy found\n    DiscrepancyFound(GuardDiscrepancyParams),\n\n    /// Guard verification completed\n    VerificationCompleted {\n        operation_id: String,\n        total_discrepancies: usize,\n        by_severity: HashMap<String, usize>,\n        duration_ms: u64,\n        cache_hit_rate: f64,\n        coverage_percent: f64,\n        scope_description: String,\n    },\n\n    /// Guard verification failed\n    VerificationFailed {\n        operation_id: String,\n        error: String,\n        packages_verified: usize,\n        files_verified: usize,\n        duration_ms: u64,\n    },\n\n    /// Guard healing started\n    HealingStarted {\n        operation_id: String,\n        discrepancies_count: usize,\n        auto_heal_count: usize,\n        confirmation_required_count: usize,\n        manual_intervention_count: usize,\n    },\n\n    /// Guard healing progress\n    HealingProgress {\n        operation_id: String,\n        completed: usize,\n        total: usize,\n        current_operation: String,\n        current_file: Option<String>,\n    },\n\n    /// Guard healing result\n    HealingResult {\n        operation_id: String,\n        discrepancy_type: String,\n        file_path: String,\n        success: bool,\n        healing_action: String,\n        error: Option<String>,\n        duration_ms: u64,\n    },\n\n    /// Guard healing completed\n    HealingCompleted {\n        operation_id: String,\n        healed_count: usize,\n        failed_count: usize,\n        skipped_count: usize,\n        duration_ms: u64,\n    },\n\n    /// Guard healing failed\n    HealingFailed {\n        operation_id: String,\n        error: String,\n        completed_healing: usize,\n        failed_healing: usize,\n        duration_ms: u64,\n    },\n\n    /// Guard error summary\n    ErrorSummary {\n        operation_id: String,\n        total_errors: usize,\n        recoverable_errors: usize,\n        manual_intervention_required: usize,\n        overall_severity: String,\n        user_friendly_summary: String,\n        recommended_actions: Vec<String>,\n    },\n}",
+      "start_line": 22,
+      "doc": [],
+      "definition": "pub enum GuardEvent {\n    /// Guard verification started\n    VerificationStarted {\n        scope: String,\n        level: String,\n        packages_count: usize,\n        files_count: Option<usize>,\n    },\n\n    /// Guard discrepancy found\n    DiscrepancyFound(GuardDiscrepancyParams),\n\n    /// Guard verification completed\n    VerificationCompleted {\n        total_discrepancies: usize,\n        by_severity: HashMap<String, usize>,\n        duration_ms: u64,\n        cache_hit_rate: f64,\n        coverage_percent: f64,\n        scope_description: String,\n    },\n\n    /// Guard verification failed\n    VerificationFailed {\n        retryable: bool,\n        packages_verified: usize,\n        files_verified: usize,\n        duration_ms: u64,\n    },\n\n    /// Guard healing started\n    HealingStarted {\n        discrepancies_count: usize,\n        auto_heal_count: usize,\n        confirmation_required_count: usize,\n        manual_intervention_count: usize,\n    },\n\n    /// Guard healing result\n    HealingResult {\n        discrepancy_type: String,\n        file_path: String,\n        success: bool,\n        healing_action: String,\n        error: Option<String>,\n        duration_ms: u64,\n    },\n\n    /// Guard healing completed\n    HealingCompleted {\n        healed_count: usize,\n        failed_count: usize,\n        skipped_count: usize,\n        duration_ms: u64,\n    },\n\n    /// Guard healing failed\n    HealingFailed {\n        retryable: bool,\n        completed_healing: usize,\n        failed_healing: usize,\n        duration_ms: u64,\n    },\n}",
       "variants": [
         {
           "name": "VerificationStarted",
-          "start_line": 25,
+          "start_line": 24,
           "doc": [
             "Guard verification started"
           ],
-          "attributes": [],
-          "payload": "{\noperation_id: String,\nscope: String,\nlevel: String,\npackages_count: usize,\nfiles_count: Option<usize>,\n}"
-        },
-        {
-          "name": "VerificationProgress",
-          "start_line": 34,
-          "doc": [
-            "Guard verification progress"
-          ],
-          "attributes": [],
-          "payload": "{\noperation_id: String,\nverified_packages: usize,\ntotal_packages: usize,\nverified_files: usize,\ntotal_files: usize,\ncurrent_package: Option<String>,\ncache_hit_rate: Option<f64>,\n}"
+          "definition": "VerificationStarted {\n        scope: String,\n        level: String,\n        packages_count: usize,\n        files_count: Option<usize>,\n    },"
         },
         {
           "name": "DiscrepancyFound",
-          "start_line": 45,
+          "start_line": 32,
           "doc": [
             "Guard discrepancy found"
           ],
-          "attributes": [],
-          "payload": "(GuardDiscrepancyParams)"
+          "definition": "DiscrepancyFound(GuardDiscrepancyParams),"
         },
         {
           "name": "VerificationCompleted",
-          "start_line": 48,
+          "start_line": 35,
           "doc": [
             "Guard verification completed"
           ],
-          "attributes": [],
-          "payload": "{\noperation_id: String,\ntotal_discrepancies: usize,\nby_severity: HashMap<String, usize>,\nduration_ms: u64,\ncache_hit_rate: f64,\ncoverage_percent: f64,\nscope_description: String,\n}"
+          "definition": "VerificationCompleted {\n        total_discrepancies: usize,\n        by_severity: HashMap<String, usize>,\n        duration_ms: u64,\n        cache_hit_rate: f64,\n        coverage_percent: f64,\n        scope_description: String,\n    },"
         },
         {
           "name": "VerificationFailed",
-          "start_line": 59,
+          "start_line": 45,
           "doc": [
             "Guard verification failed"
           ],
-          "attributes": [],
-          "payload": "{\noperation_id: String,\nerror: String,\npackages_verified: usize,\nfiles_verified: usize,\nduration_ms: u64,\n}"
+          "definition": "VerificationFailed {\n        retryable: bool,\n        packages_verified: usize,\n        files_verified: usize,\n        duration_ms: u64,\n    },"
         },
         {
           "name": "HealingStarted",
-          "start_line": 68,
+          "start_line": 53,
           "doc": [
             "Guard healing started"
           ],
-          "attributes": [],
-          "payload": "{\noperation_id: String,\ndiscrepancies_count: usize,\nauto_heal_count: usize,\nconfirmation_required_count: usize,\nmanual_intervention_count: usize,\n}"
-        },
-        {
-          "name": "HealingProgress",
-          "start_line": 77,
-          "doc": [
-            "Guard healing progress"
-          ],
-          "attributes": [],
-          "payload": "{\noperation_id: String,\ncompleted: usize,\ntotal: usize,\ncurrent_operation: String,\ncurrent_file: Option<String>,\n}"
+          "definition": "HealingStarted {\n        discrepancies_count: usize,\n        auto_heal_count: usize,\n        confirmation_required_count: usize,\n        manual_intervention_count: usize,\n    },"
         },
         {
           "name": "HealingResult",
-          "start_line": 86,
+          "start_line": 61,
           "doc": [
             "Guard healing result"
           ],
-          "attributes": [],
-          "payload": "{\noperation_id: String,\ndiscrepancy_type: String,\nfile_path: String,\nsuccess: bool,\nhealing_action: String,\nerror: Option<String>,\nduration_ms: u64,\n}"
+          "definition": "HealingResult {\n        discrepancy_type: String,\n        file_path: String,\n        success: bool,\n        healing_action: String,\n        error: Option<String>,\n        duration_ms: u64,\n    },"
         },
         {
           "name": "HealingCompleted",
-          "start_line": 97,
+          "start_line": 71,
           "doc": [
             "Guard healing completed"
           ],
-          "attributes": [],
-          "payload": "{\noperation_id: String,\nhealed_count: usize,\nfailed_count: usize,\nskipped_count: usize,\nduration_ms: u64,\n}"
+          "definition": "HealingCompleted {\n        healed_count: usize,\n        failed_count: usize,\n        skipped_count: usize,\n        duration_ms: u64,\n    },"
         },
         {
           "name": "HealingFailed",
-          "start_line": 106,
+          "start_line": 79,
           "doc": [
             "Guard healing failed"
           ],
-          "attributes": [],
-          "payload": "{\noperation_id: String,\nerror: String,\ncompleted_healing: usize,\nfailed_healing: usize,\nduration_ms: u64,\n}"
-        },
-        {
-          "name": "ErrorSummary",
-          "start_line": 115,
-          "doc": [
-            "Guard error summary"
-          ],
-          "attributes": [],
-          "payload": "{\noperation_id: String,\ntotal_errors: usize,\nrecoverable_errors: usize,\nmanual_intervention_required: usize,\noverall_severity: String,\nuser_friendly_summary: String,\nrecommended_actions: Vec<String>,\n}"
+          "definition": "HealingFailed {\n        retryable: bool,\n        completed_healing: usize,\n        failed_healing: usize,\n        duration_ms: u64,\n    },"
         }
       ]
     },
@@ -672,267 +408,172 @@
       "name": "InstallEvent",
       "module": "events::install",
       "path": "crates/events/src/events/install.rs",
-      "start_line": 9,
-      "doc": [
-        "Installation domain events consumed by the CLI and guard rails"
-      ],
-      "definition": "pub enum InstallEvent {\n    /// Installation operation started for a package\n    Started {\n        package: String,\n        version: Version,\n        install_path: PathBuf,\n        force_reinstall: bool,\n    },\n\n    /// Installation completed successfully\n    Completed {\n        package: String,\n        version: Version,\n        installed_files: usize,\n        install_path: PathBuf,\n        duration: Duration,\n        disk_usage: u64,\n    },\n\n    /// Installation failed\n    Failed {\n        package: String,\n        version: Version,\n        phase: Option<String>,\n        error: String,\n        cleanup_required: bool,\n    },\n\n    /// Package staging phase started\n    StagingStarted {\n        package: String,\n        version: Version,\n        source_path: PathBuf,\n        staging_path: PathBuf,\n    },\n\n    /// Package staging completed\n    StagingCompleted {\n        package: String,\n        version: Version,\n        files_staged: usize,\n        staging_size: u64,\n        staging_path: PathBuf,\n    },\n\n    /// Post-installation validation started\n    ValidationStarted {\n        package: String,\n        version: Version,\n        validation_checks: Vec<String>,\n    },\n\n    /// Post-installation validation completed\n    ValidationCompleted {\n        package: String,\n        version: Version,\n        checks_passed: usize,\n        warnings: usize,\n        issues_found: usize,\n    },\n\n    /// Post-installation validation failed\n    ValidationFailed {\n        package: String,\n        version: Version,\n        failed_check: String,\n        error: String,\n        can_continue: bool,\n    },\n\n    /// Batch installation started\n    BatchStarted {\n        packages: Vec<String>,\n        operation_id: String,\n        concurrent_limit: usize,\n        estimated_duration: Option<Duration>,\n    },\n\n    /// Batch installation completed\n    BatchCompleted {\n        operation_id: String,\n        successful_packages: Vec<String>,\n        failed_packages: Vec<(String, String)>, // (package, error)\n        total_duration: Duration,\n        total_disk_usage: u64,\n    },\n}",
+      "start_line": 6,
+      "doc": [],
+      "definition": "pub enum InstallEvent {\n    /// Installation operation started for a package\n    Started { package: String, version: Version },\n\n    /// Installation completed successfully\n    Completed {\n        package: String,\n        version: Version,\n        files_installed: usize,\n    },\n\n    /// Installation failed\n    Failed {\n        package: String,\n        version: Version,\n        failure: super::FailureContext,\n    },\n}",
       "variants": [
         {
           "name": "Started",
-          "start_line": 11,
+          "start_line": 8,
           "doc": [
             "Installation operation started for a package"
           ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: Version,\ninstall_path: PathBuf,\nforce_reinstall: bool,\n}"
+          "definition": "Started { package: String, version: Version },"
         },
         {
           "name": "Completed",
-          "start_line": 19,
+          "start_line": 11,
           "doc": [
             "Installation completed successfully"
           ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: Version,\ninstalled_files: usize,\ninstall_path: PathBuf,\nduration: Duration,\ndisk_usage: u64,\n}"
+          "definition": "Completed {\n        package: String,\n        version: Version,\n        files_installed: usize,\n    },"
         },
         {
           "name": "Failed",
-          "start_line": 29,
+          "start_line": 18,
           "doc": [
             "Installation failed"
           ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: Version,\nphase: Option<String>,\nerror: String,\ncleanup_required: bool,\n}"
-        },
-        {
-          "name": "StagingStarted",
-          "start_line": 38,
-          "doc": [
-            "Package staging phase started"
-          ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: Version,\nsource_path: PathBuf,\nstaging_path: PathBuf,\n}"
-        },
-        {
-          "name": "StagingCompleted",
-          "start_line": 46,
-          "doc": [
-            "Package staging completed"
-          ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: Version,\nfiles_staged: usize,\nstaging_size: u64,\nstaging_path: PathBuf,\n}"
-        },
-        {
-          "name": "ValidationStarted",
-          "start_line": 55,
-          "doc": [
-            "Post-installation validation started"
-          ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: Version,\nvalidation_checks: Vec<String>,\n}"
-        },
-        {
-          "name": "ValidationCompleted",
-          "start_line": 62,
-          "doc": [
-            "Post-installation validation completed"
-          ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: Version,\nchecks_passed: usize,\nwarnings: usize,\nissues_found: usize,\n}"
-        },
-        {
-          "name": "ValidationFailed",
-          "start_line": 71,
-          "doc": [
-            "Post-installation validation failed"
-          ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: Version,\nfailed_check: String,\nerror: String,\ncan_continue: bool,\n}"
-        },
-        {
-          "name": "BatchStarted",
-          "start_line": 80,
-          "doc": [
-            "Batch installation started"
-          ],
-          "attributes": [],
-          "payload": "{\npackages: Vec<String>,\noperation_id: String,\nconcurrent_limit: usize,\nestimated_duration: Option<Duration>,\n}"
-        },
-        {
-          "name": "BatchCompleted",
-          "start_line": 88,
-          "doc": [
-            "Batch installation completed"
-          ],
-          "attributes": [],
-          "payload": "{\noperation_id: String,\nsuccessful_packages: Vec<String>,\nfailed_packages: Vec<(String, String)>, // (package, error)\ntotal_duration: Duration,\ntotal_disk_usage: u64,\n}"
+          "definition": "Failed {\n        package: String,\n        version: Version,\n        failure: super::FailureContext,\n    },"
         }
       ]
     },
     {
       "kind": "enum",
       "name": "AppEvent",
-      "module": "events::mod",
+      "module": "events",
       "path": "crates/events/src/events/mod.rs",
-      "start_line": 44,
-      "doc": [
-        "Top-level application event enum that aggregates all domain-specific events"
-      ],
-      "definition": "pub enum AppEvent {\n    /// General utility events (warnings, errors, operations)\n    General(GeneralEvent),\n\n    /// Download-specific events (HTTP downloads, progress, retries)\n    Download(DownloadEvent),\n\n    /// Build system events (compilation, caching, sessions)\n    Build(BuildEvent),\n\n    /// State management events (transactions, rollbacks)\n    State(StateEvent),\n\n    /// Package installation events (staging, installation, validation)\n    Install(InstallEvent),\n\n    /// Package uninstallation events (removal, dependency checking)\n    Uninstall(UninstallEvent),\n\n    /// Package update/upgrade events (update planning, batch updates)\n    Update(UpdateEvent),\n\n    /// Package acquisition events (download, cache, verification)\n    Acquisition(AcquisitionEvent),\n\n    /// Progress tracking events (sophisticated progress algorithms)\n    Progress(ProgressEvent),\n\n    /// Repository and index events (sync, mirroring)\n    Repo(RepoEvent),\n\n    /// Resolver events (dependency resolution, SAT solving)\n    Resolver(ResolverEvent),\n\n    /// Guard events (filesystem integrity, healing)\n    Guard(GuardEvent),\n\n    /// Quality assurance events (artifact validation)\n    Qa(QaEvent),\n\n    /// Audit and vulnerability scanning events\n    Audit(AuditEvent),\n\n    /// Python virtual environment events\n    Python(PythonEvent),\n\n    /// Package operation events (high-level package operations)\n    Package(PackageEvent),\n\n    /// Platform-specific operation events (binary, filesystem, process operations)\n    Platform(PlatformEvent),\n}",
+      "start_line": 89,
+      "doc": [],
+      "definition": "pub enum AppEvent {\n    /// General utility events (warnings, errors, operations)\n    General(GeneralEvent),\n\n    /// Download-specific events (HTTP downloads, progress, retries)\n    Download(DownloadEvent),\n\n    /// Build system events (compilation, caching, sessions)\n    Build(BuildEvent),\n\n    /// State management events (transactions, rollbacks)\n    State(StateEvent),\n\n    /// Package installation events (staging, installation, validation)\n    Install(InstallEvent),\n\n    /// Package uninstallation events (removal, dependency checking)\n    Uninstall(UninstallEvent),\n\n    /// Package update/upgrade events (update planning, batch updates)\n    Update(UpdateEvent),\n\n    /// Package acquisition events (download, cache, verification)\n    Acquisition(AcquisitionEvent),\n\n    /// Progress tracking events (sophisticated progress algorithms)\n    Progress(ProgressEvent),\n\n    /// Repository and index events (sync, mirroring)\n    Repo(RepoEvent),\n\n    /// Resolver events (dependency resolution, SAT solving)\n    Resolver(ResolverEvent),\n\n    /// Guard events (filesystem integrity, healing)\n    Guard(GuardEvent),\n\n    /// Quality assurance events (artifact validation)\n    Qa(QaEvent),\n\n    /// Audit and vulnerability scanning events\n    Audit(AuditEvent),\n\n    /// Package operation events (high-level package operations)\n    Package(PackageEvent),\n\n    /// Platform-specific operation events (binary, filesystem, process operations)\n    Platform(PlatformEvent),\n}",
       "variants": [
         {
           "name": "General",
-          "start_line": 46,
+          "start_line": 91,
           "doc": [
             "General utility events (warnings, errors, operations)"
           ],
-          "attributes": [],
-          "payload": "(GeneralEvent)"
+          "definition": "General(GeneralEvent),"
         },
         {
           "name": "Download",
-          "start_line": 49,
+          "start_line": 94,
           "doc": [
             "Download-specific events (HTTP downloads, progress, retries)"
           ],
-          "attributes": [],
-          "payload": "(DownloadEvent)"
+          "definition": "Download(DownloadEvent),"
         },
         {
           "name": "Build",
-          "start_line": 52,
+          "start_line": 97,
           "doc": [
             "Build system events (compilation, caching, sessions)"
           ],
-          "attributes": [],
-          "payload": "(BuildEvent)"
+          "definition": "Build(BuildEvent),"
         },
         {
           "name": "State",
-          "start_line": 55,
+          "start_line": 100,
           "doc": [
             "State management events (transactions, rollbacks)"
           ],
-          "attributes": [],
-          "payload": "(StateEvent)"
+          "definition": "State(StateEvent),"
         },
         {
           "name": "Install",
-          "start_line": 58,
+          "start_line": 103,
           "doc": [
             "Package installation events (staging, installation, validation)"
           ],
-          "attributes": [],
-          "payload": "(InstallEvent)"
+          "definition": "Install(InstallEvent),"
         },
         {
           "name": "Uninstall",
-          "start_line": 61,
+          "start_line": 106,
           "doc": [
             "Package uninstallation events (removal, dependency checking)"
           ],
-          "attributes": [],
-          "payload": "(UninstallEvent)"
+          "definition": "Uninstall(UninstallEvent),"
         },
         {
           "name": "Update",
-          "start_line": 64,
+          "start_line": 109,
           "doc": [
             "Package update/upgrade events (update planning, batch updates)"
           ],
-          "attributes": [],
-          "payload": "(UpdateEvent)"
+          "definition": "Update(UpdateEvent),"
         },
         {
           "name": "Acquisition",
-          "start_line": 67,
+          "start_line": 112,
           "doc": [
             "Package acquisition events (download, cache, verification)"
           ],
-          "attributes": [],
-          "payload": "(AcquisitionEvent)"
+          "definition": "Acquisition(AcquisitionEvent),"
         },
         {
           "name": "Progress",
-          "start_line": 70,
+          "start_line": 115,
           "doc": [
             "Progress tracking events (sophisticated progress algorithms)"
           ],
-          "attributes": [],
-          "payload": "(ProgressEvent)"
+          "definition": "Progress(ProgressEvent),"
         },
         {
           "name": "Repo",
-          "start_line": 73,
+          "start_line": 118,
           "doc": [
             "Repository and index events (sync, mirroring)"
           ],
-          "attributes": [],
-          "payload": "(RepoEvent)"
+          "definition": "Repo(RepoEvent),"
         },
         {
           "name": "Resolver",
-          "start_line": 76,
+          "start_line": 121,
           "doc": [
             "Resolver events (dependency resolution, SAT solving)"
           ],
-          "attributes": [],
-          "payload": "(ResolverEvent)"
+          "definition": "Resolver(ResolverEvent),"
         },
         {
           "name": "Guard",
-          "start_line": 79,
+          "start_line": 124,
           "doc": [
             "Guard events (filesystem integrity, healing)"
           ],
-          "attributes": [],
-          "payload": "(GuardEvent)"
+          "definition": "Guard(GuardEvent),"
         },
         {
           "name": "Qa",
-          "start_line": 82,
+          "start_line": 127,
           "doc": [
             "Quality assurance events (artifact validation)"
           ],
-          "attributes": [],
-          "payload": "(QaEvent)"
+          "definition": "Qa(QaEvent),"
         },
         {
           "name": "Audit",
-          "start_line": 85,
+          "start_line": 130,
           "doc": [
             "Audit and vulnerability scanning events"
           ],
-          "attributes": [],
-          "payload": "(AuditEvent)"
-        },
-        {
-          "name": "Python",
-          "start_line": 88,
-          "doc": [
-            "Python virtual environment events"
-          ],
-          "attributes": [],
-          "payload": "(PythonEvent)"
+          "definition": "Audit(AuditEvent),"
         },
         {
           "name": "Package",
-          "start_line": 91,
+          "start_line": 133,
           "doc": [
             "Package operation events (high-level package operations)"
           ],
-          "attributes": [],
-          "payload": "(PackageEvent)"
+          "definition": "Package(PackageEvent),"
         },
         {
           "name": "Platform",
-          "start_line": 94,
+          "start_line": 136,
           "doc": [
             "Platform-specific operation events (binary, filesystem, process operations)"
           ],
-          "attributes": [],
-          "payload": "(PlatformEvent)"
+          "definition": "Platform(PlatformEvent),"
         }
       ]
     },
@@ -942,9 +583,7 @@
       "module": "events::package",
       "path": "crates/events/src/events/package.rs",
       "start_line": 6,
-      "doc": [
-        "Package operation events surfaced by ops/CLI"
-      ],
+      "doc": [],
       "definition": "pub enum PackageEvent {\n    /// List operation starting\n    ListStarting,\n\n    /// List operation completed\n    ListCompleted { count: usize },\n\n    /// Search operation starting\n    SearchStarting { query: String },\n\n    /// Search operation completed\n    SearchCompleted { query: String, count: usize },\n\n    /// Health check starting\n    HealthCheckStarting,\n\n    /// Health check completed\n    HealthCheckCompleted { healthy: bool, issues: Vec<String> },\n\n    /// Self-update starting\n    SelfUpdateStarting,\n\n    /// Self-update checking version\n    SelfUpdateCheckingVersion { current_version: String },\n\n    /// Self-update version available\n    SelfUpdateVersionAvailable {\n        current_version: String,\n        latest_version: String,\n    },\n\n    /// Self-update already latest\n    SelfUpdateAlreadyLatest { version: String },\n\n    /// Self-update downloading\n    SelfUpdateDownloading { version: String, url: String },\n\n    /// Self-update verifying\n    SelfUpdateVerifying { version: String },\n\n    /// Self-update installing\n    SelfUpdateInstalling { version: String },\n\n    /// Self-update completed\n    SelfUpdateCompleted {\n        old_version: String,\n        new_version: String,\n        duration_ms: u64,\n    },\n\n    /// Cleanup starting\n    CleanupStarting,\n\n    /// Cleanup completed\n    CleanupCompleted {\n        states_removed: usize,\n        packages_removed: usize,\n        duration_ms: u64,\n    },\n}",
       "variants": [
         {
@@ -953,8 +592,7 @@
           "doc": [
             "List operation starting"
           ],
-          "attributes": [],
-          "payload": ""
+          "definition": "ListStarting,"
         },
         {
           "name": "ListCompleted",
@@ -962,8 +600,7 @@
           "doc": [
             "List operation completed"
           ],
-          "attributes": [],
-          "payload": "{ count: usize }"
+          "definition": "ListCompleted { count: usize },"
         },
         {
           "name": "SearchStarting",
@@ -971,8 +608,7 @@
           "doc": [
             "Search operation starting"
           ],
-          "attributes": [],
-          "payload": "{ query: String }"
+          "definition": "SearchStarting { query: String },"
         },
         {
           "name": "SearchCompleted",
@@ -980,8 +616,7 @@
           "doc": [
             "Search operation completed"
           ],
-          "attributes": [],
-          "payload": "{ query: String, count: usize }"
+          "definition": "SearchCompleted { query: String, count: usize },"
         },
         {
           "name": "HealthCheckStarting",
@@ -989,8 +624,7 @@
           "doc": [
             "Health check starting"
           ],
-          "attributes": [],
-          "payload": ""
+          "definition": "HealthCheckStarting,"
         },
         {
           "name": "HealthCheckCompleted",
@@ -998,8 +632,7 @@
           "doc": [
             "Health check completed"
           ],
-          "attributes": [],
-          "payload": "{ healthy: bool, issues: Vec<String> }"
+          "definition": "HealthCheckCompleted { healthy: bool, issues: Vec<String> },"
         },
         {
           "name": "SelfUpdateStarting",
@@ -1007,8 +640,7 @@
           "doc": [
             "Self-update starting"
           ],
-          "attributes": [],
-          "payload": ""
+          "definition": "SelfUpdateStarting,"
         },
         {
           "name": "SelfUpdateCheckingVersion",
@@ -1016,8 +648,7 @@
           "doc": [
             "Self-update checking version"
           ],
-          "attributes": [],
-          "payload": "{ current_version: String }"
+          "definition": "SelfUpdateCheckingVersion { current_version: String },"
         },
         {
           "name": "SelfUpdateVersionAvailable",
@@ -1025,8 +656,7 @@
           "doc": [
             "Self-update version available"
           ],
-          "attributes": [],
-          "payload": "{\ncurrent_version: String,\nlatest_version: String,\n}"
+          "definition": "SelfUpdateVersionAvailable {\n        current_version: String,\n        latest_version: String,\n    },"
         },
         {
           "name": "SelfUpdateAlreadyLatest",
@@ -1034,8 +664,7 @@
           "doc": [
             "Self-update already latest"
           ],
-          "attributes": [],
-          "payload": "{ version: String }"
+          "definition": "SelfUpdateAlreadyLatest { version: String },"
         },
         {
           "name": "SelfUpdateDownloading",
@@ -1043,8 +672,7 @@
           "doc": [
             "Self-update downloading"
           ],
-          "attributes": [],
-          "payload": "{ version: String, url: String }"
+          "definition": "SelfUpdateDownloading { version: String, url: String },"
         },
         {
           "name": "SelfUpdateVerifying",
@@ -1052,8 +680,7 @@
           "doc": [
             "Self-update verifying"
           ],
-          "attributes": [],
-          "payload": "{ version: String }"
+          "definition": "SelfUpdateVerifying { version: String },"
         },
         {
           "name": "SelfUpdateInstalling",
@@ -1061,8 +688,7 @@
           "doc": [
             "Self-update installing"
           ],
-          "attributes": [],
-          "payload": "{ version: String }"
+          "definition": "SelfUpdateInstalling { version: String },"
         },
         {
           "name": "SelfUpdateCompleted",
@@ -1070,8 +696,7 @@
           "doc": [
             "Self-update completed"
           ],
-          "attributes": [],
-          "payload": "{\nold_version: String,\nnew_version: String,\nduration_ms: u64,\n}"
+          "definition": "SelfUpdateCompleted {\n        old_version: String,\n        new_version: String,\n        duration_ms: u64,\n    },"
         },
         {
           "name": "CleanupStarting",
@@ -1079,8 +704,7 @@
           "doc": [
             "Cleanup starting"
           ],
-          "attributes": [],
-          "payload": ""
+          "definition": "CleanupStarting,"
         },
         {
           "name": "CleanupCompleted",
@@ -1088,42 +712,7 @@
           "doc": [
             "Cleanup completed"
           ],
-          "attributes": [],
-          "payload": "{\nstates_removed: usize,\npackages_removed: usize,\nduration_ms: u64,\n}"
-        }
-      ]
-    },
-    {
-      "kind": "enum",
-      "name": "HealthStatus",
-      "module": "events::package",
-      "path": "crates/events/src/events/package.rs",
-      "start_line": 70,
-      "doc": [
-        "Health status for components used by health reports"
-      ],
-      "definition": "pub enum HealthStatus {\n    Healthy,\n    Warning,\n    Error,\n}",
-      "variants": [
-        {
-          "name": "Healthy",
-          "start_line": 71,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Warning",
-          "start_line": 72,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Error",
-          "start_line": 73,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
+          "definition": "CleanupCompleted {\n        states_removed: usize,\n        packages_removed: usize,\n        duration_ms: u64,\n    },"
         }
       ]
     },
@@ -1133,9 +722,7 @@
       "module": "events::platform",
       "path": "crates/events/src/events/platform.rs",
       "start_line": 9,
-      "doc": [
-        "Platform operation events for tracking platform-specific operations"
-      ],
+      "doc": [],
       "definition": "pub enum PlatformEvent {\n    /// Binary operation started (`install_name_tool`, `otool`, `codesign`)\n    BinaryOperationStarted {\n        /// Operation name (e.g., `get_install_name`, `sign_binary`)\n        operation: String,\n        /// Path to the binary being operated on\n        binary_path: String,\n        /// Additional context for the operation\n        context: HashMap<String, String>,\n    },\n\n    /// Binary operation completed successfully\n    BinaryOperationCompleted {\n        /// Operation name that completed\n        operation: String,\n        /// Path to the binary that was operated on\n        binary_path: String,\n        /// List of changes made during the operation\n        changes_made: Vec<String>,\n        /// Duration of the operation in milliseconds\n        duration_ms: u64,\n    },\n\n    /// Binary operation failed\n    BinaryOperationFailed {\n        /// Operation name that failed\n        operation: String,\n        /// Path to the binary that was being operated on\n        binary_path: String,\n        /// Error message\n        error_message: String,\n        /// Duration before failure in milliseconds\n        duration_ms: u64,\n    },\n\n    /// Filesystem operation started (APFS clone, atomic operations)\n    FilesystemOperationStarted {\n        /// Operation name (e.g., `clone_file`, `atomic_rename`)\n        operation: String,\n        /// Source path (if applicable)\n        source_path: Option<String>,\n        /// Target path\n        target_path: String,\n        /// Additional operation context\n        context: HashMap<String, String>,\n    },\n\n    /// Filesystem operation completed successfully\n    FilesystemOperationCompleted {\n        /// Operation name that completed\n        operation: String,\n        /// List of paths affected by the operation\n        paths_affected: Vec<String>,\n        /// Duration of the operation in milliseconds\n        duration_ms: u64,\n    },\n\n    /// Filesystem operation failed\n    FilesystemOperationFailed {\n        /// Operation name that failed\n        operation: String,\n        /// Paths involved in the failed operation\n        paths_involved: Vec<String>,\n        /// Error message\n        error_message: String,\n        /// Duration before failure in milliseconds\n        duration_ms: u64,\n    },\n\n    /// Process execution started\n    ProcessExecutionStarted {\n        /// Command being executed\n        command: String,\n        /// Command arguments\n        args: Vec<String>,\n        /// Working directory (if set)\n        working_dir: Option<String>,\n    },\n\n    /// Process execution completed\n    ProcessExecutionCompleted {\n        /// Command that was executed\n        command: String,\n        /// Exit code from the process\n        exit_code: i32,\n        /// Duration of execution in milliseconds\n        duration_ms: u64,\n        /// Size of stdout in bytes\n        stdout_bytes: usize,\n        /// Size of stderr in bytes\n        stderr_bytes: usize,\n    },\n\n    /// Process execution failed\n    ProcessExecutionFailed {\n        /// Command that failed\n        command: String,\n        /// Error message\n        error_message: String,\n        /// Duration before failure in milliseconds\n        duration_ms: u64,\n    },\n\n    /// Tool discovery started\n    ToolDiscoveryStarted {\n        /// Name of the tool being discovered\n        tool: String,\n        /// Paths being searched for the tool\n        search_paths: Vec<std::path::PathBuf>,\n    },\n\n    /// Tool discovered successfully\n    ToolDiscovered {\n        /// Name of the tool that was discovered\n        tool: String,\n        /// Full path to the discovered tool\n        path: std::path::PathBuf,\n        /// Tool version if detectable\n        version: Option<String>,\n    },\n\n    /// Tool not found after searching\n    ToolNotFound {\n        /// Name of the tool that was not found\n        tool: String,\n        /// Paths that were searched\n        searched_paths: Vec<std::path::PathBuf>,\n        /// Installation suggestion for the tool\n        suggestion: String,\n    },\n}",
       "variants": [
         {
@@ -1144,8 +731,7 @@
           "doc": [
             "Binary operation started (`install_name_tool`, `otool`, `codesign`)"
           ],
-          "attributes": [],
-          "payload": "{\n/// Operation name (e.g., `get_install_name`, `sign_binary`)\noperation: String,\n/// Path to the binary being operated on\nbinary_path: String,\n/// Additional context for the operation\ncontext: HashMap<String, String>,\n}"
+          "definition": "BinaryOperationStarted {\n        /// Operation name (e.g., `get_install_name`, `sign_binary`)\n        operation: String,\n        /// Path to the binary being operated on\n        binary_path: String,\n        /// Additional context for the operation\n        context: HashMap<String, String>,\n    },"
         },
         {
           "name": "BinaryOperationCompleted",
@@ -1153,8 +739,7 @@
           "doc": [
             "Binary operation completed successfully"
           ],
-          "attributes": [],
-          "payload": "{\n/// Operation name that completed\noperation: String,\n/// Path to the binary that was operated on\nbinary_path: String,\n/// List of changes made during the operation\nchanges_made: Vec<String>,\n/// Duration of the operation in milliseconds\nduration_ms: u64,\n}"
+          "definition": "BinaryOperationCompleted {\n        /// Operation name that completed\n        operation: String,\n        /// Path to the binary that was operated on\n        binary_path: String,\n        /// List of changes made during the operation\n        changes_made: Vec<String>,\n        /// Duration of the operation in milliseconds\n        duration_ms: u64,\n    },"
         },
         {
           "name": "BinaryOperationFailed",
@@ -1162,8 +747,7 @@
           "doc": [
             "Binary operation failed"
           ],
-          "attributes": [],
-          "payload": "{\n/// Operation name that failed\noperation: String,\n/// Path to the binary that was being operated on\nbinary_path: String,\n/// Error message\nerror_message: String,\n/// Duration before failure in milliseconds\nduration_ms: u64,\n}"
+          "definition": "BinaryOperationFailed {\n        /// Operation name that failed\n        operation: String,\n        /// Path to the binary that was being operated on\n        binary_path: String,\n        /// Error message\n        error_message: String,\n        /// Duration before failure in milliseconds\n        duration_ms: u64,\n    },"
         },
         {
           "name": "FilesystemOperationStarted",
@@ -1171,8 +755,7 @@
           "doc": [
             "Filesystem operation started (APFS clone, atomic operations)"
           ],
-          "attributes": [],
-          "payload": "{\n/// Operation name (e.g., `clone_file`, `atomic_rename`)\noperation: String,\n/// Source path (if applicable)\nsource_path: Option<String>,\n/// Target path\ntarget_path: String,\n/// Additional operation context\ncontext: HashMap<String, String>,\n}"
+          "definition": "FilesystemOperationStarted {\n        /// Operation name (e.g., `clone_file`, `atomic_rename`)\n        operation: String,\n        /// Source path (if applicable)\n        source_path: Option<String>,\n        /// Target path\n        target_path: String,\n        /// Additional operation context\n        context: HashMap<String, String>,\n    },"
         },
         {
           "name": "FilesystemOperationCompleted",
@@ -1180,8 +763,7 @@
           "doc": [
             "Filesystem operation completed successfully"
           ],
-          "attributes": [],
-          "payload": "{\n/// Operation name that completed\noperation: String,\n/// List of paths affected by the operation\npaths_affected: Vec<String>,\n/// Duration of the operation in milliseconds\nduration_ms: u64,\n}"
+          "definition": "FilesystemOperationCompleted {\n        /// Operation name that completed\n        operation: String,\n        /// List of paths affected by the operation\n        paths_affected: Vec<String>,\n        /// Duration of the operation in milliseconds\n        duration_ms: u64,\n    },"
         },
         {
           "name": "FilesystemOperationFailed",
@@ -1189,8 +771,7 @@
           "doc": [
             "Filesystem operation failed"
           ],
-          "attributes": [],
-          "payload": "{\n/// Operation name that failed\noperation: String,\n/// Paths involved in the failed operation\npaths_involved: Vec<String>,\n/// Error message\nerror_message: String,\n/// Duration before failure in milliseconds\nduration_ms: u64,\n}"
+          "definition": "FilesystemOperationFailed {\n        /// Operation name that failed\n        operation: String,\n        /// Paths involved in the failed operation\n        paths_involved: Vec<String>,\n        /// Error message\n        error_message: String,\n        /// Duration before failure in milliseconds\n        duration_ms: u64,\n    },"
         },
         {
           "name": "ProcessExecutionStarted",
@@ -1198,8 +779,7 @@
           "doc": [
             "Process execution started"
           ],
-          "attributes": [],
-          "payload": "{\n/// Command being executed\ncommand: String,\n/// Command arguments\nargs: Vec<String>,\n/// Working directory (if set)\nworking_dir: Option<String>,\n}"
+          "definition": "ProcessExecutionStarted {\n        /// Command being executed\n        command: String,\n        /// Command arguments\n        args: Vec<String>,\n        /// Working directory (if set)\n        working_dir: Option<String>,\n    },"
         },
         {
           "name": "ProcessExecutionCompleted",
@@ -1207,8 +787,7 @@
           "doc": [
             "Process execution completed"
           ],
-          "attributes": [],
-          "payload": "{\n/// Command that was executed\ncommand: String,\n/// Exit code from the process\nexit_code: i32,\n/// Duration of execution in milliseconds\nduration_ms: u64,\n/// Size of stdout in bytes\nstdout_bytes: usize,\n/// Size of stderr in bytes\nstderr_bytes: usize,\n}"
+          "definition": "ProcessExecutionCompleted {\n        /// Command that was executed\n        command: String,\n        /// Exit code from the process\n        exit_code: i32,\n        /// Duration of execution in milliseconds\n        duration_ms: u64,\n        /// Size of stdout in bytes\n        stdout_bytes: usize,\n        /// Size of stderr in bytes\n        stderr_bytes: usize,\n    },"
         },
         {
           "name": "ProcessExecutionFailed",
@@ -1216,8 +795,7 @@
           "doc": [
             "Process execution failed"
           ],
-          "attributes": [],
-          "payload": "{\n/// Command that failed\ncommand: String,\n/// Error message\nerror_message: String,\n/// Duration before failure in milliseconds\nduration_ms: u64,\n}"
+          "definition": "ProcessExecutionFailed {\n        /// Command that failed\n        command: String,\n        /// Error message\n        error_message: String,\n        /// Duration before failure in milliseconds\n        duration_ms: u64,\n    },"
         },
         {
           "name": "ToolDiscoveryStarted",
@@ -1225,8 +803,7 @@
           "doc": [
             "Tool discovery started"
           ],
-          "attributes": [],
-          "payload": "{\n/// Name of the tool being discovered\ntool: String,\n/// Paths being searched for the tool\nsearch_paths: Vec<std::path::PathBuf>,\n}"
+          "definition": "ToolDiscoveryStarted {\n        /// Name of the tool being discovered\n        tool: String,\n        /// Paths being searched for the tool\n        search_paths: Vec<std::path::PathBuf>,\n    },"
         },
         {
           "name": "ToolDiscovered",
@@ -1234,8 +811,7 @@
           "doc": [
             "Tool discovered successfully"
           ],
-          "attributes": [],
-          "payload": "{\n/// Name of the tool that was discovered\ntool: String,\n/// Full path to the discovered tool\npath: std::path::PathBuf,\n/// Tool version if detectable\nversion: Option<String>,\n}"
+          "definition": "ToolDiscovered {\n        /// Name of the tool that was discovered\n        tool: String,\n        /// Full path to the discovered tool\n        path: std::path::PathBuf,\n        /// Tool version if detectable\n        version: Option<String>,\n    },"
         },
         {
           "name": "ToolNotFound",
@@ -1243,8 +819,7 @@
           "doc": [
             "Tool not found after searching"
           ],
-          "attributes": [],
-          "payload": "{\n/// Name of the tool that was not found\ntool: String,\n/// Paths that were searched\nsearched_paths: Vec<std::path::PathBuf>,\n/// Installation suggestion for the tool\nsuggestion: String,\n}"
+          "definition": "ToolNotFound {\n        /// Name of the tool that was not found\n        tool: String,\n        /// Paths that were searched\n        searched_paths: Vec<std::path::PathBuf>,\n        /// Installation suggestion for the tool\n        suggestion: String,\n    },"
         }
       ]
     },
@@ -1254,10 +829,8 @@
       "module": "events::progress",
       "path": "crates/events/src/events/progress.rs",
       "start_line": 9,
-      "doc": [
-        "Progress tracking events with sophisticated algorithms"
-      ],
-      "definition": "pub enum ProgressEvent {\n    /// Progress tracking started\n    Started {\n        id: String,\n        operation: String,\n        total: Option<u64>,\n        phases: Vec<ProgressPhase>,\n        parent_id: Option<String>,\n    },\n\n    /// Progress updated with calculated metrics\n    Updated {\n        id: String,\n        current: u64,\n        total: Option<u64>,\n        phase: Option<usize>,\n        speed: Option<f64>,\n        eta: Option<Duration>,\n        efficiency: Option<f64>,\n    },\n\n    /// Progress phase changed\n    PhaseChanged {\n        id: String,\n        phase: usize,\n        phase_name: String,\n    },\n\n    /// Progress completed successfully\n    Completed {\n        id: String,\n        duration: Duration,\n        final_speed: Option<f64>,\n        total_processed: u64,\n    },\n\n    /// Progress failed\n    Failed {\n        id: String,\n        error: String,\n        completed_items: u64,\n        partial_duration: Duration,\n    },\n\n    /// Progress paused\n    Paused {\n        id: String,\n        reason: String,\n        items_completed: u64,\n    },\n\n    /// Progress resumed\n    Resumed {\n        id: String,\n        pause_duration: Duration,\n    },\n\n    /// Nested progress - child operation started\n    ChildStarted {\n        parent_id: String,\n        child_id: String,\n        operation: String,\n        weight: f64, // Contribution to parent progress (0.0-1.0)\n    },\n\n    /// Nested progress - child operation completed\n    ChildCompleted {\n        parent_id: String,\n        child_id: String,\n        success: bool,\n    },\n\n    /// Batch progress aggregate\n    BatchProgress {\n        batch_id: String,\n        completed_items: usize,\n        failed_items: usize,\n        in_progress_items: usize,\n        queued_items: usize,\n        total_items: usize,\n        overall_progress: f64,\n        aggregate_speed: Option<f64>,\n        estimated_completion: Option<Duration>,\n    },\n\n    /// Progress statistics update\n    StatisticsUpdated {\n        id: String,\n        items_per_second: f64,\n        bytes_per_second: Option<f64>,\n        success_rate: f64,\n        error_rate: f64,\n        cache_hit_rate: Option<f64>,\n    },\n\n    /// Progress bottleneck detected\n    BottleneckDetected {\n        id: String,\n        bottleneck_type: String, // \"cpu\", \"memory\", \"network\", \"disk\"\n        severity: f64,           // 0.0-1.0\n        suggested_action: Option<String>,\n    },\n\n    /// Progress stalled detection\n    Stalled {\n        id: String,\n        stall_duration: Duration,\n        last_progress_time: std::time::SystemTime,\n        suspected_cause: Option<String>,\n    },\n\n    /// Progress estimate refined\n    EstimateRefined {\n        id: String,\n        new_eta: Duration,\n        confidence: f64, // 0.0-1.0\n        refinement_reason: String,\n    },\n}",
+      "doc": [],
+      "definition": "pub enum ProgressEvent {\n    /// Progress tracking started\n    Started {\n        id: String,\n        operation: String,\n        total: Option<u64>,\n        phases: Vec<ProgressPhase>,\n        parent_id: Option<String>,\n    },\n\n    /// Progress updated with calculated metrics\n    Updated {\n        id: String,\n        current: u64,\n        total: Option<u64>,\n        phase: Option<usize>,\n        speed: Option<f64>,\n        eta: Option<Duration>,\n        efficiency: Option<f64>,\n    },\n\n    /// Progress phase changed\n    PhaseChanged {\n        id: String,\n        phase: usize,\n        phase_name: String,\n    },\n\n    /// Progress completed successfully\n    Completed {\n        id: String,\n        duration: Duration,\n        final_speed: Option<f64>,\n        total_processed: u64,\n    },\n\n    /// Progress failed\n    Failed {\n        id: String,\n        failure: super::FailureContext,\n        completed_items: u64,\n        partial_duration: Duration,\n    },\n\n    /// Progress paused\n    Paused {\n        id: String,\n        reason: String,\n        items_completed: u64,\n    },\n\n    /// Progress resumed\n    Resumed {\n        id: String,\n        pause_duration: Duration,\n    },\n\n    /// Nested progress - child operation started\n    ChildStarted {\n        parent_id: String,\n        child_id: String,\n        operation: String,\n        weight: f64, // Contribution to parent progress (0.0-1.0)\n    },\n\n    /// Nested progress - child operation completed\n    ChildCompleted {\n        parent_id: String,\n        child_id: String,\n        success: bool,\n    },\n}",
       "variants": [
         {
           "name": "Started",
@@ -1265,8 +838,7 @@
           "doc": [
             "Progress tracking started"
           ],
-          "attributes": [],
-          "payload": "{\nid: String,\noperation: String,\ntotal: Option<u64>,\nphases: Vec<ProgressPhase>,\nparent_id: Option<String>,\n}"
+          "definition": "Started {\n        id: String,\n        operation: String,\n        total: Option<u64>,\n        phases: Vec<ProgressPhase>,\n        parent_id: Option<String>,\n    },"
         },
         {
           "name": "Updated",
@@ -1274,8 +846,7 @@
           "doc": [
             "Progress updated with calculated metrics"
           ],
-          "attributes": [],
-          "payload": "{\nid: String,\ncurrent: u64,\ntotal: Option<u64>,\nphase: Option<usize>,\nspeed: Option<f64>,\neta: Option<Duration>,\nefficiency: Option<f64>,\n}"
+          "definition": "Updated {\n        id: String,\n        current: u64,\n        total: Option<u64>,\n        phase: Option<usize>,\n        speed: Option<f64>,\n        eta: Option<Duration>,\n        efficiency: Option<f64>,\n    },"
         },
         {
           "name": "PhaseChanged",
@@ -1283,8 +854,7 @@
           "doc": [
             "Progress phase changed"
           ],
-          "attributes": [],
-          "payload": "{\nid: String,\nphase: usize,\nphase_name: String,\n}"
+          "definition": "PhaseChanged {\n        id: String,\n        phase: usize,\n        phase_name: String,\n    },"
         },
         {
           "name": "Completed",
@@ -1292,8 +862,7 @@
           "doc": [
             "Progress completed successfully"
           ],
-          "attributes": [],
-          "payload": "{\nid: String,\nduration: Duration,\nfinal_speed: Option<f64>,\ntotal_processed: u64,\n}"
+          "definition": "Completed {\n        id: String,\n        duration: Duration,\n        final_speed: Option<f64>,\n        total_processed: u64,\n    },"
         },
         {
           "name": "Failed",
@@ -1301,8 +870,7 @@
           "doc": [
             "Progress failed"
           ],
-          "attributes": [],
-          "payload": "{\nid: String,\nerror: String,\ncompleted_items: u64,\npartial_duration: Duration,\n}"
+          "definition": "Failed {\n        id: String,\n        failure: super::FailureContext,\n        completed_items: u64,\n        partial_duration: Duration,\n    },"
         },
         {
           "name": "Paused",
@@ -1310,8 +878,7 @@
           "doc": [
             "Progress paused"
           ],
-          "attributes": [],
-          "payload": "{\nid: String,\nreason: String,\nitems_completed: u64,\n}"
+          "definition": "Paused {\n        id: String,\n        reason: String,\n        items_completed: u64,\n    },"
         },
         {
           "name": "Resumed",
@@ -1319,8 +886,7 @@
           "doc": [
             "Progress resumed"
           ],
-          "attributes": [],
-          "payload": "{\nid: String,\npause_duration: Duration,\n}"
+          "definition": "Resumed {\n        id: String,\n        pause_duration: Duration,\n    },"
         },
         {
           "name": "ChildStarted",
@@ -1328,8 +894,7 @@
           "doc": [
             "Nested progress - child operation started"
           ],
-          "attributes": [],
-          "payload": "{\nparent_id: String,\nchild_id: String,\noperation: String,\nweight: f64, // Contribution to parent progress (0.0-1.0)\n}"
+          "definition": "ChildStarted {\n        parent_id: String,\n        child_id: String,\n        operation: String,\n        weight: f64, // Contribution to parent progress (0.0-1.0)\n    },"
         },
         {
           "name": "ChildCompleted",
@@ -1337,156 +902,7 @@
           "doc": [
             "Nested progress - child operation completed"
           ],
-          "attributes": [],
-          "payload": "{\nparent_id: String,\nchild_id: String,\nsuccess: bool,\n}"
-        },
-        {
-          "name": "BatchProgress",
-          "start_line": 82,
-          "doc": [
-            "Batch progress aggregate"
-          ],
-          "attributes": [],
-          "payload": "{\nbatch_id: String,\ncompleted_items: usize,\nfailed_items: usize,\nin_progress_items: usize,\nqueued_items: usize,\ntotal_items: usize,\noverall_progress: f64,\naggregate_speed: Option<f64>,\nestimated_completion: Option<Duration>,\n}"
-        },
-        {
-          "name": "StatisticsUpdated",
-          "start_line": 95,
-          "doc": [
-            "Progress statistics update"
-          ],
-          "attributes": [],
-          "payload": "{\nid: String,\nitems_per_second: f64,\nbytes_per_second: Option<f64>,\nsuccess_rate: f64,\nerror_rate: f64,\ncache_hit_rate: Option<f64>,\n}"
-        },
-        {
-          "name": "BottleneckDetected",
-          "start_line": 105,
-          "doc": [
-            "Progress bottleneck detected"
-          ],
-          "attributes": [],
-          "payload": "{\nid: String,\nbottleneck_type: String, // \"cpu\", \"memory\", \"network\", \"disk\"\nseverity: f64,           // 0.0-1.0\nsuggested_action: Option<String>,\n}"
-        },
-        {
-          "name": "Stalled",
-          "start_line": 113,
-          "doc": [
-            "Progress stalled detection"
-          ],
-          "attributes": [],
-          "payload": "{\nid: String,\nstall_duration: Duration,\nlast_progress_time: std::time::SystemTime,\nsuspected_cause: Option<String>,\n}"
-        },
-        {
-          "name": "EstimateRefined",
-          "start_line": 121,
-          "doc": [
-            "Progress estimate refined"
-          ],
-          "attributes": [],
-          "payload": "{\nid: String,\nnew_eta: Duration,\nconfidence: f64, // 0.0-1.0\nrefinement_reason: String,\n}"
-        }
-      ]
-    },
-    {
-      "kind": "enum",
-      "name": "PythonEvent",
-      "module": "events::python",
-      "path": "crates/events/src/events/python.rs",
-      "start_line": 7,
-      "doc": [
-        "Python virtual environment events"
-      ],
-      "definition": "pub enum PythonEvent {\n    /// Python virtual environment creating\n    VenvCreating {\n        package: String,\n        version: Version,\n        venv_path: String,\n    },\n\n    /// Python virtual environment created\n    VenvCreated {\n        package: String,\n        version: Version,\n        venv_path: String,\n    },\n\n    /// Python wheel installing\n    WheelInstalling {\n        package: String,\n        version: Version,\n        wheel_file: String,\n    },\n\n    /// Python wheel installed\n    WheelInstalled { package: String, version: Version },\n\n    /// Python wrapper creating\n    WrapperCreating {\n        package: String,\n        executable: String,\n        wrapper_path: String,\n    },\n\n    /// Python wrapper created\n    WrapperCreated {\n        package: String,\n        executable: String,\n        wrapper_path: String,\n    },\n\n    /// Python virtual environment cloning\n    VenvCloning {\n        package: String,\n        version: Version,\n        from_path: String,\n        to_path: String,\n    },\n\n    /// Python virtual environment cloned\n    VenvCloned {\n        package: String,\n        version: Version,\n        from_path: String,\n        to_path: String,\n    },\n\n    /// Python virtual environment removing\n    VenvRemoving {\n        package: String,\n        version: Version,\n        venv_path: String,\n    },\n\n    /// Python virtual environment removed\n    VenvRemoved {\n        package: String,\n        version: Version,\n        venv_path: String,\n    },\n}",
-      "variants": [
-        {
-          "name": "VenvCreating",
-          "start_line": 9,
-          "doc": [
-            "Python virtual environment creating"
-          ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: Version,\nvenv_path: String,\n}"
-        },
-        {
-          "name": "VenvCreated",
-          "start_line": 16,
-          "doc": [
-            "Python virtual environment created"
-          ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: Version,\nvenv_path: String,\n}"
-        },
-        {
-          "name": "WheelInstalling",
-          "start_line": 23,
-          "doc": [
-            "Python wheel installing"
-          ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: Version,\nwheel_file: String,\n}"
-        },
-        {
-          "name": "WheelInstalled",
-          "start_line": 30,
-          "doc": [
-            "Python wheel installed"
-          ],
-          "attributes": [],
-          "payload": "{ package: String, version: Version }"
-        },
-        {
-          "name": "WrapperCreating",
-          "start_line": 33,
-          "doc": [
-            "Python wrapper creating"
-          ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nexecutable: String,\nwrapper_path: String,\n}"
-        },
-        {
-          "name": "WrapperCreated",
-          "start_line": 40,
-          "doc": [
-            "Python wrapper created"
-          ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nexecutable: String,\nwrapper_path: String,\n}"
-        },
-        {
-          "name": "VenvCloning",
-          "start_line": 47,
-          "doc": [
-            "Python virtual environment cloning"
-          ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: Version,\nfrom_path: String,\nto_path: String,\n}"
-        },
-        {
-          "name": "VenvCloned",
-          "start_line": 55,
-          "doc": [
-            "Python virtual environment cloned"
-          ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: Version,\nfrom_path: String,\nto_path: String,\n}"
-        },
-        {
-          "name": "VenvRemoving",
-          "start_line": 63,
-          "doc": [
-            "Python virtual environment removing"
-          ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: Version,\nvenv_path: String,\n}"
-        },
-        {
-          "name": "VenvRemoved",
-          "start_line": 70,
-          "doc": [
-            "Python virtual environment removed"
-          ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: Version,\nvenv_path: String,\n}"
+          "definition": "ChildCompleted {\n        parent_id: String,\n        child_id: String,\n        success: bool,\n    },"
         }
       ]
     },
@@ -1496,9 +912,7 @@
       "module": "events::qa",
       "path": "crates/events/src/events/qa.rs",
       "start_line": 7,
-      "doc": [
-        "Quality assurance events for artifact validation"
-      ],
+      "doc": [],
       "definition": "pub enum QaEvent {\n    /// QA pipeline started\n    PipelineStarted {\n        package: String,\n        version: String,\n        qa_level: String,\n    },\n\n    /// QA pipeline completed\n    PipelineCompleted {\n        package: String,\n        version: String,\n        total_checks: usize,\n        passed: usize,\n        failed: usize,\n        duration_seconds: u64,\n    },\n\n    /// QA check started\n    CheckStarted {\n        check_type: String,\n        check_name: String,\n    },\n\n    /// QA check completed\n    CheckCompleted {\n        check_type: String,\n        check_name: String,\n        findings_count: usize,\n        severity_counts: HashMap<String, usize>,\n    },\n\n    /// QA check failed\n    CheckFailed {\n        check_type: String,\n        check_name: String,\n        error: String,\n    },\n\n    /// QA finding reported\n    FindingReported {\n        check_type: String,\n        severity: String,\n        message: String,\n        file_path: Option<String>,\n        line: Option<usize>,\n    },\n}",
       "variants": [
         {
@@ -1507,8 +921,7 @@
           "doc": [
             "QA pipeline started"
           ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: String,\nqa_level: String,\n}"
+          "definition": "PipelineStarted {\n        package: String,\n        version: String,\n        qa_level: String,\n    },"
         },
         {
           "name": "PipelineCompleted",
@@ -1516,8 +929,7 @@
           "doc": [
             "QA pipeline completed"
           ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: String,\ntotal_checks: usize,\npassed: usize,\nfailed: usize,\nduration_seconds: u64,\n}"
+          "definition": "PipelineCompleted {\n        package: String,\n        version: String,\n        total_checks: usize,\n        passed: usize,\n        failed: usize,\n        duration_seconds: u64,\n    },"
         },
         {
           "name": "CheckStarted",
@@ -1525,8 +937,7 @@
           "doc": [
             "QA check started"
           ],
-          "attributes": [],
-          "payload": "{\ncheck_type: String,\ncheck_name: String,\n}"
+          "definition": "CheckStarted {\n        check_type: String,\n        check_name: String,\n    },"
         },
         {
           "name": "CheckCompleted",
@@ -1534,8 +945,7 @@
           "doc": [
             "QA check completed"
           ],
-          "attributes": [],
-          "payload": "{\ncheck_type: String,\ncheck_name: String,\nfindings_count: usize,\nseverity_counts: HashMap<String, usize>,\n}"
+          "definition": "CheckCompleted {\n        check_type: String,\n        check_name: String,\n        findings_count: usize,\n        severity_counts: HashMap<String, usize>,\n    },"
         },
         {
           "name": "CheckFailed",
@@ -1543,8 +953,7 @@
           "doc": [
             "QA check failed"
           ],
-          "attributes": [],
-          "payload": "{\ncheck_type: String,\ncheck_name: String,\nerror: String,\n}"
+          "definition": "CheckFailed {\n        check_type: String,\n        check_name: String,\n        error: String,\n    },"
         },
         {
           "name": "FindingReported",
@@ -1552,8 +961,7 @@
           "doc": [
             "QA finding reported"
           ],
-          "attributes": [],
-          "payload": "{\ncheck_type: String,\nseverity: String,\nmessage: String,\nfile_path: Option<String>,\nline: Option<usize>,\n}"
+          "definition": "FindingReported {\n        check_type: String,\n        severity: String,\n        message: String,\n        file_path: Option<String>,\n        line: Option<usize>,\n    },"
         }
       ]
     },
@@ -1563,37 +971,32 @@
       "module": "events::repo",
       "path": "crates/events/src/events/repo.rs",
       "start_line": 6,
-      "doc": [
-        "Repository and index management events"
-      ],
-      "definition": "pub enum RepoEvent {\n    /// Repository synchronization starting\n    SyncStarting,\n\n    /// Repository synchronization started with URL\n    SyncStarted { url: String },\n\n    /// Repository synchronization completed\n    SyncCompleted {\n        packages_updated: usize,\n        duration_ms: u64,\n        bytes_transferred: u64,\n    },\n}",
+      "doc": [],
+      "definition": "pub enum RepoEvent {\n    /// Repository synchronization started\n    SyncStarted { url: Option<String> },\n\n    /// Repository synchronization completed\n    SyncCompleted {\n        packages_updated: usize,\n        duration_ms: u64,\n        bytes_transferred: u64,\n    },\n\n    /// Repository synchronization failed\n    SyncFailed {\n        url: Option<String>,\n        retryable: bool,\n    },\n}",
       "variants": [
         {
-          "name": "SyncStarting",
+          "name": "SyncStarted",
           "start_line": 8,
           "doc": [
-            "Repository synchronization starting"
+            "Repository synchronization started"
           ],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "SyncStarted",
-          "start_line": 11,
-          "doc": [
-            "Repository synchronization started with URL"
-          ],
-          "attributes": [],
-          "payload": "{ url: String }"
+          "definition": "SyncStarted { url: Option<String> },"
         },
         {
           "name": "SyncCompleted",
-          "start_line": 14,
+          "start_line": 11,
           "doc": [
             "Repository synchronization completed"
           ],
-          "attributes": [],
-          "payload": "{\npackages_updated: usize,\nduration_ms: u64,\nbytes_transferred: u64,\n}"
+          "definition": "SyncCompleted {\n        packages_updated: usize,\n        duration_ms: u64,\n        bytes_transferred: u64,\n    },"
+        },
+        {
+          "name": "SyncFailed",
+          "start_line": 18,
+          "doc": [
+            "Repository synchronization failed"
+          ],
+          "definition": "SyncFailed {\n        url: Option<String>,\n        retryable: bool,\n    },"
         }
       ]
     },
@@ -1603,10 +1006,8 @@
       "module": "events::resolver",
       "path": "crates/events/src/events/resolver.rs",
       "start_line": 6,
-      "doc": [
-        "Resolver domain events for dependency resolution"
-      ],
-      "definition": "pub enum ResolverEvent {\n    /// High-level resolution flow started\n    ResolutionStarted {\n        runtime_deps: usize,\n        build_deps: usize,\n        local_files: usize,\n        timeout_seconds: u64,\n    },\n\n    /// Resolution completed successfully\n    ResolutionCompleted {\n        total_packages: usize,\n        execution_batches: usize,\n        duration_ms: u64,\n        packages_resolved: Vec<String>,\n    },\n\n    /// Dependency conflict detected\n    DependencyConflictDetected {\n        conflicting_packages: Vec<(String, String)>, // (package, version)\n        message: String,\n        conflict_type: DependencyConflictType,\n        suggestion_count: usize,\n    },\n\n    /// Conflict resolution suggestions generated\n    DependencyConflictSuggestions {\n        suggestions: Vec<String>,\n        automated_resolution_possible: bool,\n        confidence_score: f64,\n    },\n}",
+      "doc": [],
+      "definition": "pub enum ResolverEvent {\n    /// High-level resolution flow started\n    ResolutionStarted {\n        runtime_deps: usize,\n        build_deps: usize,\n        local_files: usize,\n    },\n\n    /// Resolution completed successfully\n    ResolutionCompleted {\n        total_packages: usize,\n        duration_ms: u64,\n    },\n\n    /// Resolution failed\n    ResolutionFailed { reason: ResolutionFailureReason },\n}",
       "variants": [
         {
           "name": "ResolutionStarted",
@@ -1614,102 +1015,23 @@
           "doc": [
             "High-level resolution flow started"
           ],
-          "attributes": [],
-          "payload": "{\nruntime_deps: usize,\nbuild_deps: usize,\nlocal_files: usize,\ntimeout_seconds: u64,\n}"
+          "definition": "ResolutionStarted {\n        runtime_deps: usize,\n        build_deps: usize,\n        local_files: usize,\n    },"
         },
         {
           "name": "ResolutionCompleted",
-          "start_line": 16,
+          "start_line": 15,
           "doc": [
             "Resolution completed successfully"
           ],
-          "attributes": [],
-          "payload": "{\ntotal_packages: usize,\nexecution_batches: usize,\nduration_ms: u64,\npackages_resolved: Vec<String>,\n}"
+          "definition": "ResolutionCompleted {\n        total_packages: usize,\n        duration_ms: u64,\n    },"
         },
         {
-          "name": "DependencyConflictDetected",
-          "start_line": 24,
+          "name": "ResolutionFailed",
+          "start_line": 21,
           "doc": [
-            "Dependency conflict detected"
+            "Resolution failed"
           ],
-          "attributes": [],
-          "payload": "{\nconflicting_packages: Vec<(String, String)>, // (package, version)\nmessage: String,\nconflict_type: DependencyConflictType,\nsuggestion_count: usize,\n}"
-        },
-        {
-          "name": "DependencyConflictSuggestions",
-          "start_line": 32,
-          "doc": [
-            "Conflict resolution suggestions generated"
-          ],
-          "attributes": [],
-          "payload": "{\nsuggestions: Vec<String>,\nautomated_resolution_possible: bool,\nconfidence_score: f64,\n}"
-        }
-      ]
-    },
-    {
-      "kind": "enum",
-      "name": "DependencyConflictType",
-      "module": "events::resolver",
-      "path": "crates/events/src/events/resolver.rs",
-      "start_line": 42,
-      "doc": [
-        "Types of dependency conflicts for categorization"
-      ],
-      "definition": "pub enum DependencyConflictType {\n    /// Version constraints cannot be satisfied simultaneously\n    VersionIncompatibility,\n    /// Packages that cannot be installed together\n    MutualExclusion,\n    /// Circular dependency chain detected\n    CircularDependency,\n    /// Required dependency is not available\n    MissingDependency,\n    /// User constraint violated by solution\n    ConstraintViolation,\n    /// Platform or architecture incompatibility\n    PlatformIncompatibility,\n}",
-      "variants": [
-        {
-          "name": "VersionIncompatibility",
-          "start_line": 44,
-          "doc": [
-            "Version constraints cannot be satisfied simultaneously"
-          ],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "MutualExclusion",
-          "start_line": 46,
-          "doc": [
-            "Packages that cannot be installed together"
-          ],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "CircularDependency",
-          "start_line": 48,
-          "doc": [
-            "Circular dependency chain detected"
-          ],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "MissingDependency",
-          "start_line": 50,
-          "doc": [
-            "Required dependency is not available"
-          ],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "ConstraintViolation",
-          "start_line": 52,
-          "doc": [
-            "User constraint violated by solution"
-          ],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "PlatformIncompatibility",
-          "start_line": 54,
-          "doc": [
-            "Platform or architecture incompatibility"
-          ],
-          "attributes": [],
-          "payload": ""
+          "definition": "ResolutionFailed { reason: ResolutionFailureReason },"
         }
       ]
     },
@@ -1719,163 +1041,64 @@
       "module": "events::state",
       "path": "crates/events/src/events/state.rs",
       "start_line": 8,
-      "doc": [
-        "State management events for atomic operations and rollback"
-      ],
-      "definition": "pub enum StateEvent {\n    /// State initialization started\n    Initializing {\n        state_id: StateId,\n        operation: String,\n        estimated_duration: Option<Duration>,\n    },\n\n    /// State created successfully\n    Created {\n        state_id: StateId,\n        parent_id: Option<StateId>,\n        operation: String,\n    },\n\n    /// State transition completed successfully\n    TransitionCompleted {\n        from: StateId,\n        to: StateId,\n        operation: String,\n        duration: Duration,\n    },\n\n    /// State transition failed\n    TransitionFailed {\n        from: StateId,\n        to: StateId,\n        operation: String,\n        error: String,\n        rollback_available: bool,\n    },\n\n    /// Rollback executing\n    RollbackExecuting {\n        from: StateId,\n        to: StateId,\n        packages_affected: usize,\n    },\n\n    /// Rollback completed successfully\n    RollbackCompleted {\n        from: StateId,\n        to: StateId,\n        duration: Duration,\n        packages_reverted: usize,\n    },\n\n    /// Rollback failed\n    RollbackFailed {\n        from: StateId,\n        to: StateId,\n        error: String,\n        recovery_options: Vec<String>,\n    },\n\n    /// State cleanup started\n    CleanupStarted {\n        states_to_remove: usize,\n        estimated_space_freed: u64,\n    },\n\n    /// State cleanup progress\n    CleanupProgress {\n        states_processed: usize,\n        total_states: usize,\n        space_freed: u64,\n    },\n\n    /// State cleanup completed\n    CleanupCompleted {\n        states_pruned: usize,\n        states_removed: usize,\n        space_freed: u64,\n        duration: Duration,\n    },\n\n    /// Two-phase commit started\n    TwoPhaseCommitStarting {\n        state_id: StateId,\n        parent_state_id: StateId,\n        operation: String,\n    },\n\n    /// Two-phase commit phase one started\n    TwoPhaseCommitPhaseOneStarting {\n        state_id: StateId,\n        operation: String,\n    },\n\n    /// Two-phase commit phase one completed\n    TwoPhaseCommitPhaseOneCompleted {\n        state_id: StateId,\n        operation: String,\n    },\n\n    /// Two-phase commit phase two started\n    TwoPhaseCommitPhaseTwoStarting {\n        state_id: StateId,\n        operation: String,\n    },\n\n    /// Two-phase commit phase two completed\n    TwoPhaseCommitPhaseTwoCompleted {\n        state_id: StateId,\n        operation: String,\n    },\n\n    /// Two-phase commit completed\n    TwoPhaseCommitCompleted {\n        state_id: StateId,\n        parent_state_id: StateId,\n        operation: String,\n    },\n\n    /// Two-phase commit failed\n    TwoPhaseCommitFailed {\n        state_id: StateId,\n        operation: String,\n        error: String,\n        phase: String,\n    },\n}",
+      "doc": [],
+      "definition": "pub enum StateEvent {\n    /// A state transition started.\n    TransitionStarted {\n        operation: String,\n        source: Option<StateId>,\n        target: StateId,\n    },\n\n    /// A state transition completed successfully.\n    TransitionCompleted {\n        operation: String,\n        source: Option<StateId>,\n        target: StateId,\n        duration: Option<Duration>,\n    },\n\n    /// A state transition failed.\n    TransitionFailed {\n        operation: String,\n        source: Option<StateId>,\n        target: Option<StateId>,\n        retryable: bool,\n    },\n\n    /// A rollback operation started.\n    RollbackStarted { from: StateId, to: StateId },\n\n    /// A rollback operation completed.\n    RollbackCompleted {\n        from: StateId,\n        to: StateId,\n        duration: Option<Duration>,\n    },\n\n    /// Cleanup pass started.\n    CleanupStarted { planned_states: usize },\n\n    /// Cleanup pass completed.\n    CleanupCompleted {\n        removed_states: usize,\n        space_freed: u64,\n    },\n}",
       "variants": [
         {
-          "name": "Initializing",
+          "name": "TransitionStarted",
           "start_line": 10,
           "doc": [
-            "State initialization started"
+            "A state transition started."
           ],
-          "attributes": [],
-          "payload": "{\nstate_id: StateId,\noperation: String,\nestimated_duration: Option<Duration>,\n}"
-        },
-        {
-          "name": "Created",
-          "start_line": 17,
-          "doc": [
-            "State created successfully"
-          ],
-          "attributes": [],
-          "payload": "{\nstate_id: StateId,\nparent_id: Option<StateId>,\noperation: String,\n}"
+          "definition": "TransitionStarted {\n        operation: String,\n        source: Option<StateId>,\n        target: StateId,\n    },"
         },
         {
           "name": "TransitionCompleted",
-          "start_line": 24,
+          "start_line": 17,
           "doc": [
-            "State transition completed successfully"
+            "A state transition completed successfully."
           ],
-          "attributes": [],
-          "payload": "{\nfrom: StateId,\nto: StateId,\noperation: String,\nduration: Duration,\n}"
+          "definition": "TransitionCompleted {\n        operation: String,\n        source: Option<StateId>,\n        target: StateId,\n        duration: Option<Duration>,\n    },"
         },
         {
           "name": "TransitionFailed",
-          "start_line": 32,
+          "start_line": 25,
           "doc": [
-            "State transition failed"
+            "A state transition failed."
           ],
-          "attributes": [],
-          "payload": "{\nfrom: StateId,\nto: StateId,\noperation: String,\nerror: String,\nrollback_available: bool,\n}"
+          "definition": "TransitionFailed {\n        operation: String,\n        source: Option<StateId>,\n        target: Option<StateId>,\n        retryable: bool,\n    },"
         },
         {
-          "name": "RollbackExecuting",
-          "start_line": 41,
+          "name": "RollbackStarted",
+          "start_line": 33,
           "doc": [
-            "Rollback executing"
+            "A rollback operation started."
           ],
-          "attributes": [],
-          "payload": "{\nfrom: StateId,\nto: StateId,\npackages_affected: usize,\n}"
+          "definition": "RollbackStarted { from: StateId, to: StateId },"
         },
         {
           "name": "RollbackCompleted",
-          "start_line": 48,
+          "start_line": 36,
           "doc": [
-            "Rollback completed successfully"
+            "A rollback operation completed."
           ],
-          "attributes": [],
-          "payload": "{\nfrom: StateId,\nto: StateId,\nduration: Duration,\npackages_reverted: usize,\n}"
-        },
-        {
-          "name": "RollbackFailed",
-          "start_line": 56,
-          "doc": [
-            "Rollback failed"
-          ],
-          "attributes": [],
-          "payload": "{\nfrom: StateId,\nto: StateId,\nerror: String,\nrecovery_options: Vec<String>,\n}"
+          "definition": "RollbackCompleted {\n        from: StateId,\n        to: StateId,\n        duration: Option<Duration>,\n    },"
         },
         {
           "name": "CleanupStarted",
-          "start_line": 64,
+          "start_line": 43,
           "doc": [
-            "State cleanup started"
+            "Cleanup pass started."
           ],
-          "attributes": [],
-          "payload": "{\nstates_to_remove: usize,\nestimated_space_freed: u64,\n}"
-        },
-        {
-          "name": "CleanupProgress",
-          "start_line": 70,
-          "doc": [
-            "State cleanup progress"
-          ],
-          "attributes": [],
-          "payload": "{\nstates_processed: usize,\ntotal_states: usize,\nspace_freed: u64,\n}"
+          "definition": "CleanupStarted { planned_states: usize },"
         },
         {
           "name": "CleanupCompleted",
-          "start_line": 77,
+          "start_line": 46,
           "doc": [
-            "State cleanup completed"
+            "Cleanup pass completed."
           ],
-          "attributes": [],
-          "payload": "{\nstates_pruned: usize,\nstates_removed: usize,\nspace_freed: u64,\nduration: Duration,\n}"
-        },
-        {
-          "name": "TwoPhaseCommitStarting",
-          "start_line": 85,
-          "doc": [
-            "Two-phase commit started"
-          ],
-          "attributes": [],
-          "payload": "{\nstate_id: StateId,\nparent_state_id: StateId,\noperation: String,\n}"
-        },
-        {
-          "name": "TwoPhaseCommitPhaseOneStarting",
-          "start_line": 92,
-          "doc": [
-            "Two-phase commit phase one started"
-          ],
-          "attributes": [],
-          "payload": "{\nstate_id: StateId,\noperation: String,\n}"
-        },
-        {
-          "name": "TwoPhaseCommitPhaseOneCompleted",
-          "start_line": 98,
-          "doc": [
-            "Two-phase commit phase one completed"
-          ],
-          "attributes": [],
-          "payload": "{\nstate_id: StateId,\noperation: String,\n}"
-        },
-        {
-          "name": "TwoPhaseCommitPhaseTwoStarting",
-          "start_line": 104,
-          "doc": [
-            "Two-phase commit phase two started"
-          ],
-          "attributes": [],
-          "payload": "{\nstate_id: StateId,\noperation: String,\n}"
-        },
-        {
-          "name": "TwoPhaseCommitPhaseTwoCompleted",
-          "start_line": 110,
-          "doc": [
-            "Two-phase commit phase two completed"
-          ],
-          "attributes": [],
-          "payload": "{\nstate_id: StateId,\noperation: String,\n}"
-        },
-        {
-          "name": "TwoPhaseCommitCompleted",
-          "start_line": 116,
-          "doc": [
-            "Two-phase commit completed"
-          ],
-          "attributes": [],
-          "payload": "{\nstate_id: StateId,\nparent_state_id: StateId,\noperation: String,\n}"
-        },
-        {
-          "name": "TwoPhaseCommitFailed",
-          "start_line": 123,
-          "doc": [
-            "Two-phase commit failed"
-          ],
-          "attributes": [],
-          "payload": "{\nstate_id: StateId,\noperation: String,\nerror: String,\nphase: String,\n}"
+          "definition": "CleanupCompleted {\n        removed_states: usize,\n        space_freed: u64,\n    },"
         }
       ]
     },
@@ -1884,56 +1107,33 @@
       "name": "UninstallEvent",
       "module": "events::uninstall",
       "path": "crates/events/src/events/uninstall.rs",
-      "start_line": 8,
-      "doc": [
-        "Uninstallation domain events consumed by CLI/logging"
-      ],
-      "definition": "pub enum UninstallEvent {\n    /// Uninstallation operation started\n    Started {\n        package: String,\n        version: Version,\n        force_removal: bool,\n        skip_dependency_check: bool,\n    },\n\n    /// Uninstallation completed successfully\n    Completed {\n        package: String,\n        version: Version,\n        files_removed: usize,\n        space_freed: u64,\n        duration: Duration,\n        dependents_updated: usize,\n    },\n\n    /// Uninstallation failed\n    Failed {\n        package: String,\n        version: Version,\n        phase: Option<String>,\n        error: String,\n        cleanup_required: bool,\n    },\n\n    /// Batch uninstall started\n    BatchStarted {\n        packages: Vec<String>,\n        operation_id: String,\n        dependency_order: bool,\n        remove_orphans: bool,\n    },\n\n    /// Batch uninstall completed\n    BatchCompleted {\n        operation_id: String,\n        successful_packages: Vec<String>,\n        failed_packages: Vec<(String, String)>, // (package, error)\n        orphans_removed: Vec<String>,\n        total_duration: Duration,\n        total_space_freed: u64,\n    },\n}",
+      "start_line": 7,
+      "doc": [],
+      "definition": "pub enum UninstallEvent {\n    /// Uninstallation started\n    Started { package: String, version: Version },\n\n    /// Uninstallation completed successfully\n    Completed {\n        package: String,\n        version: Version,\n        files_removed: usize,\n    },\n\n    /// Uninstallation failed\n    Failed {\n        package: Option<String>,\n        version: Option<Version>,\n        failure: super::FailureContext,\n    },\n}",
       "variants": [
         {
           "name": "Started",
-          "start_line": 10,
+          "start_line": 9,
           "doc": [
-            "Uninstallation operation started"
+            "Uninstallation started"
           ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: Version,\nforce_removal: bool,\nskip_dependency_check: bool,\n}"
+          "definition": "Started { package: String, version: Version },"
         },
         {
           "name": "Completed",
-          "start_line": 18,
+          "start_line": 12,
           "doc": [
             "Uninstallation completed successfully"
           ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: Version,\nfiles_removed: usize,\nspace_freed: u64,\nduration: Duration,\ndependents_updated: usize,\n}"
+          "definition": "Completed {\n        package: String,\n        version: Version,\n        files_removed: usize,\n    },"
         },
         {
           "name": "Failed",
-          "start_line": 28,
+          "start_line": 19,
           "doc": [
             "Uninstallation failed"
           ],
-          "attributes": [],
-          "payload": "{\npackage: String,\nversion: Version,\nphase: Option<String>,\nerror: String,\ncleanup_required: bool,\n}"
-        },
-        {
-          "name": "BatchStarted",
-          "start_line": 37,
-          "doc": [
-            "Batch uninstall started"
-          ],
-          "attributes": [],
-          "payload": "{\npackages: Vec<String>,\noperation_id: String,\ndependency_order: bool,\nremove_orphans: bool,\n}"
-        },
-        {
-          "name": "BatchCompleted",
-          "start_line": 45,
-          "doc": [
-            "Batch uninstall completed"
-          ],
-          "attributes": [],
-          "payload": "{\noperation_id: String,\nsuccessful_packages: Vec<String>,\nfailed_packages: Vec<(String, String)>, // (package, error)\norphans_removed: Vec<String>,\ntotal_duration: Duration,\ntotal_space_freed: u64,\n}"
+          "definition": "Failed {\n        package: Option<String>,\n        version: Option<Version>,\n        failure: super::FailureContext,\n    },"
         }
       ]
     },
@@ -1943,10 +1143,8 @@
       "module": "events::update",
       "path": "crates/events/src/events/update.rs",
       "start_line": 8,
-      "doc": [
-        "Update domain events surfaced by ops/update and ops/upgrade"
-      ],
-      "definition": "pub enum UpdateEvent {\n    /// Update operation started\n    Started {\n        operation_type: UpdateOperationType,\n        packages_specified: Vec<String>,\n        check_all_packages: bool,\n        ignore_constraints: bool,\n    },\n\n    /// Update planning phase started\n    PlanningStarted {\n        packages_to_check: Vec<String>,\n        include_dependencies: bool,\n    },\n\n    /// Update operation completed\n    Completed {\n        operation_type: UpdateOperationType,\n        packages_updated: Vec<UpdateResult>,\n        packages_unchanged: Vec<String>,\n        total_duration: Duration,\n        space_difference: i64,\n    },\n\n    /// Update operation failed\n    Failed {\n        operation_type: UpdateOperationType,\n        error: String,\n        packages_updated: Vec<UpdateResult>,\n        packages_failed: Vec<(String, String)>, // (package, error)\n    },\n\n    /// Batch update started\n    BatchStarted {\n        packages: Vec<String>,\n        operation_id: String,\n        concurrent_limit: usize,\n    },\n\n    /// Batch update completed\n    BatchCompleted {\n        operation_id: String,\n        successful_updates: Vec<UpdateResult>,\n        failed_updates: Vec<(String, String)>,\n        skipped_packages: Vec<String>,\n        total_duration: Duration,\n        total_size_change: i64,\n    },\n}",
+      "doc": [],
+      "definition": "pub enum UpdateEvent {\n    /// Update operation started\n    Started {\n        operation_type: UpdateOperationType,\n        packages_specified: Vec<String>,\n        check_all_packages: bool,\n        ignore_constraints: bool,\n    },\n\n    /// Update planning phase started\n    PlanningStarted {\n        packages_to_check: Vec<String>,\n        include_dependencies: bool,\n    },\n\n    /// Update operation completed\n    Completed {\n        operation_type: UpdateOperationType,\n        packages_updated: Vec<UpdateResult>,\n        packages_unchanged: Vec<String>,\n        total_duration: Duration,\n        space_difference: i64,\n    },\n\n    /// Update operation failed\n    Failed {\n        operation_type: UpdateOperationType,\n        failure: super::FailureContext,\n        packages_updated: Vec<UpdateResult>,\n        packages_failed: Vec<(String, String)>, // (package, error)\n    },\n\n    /// Batch update started\n    BatchStarted {\n        packages: Vec<String>,\n        operation_id: String,\n        concurrent_limit: usize,\n    },\n\n    /// Batch update completed\n    BatchCompleted {\n        operation_id: String,\n        successful_updates: Vec<UpdateResult>,\n        failed_updates: Vec<(String, String)>,\n        skipped_packages: Vec<String>,\n        total_duration: Duration,\n        total_size_change: i64,\n    },\n}",
       "variants": [
         {
           "name": "Started",
@@ -1954,8 +1152,7 @@
           "doc": [
             "Update operation started"
           ],
-          "attributes": [],
-          "payload": "{\noperation_type: UpdateOperationType,\npackages_specified: Vec<String>,\ncheck_all_packages: bool,\nignore_constraints: bool,\n}"
+          "definition": "Started {\n        operation_type: UpdateOperationType,\n        packages_specified: Vec<String>,\n        check_all_packages: bool,\n        ignore_constraints: bool,\n    },"
         },
         {
           "name": "PlanningStarted",
@@ -1963,8 +1160,7 @@
           "doc": [
             "Update planning phase started"
           ],
-          "attributes": [],
-          "payload": "{\npackages_to_check: Vec<String>,\ninclude_dependencies: bool,\n}"
+          "definition": "PlanningStarted {\n        packages_to_check: Vec<String>,\n        include_dependencies: bool,\n    },"
         },
         {
           "name": "Completed",
@@ -1972,8 +1168,7 @@
           "doc": [
             "Update operation completed"
           ],
-          "attributes": [],
-          "payload": "{\noperation_type: UpdateOperationType,\npackages_updated: Vec<UpdateResult>,\npackages_unchanged: Vec<String>,\ntotal_duration: Duration,\nspace_difference: i64,\n}"
+          "definition": "Completed {\n        operation_type: UpdateOperationType,\n        packages_updated: Vec<UpdateResult>,\n        packages_unchanged: Vec<String>,\n        total_duration: Duration,\n        space_difference: i64,\n    },"
         },
         {
           "name": "Failed",
@@ -1981,8 +1176,7 @@
           "doc": [
             "Update operation failed"
           ],
-          "attributes": [],
-          "payload": "{\noperation_type: UpdateOperationType,\nerror: String,\npackages_updated: Vec<UpdateResult>,\npackages_failed: Vec<(String, String)>, // (package, error)\n}"
+          "definition": "Failed {\n        operation_type: UpdateOperationType,\n        failure: super::FailureContext,\n        packages_updated: Vec<UpdateResult>,\n        packages_failed: Vec<(String, String)>, // (package, error)\n    },"
         },
         {
           "name": "BatchStarted",
@@ -1990,8 +1184,7 @@
           "doc": [
             "Batch update started"
           ],
-          "attributes": [],
-          "payload": "{\npackages: Vec<String>,\noperation_id: String,\nconcurrent_limit: usize,\n}"
+          "definition": "BatchStarted {\n        packages: Vec<String>,\n        operation_id: String,\n        concurrent_limit: usize,\n    },"
         },
         {
           "name": "BatchCompleted",
@@ -1999,365 +1192,9 @@
           "doc": [
             "Batch update completed"
           ],
-          "attributes": [],
-          "payload": "{\noperation_id: String,\nsuccessful_updates: Vec<UpdateResult>,\nfailed_updates: Vec<(String, String)>,\nskipped_packages: Vec<String>,\ntotal_duration: Duration,\ntotal_size_change: i64,\n}"
+          "definition": "BatchCompleted {\n        operation_id: String,\n        successful_updates: Vec<UpdateResult>,\n        failed_updates: Vec<(String, String)>,\n        skipped_packages: Vec<String>,\n        total_duration: Duration,\n        total_size_change: i64,\n    },"
         }
       ]
-    },
-    {
-      "kind": "enum",
-      "name": "UpdateOperationType",
-      "module": "events::update",
-      "path": "crates/events/src/events/update.rs",
-      "start_line": 61,
-      "doc": [
-        "Types of update operations"
-      ],
-      "definition": "pub enum UpdateOperationType {\n    /// Standard update within version constraints\n    Update,\n    /// Upgrade ignoring upper bound constraints\n    Upgrade,\n    /// Downgrade to previous version\n    Downgrade,\n    /// Reinstall same version (refresh)\n    Reinstall,\n}",
-      "variants": [
-        {
-          "name": "Update",
-          "start_line": 63,
-          "doc": [
-            "Standard update within version constraints"
-          ],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Upgrade",
-          "start_line": 65,
-          "doc": [
-            "Upgrade ignoring upper bound constraints"
-          ],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Downgrade",
-          "start_line": 67,
-          "doc": [
-            "Downgrade to previous version"
-          ],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Reinstall",
-          "start_line": 69,
-          "doc": [
-            "Reinstall same version (refresh)"
-          ],
-          "attributes": [],
-          "payload": ""
-        }
-      ]
-    },
-    {
-      "kind": "enum",
-      "name": "PackageUpdateType",
-      "module": "events::update",
-      "path": "crates/events/src/events/update.rs",
-      "start_line": 75,
-      "doc": [
-        "Package update types based on semantic versioning"
-      ],
-      "definition": "pub enum PackageUpdateType {\n    /// Patch version update (x.y.Z)\n    Patch,\n    /// Minor version update (x.Y.z)\n    Minor,\n    /// Major version update (X.y.z)\n    Major,\n    /// Pre-release version\n    PreRelease,\n}",
-      "variants": [
-        {
-          "name": "Patch",
-          "start_line": 77,
-          "doc": [
-            "Patch version update (x.y.Z)"
-          ],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Minor",
-          "start_line": 79,
-          "doc": [
-            "Minor version update (x.Y.z)"
-          ],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Major",
-          "start_line": 81,
-          "doc": [
-            "Major version update (X.y.z)"
-          ],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "PreRelease",
-          "start_line": 83,
-          "doc": [
-            "Pre-release version"
-          ],
-          "attributes": [],
-          "payload": ""
-        }
-      ]
-    },
-    {
-      "kind": "struct",
-      "name": "UpdateResult",
-      "module": "events::update",
-      "path": "crates/events/src/events/update.rs",
-      "start_line": 88,
-      "doc": [
-        "Update result for completed package updates"
-      ],
-      "definition": "pub struct UpdateResult {\n    pub package: String,\n    pub from_version: Version,\n    pub to_version: Version,\n    pub update_type: PackageUpdateType,\n    pub duration: Duration,\n    pub size_change: i64,\n}"
-    },
-    {
-      "kind": "struct",
-      "name": "EventMeta",
-      "module": "meta",
-      "path": "crates/events/src/meta.rs",
-      "start_line": 16,
-      "doc": [
-        "Structured metadata that accompanies every event emission.",
-        "",
-        "This wrapper gives consumers enough context to correlate events across",
-        "domains, attach them to tracing spans, and provide stable identifiers for",
-        "telemetry pipelines."
-      ],
-      "definition": "pub struct EventMeta {\n    /// Unique identifier for this specific event.\n    pub event_id: Uuid,\n    /// Parent event (when modelling hierarchical operations / progress).\n    pub parent_id: Option<Uuid>,\n    /// High-level correlation identifier (operation id, package key, etc.).\n    pub correlation_id: Option<String>,\n    /// Timestamp captured at emission time.\n    pub timestamp: DateTime<Utc>,\n    /// Severity used for routing to logging systems and alerting.\n    pub level: EventLevel,\n    /// Subsystem/component that originated the event.\n    pub source: EventSource,\n    /// Optional free-form labels for downstream enrichment (kept small on purpose).\n    #[serde(default, skip_serializing_if = \"BTreeMap::is_empty\")]\n    pub labels: BTreeMap<String, String>,\n}"
-    },
-    {
-      "kind": "enum",
-      "name": "EventLevel",
-      "module": "meta",
-      "path": "crates/events/src/meta.rs",
-      "start_line": 80,
-      "doc": [
-        "Lightweight severity levels used by the event system."
-      ],
-      "definition": "pub enum EventLevel {\n    Trace,\n    Debug,\n    Info,\n    Warn,\n    Error,\n}",
-      "variants": [
-        {
-          "name": "Trace",
-          "start_line": 81,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Debug",
-          "start_line": 82,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Info",
-          "start_line": 83,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Warn",
-          "start_line": 84,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Error",
-          "start_line": 85,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        }
-      ]
-    },
-    {
-      "kind": "struct",
-      "name": "EventSource",
-      "module": "meta",
-      "path": "crates/events/src/meta.rs",
-      "start_line": 115,
-      "doc": [
-        "Component/feature that originated the event."
-      ],
-      "definition": "pub struct EventSource(Cow<'static, str>);"
-    },
-    {
-      "kind": "struct",
-      "name": "ProgressConfig",
-      "module": "progress::config",
-      "path": "crates/events/src/progress/config.rs",
-      "start_line": 20,
-      "doc": [
-        "Configuration for progress tracking algorithms"
-      ],
-      "definition": "pub struct ProgressConfig {\n    /// Number of samples for moving average (default: 10)\n    pub speed_window_size: usize,\n    /// Maximum samples to retain in history (default: 1000)\n    pub max_history_samples: usize,\n    /// Update frequency for smooth UI (default: 100ms)\n    pub update_interval: Duration,\n    /// Outlier rejection multiplier (default: 2.0)\n    pub outlier_threshold: f64,\n    /// Exponential moving average alpha (default: 0.3)\n    pub ema_alpha: f64,\n    /// Minimum samples needed for reliable ETA (default: 3)\n    pub min_samples_for_eta: usize,\n}"
-    },
-    {
-      "kind": "struct",
-      "name": "ProgressPhase",
-      "module": "progress::config",
-      "path": "crates/events/src/progress/config.rs",
-      "start_line": 50,
-      "doc": [
-        "A phase in a multi-stage operation"
-      ],
-      "definition": "pub struct ProgressPhase {\n    /// Human-readable name of the phase\n    pub name: String,\n    /// Weight of this phase relative to others (0.0-1.0)\n    pub weight: f64,\n    /// Optional estimated duration for this phase\n    pub estimated_duration: Option<Duration>,\n    /// Optional human-readable description of the phase\n    pub description: Option<String>,\n}"
-    },
-    {
-      "kind": "enum",
-      "name": "TrendDirection",
-      "module": "progress::config",
-      "path": "crates/events/src/progress/config.rs",
-      "start_line": 90,
-      "doc": [
-        "Direction of speed trend"
-      ],
-      "definition": "pub enum TrendDirection {\n    /// Speed is increasing\n    Accelerating,\n    /// Speed is decreasing  \n    Decelerating,\n    /// Speed is relatively stable\n    Stable,\n}",
-      "variants": [
-        {
-          "name": "Accelerating",
-          "start_line": 92,
-          "doc": [
-            "Speed is increasing"
-          ],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Decelerating",
-          "start_line": 94,
-          "doc": [
-            "Speed is decreasing"
-          ],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Stable",
-          "start_line": 96,
-          "doc": [
-            "Speed is relatively stable"
-          ],
-          "attributes": [],
-          "payload": ""
-        }
-      ]
-    },
-    {
-      "kind": "struct",
-      "name": "ProgressManager",
-      "module": "progress::manager",
-      "path": "crates/events/src/progress/manager.rs",
-      "start_line": 23,
-      "doc": [
-        "Thread-safe progress tracker manager"
-      ],
-      "definition": "pub struct ProgressManager {\n    trackers: Arc<Mutex<std::collections::HashMap<String, ProgressTracker>>>,\n}"
-    },
-    {
-      "kind": "struct",
-      "name": "DownloadProgressConfig",
-      "module": "progress::mod",
-      "path": "crates/events/src/progress/mod.rs",
-      "start_line": 257,
-      "doc": [
-        "Configuration for download progress tracking"
-      ],
-      "definition": "    pub struct DownloadProgressConfig {\n        /// Human-readable operation description (e.g., \"Downloading jq package\")\n        pub operation_name: String,\n\n        /// Total bytes to download (enables percentage calculation and ETA)\n        /// Set to None for unknown size downloads\n        pub total_bytes: Option<u64>,\n\n        /// Package name for display purposes (optional)\n        /// Used in progress messages: \"Downloading {`package_name`}\"\n        pub package_name: Option<String>,\n\n        /// Source URL for debugging and logging\n        pub url: String,\n    }"
-    },
-    {
-      "kind": "struct",
-      "name": "InstallProgressConfig",
-      "module": "progress::mod",
-      "path": "crates/events/src/progress/mod.rs",
-      "start_line": 275,
-      "doc": [
-        "Configuration for install progress tracking"
-      ],
-      "definition": "    pub struct InstallProgressConfig {\n        /// Human-readable operation description (e.g., \"Installing packages\")\n        pub operation_name: String,\n\n        /// Number of packages to install (used for progress calculation)\n        pub package_count: u64,\n\n        /// Whether to include dependency resolution phase (adds 10% weight)\n        /// Set to true for fresh installs, false for pre-resolved packages\n        pub include_dependency_resolution: bool,\n    }"
-    },
-    {
-      "kind": "struct",
-      "name": "UpdateProgressConfig",
-      "module": "progress::mod",
-      "path": "crates/events/src/progress/mod.rs",
-      "start_line": 289,
-      "doc": [
-        "Configuration for update/upgrade progress tracking"
-      ],
-      "definition": "    pub struct UpdateProgressConfig {\n        /// Human-readable operation description (e.g., \"Updating packages\")\n        pub operation_name: String,\n\n        /// Number of packages to update/upgrade (used for progress calculation)\n        pub package_count: u64,\n\n        /// Whether this is an upgrade (true) or update (false)\n        /// Affects progress messaging and phase weights\n        pub is_upgrade: bool,\n    }"
-    },
-    {
-      "kind": "struct",
-      "name": "UninstallProgressConfig",
-      "module": "progress::mod",
-      "path": "crates/events/src/progress/mod.rs",
-      "start_line": 303,
-      "doc": [
-        "Configuration for uninstall progress tracking"
-      ],
-      "definition": "    pub struct UninstallProgressConfig {\n        /// Human-readable operation description (e.g., \"Uninstalling packages\")\n        pub operation_name: String,\n\n        /// Number of packages to uninstall (used for progress calculation)\n        pub package_count: u64,\n    }"
-    },
-    {
-      "kind": "struct",
-      "name": "VulnDbUpdateProgressConfig",
-      "module": "progress::mod",
-      "path": "crates/events/src/progress/mod.rs",
-      "start_line": 313,
-      "doc": [
-        "Configuration for vulnerability database update progress tracking"
-      ],
-      "definition": "    pub struct VulnDbUpdateProgressConfig {\n        /// Human-readable operation description (e.g., \"Updating vulnerability database\")\n        pub operation_name: String,\n\n        /// Number of vulnerability sources to update (e.g., NVD, OSV, GitHub = 3)\n        pub sources_count: u64,\n    }"
-    },
-    {
-      "kind": "struct",
-      "name": "SpeedSample",
-      "module": "progress::speed",
-      "path": "crates/events/src/progress/speed.rs",
-      "start_line": 22,
-      "doc": [
-        "Sample point for speed calculation"
-      ],
-      "definition": "pub(crate) struct SpeedSample {\n    /// Timestamp when sample was taken\n    pub timestamp: Instant,\n    /// Total bytes/items processed at this time\n    pub progress: u64,\n    /// Time delta since last sample\n    pub delta_time: Duration,\n    /// Progress delta since last sample\n    pub delta_progress: u64,\n    /// Instantaneous speed for this sample\n    pub speed: f64,\n}"
-    },
-    {
-      "kind": "struct",
-      "name": "SpeedBuffer",
-      "module": "progress::speed",
-      "path": "crates/events/src/progress/speed.rs",
-      "start_line": 38,
-      "doc": [
-        "Efficient ring buffer for speed samples with automatic pruning"
-      ],
-      "definition": "pub(crate) struct SpeedBuffer {\n    /// Fixed-size ring buffer for recent samples\n    pub samples: VecDeque<SpeedSample>,\n    /// Maximum number of samples to keep\n    max_size: usize,\n    /// Sum of speeds for quick average calculation\n    speed_sum: f64,\n    /// Last recorded progress value\n    last_progress: u64,\n    /// Last sample timestamp\n    last_timestamp: Instant,\n}"
-    },
-    {
-      "kind": "struct",
-      "name": "ProgressTracker",
-      "module": "progress::tracker",
-      "path": "crates/events/src/progress/tracker.rs",
-      "start_line": 22,
-      "doc": [
-        "Core progress tracker with sophisticated algorithms"
-      ],
-      "definition": "pub struct ProgressTracker {\n    /// Unique identifier for this tracker\n    id: String,\n    /// Human-readable operation name\n    operation: String,\n    /// Total amount of work (bytes, items, etc.)\n    total: Option<u64>,\n    /// Current progress\n    current: u64,\n    /// Phases for multi-stage operations\n    pub phases: Vec<ProgressPhase>,\n    /// Current active phase\n    pub current_phase: usize,\n    /// Speed calculation buffer\n    speed_buffer: SpeedBuffer,\n    /// Configuration for algorithms\n    config: ProgressConfig,\n    /// When tracking started\n    start_time: Instant,\n    /// Last update time\n    last_update: Instant,\n    /// Exponential moving average state\n    ema_speed: Option<f64>,\n    /// Whether tracker has been completed\n    pub(crate) completed: bool,\n}"
-    },
-    {
-      "kind": "struct",
-      "name": "ProgressUpdate",
-      "module": "progress::update",
-      "path": "crates/events/src/progress/update.rs",
-      "start_line": 20,
-      "doc": [
-        "Result of a progress update with calculated metrics"
-      ],
-      "definition": "pub struct ProgressUpdate {\n    /// Tracker ID\n    pub id: String,\n    /// Current progress\n    pub progress: u64,\n    /// Total amount of work\n    pub total: Option<u64>,\n    /// Current phase index\n    pub phase: Option<usize>,\n    /// Smoothed speed (units per second)\n    pub speed: Option<f64>,\n    /// Estimated time to completion\n    pub eta: Option<Duration>,\n    /// Speed trend direction\n    pub trend: TrendDirection,\n}"
     }
   ]
 }

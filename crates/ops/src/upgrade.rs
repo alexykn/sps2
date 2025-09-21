@@ -7,9 +7,10 @@ use crate::{InstallReport, OpsCtx};
 use sps2_errors::Error;
 use sps2_events::{
     events::{UpdateOperationType, UpdateResult},
-    AppEvent, EventEmitter, GeneralEvent, UpdateEvent,
+    patterns::UpdateProgressConfig,
+    AppEvent, EventEmitter, FailureContext, GeneralEvent, ProgressEvent, ProgressManager,
+    UpdateEvent,
 };
-use sps2_events::{patterns::UpdateProgressConfig, ProgressManager};
 use sps2_guard::{OperationResult as GuardOperationResult, PackageChange as GuardPackageChange};
 use sps2_install::{InstallConfig, Installer, UpdateContext};
 use sps2_types::{PackageSpec, Version};
@@ -41,7 +42,8 @@ pub async fn upgrade(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRe
         is_upgrade: true,
     };
     let progress_id = progress_manager.create_update_tracker(update_config);
-    progress_manager.emit_started(&progress_id, ctx);
+    let correlation = ctx.current_correlation();
+    progress_manager.emit_started(&progress_id, ctx, correlation.as_deref());
 
     ctx.emit(AppEvent::Update(UpdateEvent::Started {
         operation_type: UpdateOperationType::Upgrade,
@@ -80,7 +82,34 @@ pub async fn upgrade(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRe
         .collect();
 
     // Execute upgrade
-    let result = installer.update(update_context).await?;
+    let result = installer.update(update_context).await.inspect_err(|e| {
+        let failure = FailureContext::from_error(e);
+        ctx.emit_operation_failed("upgrade", failure.clone());
+
+        ctx.emit(AppEvent::Progress(ProgressEvent::Failed {
+            id: progress_id.clone(),
+            failure: failure.clone(),
+            completed_items: 0,
+            partial_duration: start.elapsed(),
+        }));
+
+        let failure_message = failure.message.clone();
+        let packages_failed: Vec<(String, String)> = if package_names.is_empty() {
+            vec![("all".to_string(), failure_message)]
+        } else {
+            package_names
+                .iter()
+                .map(|pkg| (pkg.clone(), failure_message.clone()))
+                .collect()
+        };
+
+        ctx.emit(AppEvent::Update(UpdateEvent::Failed {
+            operation_type: UpdateOperationType::Upgrade,
+            failure,
+            packages_updated: Vec::new(),
+            packages_failed,
+        }));
+    })?;
 
     let report = create_upgrade_report(
         &result,

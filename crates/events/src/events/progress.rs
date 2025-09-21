@@ -45,10 +45,7 @@ pub enum ProgressEvent {
     /// Progress failed
     Failed {
         id: String,
-        code: String,
-        message: String,
-        hint: Option<String>,
-        retryable: bool,
+        failure: super::FailureContext,
         completed_items: u64,
         partial_duration: Duration,
     },
@@ -79,53 +76,6 @@ pub enum ProgressEvent {
         parent_id: String,
         child_id: String,
         success: bool,
-    },
-
-    /// Batch progress aggregate
-    BatchProgress {
-        batch_id: String,
-        completed_items: usize,
-        failed_items: usize,
-        in_progress_items: usize,
-        queued_items: usize,
-        total_items: usize,
-        overall_progress: f64,
-        aggregate_speed: Option<f64>,
-        estimated_completion: Option<Duration>,
-    },
-
-    /// Progress statistics update
-    StatisticsUpdated {
-        id: String,
-        items_per_second: f64,
-        bytes_per_second: Option<f64>,
-        success_rate: f64,
-        error_rate: f64,
-        cache_hit_rate: Option<f64>,
-    },
-
-    /// Progress bottleneck detected
-    BottleneckDetected {
-        id: String,
-        bottleneck_type: String, // "cpu", "memory", "network", "disk"
-        severity: f64,           // 0.0-1.0
-        suggested_action: Option<String>,
-    },
-
-    /// Progress stalled detection
-    Stalled {
-        id: String,
-        stall_duration: Duration,
-        last_progress_time: std::time::SystemTime,
-        suspected_cause: Option<String>,
-    },
-
-    /// Progress estimate refined
-    EstimateRefined {
-        id: String,
-        new_eta: Duration,
-        confidence: f64, // 0.0-1.0
-        refinement_reason: String,
     },
 }
 
@@ -200,19 +150,10 @@ impl ProgressEvent {
     }
 
     /// Create a progress failed event
-    pub fn failed(
-        id: impl Into<String>,
-        code: impl Into<String>,
-        message: impl Into<String>,
-        hint: Option<String>,
-        retryable: bool,
-    ) -> Self {
+    pub fn failed(id: impl Into<String>, failure: super::FailureContext) -> Self {
         Self::Failed {
             id: id.into(),
-            code: code.into(),
-            message: message.into(),
-            hint,
-            retryable,
+            failure,
             completed_items: 0,
             partial_duration: Duration::from_secs(0),
         }

@@ -42,4 +42,14 @@ impl UserFacingError for SigningError {
     fn is_retryable(&self) -> bool {
         matches!(self, Self::NoTrustedKeyFound { .. })
     }
+
+    fn user_code(&self) -> Option<&'static str> {
+        let code = match self {
+            Self::VerificationFailed { .. } => "signing.verification_failed",
+            Self::NoTrustedKeyFound { .. } => "signing.no_trusted_key",
+            Self::InvalidSignatureFormat { .. } => "signing.invalid_signature_format",
+            Self::InvalidPublicKey { .. } => "signing.invalid_public_key",
+        };
+        Some(code)
+    }
 }

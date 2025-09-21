@@ -1,6 +1,51 @@
 use serde::{Deserialize, Serialize};
 
 use crate::EventSource;
+use sps2_errors::UserFacingError;
+
+/// Structured failure information shared across domains.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FailureContext {
+    /// Optional stable error code once taxonomy lands.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    /// Short user-facing message.
+    pub message: String,
+    /// Optional remediation hint.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
+    /// Whether retrying the operation might succeed.
+    pub retryable: bool,
+}
+
+impl FailureContext {
+    /// Construct a new failure context.
+    #[must_use]
+    pub fn new(
+        code: Option<impl Into<String>>,
+        message: impl Into<String>,
+        hint: Option<impl Into<String>>,
+        retryable: bool,
+    ) -> Self {
+        Self {
+            code: code.map(Into::into),
+            message: message.into(),
+            hint: hint.map(Into::into),
+            retryable,
+        }
+    }
+
+    /// Build failure context from a `UserFacingError` implementation.
+    #[must_use]
+    pub fn from_error<E: UserFacingError + ?Sized>(error: &E) -> Self {
+        Self::new(
+            error.user_code(),
+            error.user_message().into_owned(),
+            error.user_hint(),
+            error.is_retryable(),
+        )
+    }
+}
 
 // Declare all domain modules
 pub mod acquisition;
@@ -143,10 +188,7 @@ impl AppEvent {
 
             // Warning-level events
             AppEvent::General(GeneralEvent::Warning { .. })
-            | AppEvent::Build(BuildEvent::Warning { .. })
-            | AppEvent::Progress(
-                ProgressEvent::Stalled { .. } | ProgressEvent::BottleneckDetected { .. },
-            ) => Level::WARN,
+            | AppEvent::Build(BuildEvent::Warning { .. }) => Level::WARN,
 
             // Debug-level events (progress updates, internal state)
             AppEvent::General(GeneralEvent::DebugLog { .. })
@@ -154,8 +196,7 @@ impl AppEvent {
             | AppEvent::Progress(ProgressEvent::Updated { .. }) => Level::DEBUG,
 
             // Trace-level events (very detailed internal operations)
-            AppEvent::Build(BuildEvent::ResourceUsage { .. })
-            | AppEvent::Progress(ProgressEvent::StatisticsUpdated { .. }) => Level::TRACE,
+            AppEvent::Build(BuildEvent::ResourceUsage { .. }) => Level::TRACE,
 
             // Default to INFO for most events
             _ => Level::INFO,

@@ -6,135 +6,121 @@
       "name": "AuditError",
       "module": "audit",
       "path": "crates/errors/src/audit.rs",
-      "start_line": 8,
+      "start_line": 11,
       "doc": [],
       "definition": "pub enum AuditError {\n    #[error(\"SBOM parsing failed: {message}\")]\n    SbomParseError { message: String },\n\n    #[error(\"vulnerability database error: {message}\")]\n    DatabaseError { message: String },\n\n    #[error(\"CVE data fetch failed: {message}\")]\n    CveFetchError { message: String },\n\n    #[error(\"invalid CVE ID: {id}\")]\n    InvalidCveId { id: String },\n\n    #[error(\"SBOM file not found: {path}\")]\n    SbomNotFound { path: String },\n\n    #[error(\"vulnerability scan failed: {message}\")]\n    ScanFailed { message: String },\n\n    #[error(\"database connection failed: {message}\")]\n    ConnectionFailed { message: String },\n\n    #[error(\"invalid vulnerability data: {message}\")]\n    InvalidData { message: String },\n\n    #[error(\"audit operation timeout after {seconds} seconds\")]\n    Timeout { seconds: u64 },\n\n    #[error(\"unsupported SBOM format: {format}\")]\n    UnsupportedFormat { format: String },\n\n    #[error(\"critical vulnerabilities found: {count}\")]\n    CriticalVulnerabilitiesFound { count: usize },\n\n    #[error(\"not implemented: {feature}\")]\n    NotImplemented { feature: String },\n\n    #[error(\"scan error: {message}\")]\n    ScanError { message: String },\n\n    #[error(\"scan timeout for component {component} after {timeout_seconds} seconds\")]\n    ScanTimeout {\n        component: String,\n        timeout_seconds: u64,\n    },\n}",
       "variants": [
         {
           "name": "SbomParseError",
-          "start_line": 10,
-          "doc": [],
-          "attributes": [
+          "start_line": 13,
+          "doc": [
             "#[error(\"SBOM parsing failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "SbomParseError { message: String },"
         },
         {
           "name": "DatabaseError",
-          "start_line": 13,
-          "doc": [],
-          "attributes": [
+          "start_line": 16,
+          "doc": [
             "#[error(\"vulnerability database error: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "DatabaseError { message: String },"
         },
         {
           "name": "CveFetchError",
-          "start_line": 16,
-          "doc": [],
-          "attributes": [
+          "start_line": 19,
+          "doc": [
             "#[error(\"CVE data fetch failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "CveFetchError { message: String },"
         },
         {
           "name": "InvalidCveId",
-          "start_line": 19,
-          "doc": [],
-          "attributes": [
+          "start_line": 22,
+          "doc": [
             "#[error(\"invalid CVE ID: {id}\")]"
           ],
-          "payload": "{ id: String }"
+          "definition": "InvalidCveId { id: String },"
         },
         {
           "name": "SbomNotFound",
-          "start_line": 22,
-          "doc": [],
-          "attributes": [
+          "start_line": 25,
+          "doc": [
             "#[error(\"SBOM file not found: {path}\")]"
           ],
-          "payload": "{ path: String }"
+          "definition": "SbomNotFound { path: String },"
         },
         {
           "name": "ScanFailed",
-          "start_line": 25,
-          "doc": [],
-          "attributes": [
+          "start_line": 28,
+          "doc": [
             "#[error(\"vulnerability scan failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "ScanFailed { message: String },"
         },
         {
           "name": "ConnectionFailed",
-          "start_line": 28,
-          "doc": [],
-          "attributes": [
+          "start_line": 31,
+          "doc": [
             "#[error(\"database connection failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "ConnectionFailed { message: String },"
         },
         {
           "name": "InvalidData",
-          "start_line": 31,
-          "doc": [],
-          "attributes": [
+          "start_line": 34,
+          "doc": [
             "#[error(\"invalid vulnerability data: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "InvalidData { message: String },"
         },
         {
           "name": "Timeout",
-          "start_line": 34,
-          "doc": [],
-          "attributes": [
+          "start_line": 37,
+          "doc": [
             "#[error(\"audit operation timeout after {seconds} seconds\")]"
           ],
-          "payload": "{ seconds: u64 }"
+          "definition": "Timeout { seconds: u64 },"
         },
         {
           "name": "UnsupportedFormat",
-          "start_line": 37,
-          "doc": [],
-          "attributes": [
+          "start_line": 40,
+          "doc": [
             "#[error(\"unsupported SBOM format: {format}\")]"
           ],
-          "payload": "{ format: String }"
+          "definition": "UnsupportedFormat { format: String },"
         },
         {
           "name": "CriticalVulnerabilitiesFound",
-          "start_line": 40,
-          "doc": [],
-          "attributes": [
+          "start_line": 43,
+          "doc": [
             "#[error(\"critical vulnerabilities found: {count}\")]"
           ],
-          "payload": "{ count: usize }"
+          "definition": "CriticalVulnerabilitiesFound { count: usize },"
         },
         {
           "name": "NotImplemented",
-          "start_line": 43,
-          "doc": [],
-          "attributes": [
+          "start_line": 46,
+          "doc": [
             "#[error(\"not implemented: {feature}\")]"
           ],
-          "payload": "{ feature: String }"
+          "definition": "NotImplemented { feature: String },"
         },
         {
           "name": "ScanError",
-          "start_line": 46,
-          "doc": [],
-          "attributes": [
+          "start_line": 49,
+          "doc": [
             "#[error(\"scan error: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "ScanError { message: String },"
         },
         {
           "name": "ScanTimeout",
-          "start_line": 49,
-          "doc": [],
-          "attributes": [
+          "start_line": 52,
+          "doc": [
             "#[error(\"scan timeout for component {component} after {timeout_seconds} seconds\")]"
           ],
-          "payload": "{\ncomponent: String,\ntimeout_seconds: u64,\n}"
+          "definition": "ScanTimeout {\n        component: String,\n        timeout_seconds: u64,\n    },"
         }
       ]
     },
@@ -143,405 +129,361 @@
       "name": "BuildError",
       "module": "build",
       "path": "crates/errors/src/build.rs",
-      "start_line": 8,
+      "start_line": 11,
       "doc": [],
       "definition": "pub enum BuildError {\n    #[error(\"build failed: {message}\")]\n    Failed { message: String },\n\n    #[error(\"recipe error: {message}\")]\n    RecipeError { message: String },\n\n    #[error(\"missing build dependency: {name}\")]\n    MissingBuildDep { name: String },\n\n    #[error(\"fetch failed: {url}\")]\n    FetchFailed { url: String },\n\n    #[error(\"patch failed: {patch}\")]\n    PatchFailed { patch: String },\n\n    #[error(\"configure failed: {message}\")]\n    ConfigureFailed { message: String },\n\n    #[error(\"compile failed: {message}\")]\n    CompileFailed { message: String },\n\n    #[error(\"install failed: {message}\")]\n    InstallFailed { message: String },\n\n    #[error(\"sandbox violation: {message}\")]\n    SandboxViolation { message: String },\n\n    #[error(\"network access denied\")]\n    NetworkAccessDenied,\n\n    #[error(\"build timeout after {seconds} seconds\")]\n    Timeout { seconds: u64 },\n\n    #[error(\"hash mismatch for {file}: expected {expected}, got {actual}\")]\n    HashMismatch {\n        file: String,\n        expected: String,\n        actual: String,\n    },\n\n    #[error(\"SBOM error: {message}\")]\n    SbomError { message: String },\n\n    #[error(\"build timeout for {package} after {timeout_seconds} seconds\")]\n    BuildTimeout {\n        package: String,\n        timeout_seconds: u64,\n    },\n\n    #[error(\"extraction failed: {message}\")]\n    ExtractionFailed { message: String },\n\n    #[error(\"network access disabled for {url}\")]\n    NetworkDisabled { url: String },\n\n    #[error(\"invalid URL: {url}\")]\n    InvalidUrl { url: String },\n\n    #[error(\"signing error: {message}\")]\n    SigningError { message: String },\n\n    #[error(\"no build system detected in {path}\")]\n    NoBuildSystemDetected { path: String },\n\n    #[error(\"dependency conflict: {message}\")]\n    DependencyConflict { message: String },\n\n    #[error(\"compilation failed: {message}\")]\n    CompilationFailed { message: String },\n\n    #[error(\"tests failed: {passed}/{total} tests passed\")]\n    TestsFailed { passed: usize, total: usize },\n\n    #[error(\"quality assurance failed: {message}\")]\n    QualityAssuranceFailed { message: String },\n\n    #[error(\"linter error: {linter} - {message}\")]\n    LinterError { linter: String, message: String },\n\n    #[error(\"security vulnerability found: {scanner} - {message}\")]\n    SecurityVulnerability { scanner: String, message: String },\n\n    #[error(\"policy violation: {rule} - {message}\")]\n    PolicyViolation { rule: String, message: String },\n\n    #[error(\"license compliance error: {message}\")]\n    LicenseComplianceError { message: String },\n\n    #[error(\"draft metadata extraction failed: {message}\")]\n    DraftMetadataFailed { message: String },\n\n    #[error(\"draft template rendering failed: {message}\")]\n    DraftTemplateFailed { message: String },\n\n    #[error(\"draft source preparation failed: {message}\")]\n    DraftSourceFailed { message: String },\n\n    #[error(\"unsupported archive format: {format}\")]\n    UnsupportedArchiveFormat { format: String },\n\n    #[error(\"git clone failed: {message}\")]\n    GitCloneFailed { message: String },\n\n    #[error(\"validation failed: {message}\")]\n    ValidationFailed { message: String },\n\n    #[error(\"dangerous command blocked: {command} - {reason}\")]\n    DangerousCommand { command: String, reason: String },\n\n    #[error(\"invalid path: {path} - {reason}\")]\n    InvalidPath { path: String, reason: String },\n\n    #[error(\"invalid URL: {url} - {reason}\")]\n    InvalidUrlValidation { url: String, reason: String },\n\n    #[error(\"command parsing failed: {command} - {reason}\")]\n    CommandParseError { command: String, reason: String },\n\n    #[error(\"path escape attempt: {path} resolves to {resolved} outside build root {build_root}\")]\n    PathEscapeAttempt {\n        path: String,\n        resolved: String,\n        build_root: String,\n    },\n\n    #[error(\"dangerous write operation to {path}\")]\n    DangerousWrite { path: String },\n\n    #[error(\"dangerous execution of {path}\")]\n    DangerousExecution { path: String },\n\n    #[error(\"symlink loop detected at {path}\")]\n    SymlinkLoop { path: String },\n\n    #[error(\"too many symlinks while resolving {path}\")]\n    TooManySymlinks { path: String },\n\n    #[error(\"path traversal attempt: {path} - {reason}\")]\n    PathTraversalAttempt { path: String, reason: String },\n\n    #[error(\"disallowed command: {command}\")]\n    DisallowedCommand { command: String },\n}",
       "variants": [
         {
           "name": "Failed",
-          "start_line": 10,
-          "doc": [],
-          "attributes": [
+          "start_line": 13,
+          "doc": [
             "#[error(\"build failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "Failed { message: String },"
         },
         {
           "name": "RecipeError",
-          "start_line": 13,
-          "doc": [],
-          "attributes": [
+          "start_line": 16,
+          "doc": [
             "#[error(\"recipe error: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "RecipeError { message: String },"
         },
         {
           "name": "MissingBuildDep",
-          "start_line": 16,
-          "doc": [],
-          "attributes": [
+          "start_line": 19,
+          "doc": [
             "#[error(\"missing build dependency: {name}\")]"
           ],
-          "payload": "{ name: String }"
+          "definition": "MissingBuildDep { name: String },"
         },
         {
           "name": "FetchFailed",
-          "start_line": 19,
-          "doc": [],
-          "attributes": [
+          "start_line": 22,
+          "doc": [
             "#[error(\"fetch failed: {url}\")]"
           ],
-          "payload": "{ url: String }"
+          "definition": "FetchFailed { url: String },"
         },
         {
           "name": "PatchFailed",
-          "start_line": 22,
-          "doc": [],
-          "attributes": [
+          "start_line": 25,
+          "doc": [
             "#[error(\"patch failed: {patch}\")]"
           ],
-          "payload": "{ patch: String }"
+          "definition": "PatchFailed { patch: String },"
         },
         {
           "name": "ConfigureFailed",
-          "start_line": 25,
-          "doc": [],
-          "attributes": [
+          "start_line": 28,
+          "doc": [
             "#[error(\"configure failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "ConfigureFailed { message: String },"
         },
         {
           "name": "CompileFailed",
-          "start_line": 28,
-          "doc": [],
-          "attributes": [
+          "start_line": 31,
+          "doc": [
             "#[error(\"compile failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "CompileFailed { message: String },"
         },
         {
           "name": "InstallFailed",
-          "start_line": 31,
-          "doc": [],
-          "attributes": [
+          "start_line": 34,
+          "doc": [
             "#[error(\"install failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "InstallFailed { message: String },"
         },
         {
           "name": "SandboxViolation",
-          "start_line": 34,
-          "doc": [],
-          "attributes": [
+          "start_line": 37,
+          "doc": [
             "#[error(\"sandbox violation: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "SandboxViolation { message: String },"
         },
         {
           "name": "NetworkAccessDenied",
-          "start_line": 37,
-          "doc": [],
-          "attributes": [
+          "start_line": 40,
+          "doc": [
             "#[error(\"network access denied\")]"
           ],
-          "payload": ""
+          "definition": "NetworkAccessDenied,"
         },
         {
           "name": "Timeout",
-          "start_line": 40,
-          "doc": [],
-          "attributes": [
+          "start_line": 43,
+          "doc": [
             "#[error(\"build timeout after {seconds} seconds\")]"
           ],
-          "payload": "{ seconds: u64 }"
+          "definition": "Timeout { seconds: u64 },"
         },
         {
           "name": "HashMismatch",
-          "start_line": 43,
-          "doc": [],
-          "attributes": [
+          "start_line": 46,
+          "doc": [
             "#[error(\"hash mismatch for {file}: expected {expected}, got {actual}\")]"
           ],
-          "payload": "{\nfile: String,\nexpected: String,\nactual: String,\n}"
+          "definition": "HashMismatch {\n        file: String,\n        expected: String,\n        actual: String,\n    },"
         },
         {
           "name": "SbomError",
-          "start_line": 50,
-          "doc": [],
-          "attributes": [
+          "start_line": 53,
+          "doc": [
             "#[error(\"SBOM error: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "SbomError { message: String },"
         },
         {
           "name": "BuildTimeout",
-          "start_line": 53,
-          "doc": [],
-          "attributes": [
+          "start_line": 56,
+          "doc": [
             "#[error(\"build timeout for {package} after {timeout_seconds} seconds\")]"
           ],
-          "payload": "{\npackage: String,\ntimeout_seconds: u64,\n}"
+          "definition": "BuildTimeout {\n        package: String,\n        timeout_seconds: u64,\n    },"
         },
         {
           "name": "ExtractionFailed",
-          "start_line": 59,
-          "doc": [],
-          "attributes": [
+          "start_line": 62,
+          "doc": [
             "#[error(\"extraction failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "ExtractionFailed { message: String },"
         },
         {
           "name": "NetworkDisabled",
-          "start_line": 62,
-          "doc": [],
-          "attributes": [
+          "start_line": 65,
+          "doc": [
             "#[error(\"network access disabled for {url}\")]"
           ],
-          "payload": "{ url: String }"
+          "definition": "NetworkDisabled { url: String },"
         },
         {
           "name": "InvalidUrl",
-          "start_line": 65,
-          "doc": [],
-          "attributes": [
+          "start_line": 68,
+          "doc": [
             "#[error(\"invalid URL: {url}\")]"
           ],
-          "payload": "{ url: String }"
+          "definition": "InvalidUrl { url: String },"
         },
         {
           "name": "SigningError",
-          "start_line": 68,
-          "doc": [],
-          "attributes": [
+          "start_line": 71,
+          "doc": [
             "#[error(\"signing error: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "SigningError { message: String },"
         },
         {
           "name": "NoBuildSystemDetected",
-          "start_line": 71,
-          "doc": [],
-          "attributes": [
+          "start_line": 74,
+          "doc": [
             "#[error(\"no build system detected in {path}\")]"
           ],
-          "payload": "{ path: String }"
+          "definition": "NoBuildSystemDetected { path: String },"
         },
         {
           "name": "DependencyConflict",
-          "start_line": 74,
-          "doc": [],
-          "attributes": [
+          "start_line": 77,
+          "doc": [
             "#[error(\"dependency conflict: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "DependencyConflict { message: String },"
         },
         {
           "name": "CompilationFailed",
-          "start_line": 77,
-          "doc": [],
-          "attributes": [
+          "start_line": 80,
+          "doc": [
             "#[error(\"compilation failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "CompilationFailed { message: String },"
         },
         {
           "name": "TestsFailed",
-          "start_line": 80,
-          "doc": [],
-          "attributes": [
+          "start_line": 83,
+          "doc": [
             "#[error(\"tests failed: {passed}/{total} tests passed\")]"
           ],
-          "payload": "{ passed: usize, total: usize }"
+          "definition": "TestsFailed { passed: usize, total: usize },"
         },
         {
           "name": "QualityAssuranceFailed",
-          "start_line": 83,
-          "doc": [],
-          "attributes": [
+          "start_line": 86,
+          "doc": [
             "#[error(\"quality assurance failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "QualityAssuranceFailed { message: String },"
         },
         {
           "name": "LinterError",
-          "start_line": 86,
-          "doc": [],
-          "attributes": [
+          "start_line": 89,
+          "doc": [
             "#[error(\"linter error: {linter} - {message}\")]"
           ],
-          "payload": "{ linter: String, message: String }"
+          "definition": "LinterError { linter: String, message: String },"
         },
         {
           "name": "SecurityVulnerability",
-          "start_line": 89,
-          "doc": [],
-          "attributes": [
+          "start_line": 92,
+          "doc": [
             "#[error(\"security vulnerability found: {scanner} - {message}\")]"
           ],
-          "payload": "{ scanner: String, message: String }"
+          "definition": "SecurityVulnerability { scanner: String, message: String },"
         },
         {
           "name": "PolicyViolation",
-          "start_line": 92,
-          "doc": [],
-          "attributes": [
+          "start_line": 95,
+          "doc": [
             "#[error(\"policy violation: {rule} - {message}\")]"
           ],
-          "payload": "{ rule: String, message: String }"
+          "definition": "PolicyViolation { rule: String, message: String },"
         },
         {
           "name": "LicenseComplianceError",
-          "start_line": 95,
-          "doc": [],
-          "attributes": [
+          "start_line": 98,
+          "doc": [
             "#[error(\"license compliance error: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "LicenseComplianceError { message: String },"
         },
         {
           "name": "DraftMetadataFailed",
-          "start_line": 98,
-          "doc": [],
-          "attributes": [
+          "start_line": 101,
+          "doc": [
             "#[error(\"draft metadata extraction failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "DraftMetadataFailed { message: String },"
         },
         {
           "name": "DraftTemplateFailed",
-          "start_line": 101,
-          "doc": [],
-          "attributes": [
+          "start_line": 104,
+          "doc": [
             "#[error(\"draft template rendering failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "DraftTemplateFailed { message: String },"
         },
         {
           "name": "DraftSourceFailed",
-          "start_line": 104,
-          "doc": [],
-          "attributes": [
+          "start_line": 107,
+          "doc": [
             "#[error(\"draft source preparation failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "DraftSourceFailed { message: String },"
         },
         {
           "name": "UnsupportedArchiveFormat",
-          "start_line": 107,
-          "doc": [],
-          "attributes": [
+          "start_line": 110,
+          "doc": [
             "#[error(\"unsupported archive format: {format}\")]"
           ],
-          "payload": "{ format: String }"
+          "definition": "UnsupportedArchiveFormat { format: String },"
         },
         {
           "name": "GitCloneFailed",
-          "start_line": 110,
-          "doc": [],
-          "attributes": [
+          "start_line": 113,
+          "doc": [
             "#[error(\"git clone failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "GitCloneFailed { message: String },"
         },
         {
           "name": "ValidationFailed",
-          "start_line": 113,
-          "doc": [],
-          "attributes": [
+          "start_line": 116,
+          "doc": [
             "#[error(\"validation failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "ValidationFailed { message: String },"
         },
         {
           "name": "DangerousCommand",
-          "start_line": 116,
-          "doc": [],
-          "attributes": [
+          "start_line": 119,
+          "doc": [
             "#[error(\"dangerous command blocked: {command} - {reason}\")]"
           ],
-          "payload": "{ command: String, reason: String }"
+          "definition": "DangerousCommand { command: String, reason: String },"
         },
         {
           "name": "InvalidPath",
-          "start_line": 119,
-          "doc": [],
-          "attributes": [
+          "start_line": 122,
+          "doc": [
             "#[error(\"invalid path: {path} - {reason}\")]"
           ],
-          "payload": "{ path: String, reason: String }"
+          "definition": "InvalidPath { path: String, reason: String },"
         },
         {
           "name": "InvalidUrlValidation",
-          "start_line": 122,
-          "doc": [],
-          "attributes": [
+          "start_line": 125,
+          "doc": [
             "#[error(\"invalid URL: {url} - {reason}\")]"
           ],
-          "payload": "{ url: String, reason: String }"
+          "definition": "InvalidUrlValidation { url: String, reason: String },"
         },
         {
           "name": "CommandParseError",
-          "start_line": 125,
-          "doc": [],
-          "attributes": [
+          "start_line": 128,
+          "doc": [
             "#[error(\"command parsing failed: {command} - {reason}\")]"
           ],
-          "payload": "{ command: String, reason: String }"
+          "definition": "CommandParseError { command: String, reason: String },"
         },
         {
           "name": "PathEscapeAttempt",
-          "start_line": 128,
-          "doc": [],
-          "attributes": [
+          "start_line": 131,
+          "doc": [
             "#[error(\"path escape attempt: {path} resolves to {resolved} outside build root {build_root}\")]"
           ],
-          "payload": "{\npath: String,\nresolved: String,\nbuild_root: String,\n}"
+          "definition": "PathEscapeAttempt {\n        path: String,\n        resolved: String,\n        build_root: String,\n    },"
         },
         {
           "name": "DangerousWrite",
-          "start_line": 135,
-          "doc": [],
-          "attributes": [
+          "start_line": 138,
+          "doc": [
             "#[error(\"dangerous write operation to {path}\")]"
           ],
-          "payload": "{ path: String }"
+          "definition": "DangerousWrite { path: String },"
         },
         {
           "name": "DangerousExecution",
-          "start_line": 138,
-          "doc": [],
-          "attributes": [
+          "start_line": 141,
+          "doc": [
             "#[error(\"dangerous execution of {path}\")]"
           ],
-          "payload": "{ path: String }"
+          "definition": "DangerousExecution { path: String },"
         },
         {
           "name": "SymlinkLoop",
-          "start_line": 141,
-          "doc": [],
-          "attributes": [
+          "start_line": 144,
+          "doc": [
             "#[error(\"symlink loop detected at {path}\")]"
           ],
-          "payload": "{ path: String }"
+          "definition": "SymlinkLoop { path: String },"
         },
         {
           "name": "TooManySymlinks",
-          "start_line": 144,
-          "doc": [],
-          "attributes": [
+          "start_line": 147,
+          "doc": [
             "#[error(\"too many symlinks while resolving {path}\")]"
           ],
-          "payload": "{ path: String }"
+          "definition": "TooManySymlinks { path: String },"
         },
         {
           "name": "PathTraversalAttempt",
-          "start_line": 147,
-          "doc": [],
-          "attributes": [
+          "start_line": 150,
+          "doc": [
             "#[error(\"path traversal attempt: {path} - {reason}\")]"
           ],
-          "payload": "{ path: String, reason: String }"
+          "definition": "PathTraversalAttempt { path: String, reason: String },"
         },
         {
           "name": "DisallowedCommand",
-          "start_line": 150,
-          "doc": [],
-          "attributes": [
+          "start_line": 153,
+          "doc": [
             "#[error(\"disallowed command: {command}\")]"
           ],
-          "payload": "{ command: String }"
+          "definition": "DisallowedCommand { command: String },"
         }
       ]
     },
@@ -550,636 +492,329 @@
       "name": "ConfigError",
       "module": "config",
       "path": "crates/errors/src/config.rs",
-      "start_line": 8,
+      "start_line": 11,
       "doc": [],
       "definition": "pub enum ConfigError {\n    #[error(\"config file not found: {path}\")]\n    NotFound { path: String },\n\n    #[error(\"invalid config: {message}\")]\n    Invalid { message: String },\n\n    #[error(\"parse error: {message}\")]\n    ParseError { message: String },\n\n    #[error(\"missing required field: {field}\")]\n    MissingField { field: String },\n\n    #[error(\"invalid value for {field}: {value}\")]\n    InvalidValue { field: String, value: String },\n\n    #[error(\"environment variable not found: {var}\")]\n    EnvVarNotFound { var: String },\n\n    #[error(\"failed to write config to {path}: {error}\")]\n    WriteError { path: String, error: String },\n\n    #[error(\"failed to serialize config: {error}\")]\n    SerializeError { error: String },\n}",
       "variants": [
         {
           "name": "NotFound",
-          "start_line": 10,
-          "doc": [],
-          "attributes": [
+          "start_line": 13,
+          "doc": [
             "#[error(\"config file not found: {path}\")]"
           ],
-          "payload": "{ path: String }"
+          "definition": "NotFound { path: String },"
         },
         {
           "name": "Invalid",
-          "start_line": 13,
-          "doc": [],
-          "attributes": [
+          "start_line": 16,
+          "doc": [
             "#[error(\"invalid config: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "Invalid { message: String },"
         },
         {
           "name": "ParseError",
-          "start_line": 16,
-          "doc": [],
-          "attributes": [
+          "start_line": 19,
+          "doc": [
             "#[error(\"parse error: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "ParseError { message: String },"
         },
         {
           "name": "MissingField",
-          "start_line": 19,
-          "doc": [],
-          "attributes": [
+          "start_line": 22,
+          "doc": [
             "#[error(\"missing required field: {field}\")]"
           ],
-          "payload": "{ field: String }"
+          "definition": "MissingField { field: String },"
         },
         {
           "name": "InvalidValue",
-          "start_line": 22,
-          "doc": [],
-          "attributes": [
+          "start_line": 25,
+          "doc": [
             "#[error(\"invalid value for {field}: {value}\")]"
           ],
-          "payload": "{ field: String, value: String }"
+          "definition": "InvalidValue { field: String, value: String },"
         },
         {
           "name": "EnvVarNotFound",
-          "start_line": 25,
-          "doc": [],
-          "attributes": [
+          "start_line": 28,
+          "doc": [
             "#[error(\"environment variable not found: {var}\")]"
           ],
-          "payload": "{ var: String }"
+          "definition": "EnvVarNotFound { var: String },"
         },
         {
           "name": "WriteError",
-          "start_line": 28,
-          "doc": [],
-          "attributes": [
+          "start_line": 31,
+          "doc": [
             "#[error(\"failed to write config to {path}: {error}\")]"
           ],
-          "payload": "{ path: String, error: String }"
+          "definition": "WriteError { path: String, error: String },"
         },
         {
           "name": "SerializeError",
-          "start_line": 31,
-          "doc": [],
-          "attributes": [
+          "start_line": 34,
+          "doc": [
             "#[error(\"failed to serialize config: {error}\")]"
           ],
-          "payload": "{ error: String }"
+          "definition": "SerializeError { error: String },"
         }
       ]
-    },
-    {
-      "kind": "enum",
-      "name": "DiscrepancySeverity",
-      "module": "guard",
-      "path": "crates/errors/src/guard.rs",
-      "start_line": 9,
-      "doc": [
-        "Severity levels for guard-related errors and discrepancies"
-      ],
-      "definition": "pub enum DiscrepancySeverity {\n    /// Critical - System unusable, immediate action required\n    Critical,\n    /// High - Major functionality affected, action recommended\n    High,\n    /// Medium - Minor issues, action optional\n    Medium,\n    /// Low - Cosmetic issues, informational only\n    Low,\n}",
-      "variants": [
-        {
-          "name": "Critical",
-          "start_line": 11,
-          "doc": [
-            "Critical - System unusable, immediate action required"
-          ],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "High",
-          "start_line": 13,
-          "doc": [
-            "High - Major functionality affected, action recommended"
-          ],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Medium",
-          "start_line": 15,
-          "doc": [
-            "Medium - Minor issues, action optional"
-          ],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Low",
-          "start_line": 17,
-          "doc": [
-            "Low - Cosmetic issues, informational only"
-          ],
-          "attributes": [],
-          "payload": ""
-        }
-      ]
-    },
-    {
-      "kind": "enum",
-      "name": "RecommendedAction",
-      "module": "guard",
-      "path": "crates/errors/src/guard.rs",
-      "start_line": 42,
-      "doc": [
-        "Recommended actions for addressing discrepancies"
-      ],
-      "definition": "pub enum RecommendedAction {\n    /// Automatically heal the discrepancy\n    AutoHeal,\n    /// Request user confirmation before healing\n    UserConfirmation,\n    /// Manual intervention required\n    ManualIntervention,\n    /// Safe to ignore this discrepancy\n    Ignore,\n}",
-      "variants": [
-        {
-          "name": "AutoHeal",
-          "start_line": 44,
-          "doc": [
-            "Automatically heal the discrepancy"
-          ],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "UserConfirmation",
-          "start_line": 46,
-          "doc": [
-            "Request user confirmation before healing"
-          ],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "ManualIntervention",
-          "start_line": 48,
-          "doc": [
-            "Manual intervention required"
-          ],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Ignore",
-          "start_line": 50,
-          "doc": [
-            "Safe to ignore this discrepancy"
-          ],
-          "attributes": [],
-          "payload": ""
-        }
-      ]
-    },
-    {
-      "kind": "struct",
-      "name": "DiscrepancyContext",
-      "module": "guard",
-      "path": "crates/errors/src/guard.rs",
-      "start_line": 73,
-      "doc": [
-        "Provides detailed, user-friendly context for a given discrepancy.",
-        "",
-        "This struct is designed to be self-contained, offering all the necessary information",
-        "to understand and address a specific issue. It includes severity, recommended actions,",
-        "and both user-facing and technical details."
-      ],
-      "definition": "pub struct DiscrepancyContext {\n    /// The severity level of this discrepancy, indicating its potential impact.\n    pub severity: DiscrepancySeverity,\n    /// The recommended course of action to resolve the discrepancy.\n    pub recommended_action: RecommendedAction,\n    /// A user-friendly message explaining the issue, its impact, and why it matters.\n    pub user_message: String,\n    /// A technical, detailed explanation of the discrepancy for debugging and analysis.\n    pub technical_details: String,\n    /// A flag indicating whether an automated healing process is available for this issue.\n    pub healing_available: bool,\n    /// An optional estimate of the time required to automatically fix the discrepancy.\n    pub estimated_fix_time: Option<Duration>,\n    /// A list of step-by-step instructions for manual resolution if auto-healing fails or is unavailable.\n    pub manual_resolution_steps: Vec<String>,\n    /// A list of tips and best practices to help users avoid this issue in the future.\n    pub prevention_tips: Vec<String>,\n}"
     },
     {
       "kind": "enum",
       "name": "GuardError",
       "module": "guard",
       "path": "crates/errors/src/guard.rs",
-      "start_line": 147,
-      "doc": [
-        "Guard-specific error types for comprehensive error reporting"
-      ],
-      "definition": "pub enum GuardError {\n    /// Verification operation failed\n    #[error(\"verification failed during {operation}: {details}\")]\n    VerificationFailed {\n        operation: String,\n        details: String,\n        discrepancies_count: usize,\n        state_id: String,\n        duration_ms: u64,\n    },\n\n    /// Healing operation failed for a specific discrepancy\n    #[error(\"healing failed for {discrepancy_type} at {file_path}: {reason}\")]\n    HealingFailed {\n        discrepancy_type: String,\n        file_path: String,\n        reason: String,\n        recoverable: bool,\n        context: Option<Box<DiscrepancyContext>>,\n    },\n\n    /// Cache operation failed\n    #[error(\"cache operation failed: {operation} - {reason}\")]\n    CacheError {\n        operation: String,\n        reason: String,\n        cache_stats: Option<String>,\n    },\n\n    /// Invalid guard configuration\n    #[error(\"invalid guard configuration for {field}: {reason}\")]\n    ConfigurationError {\n        field: String,\n        reason: String,\n        current_value: Option<String>,\n        suggested_fix: Option<String>,\n    },\n\n    /// Permission denied for guard operation\n    #[error(\"permission denied for {operation} on {path}\")]\n    PermissionError {\n        operation: String,\n        path: String,\n        required_permissions: String,\n        context: Option<String>,\n    },\n\n    /// Scope validation failed\n    #[error(\"invalid verification scope: {scope_type} - {reason}\")]\n    ScopeError {\n        scope_type: String,\n        reason: String,\n        suggested_scope: Option<String>,\n    },\n\n    /// Guard operation timed out\n    #[error(\"guard operation timed out: {operation} after {duration_ms}ms\")]\n    TimeoutError {\n        operation: String,\n        duration_ms: u64,\n        timeout_limit_ms: u64,\n    },\n\n    /// Resource exhaustion during guard operation\n    #[error(\"insufficient resources for {operation}: {resource_type}\")]\n    ResourceExhausted {\n        operation: String,\n        resource_type: String, // \"memory\", \"disk_space\", \"file_handles\"\n        current_usage: Option<String>,\n        limit: Option<String>,\n    },\n\n    /// Integrity check failed\n    #[error(\"integrity check failed for {component}: {details}\")]\n    IntegrityError {\n        component: String, // \"database\", \"cache\", \"config\"\n        details: String,\n        severity: DiscrepancySeverity,\n    },\n\n    /// Guard state inconsistency\n    #[error(\"guard state inconsistency: {description}\")]\n    StateInconsistency {\n        description: String,\n        current_state: Option<String>,\n        expected_state: Option<String>,\n        recovery_possible: bool,\n    },\n}",
+      "start_line": 43,
+      "doc": [],
+      "definition": "pub enum GuardError {\n    /// Verification operation failed.\n    #[error(\"verification failed during {operation}: {details}\")]\n    VerificationFailed {\n        operation: String,\n        details: String,\n        discrepancies_count: usize,\n        state_id: String,\n        duration_ms: u64,\n    },\n\n    /// Healing operation failed for a specific discrepancy.\n    #[error(\"healing failed for {discrepancy_type} at {file_path}: {reason}\")]\n    HealingFailed {\n        discrepancy_type: String,\n        file_path: String,\n        reason: String,\n        recoverable: bool,\n    },\n\n    /// Cache operation failed.\n    #[error(\"cache operation failed: {operation} - {reason}\")]\n    CacheError { operation: String, reason: String },\n\n    /// Invalid guard configuration.\n    #[error(\"invalid guard configuration for {field}: {reason}\")]\n    ConfigurationError {\n        field: String,\n        reason: String,\n        suggested_fix: Option<String>,\n    },\n\n    /// Permission denied for guard operation.\n    #[error(\"permission denied for {operation} on {path}\")]\n    PermissionError {\n        operation: String,\n        path: String,\n        required_permissions: String,\n    },\n\n    /// Scope validation failed.\n    #[error(\"invalid verification scope: {scope_type} - {reason}\")]\n    ScopeError {\n        scope_type: String,\n        reason: String,\n        suggested_scope: Option<String>,\n    },\n\n    /// Guard operation timed out.\n    #[error(\"guard operation timed out: {operation} after {duration_ms}ms\")]\n    TimeoutError {\n        operation: String,\n        duration_ms: u64,\n        timeout_limit_ms: u64,\n    },\n\n    /// Resource exhaustion during guard operation.\n    #[error(\"insufficient resources for {operation}: {resource_type}\")]\n    ResourceExhausted {\n        operation: String,\n        resource_type: String,\n        current_usage: Option<String>,\n        limit: Option<String>,\n    },\n\n    /// Integrity check failed.\n    #[error(\"integrity check failed for {component}: {details}\")]\n    IntegrityError {\n        component: String,\n        details: String,\n        severity: DiscrepancySeverity,\n    },\n\n    /// Guard state inconsistency detected.\n    #[error(\"guard state inconsistency: {description}\")]\n    StateInconsistency {\n        description: String,\n        current_state: Option<String>,\n        expected_state: Option<String>,\n        recovery_possible: bool,\n    },\n}",
       "variants": [
         {
           "name": "VerificationFailed",
-          "start_line": 150,
+          "start_line": 46,
           "doc": [
-            "Verification operation failed"
-          ],
-          "attributes": [
+            "Verification operation failed.",
             "#[error(\"verification failed during {operation}: {details}\")]"
           ],
-          "payload": "{\noperation: String,\ndetails: String,\ndiscrepancies_count: usize,\nstate_id: String,\nduration_ms: u64,\n}"
+          "definition": "VerificationFailed {\n        operation: String,\n        details: String,\n        discrepancies_count: usize,\n        state_id: String,\n        duration_ms: u64,\n    },"
         },
         {
           "name": "HealingFailed",
-          "start_line": 160,
+          "start_line": 56,
           "doc": [
-            "Healing operation failed for a specific discrepancy"
-          ],
-          "attributes": [
+            "Healing operation failed for a specific discrepancy.",
             "#[error(\"healing failed for {discrepancy_type} at {file_path}: {reason}\")]"
           ],
-          "payload": "{\ndiscrepancy_type: String,\nfile_path: String,\nreason: String,\nrecoverable: bool,\ncontext: Option<Box<DiscrepancyContext>>,\n}"
+          "definition": "HealingFailed {\n        discrepancy_type: String,\n        file_path: String,\n        reason: String,\n        recoverable: bool,\n    },"
         },
         {
           "name": "CacheError",
-          "start_line": 170,
+          "start_line": 65,
           "doc": [
-            "Cache operation failed"
-          ],
-          "attributes": [
+            "Cache operation failed.",
             "#[error(\"cache operation failed: {operation} - {reason}\")]"
           ],
-          "payload": "{\noperation: String,\nreason: String,\ncache_stats: Option<String>,\n}"
+          "definition": "CacheError { operation: String, reason: String },"
         },
         {
           "name": "ConfigurationError",
-          "start_line": 178,
+          "start_line": 69,
           "doc": [
-            "Invalid guard configuration"
-          ],
-          "attributes": [
+            "Invalid guard configuration.",
             "#[error(\"invalid guard configuration for {field}: {reason}\")]"
           ],
-          "payload": "{\nfield: String,\nreason: String,\ncurrent_value: Option<String>,\nsuggested_fix: Option<String>,\n}"
+          "definition": "ConfigurationError {\n        field: String,\n        reason: String,\n        suggested_fix: Option<String>,\n    },"
         },
         {
           "name": "PermissionError",
-          "start_line": 187,
+          "start_line": 77,
           "doc": [
-            "Permission denied for guard operation"
-          ],
-          "attributes": [
+            "Permission denied for guard operation.",
             "#[error(\"permission denied for {operation} on {path}\")]"
           ],
-          "payload": "{\noperation: String,\npath: String,\nrequired_permissions: String,\ncontext: Option<String>,\n}"
+          "definition": "PermissionError {\n        operation: String,\n        path: String,\n        required_permissions: String,\n    },"
         },
         {
           "name": "ScopeError",
-          "start_line": 196,
+          "start_line": 85,
           "doc": [
-            "Scope validation failed"
-          ],
-          "attributes": [
+            "Scope validation failed.",
             "#[error(\"invalid verification scope: {scope_type} - {reason}\")]"
           ],
-          "payload": "{\nscope_type: String,\nreason: String,\nsuggested_scope: Option<String>,\n}"
+          "definition": "ScopeError {\n        scope_type: String,\n        reason: String,\n        suggested_scope: Option<String>,\n    },"
         },
         {
           "name": "TimeoutError",
-          "start_line": 204,
+          "start_line": 93,
           "doc": [
-            "Guard operation timed out"
-          ],
-          "attributes": [
+            "Guard operation timed out.",
             "#[error(\"guard operation timed out: {operation} after {duration_ms}ms\")]"
           ],
-          "payload": "{\noperation: String,\nduration_ms: u64,\ntimeout_limit_ms: u64,\n}"
+          "definition": "TimeoutError {\n        operation: String,\n        duration_ms: u64,\n        timeout_limit_ms: u64,\n    },"
         },
         {
           "name": "ResourceExhausted",
-          "start_line": 212,
+          "start_line": 101,
           "doc": [
-            "Resource exhaustion during guard operation"
-          ],
-          "attributes": [
+            "Resource exhaustion during guard operation.",
             "#[error(\"insufficient resources for {operation}: {resource_type}\")]"
           ],
-          "payload": "{\noperation: String,\nresource_type: String, // \"memory\", \"disk_space\", \"file_handles\"\ncurrent_usage: Option<String>,\nlimit: Option<String>,\n}"
+          "definition": "ResourceExhausted {\n        operation: String,\n        resource_type: String,\n        current_usage: Option<String>,\n        limit: Option<String>,\n    },"
         },
         {
           "name": "IntegrityError",
-          "start_line": 221,
+          "start_line": 110,
           "doc": [
-            "Integrity check failed"
-          ],
-          "attributes": [
+            "Integrity check failed.",
             "#[error(\"integrity check failed for {component}: {details}\")]"
           ],
-          "payload": "{\ncomponent: String, // \"database\", \"cache\", \"config\"\ndetails: String,\nseverity: DiscrepancySeverity,\n}"
+          "definition": "IntegrityError {\n        component: String,\n        details: String,\n        severity: DiscrepancySeverity,\n    },"
         },
         {
           "name": "StateInconsistency",
-          "start_line": 229,
+          "start_line": 118,
           "doc": [
-            "Guard state inconsistency"
-          ],
-          "attributes": [
+            "Guard state inconsistency detected.",
             "#[error(\"guard state inconsistency: {description}\")]"
           ],
-          "payload": "{\ndescription: String,\ncurrent_state: Option<String>,\nexpected_state: Option<String>,\nrecovery_possible: bool,\n}"
+          "definition": "StateInconsistency {\n        description: String,\n        current_state: Option<String>,\n        expected_state: Option<String>,\n        recovery_possible: bool,\n    },"
         }
       ]
-    },
-    {
-      "kind": "struct",
-      "name": "GuardErrorSummary",
-      "module": "guard",
-      "path": "crates/errors/src/guard.rs",
-      "start_line": 462,
-      "doc": [
-        "Error aggregation for collecting and categorizing multiple guard errors"
-      ],
-      "definition": "pub struct GuardErrorSummary {\n    /// Total number of errors\n    pub total_errors: usize,\n    /// Errors grouped by severity level\n    pub by_severity: std::collections::HashMap<DiscrepancySeverity, Vec<GuardError>>,\n    /// Errors grouped by error type\n    pub by_type: std::collections::HashMap<String, Vec<GuardError>>,\n    /// Errors that can be automatically recovered\n    pub recoverable_errors: Vec<GuardError>,\n    /// Errors requiring manual intervention\n    pub manual_intervention_required: Vec<GuardError>,\n    /// Overall severity of all errors combined\n    pub overall_severity: DiscrepancySeverity,\n    /// Suggested next actions\n    pub recommended_actions: Vec<String>,\n}"
     },
     {
       "kind": "enum",
       "name": "InstallError",
       "module": "install",
       "path": "crates/errors/src/install.rs",
-      "start_line": 8,
+      "start_line": 16,
       "doc": [],
-      "definition": "pub enum InstallError {\n    #[error(\"installation failed: {message}\")]\n    Failed { message: String },\n\n    #[error(\"dependency resolution failed: {message}\")]\n    ResolutionFailed { message: String },\n\n    #[error(\"package not found: {package}\")]\n    PackageNotFound { package: String },\n\n    #[error(\"version conflict: {message}\")]\n    VersionConflict { message: String },\n\n    #[error(\"circular dependency detected: {packages}\")]\n    CircularDependency { packages: String },\n\n    #[error(\"download failed: {url}\")]\n    DownloadFailed { url: String },\n\n    #[error(\"verification failed: {package}\")]\n    VerificationFailed { package: String },\n\n    #[error(\"extraction failed: {message}\")]\n    ExtractionFailed { message: String },\n\n    #[error(\"atomic operation failed: {message}\")]\n    AtomicOperationFailed { message: String },\n\n    #[error(\"rollback failed: {message}\")]\n    RollbackFailed { message: String },\n\n    #[error(\"insufficient disk space: {required} bytes required\")]\n    InsufficientSpace { required: u64 },\n\n    #[error(\"installation cancelled by user\")]\n    Cancelled,\n\n    #[error(\"parallel installation failed: {message}\")]\n    ParallelFailed { message: String },\n\n    #[error(\"state transition failed: {message}\")]\n    StateTransitionFailed { message: String },\n\n    #[error(\"filesystem operation failed: {operation} on {path}: {message}\")]\n    FilesystemError {\n        operation: String,\n        path: String,\n        message: String,\n    },\n\n    #[error(\"state not found: {state_id}\")]\n    StateNotFound { state_id: String },\n\n    #[error(\"package has dependents: {package}\")]\n    PackageHasDependents { package: String },\n\n    #[error(\"no packages specified\")]\n    NoPackagesSpecified,\n\n    #[error(\"local package not found: {path}\")]\n    LocalPackageNotFound { path: String },\n\n    #[error(\"invalid package file {path}: {message}\")]\n    InvalidPackageFile { path: String, message: String },\n\n    #[error(\"task execution failed: {message}\")]\n    TaskError { message: String },\n\n    #[error(\"package not installed: {package}\")]\n    PackageNotInstalled { package: String },\n\n    #[error(\"package already installed: {package}\")]\n    PackageAlreadyInstalled { package: String },\n\n    #[error(\"concurrency error: {message}\")]\n    ConcurrencyError { message: String },\n\n    #[error(\"download timeout: {package} from {url} after {timeout_seconds}s\")]\n    DownloadTimeout {\n        package: String,\n        url: String,\n        timeout_seconds: u64,\n    },\n\n    #[error(\"missing download URL for package: {package}\")]\n    MissingDownloadUrl { package: String },\n\n    #[error(\"missing local path for package: {package}\")]\n    MissingLocalPath { package: String },\n\n    #[error(\"temporary file error: {message}\")]\n    TempFileError { message: String },\n\n    #[error(\"operation timeout: {message}\")]\n    OperationTimeout { message: String },\n\n    #[error(\"no progress detected: {message}\")]\n    NoProgress { message: String },\n\n    #[error(\"python venv creation failed for {package}: {message}\")]\n    PythonVenvCreationError { package: String, message: String },\n\n    #[error(\"python venv activation failed for {package}: {message}\")]\n    PythonVenvActivationError { package: String, message: String },\n\n    #[error(\"python venv dependency error for {package}: {message}\")]\n    PythonVenvDependencyError { package: String, message: String },\n}",
+      "definition": "pub enum InstallError {\n    #[error(\"package not found: {package}\")]\n    PackageNotFound { package: String },\n\n    #[error(\"extraction failed: {message}\")]\n    ExtractionFailed { message: String },\n\n    #[error(\"atomic operation failed: {message}\")]\n    AtomicOperationFailed { message: String },\n\n    #[error(\"filesystem operation failed: {operation} on {path}: {message}\")]\n    FilesystemError {\n        operation: String,\n        path: String,\n        message: String,\n    },\n\n    #[error(\"state not found: {state_id}\")]\n    StateNotFound { state_id: String },\n\n    #[error(\"package has dependents: {package}\")]\n    PackageHasDependents { package: String },\n\n    #[error(\"no packages specified\")]\n    NoPackagesSpecified,\n\n    #[error(\"local package not found: {path}\")]\n    LocalPackageNotFound { path: String },\n\n    #[error(\"invalid package file {path}: {message}\")]\n    InvalidPackageFile { path: String, message: String },\n\n    #[error(\"task execution failed: {message}\")]\n    TaskError { message: String },\n\n    #[error(\"package not installed: {package}\")]\n    PackageNotInstalled { package: String },\n\n    #[error(\"concurrency error: {message}\")]\n    ConcurrencyError { message: String },\n\n    #[error(\"download timeout: {package} from {url} after {timeout_seconds}s\")]\n    DownloadTimeout {\n        package: String,\n        url: String,\n        timeout_seconds: u64,\n    },\n\n    #[error(\"missing download URL for package: {package}\")]\n    MissingDownloadUrl { package: String },\n\n    #[error(\"missing local path for package: {package}\")]\n    MissingLocalPath { package: String },\n\n    #[error(\"temporary file error: {message}\")]\n    TempFileError { message: String },\n\n    #[error(\"operation timeout: {message}\")]\n    OperationTimeout { message: String },\n\n    #[error(\"no progress detected: {message}\")]\n    NoProgress { message: String },\n}",
       "variants": [
         {
-          "name": "Failed",
-          "start_line": 10,
-          "doc": [],
-          "attributes": [
-            "#[error(\"installation failed: {message}\")]"
-          ],
-          "payload": "{ message: String }"
-        },
-        {
-          "name": "ResolutionFailed",
-          "start_line": 13,
-          "doc": [],
-          "attributes": [
-            "#[error(\"dependency resolution failed: {message}\")]"
-          ],
-          "payload": "{ message: String }"
-        },
-        {
           "name": "PackageNotFound",
-          "start_line": 16,
-          "doc": [],
-          "attributes": [
+          "start_line": 18,
+          "doc": [
             "#[error(\"package not found: {package}\")]"
           ],
-          "payload": "{ package: String }"
-        },
-        {
-          "name": "VersionConflict",
-          "start_line": 19,
-          "doc": [],
-          "attributes": [
-            "#[error(\"version conflict: {message}\")]"
-          ],
-          "payload": "{ message: String }"
-        },
-        {
-          "name": "CircularDependency",
-          "start_line": 22,
-          "doc": [],
-          "attributes": [
-            "#[error(\"circular dependency detected: {packages}\")]"
-          ],
-          "payload": "{ packages: String }"
-        },
-        {
-          "name": "DownloadFailed",
-          "start_line": 25,
-          "doc": [],
-          "attributes": [
-            "#[error(\"download failed: {url}\")]"
-          ],
-          "payload": "{ url: String }"
-        },
-        {
-          "name": "VerificationFailed",
-          "start_line": 28,
-          "doc": [],
-          "attributes": [
-            "#[error(\"verification failed: {package}\")]"
-          ],
-          "payload": "{ package: String }"
+          "definition": "PackageNotFound { package: String },"
         },
         {
           "name": "ExtractionFailed",
-          "start_line": 31,
-          "doc": [],
-          "attributes": [
+          "start_line": 21,
+          "doc": [
             "#[error(\"extraction failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "ExtractionFailed { message: String },"
         },
         {
           "name": "AtomicOperationFailed",
-          "start_line": 34,
-          "doc": [],
-          "attributes": [
+          "start_line": 24,
+          "doc": [
             "#[error(\"atomic operation failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
-        },
-        {
-          "name": "RollbackFailed",
-          "start_line": 37,
-          "doc": [],
-          "attributes": [
-            "#[error(\"rollback failed: {message}\")]"
-          ],
-          "payload": "{ message: String }"
-        },
-        {
-          "name": "InsufficientSpace",
-          "start_line": 40,
-          "doc": [],
-          "attributes": [
-            "#[error(\"insufficient disk space: {required} bytes required\")]"
-          ],
-          "payload": "{ required: u64 }"
-        },
-        {
-          "name": "Cancelled",
-          "start_line": 43,
-          "doc": [],
-          "attributes": [
-            "#[error(\"installation cancelled by user\")]"
-          ],
-          "payload": ""
-        },
-        {
-          "name": "ParallelFailed",
-          "start_line": 46,
-          "doc": [],
-          "attributes": [
-            "#[error(\"parallel installation failed: {message}\")]"
-          ],
-          "payload": "{ message: String }"
-        },
-        {
-          "name": "StateTransitionFailed",
-          "start_line": 49,
-          "doc": [],
-          "attributes": [
-            "#[error(\"state transition failed: {message}\")]"
-          ],
-          "payload": "{ message: String }"
+          "definition": "AtomicOperationFailed { message: String },"
         },
         {
           "name": "FilesystemError",
-          "start_line": 52,
-          "doc": [],
-          "attributes": [
+          "start_line": 27,
+          "doc": [
             "#[error(\"filesystem operation failed: {operation} on {path}: {message}\")]"
           ],
-          "payload": "{\noperation: String,\npath: String,\nmessage: String,\n}"
+          "definition": "FilesystemError {\n        operation: String,\n        path: String,\n        message: String,\n    },"
         },
         {
           "name": "StateNotFound",
-          "start_line": 59,
-          "doc": [],
-          "attributes": [
+          "start_line": 34,
+          "doc": [
             "#[error(\"state not found: {state_id}\")]"
           ],
-          "payload": "{ state_id: String }"
+          "definition": "StateNotFound { state_id: String },"
         },
         {
           "name": "PackageHasDependents",
-          "start_line": 62,
-          "doc": [],
-          "attributes": [
+          "start_line": 37,
+          "doc": [
             "#[error(\"package has dependents: {package}\")]"
           ],
-          "payload": "{ package: String }"
+          "definition": "PackageHasDependents { package: String },"
         },
         {
           "name": "NoPackagesSpecified",
-          "start_line": 65,
-          "doc": [],
-          "attributes": [
+          "start_line": 40,
+          "doc": [
             "#[error(\"no packages specified\")]"
           ],
-          "payload": ""
+          "definition": "NoPackagesSpecified,"
         },
         {
           "name": "LocalPackageNotFound",
-          "start_line": 68,
-          "doc": [],
-          "attributes": [
+          "start_line": 43,
+          "doc": [
             "#[error(\"local package not found: {path}\")]"
           ],
-          "payload": "{ path: String }"
+          "definition": "LocalPackageNotFound { path: String },"
         },
         {
           "name": "InvalidPackageFile",
-          "start_line": 71,
-          "doc": [],
-          "attributes": [
+          "start_line": 46,
+          "doc": [
             "#[error(\"invalid package file {path}: {message}\")]"
           ],
-          "payload": "{ path: String, message: String }"
+          "definition": "InvalidPackageFile { path: String, message: String },"
         },
         {
           "name": "TaskError",
-          "start_line": 74,
-          "doc": [],
-          "attributes": [
+          "start_line": 49,
+          "doc": [
             "#[error(\"task execution failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "TaskError { message: String },"
         },
         {
           "name": "PackageNotInstalled",
-          "start_line": 77,
-          "doc": [],
-          "attributes": [
+          "start_line": 52,
+          "doc": [
             "#[error(\"package not installed: {package}\")]"
           ],
-          "payload": "{ package: String }"
-        },
-        {
-          "name": "PackageAlreadyInstalled",
-          "start_line": 80,
-          "doc": [],
-          "attributes": [
-            "#[error(\"package already installed: {package}\")]"
-          ],
-          "payload": "{ package: String }"
+          "definition": "PackageNotInstalled { package: String },"
         },
         {
           "name": "ConcurrencyError",
-          "start_line": 83,
-          "doc": [],
-          "attributes": [
+          "start_line": 55,
+          "doc": [
             "#[error(\"concurrency error: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "ConcurrencyError { message: String },"
         },
         {
           "name": "DownloadTimeout",
-          "start_line": 86,
-          "doc": [],
-          "attributes": [
+          "start_line": 58,
+          "doc": [
             "#[error(\"download timeout: {package} from {url} after {timeout_seconds}s\")]"
           ],
-          "payload": "{\npackage: String,\nurl: String,\ntimeout_seconds: u64,\n}"
+          "definition": "DownloadTimeout {\n        package: String,\n        url: String,\n        timeout_seconds: u64,\n    },"
         },
         {
           "name": "MissingDownloadUrl",
-          "start_line": 93,
-          "doc": [],
-          "attributes": [
+          "start_line": 65,
+          "doc": [
             "#[error(\"missing download URL for package: {package}\")]"
           ],
-          "payload": "{ package: String }"
+          "definition": "MissingDownloadUrl { package: String },"
         },
         {
           "name": "MissingLocalPath",
-          "start_line": 96,
-          "doc": [],
-          "attributes": [
+          "start_line": 68,
+          "doc": [
             "#[error(\"missing local path for package: {package}\")]"
           ],
-          "payload": "{ package: String }"
+          "definition": "MissingLocalPath { package: String },"
         },
         {
           "name": "TempFileError",
-          "start_line": 99,
-          "doc": [],
-          "attributes": [
+          "start_line": 71,
+          "doc": [
             "#[error(\"temporary file error: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "TempFileError { message: String },"
         },
         {
           "name": "OperationTimeout",
-          "start_line": 102,
-          "doc": [],
-          "attributes": [
+          "start_line": 74,
+          "doc": [
             "#[error(\"operation timeout: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "OperationTimeout { message: String },"
         },
         {
           "name": "NoProgress",
-          "start_line": 105,
-          "doc": [],
-          "attributes": [
+          "start_line": 77,
+          "doc": [
             "#[error(\"no progress detected: {message}\")]"
           ],
-          "payload": "{ message: String }"
-        },
-        {
-          "name": "PythonVenvCreationError",
-          "start_line": 108,
-          "doc": [],
-          "attributes": [
-            "#[error(\"python venv creation failed for {package}: {message}\")]"
-          ],
-          "payload": "{ package: String, message: String }"
-        },
-        {
-          "name": "PythonVenvActivationError",
-          "start_line": 111,
-          "doc": [],
-          "attributes": [
-            "#[error(\"python venv activation failed for {package}: {message}\")]"
-          ],
-          "payload": "{ package: String, message: String }"
-        },
-        {
-          "name": "PythonVenvDependencyError",
-          "start_line": 114,
-          "doc": [],
-          "attributes": [
-            "#[error(\"python venv dependency error for {package}: {message}\")]"
-          ],
-          "payload": "{ package: String, message: String }"
+          "definition": "NoProgress { message: String },"
         }
       ]
     },
@@ -1188,155 +823,137 @@
       "name": "Error",
       "module": "lib",
       "path": "crates/errors/src/lib.rs",
-      "start_line": 47,
-      "doc": [
-        "Generic error type for cross-crate boundaries"
-      ],
+      "start_line": 45,
+      "doc": [],
       "definition": "pub enum Error {\n    #[error(\"network error: {0}\")]\n    Network(#[from] NetworkError),\n\n    #[error(\"storage error: {0}\")]\n    Storage(#[from] StorageError),\n\n    #[error(\"state error: {0}\")]\n    State(#[from] StateError),\n\n    #[error(\"package error: {0}\")]\n    Package(#[from] PackageError),\n\n    #[error(\"version error: {0}\")]\n    Version(#[from] VersionError),\n\n    #[error(\"config error: {0}\")]\n    Config(#[from] ConfigError),\n\n    #[error(\"build error: {0}\")]\n    Build(#[from] BuildError),\n\n    #[error(\"audit error: {0}\")]\n    Audit(#[from] AuditError),\n\n    #[error(\"install error: {0}\")]\n    Install(#[from] InstallError),\n\n    #[error(\"ops error: {0}\")]\n    Ops(#[from] OpsError),\n\n    #[error(\"guard error: {0}\")]\n    Guard(#[from] GuardError),\n\n    #[error(\"platform error: {0}\")]\n    Platform(#[from] PlatformError),\n\n    #[error(\"signing error: {0}\")]\n    Signing(#[from] SigningError),\n\n    #[error(\"internal error: {0}\")]\n    Internal(String),\n\n    #[error(\"operation cancelled\")]\n    Cancelled,\n\n    #[error(\"I/O error: {message}\")]\n    Io {\n        #[cfg_attr(feature = \"serde\", serde(with = \"io_kind_as_str\"))]\n        kind: std::io::ErrorKind,\n        message: String,\n        #[cfg_attr(feature = \"serde\", serde(with = \"opt_path_buf\"))]\n        path: Option<std::path::PathBuf>,\n    },\n}",
       "variants": [
         {
           "name": "Network",
-          "start_line": 49,
-          "doc": [],
-          "attributes": [
+          "start_line": 47,
+          "doc": [
             "#[error(\"network error: {0}\")]"
           ],
-          "payload": "(#[from] NetworkError)"
+          "definition": "Network(#[from] NetworkError),"
         },
         {
           "name": "Storage",
-          "start_line": 52,
-          "doc": [],
-          "attributes": [
+          "start_line": 50,
+          "doc": [
             "#[error(\"storage error: {0}\")]"
           ],
-          "payload": "(#[from] StorageError)"
+          "definition": "Storage(#[from] StorageError),"
         },
         {
           "name": "State",
-          "start_line": 55,
-          "doc": [],
-          "attributes": [
+          "start_line": 53,
+          "doc": [
             "#[error(\"state error: {0}\")]"
           ],
-          "payload": "(#[from] StateError)"
+          "definition": "State(#[from] StateError),"
         },
         {
           "name": "Package",
-          "start_line": 58,
-          "doc": [],
-          "attributes": [
+          "start_line": 56,
+          "doc": [
             "#[error(\"package error: {0}\")]"
           ],
-          "payload": "(#[from] PackageError)"
+          "definition": "Package(#[from] PackageError),"
         },
         {
           "name": "Version",
-          "start_line": 61,
-          "doc": [],
-          "attributes": [
+          "start_line": 59,
+          "doc": [
             "#[error(\"version error: {0}\")]"
           ],
-          "payload": "(#[from] VersionError)"
+          "definition": "Version(#[from] VersionError),"
         },
         {
           "name": "Config",
-          "start_line": 64,
-          "doc": [],
-          "attributes": [
+          "start_line": 62,
+          "doc": [
             "#[error(\"config error: {0}\")]"
           ],
-          "payload": "(#[from] ConfigError)"
+          "definition": "Config(#[from] ConfigError),"
         },
         {
           "name": "Build",
-          "start_line": 67,
-          "doc": [],
-          "attributes": [
+          "start_line": 65,
+          "doc": [
             "#[error(\"build error: {0}\")]"
           ],
-          "payload": "(#[from] BuildError)"
+          "definition": "Build(#[from] BuildError),"
         },
         {
           "name": "Audit",
-          "start_line": 70,
-          "doc": [],
-          "attributes": [
+          "start_line": 68,
+          "doc": [
             "#[error(\"audit error: {0}\")]"
           ],
-          "payload": "(#[from] AuditError)"
+          "definition": "Audit(#[from] AuditError),"
         },
         {
           "name": "Install",
-          "start_line": 73,
-          "doc": [],
-          "attributes": [
+          "start_line": 71,
+          "doc": [
             "#[error(\"install error: {0}\")]"
           ],
-          "payload": "(#[from] InstallError)"
+          "definition": "Install(#[from] InstallError),"
         },
         {
           "name": "Ops",
-          "start_line": 76,
-          "doc": [],
-          "attributes": [
+          "start_line": 74,
+          "doc": [
             "#[error(\"ops error: {0}\")]"
           ],
-          "payload": "(#[from] OpsError)"
+          "definition": "Ops(#[from] OpsError),"
         },
         {
           "name": "Guard",
-          "start_line": 79,
-          "doc": [],
-          "attributes": [
+          "start_line": 77,
+          "doc": [
             "#[error(\"guard error: {0}\")]"
           ],
-          "payload": "(#[from] GuardError)"
+          "definition": "Guard(#[from] GuardError),"
         },
         {
           "name": "Platform",
-          "start_line": 82,
-          "doc": [],
-          "attributes": [
+          "start_line": 80,
+          "doc": [
             "#[error(\"platform error: {0}\")]"
           ],
-          "payload": "(#[from] PlatformError)"
+          "definition": "Platform(#[from] PlatformError),"
         },
         {
           "name": "Signing",
-          "start_line": 85,
-          "doc": [],
-          "attributes": [
+          "start_line": 83,
+          "doc": [
             "#[error(\"signing error: {0}\")]"
           ],
-          "payload": "(#[from] SigningError)"
+          "definition": "Signing(#[from] SigningError),"
         },
         {
           "name": "Internal",
-          "start_line": 88,
-          "doc": [],
-          "attributes": [
+          "start_line": 86,
+          "doc": [
             "#[error(\"internal error: {0}\")]"
           ],
-          "payload": "(String)"
+          "definition": "Internal(String),"
         },
         {
           "name": "Cancelled",
-          "start_line": 91,
-          "doc": [],
-          "attributes": [
+          "start_line": 89,
+          "doc": [
             "#[error(\"operation cancelled\")]"
           ],
-          "payload": ""
+          "definition": "Cancelled,"
         },
         {
           "name": "Io",
-          "start_line": 94,
-          "doc": [],
-          "attributes": [
+          "start_line": 92,
+          "doc": [
             "#[error(\"I/O error: {message}\")]"
           ],
-          "payload": "{\n#[cfg_attr(feature = \"serde\", serde(with = \"io_kind_as_str\"))]\nkind: std::io::ErrorKind,\nmessage: String,\n#[cfg_attr(feature = \"serde\", serde(with = \"opt_path_buf\"))]\npath: Option<std::path::PathBuf>,\n}"
+          "definition": "Io {\n        #[cfg_attr(feature = \"serde\", serde(with = \"io_kind_as_str\"))]\n        kind: std::io::ErrorKind,\n        message: String,\n        #[cfg_attr(feature = \"serde\", serde(with = \"opt_path_buf\"))]\n        path: Option<std::path::PathBuf>,\n    },"
         }
       ]
     },
@@ -1345,144 +962,129 @@
       "name": "NetworkError",
       "module": "network",
       "path": "crates/errors/src/network.rs",
-      "start_line": 8,
+      "start_line": 14,
       "doc": [],
       "definition": "pub enum NetworkError {\n    #[error(\"connection timeout to {url}\")]\n    Timeout { url: String },\n\n    #[error(\"download failed: {0}\")]\n    DownloadFailed(String),\n\n    #[error(\"connection refused: {0}\")]\n    ConnectionRefused(String),\n\n    #[error(\"invalid URL: {0}\")]\n    InvalidUrl(String),\n\n    #[error(\"HTTP error {status}: {message}\")]\n    HttpError { status: u16, message: String },\n\n    #[error(\"checksum mismatch: expected {expected}, got {actual}\")]\n    ChecksumMismatch { expected: String, actual: String },\n\n    #[error(\"SSL/TLS error: {0}\")]\n    TlsError(String),\n\n    #[error(\"network unavailable\")]\n    NetworkUnavailable,\n\n    #[error(\"rate limited: retry after {seconds} seconds\")]\n    RateLimited { seconds: u64 },\n\n    #[error(\"partial content not supported for resumable download\")]\n    PartialContentNotSupported,\n\n    #[error(\"content length mismatch: expected {expected}, got {actual}\")]\n    ContentLengthMismatch { expected: u64, actual: u64 },\n\n    #[error(\"range request failed: {message}\")]\n    RangeRequestFailed { message: String },\n\n    #[error(\"file size exceeds limit: {size} bytes > {limit} bytes\")]\n    FileSizeExceeded { size: u64, limit: u64 },\n\n    #[error(\"stream interrupted after {bytes} bytes\")]\n    StreamInterrupted { bytes: u64 },\n\n    #[error(\"unsupported protocol: {protocol}\")]\n    UnsupportedProtocol { protocol: String },\n}",
       "variants": [
         {
           "name": "Timeout",
-          "start_line": 10,
-          "doc": [],
-          "attributes": [
+          "start_line": 16,
+          "doc": [
             "#[error(\"connection timeout to {url}\")]"
           ],
-          "payload": "{ url: String }"
+          "definition": "Timeout { url: String },"
         },
         {
           "name": "DownloadFailed",
-          "start_line": 13,
-          "doc": [],
-          "attributes": [
+          "start_line": 19,
+          "doc": [
             "#[error(\"download failed: {0}\")]"
           ],
-          "payload": "(String)"
+          "definition": "DownloadFailed(String),"
         },
         {
           "name": "ConnectionRefused",
-          "start_line": 16,
-          "doc": [],
-          "attributes": [
+          "start_line": 22,
+          "doc": [
             "#[error(\"connection refused: {0}\")]"
           ],
-          "payload": "(String)"
+          "definition": "ConnectionRefused(String),"
         },
         {
           "name": "InvalidUrl",
-          "start_line": 19,
-          "doc": [],
-          "attributes": [
+          "start_line": 25,
+          "doc": [
             "#[error(\"invalid URL: {0}\")]"
           ],
-          "payload": "(String)"
+          "definition": "InvalidUrl(String),"
         },
         {
           "name": "HttpError",
-          "start_line": 22,
-          "doc": [],
-          "attributes": [
+          "start_line": 28,
+          "doc": [
             "#[error(\"HTTP error {status}: {message}\")]"
           ],
-          "payload": "{ status: u16, message: String }"
+          "definition": "HttpError { status: u16, message: String },"
         },
         {
           "name": "ChecksumMismatch",
-          "start_line": 25,
-          "doc": [],
-          "attributes": [
+          "start_line": 31,
+          "doc": [
             "#[error(\"checksum mismatch: expected {expected}, got {actual}\")]"
           ],
-          "payload": "{ expected: String, actual: String }"
+          "definition": "ChecksumMismatch { expected: String, actual: String },"
         },
         {
           "name": "TlsError",
-          "start_line": 28,
-          "doc": [],
-          "attributes": [
+          "start_line": 34,
+          "doc": [
             "#[error(\"SSL/TLS error: {0}\")]"
           ],
-          "payload": "(String)"
+          "definition": "TlsError(String),"
         },
         {
           "name": "NetworkUnavailable",
-          "start_line": 31,
-          "doc": [],
-          "attributes": [
+          "start_line": 37,
+          "doc": [
             "#[error(\"network unavailable\")]"
           ],
-          "payload": ""
+          "definition": "NetworkUnavailable,"
         },
         {
           "name": "RateLimited",
-          "start_line": 34,
-          "doc": [],
-          "attributes": [
+          "start_line": 40,
+          "doc": [
             "#[error(\"rate limited: retry after {seconds} seconds\")]"
           ],
-          "payload": "{ seconds: u64 }"
+          "definition": "RateLimited { seconds: u64 },"
         },
         {
           "name": "PartialContentNotSupported",
-          "start_line": 37,
-          "doc": [],
-          "attributes": [
+          "start_line": 43,
+          "doc": [
             "#[error(\"partial content not supported for resumable download\")]"
           ],
-          "payload": ""
+          "definition": "PartialContentNotSupported,"
         },
         {
           "name": "ContentLengthMismatch",
-          "start_line": 40,
-          "doc": [],
-          "attributes": [
+          "start_line": 46,
+          "doc": [
             "#[error(\"content length mismatch: expected {expected}, got {actual}\")]"
           ],
-          "payload": "{ expected: u64, actual: u64 }"
+          "definition": "ContentLengthMismatch { expected: u64, actual: u64 },"
         },
         {
           "name": "RangeRequestFailed",
-          "start_line": 43,
-          "doc": [],
-          "attributes": [
+          "start_line": 49,
+          "doc": [
             "#[error(\"range request failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "RangeRequestFailed { message: String },"
         },
         {
           "name": "FileSizeExceeded",
-          "start_line": 46,
-          "doc": [],
-          "attributes": [
+          "start_line": 52,
+          "doc": [
             "#[error(\"file size exceeds limit: {size} bytes > {limit} bytes\")]"
           ],
-          "payload": "{ size: u64, limit: u64 }"
+          "definition": "FileSizeExceeded { size: u64, limit: u64 },"
         },
         {
           "name": "StreamInterrupted",
-          "start_line": 49,
-          "doc": [],
-          "attributes": [
+          "start_line": 55,
+          "doc": [
             "#[error(\"stream interrupted after {bytes} bytes\")]"
           ],
-          "payload": "{ bytes: u64 }"
+          "definition": "StreamInterrupted { bytes: u64 },"
         },
         {
           "name": "UnsupportedProtocol",
-          "start_line": 52,
-          "doc": [],
-          "attributes": [
+          "start_line": 58,
+          "doc": [
             "#[error(\"unsupported protocol: {protocol}\")]"
           ],
-          "payload": "{ protocol: String }"
+          "definition": "UnsupportedProtocol { protocol: String },"
         }
       ]
     },
@@ -1491,225 +1093,129 @@
       "name": "OpsError",
       "module": "ops",
       "path": "crates/errors/src/ops.rs",
-      "start_line": 8,
+      "start_line": 14,
       "doc": [],
-      "definition": "pub enum OpsError {\n    #[error(\"operation failed: {message}\")]\n    OperationFailed { message: String },\n\n    #[error(\"component not found: {component}\")]\n    MissingComponent { component: String },\n\n    #[error(\"invalid operation: {operation}\")]\n    InvalidOperation { operation: String },\n\n    #[error(\"dependency error: {message}\")]\n    DependencyError { message: String },\n\n    #[error(\"initialization failed: {message}\")]\n    InitializationFailed { message: String },\n\n    #[error(\"command execution failed: {command}: {message}\")]\n    CommandFailed { command: String, message: String },\n\n    #[error(\"health check failed: {component}: {message}\")]\n    HealthCheckFailed { component: String, message: String },\n\n    #[error(\"context creation failed: {message}\")]\n    ContextCreationFailed { message: String },\n\n    #[error(\"operation not supported: {operation}\")]\n    NotSupported { operation: String },\n\n    #[error(\"concurrent operation limit exceeded\")]\n    ConcurrencyLimitExceeded,\n\n    #[error(\"serialization error: {message}\")]\n    SerializationError { message: String },\n\n    #[error(\"no packages specified\")]\n    NoPackagesSpecified,\n\n    #[error(\"recipe not found: {path}\")]\n    RecipeNotFound { path: String },\n\n    #[error(\"invalid recipe {path}: {reason}\")]\n    InvalidRecipe { path: String, reason: String },\n\n    #[error(\"package not found: {package}\")]\n    PackageNotFound { package: String },\n\n    #[error(\"no previous state\")]\n    NoPreviousState,\n\n    #[error(\"no current state\")]\n    NoCurrentState,\n\n    #[error(\"state not found: {state_id}\")]\n    StateNotFound { state_id: uuid::Uuid },\n\n    #[error(\"repository sync failed: {message}\")]\n    RepoSyncFailed { message: String },\n\n    #[error(\"self-update failed: {message}\")]\n    SelfUpdateFailed { message: String },\n\n    #[error(\"state verification failed: {discrepancies} discrepancies found in state {state_id}\")]\n    VerificationFailed {\n        discrepancies: usize,\n        state_id: String,\n    },\n\n    #[error(\"staging directory not found: {path} (for package {package})\")]\n    StagingDirectoryNotFound { path: String, package: String },\n\n    #[error(\"invalid staging directory {path}: {reason}\")]\n    InvalidStagingDirectory { path: String, reason: String },\n\n    #[error(\"event channel closed\")]\n    EventChannelClosed,\n}",
+      "definition": "pub enum OpsError {\n    #[error(\"operation failed: {message}\")]\n    OperationFailed { message: String },\n\n    #[error(\"component not found: {component}\")]\n    MissingComponent { component: String },\n\n    #[error(\"invalid operation: {operation}\")]\n    InvalidOperation { operation: String },\n\n    #[error(\"serialization error: {message}\")]\n    SerializationError { message: String },\n\n    #[error(\"no packages specified\")]\n    NoPackagesSpecified,\n\n    #[error(\"recipe not found: {path}\")]\n    RecipeNotFound { path: String },\n\n    #[error(\"invalid recipe {path}: {reason}\")]\n    InvalidRecipe { path: String, reason: String },\n\n    #[error(\"package not found: {package}\")]\n    PackageNotFound { package: String },\n\n    #[error(\"no previous state\")]\n    NoPreviousState,\n\n    #[error(\"state not found: {state_id}\")]\n    StateNotFound { state_id: uuid::Uuid },\n\n    #[error(\"repository sync failed: {message}\")]\n    RepoSyncFailed { message: String },\n\n    #[error(\"self-update failed: {message}\")]\n    SelfUpdateFailed { message: String },\n\n    #[error(\"state verification failed: {discrepancies} discrepancies found in state {state_id}\")]\n    VerificationFailed {\n        discrepancies: usize,\n        state_id: String,\n    },\n\n    #[error(\"staging directory not found: {path} (for package {package})\")]\n    StagingDirectoryNotFound { path: String, package: String },\n\n    #[error(\"invalid staging directory {path}: {reason}\")]\n    InvalidStagingDirectory { path: String, reason: String },\n}",
       "variants": [
         {
           "name": "OperationFailed",
-          "start_line": 10,
-          "doc": [],
-          "attributes": [
+          "start_line": 16,
+          "doc": [
             "#[error(\"operation failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "OperationFailed { message: String },"
         },
         {
           "name": "MissingComponent",
-          "start_line": 13,
-          "doc": [],
-          "attributes": [
+          "start_line": 19,
+          "doc": [
             "#[error(\"component not found: {component}\")]"
           ],
-          "payload": "{ component: String }"
+          "definition": "MissingComponent { component: String },"
         },
         {
           "name": "InvalidOperation",
-          "start_line": 16,
-          "doc": [],
-          "attributes": [
+          "start_line": 22,
+          "doc": [
             "#[error(\"invalid operation: {operation}\")]"
           ],
-          "payload": "{ operation: String }"
-        },
-        {
-          "name": "DependencyError",
-          "start_line": 19,
-          "doc": [],
-          "attributes": [
-            "#[error(\"dependency error: {message}\")]"
-          ],
-          "payload": "{ message: String }"
-        },
-        {
-          "name": "InitializationFailed",
-          "start_line": 22,
-          "doc": [],
-          "attributes": [
-            "#[error(\"initialization failed: {message}\")]"
-          ],
-          "payload": "{ message: String }"
-        },
-        {
-          "name": "CommandFailed",
-          "start_line": 25,
-          "doc": [],
-          "attributes": [
-            "#[error(\"command execution failed: {command}: {message}\")]"
-          ],
-          "payload": "{ command: String, message: String }"
-        },
-        {
-          "name": "HealthCheckFailed",
-          "start_line": 28,
-          "doc": [],
-          "attributes": [
-            "#[error(\"health check failed: {component}: {message}\")]"
-          ],
-          "payload": "{ component: String, message: String }"
-        },
-        {
-          "name": "ContextCreationFailed",
-          "start_line": 31,
-          "doc": [],
-          "attributes": [
-            "#[error(\"context creation failed: {message}\")]"
-          ],
-          "payload": "{ message: String }"
-        },
-        {
-          "name": "NotSupported",
-          "start_line": 34,
-          "doc": [],
-          "attributes": [
-            "#[error(\"operation not supported: {operation}\")]"
-          ],
-          "payload": "{ operation: String }"
-        },
-        {
-          "name": "ConcurrencyLimitExceeded",
-          "start_line": 37,
-          "doc": [],
-          "attributes": [
-            "#[error(\"concurrent operation limit exceeded\")]"
-          ],
-          "payload": ""
+          "definition": "InvalidOperation { operation: String },"
         },
         {
           "name": "SerializationError",
-          "start_line": 40,
-          "doc": [],
-          "attributes": [
+          "start_line": 25,
+          "doc": [
             "#[error(\"serialization error: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "SerializationError { message: String },"
         },
         {
           "name": "NoPackagesSpecified",
-          "start_line": 43,
-          "doc": [],
-          "attributes": [
+          "start_line": 28,
+          "doc": [
             "#[error(\"no packages specified\")]"
           ],
-          "payload": ""
+          "definition": "NoPackagesSpecified,"
         },
         {
           "name": "RecipeNotFound",
-          "start_line": 46,
-          "doc": [],
-          "attributes": [
+          "start_line": 31,
+          "doc": [
             "#[error(\"recipe not found: {path}\")]"
           ],
-          "payload": "{ path: String }"
+          "definition": "RecipeNotFound { path: String },"
         },
         {
           "name": "InvalidRecipe",
-          "start_line": 49,
-          "doc": [],
-          "attributes": [
+          "start_line": 34,
+          "doc": [
             "#[error(\"invalid recipe {path}: {reason}\")]"
           ],
-          "payload": "{ path: String, reason: String }"
+          "definition": "InvalidRecipe { path: String, reason: String },"
         },
         {
           "name": "PackageNotFound",
-          "start_line": 52,
-          "doc": [],
-          "attributes": [
+          "start_line": 37,
+          "doc": [
             "#[error(\"package not found: {package}\")]"
           ],
-          "payload": "{ package: String }"
+          "definition": "PackageNotFound { package: String },"
         },
         {
           "name": "NoPreviousState",
-          "start_line": 55,
-          "doc": [],
-          "attributes": [
+          "start_line": 40,
+          "doc": [
             "#[error(\"no previous state\")]"
           ],
-          "payload": ""
-        },
-        {
-          "name": "NoCurrentState",
-          "start_line": 58,
-          "doc": [],
-          "attributes": [
-            "#[error(\"no current state\")]"
-          ],
-          "payload": ""
+          "definition": "NoPreviousState,"
         },
         {
           "name": "StateNotFound",
-          "start_line": 61,
-          "doc": [],
-          "attributes": [
+          "start_line": 43,
+          "doc": [
             "#[error(\"state not found: {state_id}\")]"
           ],
-          "payload": "{ state_id: uuid::Uuid }"
+          "definition": "StateNotFound { state_id: uuid::Uuid },"
         },
         {
           "name": "RepoSyncFailed",
-          "start_line": 64,
-          "doc": [],
-          "attributes": [
+          "start_line": 46,
+          "doc": [
             "#[error(\"repository sync failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "RepoSyncFailed { message: String },"
         },
         {
           "name": "SelfUpdateFailed",
-          "start_line": 67,
-          "doc": [],
-          "attributes": [
+          "start_line": 49,
+          "doc": [
             "#[error(\"self-update failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "SelfUpdateFailed { message: String },"
         },
         {
           "name": "VerificationFailed",
-          "start_line": 70,
-          "doc": [],
-          "attributes": [
+          "start_line": 52,
+          "doc": [
             "#[error(\"state verification failed: {discrepancies} discrepancies found in state {state_id}\")]"
           ],
-          "payload": "{\ndiscrepancies: usize,\nstate_id: String,\n}"
+          "definition": "VerificationFailed {\n        discrepancies: usize,\n        state_id: String,\n    },"
         },
         {
           "name": "StagingDirectoryNotFound",
-          "start_line": 76,
-          "doc": [],
-          "attributes": [
+          "start_line": 58,
+          "doc": [
             "#[error(\"staging directory not found: {path} (for package {package})\")]"
           ],
-          "payload": "{ path: String, package: String }"
+          "definition": "StagingDirectoryNotFound { path: String, package: String },"
         },
         {
           "name": "InvalidStagingDirectory",
-          "start_line": 79,
-          "doc": [],
-          "attributes": [
+          "start_line": 61,
+          "doc": [
             "#[error(\"invalid staging directory {path}: {reason}\")]"
           ],
-          "payload": "{ path: String, reason: String }"
-        },
-        {
-          "name": "EventChannelClosed",
-          "start_line": 82,
-          "doc": [],
-          "attributes": [
-            "#[error(\"event channel closed\")]"
-          ],
-          "payload": ""
+          "definition": "InvalidStagingDirectory { path: String, reason: String },"
         }
       ]
     },
@@ -1718,144 +1224,129 @@
       "name": "PackageError",
       "module": "package",
       "path": "crates/errors/src/package.rs",
-      "start_line": 8,
+      "start_line": 11,
       "doc": [],
       "definition": "pub enum PackageError {\n    #[error(\"package not found: {name}\")]\n    NotFound { name: String },\n\n    #[error(\"package corrupted: {message}\")]\n    Corrupted { message: String },\n\n    #[error(\"missing dependency: {name} {spec}\")]\n    MissingDependency { name: String, spec: String },\n\n    #[error(\"dependency conflict: {message}\")]\n    DependencyConflict { message: String },\n\n    #[error(\"circular dependency: {packages}\")]\n    CircularDependency { packages: String },\n\n    #[error(\"invalid manifest: {message}\")]\n    InvalidManifest { message: String },\n\n    #[error(\"signature verification failed: {message}\")]\n    SignatureVerificationFailed { message: String },\n\n    #[error(\"unsigned package\")]\n    UnsignedPackage,\n\n    #[error(\"invalid package format: {message}\")]\n    InvalidFormat { message: String },\n\n    #[error(\"SBOM missing or invalid: {message}\")]\n    SbomError { message: String },\n\n    #[error(\"already installed: {name} {version}\")]\n    AlreadyInstalled { name: String, version: String },\n\n    #[error(\"dependency cycle detected: {package}\")]\n    DependencyCycle { package: String },\n\n    #[error(\"incompatible package format version {version}: {reason}\")]\n    IncompatibleFormat { version: String, reason: String },\n\n    #[error(\"resolution timeout: {message}\")]\n    ResolutionTimeout { message: String },\n\n    #[error(\"source not available: {package}\")]\n    SourceNotAvailable { package: String },\n}",
       "variants": [
         {
           "name": "NotFound",
-          "start_line": 10,
-          "doc": [],
-          "attributes": [
+          "start_line": 13,
+          "doc": [
             "#[error(\"package not found: {name}\")]"
           ],
-          "payload": "{ name: String }"
+          "definition": "NotFound { name: String },"
         },
         {
           "name": "Corrupted",
-          "start_line": 13,
-          "doc": [],
-          "attributes": [
+          "start_line": 16,
+          "doc": [
             "#[error(\"package corrupted: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "Corrupted { message: String },"
         },
         {
           "name": "MissingDependency",
-          "start_line": 16,
-          "doc": [],
-          "attributes": [
+          "start_line": 19,
+          "doc": [
             "#[error(\"missing dependency: {name} {spec}\")]"
           ],
-          "payload": "{ name: String, spec: String }"
+          "definition": "MissingDependency { name: String, spec: String },"
         },
         {
           "name": "DependencyConflict",
-          "start_line": 19,
-          "doc": [],
-          "attributes": [
+          "start_line": 22,
+          "doc": [
             "#[error(\"dependency conflict: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "DependencyConflict { message: String },"
         },
         {
           "name": "CircularDependency",
-          "start_line": 22,
-          "doc": [],
-          "attributes": [
+          "start_line": 25,
+          "doc": [
             "#[error(\"circular dependency: {packages}\")]"
           ],
-          "payload": "{ packages: String }"
+          "definition": "CircularDependency { packages: String },"
         },
         {
           "name": "InvalidManifest",
-          "start_line": 25,
-          "doc": [],
-          "attributes": [
+          "start_line": 28,
+          "doc": [
             "#[error(\"invalid manifest: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "InvalidManifest { message: String },"
         },
         {
           "name": "SignatureVerificationFailed",
-          "start_line": 28,
-          "doc": [],
-          "attributes": [
+          "start_line": 31,
+          "doc": [
             "#[error(\"signature verification failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "SignatureVerificationFailed { message: String },"
         },
         {
           "name": "UnsignedPackage",
-          "start_line": 31,
-          "doc": [],
-          "attributes": [
+          "start_line": 34,
+          "doc": [
             "#[error(\"unsigned package\")]"
           ],
-          "payload": ""
+          "definition": "UnsignedPackage,"
         },
         {
           "name": "InvalidFormat",
-          "start_line": 34,
-          "doc": [],
-          "attributes": [
+          "start_line": 37,
+          "doc": [
             "#[error(\"invalid package format: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "InvalidFormat { message: String },"
         },
         {
           "name": "SbomError",
-          "start_line": 37,
-          "doc": [],
-          "attributes": [
+          "start_line": 40,
+          "doc": [
             "#[error(\"SBOM missing or invalid: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "SbomError { message: String },"
         },
         {
           "name": "AlreadyInstalled",
-          "start_line": 40,
-          "doc": [],
-          "attributes": [
+          "start_line": 43,
+          "doc": [
             "#[error(\"already installed: {name} {version}\")]"
           ],
-          "payload": "{ name: String, version: String }"
+          "definition": "AlreadyInstalled { name: String, version: String },"
         },
         {
           "name": "DependencyCycle",
-          "start_line": 43,
-          "doc": [],
-          "attributes": [
+          "start_line": 46,
+          "doc": [
             "#[error(\"dependency cycle detected: {package}\")]"
           ],
-          "payload": "{ package: String }"
+          "definition": "DependencyCycle { package: String },"
         },
         {
           "name": "IncompatibleFormat",
-          "start_line": 46,
-          "doc": [],
-          "attributes": [
+          "start_line": 49,
+          "doc": [
             "#[error(\"incompatible package format version {version}: {reason}\")]"
           ],
-          "payload": "{ version: String, reason: String }"
+          "definition": "IncompatibleFormat { version: String, reason: String },"
         },
         {
           "name": "ResolutionTimeout",
-          "start_line": 49,
-          "doc": [],
-          "attributes": [
+          "start_line": 52,
+          "doc": [
             "#[error(\"resolution timeout: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "ResolutionTimeout { message: String },"
         },
         {
           "name": "SourceNotAvailable",
-          "start_line": 52,
-          "doc": [],
-          "attributes": [
+          "start_line": 55,
+          "doc": [
             "#[error(\"source not available: {package}\")]"
           ],
-          "payload": "{ package: String }"
+          "definition": "SourceNotAvailable { package: String },"
         }
       ]
     },
@@ -1864,119 +1355,105 @@
       "name": "PlatformError",
       "module": "platform",
       "path": "crates/errors/src/platform.rs",
-      "start_line": 10,
-      "doc": [
-        "Errors that can occur during platform-specific operations"
-      ],
+      "start_line": 12,
+      "doc": [],
       "definition": "pub enum PlatformError {\n    #[error(\"binary operation failed: {operation} on {binary_path} - {message}\")]\n    BinaryOperationFailed {\n        operation: String,\n        binary_path: String,\n        message: String,\n    },\n\n    #[error(\"filesystem operation failed: {operation} - {message}\")]\n    FilesystemOperationFailed { operation: String, message: String },\n\n    #[error(\"process execution failed: {command} - {message}\")]\n    ProcessExecutionFailed { command: String, message: String },\n\n    #[error(\"platform capability not available: {capability}\")]\n    CapabilityUnavailable { capability: String },\n\n    #[error(\"command not found: {command}\")]\n    CommandNotFound { command: String },\n\n    #[error(\"invalid binary format: {path} - {message}\")]\n    InvalidBinaryFormat { path: String, message: String },\n\n    #[error(\"signing operation failed: {binary_path} - {message}\")]\n    SigningFailed {\n        binary_path: String,\n        message: String,\n    },\n\n    #[error(\"permission denied: {operation} - {message}\")]\n    PermissionDenied { operation: String, message: String },\n\n    #[error(\"tool '{tool}' not found. {suggestion}\")]\n    ToolNotFound {\n        tool: String,\n        suggestion: String,\n        searched_paths: Vec<std::path::PathBuf>,\n    },\n\n    #[error(\"multiple tools not found: {}\", .tools.join(\", \"))]\n    MultipleToolsNotFound {\n        tools: Vec<String>,\n        suggestions: Vec<String>,\n    },\n\n    #[error(\"command failed: {command} - {error}\")]\n    CommandFailed { command: String, error: String },\n\n    #[error(\"configuration error: {message}\")]\n    ConfigError { message: String },\n}",
       "variants": [
         {
           "name": "BinaryOperationFailed",
-          "start_line": 12,
-          "doc": [],
-          "attributes": [
+          "start_line": 14,
+          "doc": [
             "#[error(\"binary operation failed: {operation} on {binary_path} - {message}\")]"
           ],
-          "payload": "{\noperation: String,\nbinary_path: String,\nmessage: String,\n}"
+          "definition": "BinaryOperationFailed {\n        operation: String,\n        binary_path: String,\n        message: String,\n    },"
         },
         {
           "name": "FilesystemOperationFailed",
-          "start_line": 19,
-          "doc": [],
-          "attributes": [
+          "start_line": 21,
+          "doc": [
             "#[error(\"filesystem operation failed: {operation} - {message}\")]"
           ],
-          "payload": "{ operation: String, message: String }"
+          "definition": "FilesystemOperationFailed { operation: String, message: String },"
         },
         {
           "name": "ProcessExecutionFailed",
-          "start_line": 22,
-          "doc": [],
-          "attributes": [
+          "start_line": 24,
+          "doc": [
             "#[error(\"process execution failed: {command} - {message}\")]"
           ],
-          "payload": "{ command: String, message: String }"
+          "definition": "ProcessExecutionFailed { command: String, message: String },"
         },
         {
           "name": "CapabilityUnavailable",
-          "start_line": 25,
-          "doc": [],
-          "attributes": [
+          "start_line": 27,
+          "doc": [
             "#[error(\"platform capability not available: {capability}\")]"
           ],
-          "payload": "{ capability: String }"
+          "definition": "CapabilityUnavailable { capability: String },"
         },
         {
           "name": "CommandNotFound",
-          "start_line": 28,
-          "doc": [],
-          "attributes": [
+          "start_line": 30,
+          "doc": [
             "#[error(\"command not found: {command}\")]"
           ],
-          "payload": "{ command: String }"
+          "definition": "CommandNotFound { command: String },"
         },
         {
           "name": "InvalidBinaryFormat",
-          "start_line": 31,
-          "doc": [],
-          "attributes": [
+          "start_line": 33,
+          "doc": [
             "#[error(\"invalid binary format: {path} - {message}\")]"
           ],
-          "payload": "{ path: String, message: String }"
+          "definition": "InvalidBinaryFormat { path: String, message: String },"
         },
         {
           "name": "SigningFailed",
-          "start_line": 34,
-          "doc": [],
-          "attributes": [
+          "start_line": 36,
+          "doc": [
             "#[error(\"signing operation failed: {binary_path} - {message}\")]"
           ],
-          "payload": "{\nbinary_path: String,\nmessage: String,\n}"
+          "definition": "SigningFailed {\n        binary_path: String,\n        message: String,\n    },"
         },
         {
           "name": "PermissionDenied",
-          "start_line": 40,
-          "doc": [],
-          "attributes": [
+          "start_line": 42,
+          "doc": [
             "#[error(\"permission denied: {operation} - {message}\")]"
           ],
-          "payload": "{ operation: String, message: String }"
+          "definition": "PermissionDenied { operation: String, message: String },"
         },
         {
           "name": "ToolNotFound",
-          "start_line": 43,
-          "doc": [],
-          "attributes": [
+          "start_line": 45,
+          "doc": [
             "#[error(\"tool '{tool}' not found. {suggestion}\")]"
           ],
-          "payload": "{\ntool: String,\nsuggestion: String,\nsearched_paths: Vec<std::path::PathBuf>,\n}"
+          "definition": "ToolNotFound {\n        tool: String,\n        suggestion: String,\n        searched_paths: Vec<std::path::PathBuf>,\n    },"
         },
         {
           "name": "MultipleToolsNotFound",
-          "start_line": 50,
-          "doc": [],
-          "attributes": [
+          "start_line": 52,
+          "doc": [
             "#[error(\"multiple tools not found: {}\", .tools.join(\", \"))]"
           ],
-          "payload": "{\ntools: Vec<String>,\nsuggestions: Vec<String>,\n}"
+          "definition": "MultipleToolsNotFound {\n        tools: Vec<String>,\n        suggestions: Vec<String>,\n    },"
         },
         {
           "name": "CommandFailed",
-          "start_line": 56,
-          "doc": [],
-          "attributes": [
+          "start_line": 58,
+          "doc": [
             "#[error(\"command failed: {command} - {error}\")]"
           ],
-          "payload": "{ command: String, error: String }"
+          "definition": "CommandFailed { command: String, error: String },"
         },
         {
           "name": "ConfigError",
-          "start_line": 59,
-          "doc": [],
-          "attributes": [
+          "start_line": 61,
+          "doc": [
             "#[error(\"configuration error: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "ConfigError { message: String },"
         }
       ]
     },
@@ -1985,45 +1462,41 @@
       "name": "SigningError",
       "module": "signing",
       "path": "crates/errors/src/signing.rs",
-      "start_line": 10,
+      "start_line": 13,
       "doc": [],
       "definition": "pub enum SigningError {\n    #[error(\"signature verification failed: {reason}\")]\n    VerificationFailed { reason: String },\n\n    #[error(\"no trusted key found for signature with key id: {key_id}\")]\n    NoTrustedKeyFound { key_id: String },\n\n    #[error(\"invalid signature format: {0}\")]\n    InvalidSignatureFormat(String),\n\n    #[error(\"invalid public key format: {0}\")]\n    InvalidPublicKey(String),\n}",
       "variants": [
         {
           "name": "VerificationFailed",
-          "start_line": 12,
-          "doc": [],
-          "attributes": [
+          "start_line": 15,
+          "doc": [
             "#[error(\"signature verification failed: {reason}\")]"
           ],
-          "payload": "{ reason: String }"
+          "definition": "VerificationFailed { reason: String },"
         },
         {
           "name": "NoTrustedKeyFound",
-          "start_line": 15,
-          "doc": [],
-          "attributes": [
+          "start_line": 18,
+          "doc": [
             "#[error(\"no trusted key found for signature with key id: {key_id}\")]"
           ],
-          "payload": "{ key_id: String }"
+          "definition": "NoTrustedKeyFound { key_id: String },"
         },
         {
           "name": "InvalidSignatureFormat",
-          "start_line": 18,
-          "doc": [],
-          "attributes": [
+          "start_line": 21,
+          "doc": [
             "#[error(\"invalid signature format: {0}\")]"
           ],
-          "payload": "(String)"
+          "definition": "InvalidSignatureFormat(String),"
         },
         {
           "name": "InvalidPublicKey",
-          "start_line": 21,
-          "doc": [],
-          "attributes": [
+          "start_line": 24,
+          "doc": [
             "#[error(\"invalid public key format: {0}\")]"
           ],
-          "payload": "(String)"
+          "definition": "InvalidPublicKey(String),"
         }
       ]
     },
@@ -2032,90 +1505,81 @@
       "name": "StateError",
       "module": "state",
       "path": "crates/errors/src/state.rs",
-      "start_line": 8,
+      "start_line": 11,
       "doc": [],
       "definition": "pub enum StateError {\n    #[error(\"invalid state transition from {from} to {to}\")]\n    InvalidTransition { from: String, to: String },\n\n    #[error(\"state conflict: {message}\")]\n    Conflict { message: String },\n\n    #[error(\"state not found: {id}\")]\n    StateNotFound { id: String },\n\n    #[error(\"database error: {message}\")]\n    DatabaseError { message: String },\n\n    #[error(\"transaction failed: {message}\")]\n    TransactionFailed { message: String },\n\n    #[error(\"state corrupted: {message}\")]\n    StateCorrupted { message: String },\n\n    #[error(\"rollback failed: {message}\")]\n    RollbackFailed { message: String },\n\n    #[error(\"active state missing\")]\n    ActiveStateMissing,\n\n    #[error(\"migration failed: {message}\")]\n    MigrationFailed { message: String },\n}",
       "variants": [
         {
           "name": "InvalidTransition",
-          "start_line": 10,
-          "doc": [],
-          "attributes": [
+          "start_line": 13,
+          "doc": [
             "#[error(\"invalid state transition from {from} to {to}\")]"
           ],
-          "payload": "{ from: String, to: String }"
+          "definition": "InvalidTransition { from: String, to: String },"
         },
         {
           "name": "Conflict",
-          "start_line": 13,
-          "doc": [],
-          "attributes": [
+          "start_line": 16,
+          "doc": [
             "#[error(\"state conflict: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "Conflict { message: String },"
         },
         {
           "name": "StateNotFound",
-          "start_line": 16,
-          "doc": [],
-          "attributes": [
+          "start_line": 19,
+          "doc": [
             "#[error(\"state not found: {id}\")]"
           ],
-          "payload": "{ id: String }"
+          "definition": "StateNotFound { id: String },"
         },
         {
           "name": "DatabaseError",
-          "start_line": 19,
-          "doc": [],
-          "attributes": [
+          "start_line": 22,
+          "doc": [
             "#[error(\"database error: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "DatabaseError { message: String },"
         },
         {
           "name": "TransactionFailed",
-          "start_line": 22,
-          "doc": [],
-          "attributes": [
+          "start_line": 25,
+          "doc": [
             "#[error(\"transaction failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "TransactionFailed { message: String },"
         },
         {
           "name": "StateCorrupted",
-          "start_line": 25,
-          "doc": [],
-          "attributes": [
+          "start_line": 28,
+          "doc": [
             "#[error(\"state corrupted: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "StateCorrupted { message: String },"
         },
         {
           "name": "RollbackFailed",
-          "start_line": 28,
-          "doc": [],
-          "attributes": [
+          "start_line": 31,
+          "doc": [
             "#[error(\"rollback failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "RollbackFailed { message: String },"
         },
         {
           "name": "ActiveStateMissing",
-          "start_line": 31,
-          "doc": [],
-          "attributes": [
+          "start_line": 34,
+          "doc": [
             "#[error(\"active state missing\")]"
           ],
-          "payload": ""
+          "definition": "ActiveStateMissing,"
         },
         {
           "name": "MigrationFailed",
-          "start_line": 34,
-          "doc": [],
-          "attributes": [
+          "start_line": 37,
+          "doc": [
             "#[error(\"migration failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "MigrationFailed { message: String },"
         }
       ]
     },
@@ -2124,389 +1588,156 @@
       "name": "StorageError",
       "module": "storage",
       "path": "crates/errors/src/storage.rs",
-      "start_line": 8,
+      "start_line": 11,
       "doc": [],
       "definition": "pub enum StorageError {\n    #[error(\"disk full: {path}\")]\n    DiskFull { path: String },\n\n    #[error(\"permission denied: {path}\")]\n    PermissionDenied { path: String },\n\n    #[error(\"path not found: {path}\")]\n    PathNotFound { path: String },\n\n    #[error(\"directory not found: {path}\")]\n    DirectoryNotFound { path: std::path::PathBuf },\n\n    #[error(\"already exists: {path}\")]\n    AlreadyExists { path: String },\n\n    #[error(\"IO error: {message}\")]\n    IoError { message: String },\n\n    #[error(\"corrupted data: {message}\")]\n    CorruptedData { message: String },\n\n    #[error(\"invalid path: {path}\")]\n    InvalidPath { path: String },\n\n    #[error(\"lock acquisition failed: {path}\")]\n    LockFailed { path: String },\n\n    #[error(\"APFS clone failed: {message}\")]\n    ApfsCloneFailed { message: String },\n\n    #[error(\"atomic rename failed: {message}\")]\n    AtomicRenameFailed { message: String },\n\n    #[error(\"package not found: {hash}\")]\n    PackageNotFound { hash: String },\n}",
       "variants": [
         {
           "name": "DiskFull",
-          "start_line": 10,
-          "doc": [],
-          "attributes": [
+          "start_line": 13,
+          "doc": [
             "#[error(\"disk full: {path}\")]"
           ],
-          "payload": "{ path: String }"
+          "definition": "DiskFull { path: String },"
         },
         {
           "name": "PermissionDenied",
-          "start_line": 13,
-          "doc": [],
-          "attributes": [
+          "start_line": 16,
+          "doc": [
             "#[error(\"permission denied: {path}\")]"
           ],
-          "payload": "{ path: String }"
+          "definition": "PermissionDenied { path: String },"
         },
         {
           "name": "PathNotFound",
-          "start_line": 16,
-          "doc": [],
-          "attributes": [
+          "start_line": 19,
+          "doc": [
             "#[error(\"path not found: {path}\")]"
           ],
-          "payload": "{ path: String }"
+          "definition": "PathNotFound { path: String },"
         },
         {
           "name": "DirectoryNotFound",
-          "start_line": 19,
-          "doc": [],
-          "attributes": [
+          "start_line": 22,
+          "doc": [
             "#[error(\"directory not found: {path}\")]"
           ],
-          "payload": "{ path: std::path::PathBuf }"
+          "definition": "DirectoryNotFound { path: std::path::PathBuf },"
         },
         {
           "name": "AlreadyExists",
-          "start_line": 22,
-          "doc": [],
-          "attributes": [
+          "start_line": 25,
+          "doc": [
             "#[error(\"already exists: {path}\")]"
           ],
-          "payload": "{ path: String }"
+          "definition": "AlreadyExists { path: String },"
         },
         {
           "name": "IoError",
-          "start_line": 25,
-          "doc": [],
-          "attributes": [
+          "start_line": 28,
+          "doc": [
             "#[error(\"IO error: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "IoError { message: String },"
         },
         {
           "name": "CorruptedData",
-          "start_line": 28,
-          "doc": [],
-          "attributes": [
+          "start_line": 31,
+          "doc": [
             "#[error(\"corrupted data: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "CorruptedData { message: String },"
         },
         {
           "name": "InvalidPath",
-          "start_line": 31,
-          "doc": [],
-          "attributes": [
+          "start_line": 34,
+          "doc": [
             "#[error(\"invalid path: {path}\")]"
           ],
-          "payload": "{ path: String }"
+          "definition": "InvalidPath { path: String },"
         },
         {
           "name": "LockFailed",
-          "start_line": 34,
-          "doc": [],
-          "attributes": [
+          "start_line": 37,
+          "doc": [
             "#[error(\"lock acquisition failed: {path}\")]"
           ],
-          "payload": "{ path: String }"
+          "definition": "LockFailed { path: String },"
         },
         {
           "name": "ApfsCloneFailed",
-          "start_line": 37,
-          "doc": [],
-          "attributes": [
+          "start_line": 40,
+          "doc": [
             "#[error(\"APFS clone failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "ApfsCloneFailed { message: String },"
         },
         {
           "name": "AtomicRenameFailed",
-          "start_line": 40,
-          "doc": [],
-          "attributes": [
+          "start_line": 43,
+          "doc": [
             "#[error(\"atomic rename failed: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "AtomicRenameFailed { message: String },"
         },
         {
           "name": "PackageNotFound",
-          "start_line": 43,
-          "doc": [],
-          "attributes": [
+          "start_line": 46,
+          "doc": [
             "#[error(\"package not found: {hash}\")]"
           ],
-          "payload": "{ hash: String }"
+          "definition": "PackageNotFound { hash: String },"
         }
       ]
-    },
-    {
-      "kind": "enum",
-      "name": "ErrorCode",
-      "module": "structured",
-      "path": "crates/errors/src/structured.rs",
-      "start_line": 13,
-      "doc": [
-        "Stable error codes shared across the application and surface to clients."
-      ],
-      "definition": "pub enum ErrorCode {\n    ResolveTimeout,\n    ResolveConflict,\n    ResolveInternal,\n    FetchNetwork,\n    FetchChecksumMismatch,\n    FetchPermissionDenied,\n    InstallFilesystem,\n    InstallValidation,\n    InstallRollback,\n    InstallConflict,\n    BuildCompilationFailed,\n    BuildSandboxViolation,\n    StateDatabase,\n    StateLock,\n    PlatformProcess,\n    PlatformFilesystem,\n    GuardVerification,\n    GuardHealing,\n    OpsCancelled,\n    Unknown,\n}",
-      "variants": [
-        {
-          "name": "ResolveTimeout",
-          "start_line": 14,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "ResolveConflict",
-          "start_line": 15,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "ResolveInternal",
-          "start_line": 16,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "FetchNetwork",
-          "start_line": 17,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "FetchChecksumMismatch",
-          "start_line": 18,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "FetchPermissionDenied",
-          "start_line": 19,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "InstallFilesystem",
-          "start_line": 20,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "InstallValidation",
-          "start_line": 21,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "InstallRollback",
-          "start_line": 22,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "InstallConflict",
-          "start_line": 23,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "BuildCompilationFailed",
-          "start_line": 24,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "BuildSandboxViolation",
-          "start_line": 25,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "StateDatabase",
-          "start_line": 26,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "StateLock",
-          "start_line": 27,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "PlatformProcess",
-          "start_line": 28,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "PlatformFilesystem",
-          "start_line": 29,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "GuardVerification",
-          "start_line": 30,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "GuardHealing",
-          "start_line": 31,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "OpsCancelled",
-          "start_line": 32,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Unknown",
-          "start_line": 33,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        }
-      ]
-    },
-    {
-      "kind": "enum",
-      "name": "ErrorSeverity",
-      "module": "structured",
-      "path": "crates/errors/src/structured.rs",
-      "start_line": 69,
-      "doc": [
-        "Severity is used to drive UI messaging and retry/backoff policies."
-      ],
-      "definition": "pub enum ErrorSeverity {\n    Info,\n    Warning,\n    Recoverable,\n    Fatal,\n}",
-      "variants": [
-        {
-          "name": "Info",
-          "start_line": 70,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Warning",
-          "start_line": 71,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Recoverable",
-          "start_line": 72,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        },
-        {
-          "name": "Fatal",
-          "start_line": 73,
-          "doc": [],
-          "attributes": [],
-          "payload": ""
-        }
-      ]
-    },
-    {
-      "kind": "struct",
-      "name": "ErrorContext",
-      "module": "structured",
-      "path": "crates/errors/src/structured.rs",
-      "start_line": 87,
-      "doc": [
-        "Additional structured context that can be surfaced alongside the error."
-      ],
-      "definition": "pub struct ErrorContext {\n    pub operation: Option<Cow<'static, str>>,\n    pub package: Option<String>,\n    pub version: Option<String>,\n    pub resource: Option<String>,\n    pub hints: Vec<Cow<'static, str>>,\n    #[cfg_attr(feature = \"serde\", serde(skip_serializing_if = \"BTreeMap::is_empty\"))]\n    pub labels: BTreeMap<String, String>,\n}"
-    },
-    {
-      "kind": "struct",
-      "name": "StructuredError",
-      "module": "structured",
-      "path": "crates/errors/src/structured.rs",
-      "start_line": 145,
-      "doc": [
-        "Structured error envelope that ties error codes, severity, and context together."
-      ],
-      "definition": "pub struct StructuredError {\n    pub code: ErrorCode,\n    pub severity: ErrorSeverity,\n    /// Localised/user-facing message (short, < 80 chars recommended).\n    pub message: Cow<'static, str>,\n    #[cfg_attr(feature = \"serde\", serde(skip_serializing_if = \"Option::is_none\"))]\n    pub details: Option<String>,\n    #[cfg_attr(feature = \"serde\", serde(skip_serializing_if = \"BTreeMap::is_empty\"))]\n    pub metadata: BTreeMap<String, String>,\n    pub context: ErrorContext,\n}"
     },
     {
       "kind": "enum",
       "name": "VersionError",
       "module": "version",
       "path": "crates/errors/src/version.rs",
-      "start_line": 8,
+      "start_line": 11,
       "doc": [],
       "definition": "pub enum VersionError {\n    #[error(\"invalid version: {input}\")]\n    InvalidVersion { input: String },\n\n    #[error(\"invalid version constraint: {input}\")]\n    InvalidConstraint { input: String },\n\n    #[error(\"incompatible version: {version} does not satisfy {constraint}\")]\n    IncompatibleVersion { version: String, constraint: String },\n\n    #[error(\"no version satisfies constraints: {constraints}\")]\n    NoSatisfyingVersion { constraints: String },\n\n    #[error(\"version parse error: {message}\")]\n    ParseError { message: String },\n}",
       "variants": [
         {
           "name": "InvalidVersion",
-          "start_line": 10,
-          "doc": [],
-          "attributes": [
+          "start_line": 13,
+          "doc": [
             "#[error(\"invalid version: {input}\")]"
           ],
-          "payload": "{ input: String }"
+          "definition": "InvalidVersion { input: String },"
         },
         {
           "name": "InvalidConstraint",
-          "start_line": 13,
-          "doc": [],
-          "attributes": [
+          "start_line": 16,
+          "doc": [
             "#[error(\"invalid version constraint: {input}\")]"
           ],
-          "payload": "{ input: String }"
+          "definition": "InvalidConstraint { input: String },"
         },
         {
           "name": "IncompatibleVersion",
-          "start_line": 16,
-          "doc": [],
-          "attributes": [
+          "start_line": 19,
+          "doc": [
             "#[error(\"incompatible version: {version} does not satisfy {constraint}\")]"
           ],
-          "payload": "{ version: String, constraint: String }"
+          "definition": "IncompatibleVersion { version: String, constraint: String },"
         },
         {
           "name": "NoSatisfyingVersion",
-          "start_line": 19,
-          "doc": [],
-          "attributes": [
+          "start_line": 22,
+          "doc": [
             "#[error(\"no version satisfies constraints: {constraints}\")]"
           ],
-          "payload": "{ constraints: String }"
+          "definition": "NoSatisfyingVersion { constraints: String },"
         },
         {
           "name": "ParseError",
-          "start_line": 22,
-          "doc": [],
-          "attributes": [
+          "start_line": 25,
+          "doc": [
             "#[error(\"version parse error: {message}\")]"
           ],
-          "payload": "{ message: String }"
+          "definition": "ParseError { message: String },"
         }
       ]
     }

@@ -83,4 +83,24 @@ impl UserFacingError for AuditError {
                 | Self::ScanTimeout { .. }
         )
     }
+
+    fn user_code(&self) -> Option<&'static str> {
+        let code = match self {
+            Self::SbomParseError { .. } => "audit.sbom_parse_error",
+            Self::DatabaseError { .. } => "audit.database_error",
+            Self::CveFetchError { .. } => "audit.cve_fetch_error",
+            Self::InvalidCveId { .. } => "audit.invalid_cve_id",
+            Self::SbomNotFound { .. } => "audit.sbom_not_found",
+            Self::ScanFailed { .. } => "audit.scan_failed",
+            Self::ConnectionFailed { .. } => "audit.connection_failed",
+            Self::InvalidData { .. } => "audit.invalid_data",
+            Self::Timeout { .. } => "audit.timeout",
+            Self::UnsupportedFormat { .. } => "audit.unsupported_format",
+            Self::CriticalVulnerabilitiesFound { .. } => "audit.critical_vulnerabilities_found",
+            Self::NotImplemented { .. } => "audit.not_implemented",
+            Self::ScanError { .. } => "audit.scan_error",
+            Self::ScanTimeout { .. } => "audit.scan_timeout",
+        };
+        Some(code)
+    }
 }

@@ -18,7 +18,8 @@ pub async fn update_vulndb(ctx: &OpsCtx) -> Result<String, Error> {
         sources_count: 3, // NVD, OSV, GitHub
     };
     let progress_id = progress_manager.create_vulndb_tracker(vulndb_config);
-    progress_manager.emit_started(&progress_id, ctx);
+    let correlation = ctx.current_correlation();
+    progress_manager.emit_started(&progress_id, ctx, correlation.as_deref());
 
     // Initialize vulnerability database manager
     let mut vulndb = sps2_audit::VulnDbManager::new(sps2_audit::VulnDbManager::default_path())?;

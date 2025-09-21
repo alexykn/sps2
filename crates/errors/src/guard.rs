@@ -162,4 +162,20 @@ impl UserFacingError for GuardError {
             _ => false,
         }
     }
+
+    fn user_code(&self) -> Option<&'static str> {
+        let code = match self {
+            Self::VerificationFailed { .. } => "guard.verification_failed",
+            Self::HealingFailed { .. } => "guard.healing_failed",
+            Self::CacheError { .. } => "guard.cache_error",
+            Self::ConfigurationError { .. } => "guard.configuration_error",
+            Self::PermissionError { .. } => "guard.permission_error",
+            Self::ScopeError { .. } => "guard.scope_error",
+            Self::TimeoutError { .. } => "guard.timeout",
+            Self::ResourceExhausted { .. } => "guard.resource_exhausted",
+            Self::IntegrityError { .. } => "guard.integrity_error",
+            Self::StateInconsistency { .. } => "guard.state_inconsistency",
+        };
+        Some(code)
+    }
 }

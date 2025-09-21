@@ -3,7 +3,7 @@
 use super::config::ProgressPhase;
 use super::tracker::ProgressTracker;
 use super::update::ProgressUpdate;
-use crate::{AppEvent, EventEmitter, ProgressEvent};
+use crate::{AppEvent, EventEmitter, EventLevel, EventMeta, ProgressEvent};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -22,8 +22,14 @@ impl ProgressManager {
     }
 
     /// Create a new progress tracker
-    pub fn create_tracker(&self, id: String, operation: String, total: Option<u64>) -> String {
-        let tracker = ProgressTracker::new(id.clone(), operation, total);
+    pub fn create_tracker(
+        &self,
+        id: String,
+        operation: String,
+        total: Option<u64>,
+        parent_id: Option<String>,
+    ) -> String {
+        let tracker = ProgressTracker::new(id.clone(), operation, total, parent_id);
         if let Ok(mut trackers) = self.trackers.lock() {
             trackers.insert(id.clone(), tracker);
         }
@@ -37,8 +43,10 @@ impl ProgressManager {
         operation: String,
         total: Option<u64>,
         phases: Vec<ProgressPhase>,
+        parent_id: Option<String>,
     ) -> String {
-        let tracker = ProgressTracker::new(id.clone(), operation, total).with_phases(phases);
+        let tracker =
+            ProgressTracker::new(id.clone(), operation, total, parent_id).with_phases(phases);
         if let Ok(mut trackers) = self.trackers.lock() {
             trackers.insert(id.clone(), tracker);
         }
@@ -46,18 +54,43 @@ impl ProgressManager {
     }
 
     /// Emit a started event for an existing tracker using its stored metadata.
-    pub fn emit_started<E: EventEmitter>(&self, id: &str, emitter: &E) {
-        if let Ok(trackers) = self.trackers.lock() {
-            if let Some(tracker) = trackers.get(id) {
-                emitter.emit(AppEvent::Progress(ProgressEvent::Started {
-                    id: id.to_string(),
-                    operation: tracker.operation().to_string(),
-                    total: tracker.total(),
-                    phases: tracker.phases().to_vec(),
-                    parent_id: None,
-                }));
+    pub fn emit_started<E: EventEmitter>(&self, id: &str, emitter: &E, parent_id: Option<&str>) {
+        let Ok(mut trackers) = self.trackers.lock() else {
+            return;
+        };
+        let Some(tracker) = trackers.get_mut(id) else {
+            return;
+        };
+
+        if let Some(parent) = parent_id {
+            if tracker.parent_id().is_none() {
+                tracker.set_parent_id(Some(parent.to_string()));
             }
         }
+
+        let operation = tracker.operation().to_string();
+        let total = tracker.total();
+        let phases = tracker.phases().to_vec();
+        let parent_label = tracker.parent_id().cloned();
+        let root_event_id = tracker.root_event_id();
+
+        let event = ProgressEvent::Started {
+            id: id.to_string(),
+            operation,
+            total,
+            phases,
+            parent_id: parent_label.clone(),
+        };
+        let app_event = AppEvent::Progress(event);
+        let level = EventLevel::from(app_event.log_level());
+        let mut meta = EventMeta::new(level, app_event.event_source());
+        meta.event_id = root_event_id;
+        if let Some(parent_label) = parent_label {
+            meta.labels
+                .insert("progress_parent".to_string(), parent_label);
+        }
+        emitter.enrich_event_meta(&app_event, &mut meta);
+        emitter.emit_with_meta(meta, app_event);
     }
 
     /// Get a tracker by its ID
@@ -151,18 +184,19 @@ impl ProgressManager {
         total: Option<u64>,
         phases: Vec<ProgressPhase>,
         emitter: &E,
+        parent_id: Option<&str>,
     ) -> String {
         let tracker_id = format!("{}_{}", id, uuid::Uuid::new_v4());
-        let phases_clone = phases.clone();
-        self.create_tracker_with_phases(tracker_id.clone(), operation.to_string(), total, phases);
-        // Emit a Started event for this operation
-        emitter.emit(AppEvent::Progress(ProgressEvent::Started {
-            id: tracker_id.clone(),
-            operation: operation.to_string(),
+        let parent_string = parent_id.map(str::to_string);
+        self.create_tracker_with_phases(
+            tracker_id.clone(),
+            operation.to_string(),
             total,
-            phases: phases_clone,
-            parent_id: None,
-        }));
+            phases,
+            parent_string.clone(),
+        );
+        // Emit a Started event for this operation with metadata linking
+        self.emit_started(&tracker_id, emitter, parent_string.as_deref());
         tracker_id
     }
 
@@ -174,65 +208,135 @@ impl ProgressManager {
         total: Option<u64>,
         emitter: &E,
     ) {
-        if let Some(update) = self.update(id, current) {
-            // Send progress event regardless of whether total is known
-            emitter.emit(AppEvent::Progress(ProgressEvent::Updated {
-                id: id.to_string(),
-                current,
-                total,
-                phase: update.phase,
-                speed: update.speed,
-                eta: update.eta,
-                efficiency: None,
-            }));
+        let Ok(mut trackers) = self.trackers.lock() else {
+            return;
+        };
+        let Some(tracker) = trackers.get_mut(id) else {
+            return;
+        };
+
+        let update = tracker.update(current);
+        let parent_label = tracker.parent_id().cloned();
+        let root_event_id = tracker.root_event_id();
+
+        let event = ProgressEvent::Updated {
+            id: id.to_string(),
+            current,
+            total,
+            phase: update.phase,
+            speed: update.speed,
+            eta: update.eta,
+            efficiency: None,
+        };
+        let app_event = AppEvent::Progress(event);
+        let level = EventLevel::from(app_event.log_level());
+        let mut meta = EventMeta::new(level, app_event.event_source());
+        meta.parent_id = Some(root_event_id);
+        if let Some(parent_label) = parent_label {
+            meta.labels
+                .insert("progress_parent".to_string(), parent_label);
         }
+        emitter.enrich_event_meta(&app_event, &mut meta);
+        emitter.emit_with_meta(meta, app_event);
     }
 
     /// Change to a specific phase
     pub fn change_phase<E: EventEmitter>(&self, id: &str, phase_index: usize, emitter: &E) {
         // Set to specific phase index if available
-        if let Ok(mut trackers) = self.trackers.lock() {
-            if let Some(tracker) = trackers.get_mut(id) {
-                let clamped = phase_index.min(tracker.phases.len().saturating_sub(1));
-                tracker.current_phase = clamped;
-                let name = tracker
-                    .phases()
-                    .get(clamped)
-                    .map_or_else(|| format!("Phase {}", clamped), |p| p.name.clone());
-                emitter.emit(AppEvent::Progress(ProgressEvent::PhaseChanged {
-                    id: id.to_string(),
-                    phase: clamped,
-                    phase_name: name,
-                }));
-            }
+        let Ok(mut trackers) = self.trackers.lock() else {
+            return;
+        };
+        let Some(tracker) = trackers.get_mut(id) else {
+            return;
+        };
+
+        let clamped = phase_index.min(tracker.phases.len().saturating_sub(1));
+        tracker.current_phase = clamped;
+        let phase_name = tracker
+            .phases()
+            .get(clamped)
+            .map_or_else(|| format!("Phase {}", clamped), |p| p.name.clone());
+        let parent_label = tracker.parent_id().cloned();
+        let root_event_id = tracker.root_event_id();
+
+        let event = ProgressEvent::PhaseChanged {
+            id: id.to_string(),
+            phase: clamped,
+            phase_name,
+        };
+        let app_event = AppEvent::Progress(event);
+        let level = EventLevel::from(app_event.log_level());
+        let mut meta = EventMeta::new(level, app_event.event_source());
+        meta.parent_id = Some(root_event_id);
+        if let Some(parent_label) = parent_label {
+            meta.labels
+                .insert("progress_parent".to_string(), parent_label);
         }
+        emitter.enrich_event_meta(&app_event, &mut meta);
+        emitter.emit_with_meta(meta, app_event);
     }
 
     /// Change to a specific phase by name and mark it as done
     pub fn update_phase_to_done<E: EventEmitter>(&self, id: &str, phase_name: &str, emitter: &E) {
-        let mut trackers = self.trackers.lock().unwrap();
-        if let Some(tracker) = trackers.get_mut(id) {
-            if let Some(phase_index) = tracker.phases().iter().position(|p| p.name == phase_name) {
-                tracker.current_phase = phase_index;
-                emitter.emit(AppEvent::Progress(ProgressEvent::PhaseChanged {
-                    id: id.to_string(),
-                    phase: phase_index,
-                    phase_name: phase_name.to_string(),
-                }));
-            }
+        let Ok(mut trackers) = self.trackers.lock() else {
+            return;
+        };
+        let Some(tracker) = trackers.get_mut(id) else {
+            return;
+        };
+        let Some(phase_index) = tracker.phases().iter().position(|p| p.name == phase_name) else {
+            return;
+        };
+        tracker.current_phase = phase_index;
+        let parent_label = tracker.parent_id().cloned();
+        let root_event_id = tracker.root_event_id();
+
+        let event = ProgressEvent::PhaseChanged {
+            id: id.to_string(),
+            phase: phase_index,
+            phase_name: phase_name.to_string(),
+        };
+        let app_event = AppEvent::Progress(event);
+        let level = EventLevel::from(app_event.log_level());
+        let mut meta = EventMeta::new(level, app_event.event_source());
+        meta.parent_id = Some(root_event_id);
+        if let Some(parent_label) = parent_label {
+            meta.labels
+                .insert("progress_parent".to_string(), parent_label);
         }
+        emitter.enrich_event_meta(&app_event, &mut meta);
+        emitter.emit_with_meta(meta, app_event);
     }
 
     /// Complete an operation
     pub fn complete_operation<E: EventEmitter>(&self, id: &str, emitter: &E) {
-        if let Some(duration) = self.complete(id) {
-            emitter.emit(AppEvent::Progress(ProgressEvent::Completed {
-                id: id.to_string(),
-                duration,
-                final_speed: None,
-                total_processed: 0,
-            }));
+        let Ok(mut trackers) = self.trackers.lock() else {
+            return;
+        };
+        let Some(tracker) = trackers.get_mut(id) else {
+            return;
+        };
+
+        let duration = tracker.complete();
+        let parent_label = tracker.parent_id().cloned();
+        let root_event_id = tracker.root_event_id();
+
+        let event = ProgressEvent::Completed {
+            id: id.to_string(),
+            duration,
+            final_speed: None,
+            total_processed: 0,
+        };
+        let app_event = AppEvent::Progress(event);
+        let level = EventLevel::from(app_event.log_level());
+        let mut meta = EventMeta::new(level, app_event.event_source());
+        meta.parent_id = Some(root_event_id);
+        if let Some(parent_label) = parent_label {
+            meta.labels
+                .insert("progress_parent".to_string(), parent_label);
         }
+        emitter.enrich_event_meta(&app_event, &mut meta);
+        emitter.emit_with_meta(meta, app_event);
     }
 
     /// Create a parent progress tracker for batch operations
@@ -243,7 +347,13 @@ impl ProgressManager {
         phases: Vec<ProgressPhase>,
     ) -> String {
         let id = format!("batch_{}", uuid::Uuid::new_v4());
-        self.create_tracker_with_phases(id.clone(), operation_name, Some(total_items), phases);
+        self.create_tracker_with_phases(
+            id.clone(),
+            operation_name,
+            Some(total_items),
+            phases,
+            None,
+        );
         id
     }
 

@@ -62,4 +62,18 @@ impl UserFacingError for ConfigError {
     fn is_retryable(&self) -> bool {
         false
     }
+
+    fn user_code(&self) -> Option<&'static str> {
+        let code = match self {
+            Self::NotFound { .. } => "config.not_found",
+            Self::Invalid { .. } => "config.invalid",
+            Self::ParseError { .. } => "config.parse_error",
+            Self::MissingField { .. } => "config.missing_field",
+            Self::InvalidValue { .. } => "config.invalid_value",
+            Self::EnvVarNotFound { .. } => "config.env_var_not_found",
+            Self::WriteError { .. } => "config.write_error",
+            Self::SerializeError { .. } => "config.serialize_error",
+        };
+        Some(code)
+    }
 }

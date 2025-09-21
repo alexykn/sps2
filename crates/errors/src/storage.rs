@@ -97,4 +97,22 @@ impl UserFacingError for StorageError {
     fn is_retryable(&self) -> bool {
         matches!(self, Self::LockFailed { .. } | Self::IoError { .. })
     }
+
+    fn user_code(&self) -> Option<&'static str> {
+        let code = match self {
+            Self::DiskFull { .. } => "storage.disk_full",
+            Self::PermissionDenied { .. } => "storage.permission_denied",
+            Self::PathNotFound { .. } => "storage.path_not_found",
+            Self::DirectoryNotFound { .. } => "storage.directory_not_found",
+            Self::AlreadyExists { .. } => "storage.already_exists",
+            Self::IoError { .. } => "storage.io_error",
+            Self::CorruptedData { .. } => "storage.corrupted_data",
+            Self::InvalidPath { .. } => "storage.invalid_path",
+            Self::LockFailed { .. } => "storage.lock_failed",
+            Self::ApfsCloneFailed { .. } => "storage.apfs_clone_failed",
+            Self::AtomicRenameFailed { .. } => "storage.atomic_rename_failed",
+            Self::PackageNotFound { .. } => "storage.package_not_found",
+        };
+        Some(code)
+    }
 }

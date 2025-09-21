@@ -21,6 +21,6 @@ pub enum DownloadEvent {
     Failed {
         url: String,
         package: Option<String>,
-        retryable: bool,
+        failure: super::FailureContext,
     },
 }

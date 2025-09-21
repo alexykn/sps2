@@ -4,8 +4,10 @@
 //! Delegates to `sps2_install` crate for the actual installation logic.
 
 use crate::{InstallReport, InstallRequest, OpsCtx};
-use sps2_errors::{Error, OpsError, UserFacingError};
-use sps2_events::{AppEvent, EventEmitter, GeneralEvent, ProgressEvent, ResolverEvent};
+use sps2_errors::{Error, OpsError};
+use sps2_events::{
+    AppEvent, EventEmitter, FailureContext, GeneralEvent, ProgressEvent, ResolverEvent,
+};
 use sps2_guard::{OperationResult as GuardOperationResult, PackageChange as GuardPackageChange};
 use sps2_install::{InstallConfig, InstallContext, Installer};
 use sps2_types::{PackageSpec, Version};
@@ -359,7 +361,8 @@ async fn install_remote_packages_parallel(
     };
 
     let progress_id = progress_manager.create_install_tracker(install_config);
-    progress_manager.emit_started(&progress_id, ctx);
+    let correlation = ctx.current_correlation();
+    progress_manager.emit_started(&progress_id, ctx, correlation.as_deref());
 
     // The new standardized progress tracker handles the initial event emission.
 
@@ -378,24 +381,13 @@ async fn install_remote_packages_parallel(
     let resolution_result = match ctx.resolver.resolve_with_sat(resolution_context).await {
         Ok(result) => result,
         Err(e) => {
-            let message = e.user_message().into_owned();
-            let hint = e.user_hint().map(str::to_string);
-            let retryable = e.is_retryable();
+            let failure = FailureContext::from_error(&e);
 
-            ctx.emit_operation_failed(
-                "install",
-                String::new(),
-                message.clone(),
-                hint.clone(),
-                retryable,
-            );
+            ctx.emit_operation_failed("install", failure.clone());
 
             ctx.emit(AppEvent::Progress(ProgressEvent::Failed {
                 id: progress_id.clone(),
-                code: String::new(),
-                message,
-                hint,
-                retryable,
+                failure,
                 completed_items: 0,
                 partial_duration: std::time::Duration::default(),
             }));
@@ -429,24 +421,13 @@ async fn install_remote_packages_parallel(
     {
         Ok(prepared_packages) => prepared_packages,
         Err(e) => {
-            let message = e.user_message().into_owned();
-            let hint = e.user_hint().map(str::to_string);
-            let retryable = e.is_retryable();
+            let failure = FailureContext::from_error(&e);
 
-            ctx.emit_operation_failed(
-                "install",
-                String::new(),
-                message.clone(),
-                hint.clone(),
-                retryable,
-            );
+            ctx.emit_operation_failed("install", failure.clone());
 
             ctx.emit(AppEvent::Progress(ProgressEvent::Failed {
                 id: progress_id.clone(),
-                code: String::new(),
-                message,
-                hint,
-                retryable,
+                failure,
                 completed_items: 0,
                 partial_duration: std::time::Duration::default(),
             }));

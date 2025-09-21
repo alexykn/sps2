@@ -103,4 +103,28 @@ impl UserFacingError for InstallError {
                 | Self::DownloadTimeout { .. }
         )
     }
+
+    fn user_code(&self) -> Option<&'static str> {
+        let code = match self {
+            Self::PackageNotFound { .. } => "install.package_not_found",
+            Self::ExtractionFailed { .. } => "install.extraction_failed",
+            Self::AtomicOperationFailed { .. } => "install.atomic_operation_failed",
+            Self::FilesystemError { .. } => "install.filesystem_error",
+            Self::StateNotFound { .. } => "install.state_not_found",
+            Self::PackageHasDependents { .. } => "install.package_has_dependents",
+            Self::NoPackagesSpecified => "install.no_packages_specified",
+            Self::LocalPackageNotFound { .. } => "install.local_package_not_found",
+            Self::InvalidPackageFile { .. } => "install.invalid_package_file",
+            Self::TaskError { .. } => "install.task_error",
+            Self::PackageNotInstalled { .. } => "install.package_not_installed",
+            Self::ConcurrencyError { .. } => "install.concurrency_error",
+            Self::DownloadTimeout { .. } => "install.download_timeout",
+            Self::MissingDownloadUrl { .. } => "install.missing_download_url",
+            Self::MissingLocalPath { .. } => "install.missing_local_path",
+            Self::TempFileError { .. } => "install.temp_file_error",
+            Self::OperationTimeout { .. } => "install.operation_timeout",
+            Self::NoProgress { .. } => "install.no_progress",
+        };
+        Some(code)
+    }
 }

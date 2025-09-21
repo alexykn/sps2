@@ -10,7 +10,9 @@ use super::stream::{download_file_simple, stream_download};
 use super::validation::{validate_response, validate_url};
 use crate::client::{NetClient, NetConfig};
 use sps2_errors::{Error, NetworkError};
-use sps2_events::{AppEvent, DownloadEvent, EventEmitter, EventSender, GeneralEvent};
+use sps2_events::{
+    AppEvent, DownloadEvent, EventEmitter, EventSender, FailureContext, GeneralEvent,
+};
 use sps2_hash::Hash;
 use sps2_types::Version;
 use std::path::Path;
@@ -384,15 +386,19 @@ impl PackageDownloader {
             }
         }
 
+        let final_error = last_error.unwrap_or_else(|| {
+            NetworkError::DownloadFailed("Maximum retries exceeded".to_string()).into()
+        });
+
+        let failure = FailureContext::from_error(&final_error);
+
         tx.emit(AppEvent::Download(DownloadEvent::Failed {
             url: url.to_string(),
             package: package.clone(),
-            retryable: false,
+            failure,
         }));
 
-        Err(last_error.unwrap_or_else(|| {
-            NetworkError::DownloadFailed("Maximum retries exceeded".to_string()).into()
-        }))
+        Err(final_error)
     }
 
     /// Attempt a single download with resume capability

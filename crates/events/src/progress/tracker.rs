@@ -4,6 +4,7 @@ use super::config::{ProgressConfig, ProgressPhase, TrendDirection};
 use super::speed::{SpeedBuffer, SpeedSample};
 use super::update::ProgressUpdate;
 use std::time::{Duration, Instant};
+use uuid::Uuid;
 
 /// Core progress tracker with sophisticated algorithms
 #[derive(Debug, Clone)]
@@ -32,12 +33,21 @@ pub struct ProgressTracker {
     ema_speed: Option<f64>,
     /// Whether tracker has been completed
     pub(crate) completed: bool,
+    /// Optional parent identifier (e.g. correlation id)
+    parent_id: Option<String>,
+    /// Root event identifier for the initial Started event
+    root_event_id: Uuid,
 }
 
 impl ProgressTracker {
     /// Create a new progress tracker
     #[must_use]
-    pub fn new(id: String, operation: String, total: Option<u64>) -> Self {
+    pub fn new(
+        id: String,
+        operation: String,
+        total: Option<u64>,
+        parent_id: Option<String>,
+    ) -> Self {
         let config = ProgressConfig::default();
         let now = Instant::now();
 
@@ -54,6 +64,8 @@ impl ProgressTracker {
             last_update: now,
             ema_speed: None,
             completed: false,
+            parent_id,
+            root_event_id: Uuid::new_v4(),
         }
     }
 
@@ -64,6 +76,7 @@ impl ProgressTracker {
         operation: String,
         total: Option<u64>,
         config: ProgressConfig,
+        parent_id: Option<String>,
     ) -> Self {
         let now = Instant::now();
 
@@ -80,6 +93,8 @@ impl ProgressTracker {
             last_update: now,
             ema_speed: None,
             completed: false,
+            parent_id,
+            root_event_id: Uuid::new_v4(),
         }
     }
 
@@ -195,6 +210,23 @@ impl ProgressTracker {
     #[must_use]
     pub fn total(&self) -> Option<u64> {
         self.total
+    }
+
+    /// Get the parent identifier string associated with this tracker, if any.
+    #[must_use]
+    pub fn parent_id(&self) -> Option<&String> {
+        self.parent_id.as_ref()
+    }
+
+    /// Update the parent identifier for this tracker.
+    pub fn set_parent_id(&mut self, parent: Option<String>) {
+        self.parent_id = parent;
+    }
+
+    /// Get the root event identifier for this tracker.
+    #[must_use]
+    pub fn root_event_id(&self) -> Uuid {
+        self.root_event_id
     }
 
     /// Calculate ETA using multiple sophisticated methods
