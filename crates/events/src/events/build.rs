@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sps2_types::Version;
 use std::path::PathBuf;
-use std::time::Duration;
 
 /// Build system types supported by sps2
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,110 +24,107 @@ pub enum BuildPhase {
     Package,
 }
 
-/// Build-specific events consumed by the CLI and logging pipeline
+/// Identifier and configuration for a build session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum BuildEvent {
-    /// Build session started with comprehensive context
-    SessionStarted {
-        session_id: String,
-        package: String,
-        version: Version,
-        build_system: BuildSystem,
-        cache_enabled: bool,
-    },
+pub struct BuildSession {
+    pub id: String,
+    pub system: BuildSystem,
+    pub cache_enabled: bool,
+}
 
-    /// Build phase started
-    PhaseStarted {
-        session_id: String,
-        package: String,
-        phase: BuildPhase,
-        estimated_duration: Option<Duration>,
-    },
+/// Target package for a build.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildTarget {
+    pub package: String,
+    pub version: Version,
+}
 
-    /// Build phase completed
-    PhaseCompleted {
-        session_id: String,
-        package: String,
-        phase: BuildPhase,
-        duration: Duration,
-    },
+/// Descriptor for a command executed during a build.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommandDescriptor {
+    pub id: Option<String>,
+    pub command: String,
+    pub working_dir: PathBuf,
+}
 
-    /// Build command started
-    CommandStarted {
-        session_id: String,
-        package: String,
-        command_id: String,
-        build_system: BuildSystem,
-        command: String,
-        working_dir: PathBuf,
-        timeout: Option<Duration>,
-    },
+/// Stream for build log output.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LogStream {
+    Stdout,
+    Stderr,
+}
 
-    /// Real-time build output
-    StepOutput {
-        session_id: String,
-        package: String,
-        command_id: String,
-        line: String,
-        is_stderr: bool,
-    },
-
-    /// Build completed successfully
+/// Status updates for build phases.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum PhaseStatus {
+    Started,
     Completed {
-        session_id: String,
-        package: String,
-        version: Version,
-        path: PathBuf,
-        duration: Duration,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        duration_ms: Option<u64>,
     },
+}
 
-    /// Build failed
-    Failed {
-        session_id: String,
-        package: String,
-        version: Version,
-        error: String,
-        phase: Option<BuildPhase>,
-        recovery_suggestions: Vec<String>,
-    },
-
-    /// Build warning encountered
+/// Structured diagnostics emitted during a build session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum BuildDiagnostic {
     Warning {
         session_id: String,
-        package: String,
         message: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
         source: Option<String>,
     },
-
-    /// Build cache cleaned
-    CacheCleaned {
+    LogChunk {
+        session_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        command_id: Option<String>,
+        stream: LogStream,
+        text: String,
+    },
+    CachePruned {
         removed_items: usize,
         freed_bytes: u64,
     },
+}
 
-    /// Build cleaned up
-    Cleaned { session_id: String, package: String },
+/// Build-specific events consumed by the CLI and logging pipeline.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum BuildEvent {
+    /// Build session started with high-level context.
+    Started {
+        session: BuildSession,
+        target: BuildTarget,
+    },
 
-    /// Build resource usage update
-    ResourceUsage {
+    /// Build phase status update.
+    PhaseStatus {
         session_id: String,
-        package: String,
-        cpu_percent: f64,
-        memory_mb: u64,
-        disk_usage_mb: u64,
+        phase: BuildPhase,
+        status: PhaseStatus,
     },
 
-    /// Build orchestration phase started (recipe parsing, env setup, etc.)
-    OrchestrationPhaseStarted {
-        phase: String,
-        description: Option<String>,
+    /// Build completed successfully.
+    Completed {
+        session_id: String,
+        target: BuildTarget,
+        artifacts: Vec<PathBuf>,
+        duration_ms: u64,
     },
 
-    /// Build orchestration phase completed
-    OrchestrationPhaseCompleted {
-        phase: String,
-        success: bool,
-        duration: Option<Duration>,
+    /// Build failed during execution.
+    Failed {
+        session_id: String,
+        target: BuildTarget,
+        failure: super::FailureContext,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        phase: Option<BuildPhase>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        command: Option<CommandDescriptor>,
     },
+
+    /// Structured diagnostics for warning/log streaming.
+    Diagnostic(BuildDiagnostic),
 }

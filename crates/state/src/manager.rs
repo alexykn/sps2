@@ -5,12 +5,14 @@ use crate::{
     queries,
 };
 use sps2_errors::Error;
-use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent, StateEvent};
+use sps2_events::{AppEvent, CleanupSummary, EventEmitter, EventSender, GeneralEvent, StateEvent};
 use sps2_hash::Hash;
 use sps2_platform::filesystem_helpers as sps2_root;
 use sps2_types::StateId;
 use sqlx::{Pool, Sqlite};
+use std::convert::TryFrom;
 use std::path::PathBuf;
+use std::time::Instant;
 use uuid::Uuid;
 
 /// State manager for atomic updates
@@ -444,8 +446,15 @@ impl StateManager {
         let states_to_remove =
             queries::get_states_for_cleanup_strict(&mut tx, retention_count).await?;
 
-        self.tx.emit(AppEvent::State(StateEvent::CleanupStarted {
+        let cleanup_start = Instant::now();
+        let mut cleanup_summary = CleanupSummary {
             planned_states: states_to_remove.len(),
+            removed_states: None,
+            space_freed_bytes: None,
+            duration_ms: None,
+        };
+        self.tx.emit(AppEvent::State(StateEvent::CleanupStarted {
+            summary: cleanup_summary.clone(),
         }));
 
         let mut space_freed = 0u64;
@@ -492,9 +501,13 @@ impl StateManager {
 
         tx.commit().await?;
 
+        cleanup_summary.removed_states = Some(removed_count);
+        cleanup_summary.space_freed_bytes = Some(space_freed);
+        cleanup_summary.duration_ms =
+            Some(u64::try_from(cleanup_start.elapsed().as_millis()).unwrap_or(u64::MAX));
+
         self.tx.emit(AppEvent::State(StateEvent::CleanupCompleted {
-            removed_states: removed_count,
-            space_freed,
+            summary: cleanup_summary,
         }));
 
         Ok(CleanupResult {
@@ -555,8 +568,15 @@ impl StateManager {
         let hash_strings: Vec<String> = unreferenced.iter().map(|item| item.hash.clone()).collect();
 
         let packages_removed = unreferenced.len();
-        self.tx.emit(AppEvent::State(StateEvent::CleanupStarted {
+        let cleanup_start = Instant::now();
+        let mut cleanup_summary = CleanupSummary {
             planned_states: packages_removed,
+            removed_states: None,
+            space_freed_bytes: None,
+            duration_ms: None,
+        };
+        self.tx.emit(AppEvent::State(StateEvent::CleanupStarted {
+            summary: cleanup_summary.clone(),
         }));
 
         // Delete from database first
@@ -586,9 +606,13 @@ impl StateManager {
             .map(|item| u64::try_from(item.size).unwrap_or(0))
             .sum();
 
+        cleanup_summary.removed_states = Some(packages_removed);
+        cleanup_summary.space_freed_bytes = Some(space_freed_bytes);
+        cleanup_summary.duration_ms =
+            Some(u64::try_from(cleanup_start.elapsed().as_millis()).unwrap_or(u64::MAX));
+
         self.tx.emit(AppEvent::State(StateEvent::CleanupCompleted {
-            removed_states: packages_removed,
-            space_freed: space_freed_bytes,
+            summary: cleanup_summary,
         }));
 
         Ok(packages_removed)

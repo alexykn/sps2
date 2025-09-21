@@ -1,54 +1,89 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use sps2_types::Version;
+use std::path::PathBuf;
 
-/// Quality assurance events for artifact validation
+use super::FailureContext;
+
+/// Target package being evaluated by QA.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum QaEvent {
-    /// QA pipeline started
-    PipelineStarted {
-        package: String,
-        version: String,
-        qa_level: String,
-    },
+pub struct QaTarget {
+    pub package: String,
+    pub version: Version,
+}
 
-    /// QA pipeline completed
+/// QA level applied to the pipeline.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QaLevel {
+    Fast,
+    Standard,
+    Strict,
+    Custom(String),
+}
+
+/// Status for an individual QA check.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QaCheckStatus {
+    Passed,
+    Failed,
+    Skipped,
+}
+
+/// Severity for QA findings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QaSeverity {
+    Info,
+    Warning,
+    Error,
+    Critical,
+}
+
+/// Individual finding emitted by a QA check.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QaFinding {
+    pub message: String,
+    pub severity: QaSeverity,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line: Option<u32>,
+}
+
+/// Summary emitted after a QA check completes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QaCheckSummary {
+    pub name: String,
+    pub category: String,
+    pub status: QaCheckStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub findings: Vec<QaFinding>,
+}
+
+/// QA events consumed by CLI/logging pipelines.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum QaEvent {
+    PipelineStarted {
+        target: QaTarget,
+        level: QaLevel,
+    },
     PipelineCompleted {
-        package: String,
-        version: String,
+        target: QaTarget,
         total_checks: usize,
         passed: usize,
         failed: usize,
-        duration_seconds: u64,
+        duration_ms: u64,
     },
-
-    /// QA check started
-    CheckStarted {
-        check_type: String,
-        check_name: String,
+    PipelineFailed {
+        target: QaTarget,
+        failure: FailureContext,
     },
-
-    /// QA check completed
-    CheckCompleted {
-        check_type: String,
-        check_name: String,
-        findings_count: usize,
-        severity_counts: HashMap<String, usize>,
-    },
-
-    /// QA check failed
-    CheckFailed {
-        check_type: String,
-        check_name: String,
-        error: String,
-    },
-
-    /// QA finding reported
-    FindingReported {
-        check_type: String,
-        severity: String,
-        message: String,
-        file_path: Option<String>,
-        line: Option<usize>,
+    CheckEvaluated {
+        target: QaTarget,
+        summary: QaCheckSummary,
     },
 }

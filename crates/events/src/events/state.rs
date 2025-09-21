@@ -1,50 +1,86 @@
 use serde::{Deserialize, Serialize};
 use sps2_types::StateId;
-use std::time::Duration;
 
-/// State management milestones for atomic operations and cleanup
+use super::FailureContext;
+
+/// Context describing a state transition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
+pub struct StateTransitionContext {
+    pub operation: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<StateId>,
+    pub target: StateId,
+}
+
+/// Optional summary for completed transitions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransitionSummary {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+}
+
+/// Context for rollback operations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RollbackContext {
+    pub from: StateId,
+    pub to: StateId,
+}
+
+/// Optional summary for completed rollbacks.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RollbackSummary {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+}
+
+/// Summary for cleanup operations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CleanupSummary {
+    pub planned_states: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub removed_states: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub space_freed_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+}
+
+/// State events emitted by state manager and install flows.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum StateEvent {
-    /// A state transition started.
     TransitionStarted {
-        operation: String,
-        source: Option<StateId>,
-        target: StateId,
+        context: StateTransitionContext,
     },
-
-    /// A state transition completed successfully.
     TransitionCompleted {
-        operation: String,
-        source: Option<StateId>,
-        target: StateId,
-        duration: Option<Duration>,
+        context: StateTransitionContext,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        summary: Option<TransitionSummary>,
     },
-
-    /// A state transition failed.
     TransitionFailed {
-        operation: String,
-        source: Option<StateId>,
-        target: Option<StateId>,
-        retryable: bool,
+        context: StateTransitionContext,
+        failure: FailureContext,
     },
-
-    /// A rollback operation started.
-    RollbackStarted { from: StateId, to: StateId },
-
-    /// A rollback operation completed.
+    RollbackStarted {
+        context: RollbackContext,
+    },
     RollbackCompleted {
-        from: StateId,
-        to: StateId,
-        duration: Option<Duration>,
+        context: RollbackContext,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        summary: Option<RollbackSummary>,
     },
-
-    /// Cleanup pass started.
-    CleanupStarted { planned_states: usize },
-
-    /// Cleanup pass completed.
+    RollbackFailed {
+        context: RollbackContext,
+        failure: FailureContext,
+    },
+    CleanupStarted {
+        summary: CleanupSummary,
+    },
     CleanupCompleted {
-        removed_states: usize,
-        space_freed: u64,
+        summary: CleanupSummary,
+    },
+    CleanupFailed {
+        summary: CleanupSummary,
+        failure: FailureContext,
     },
 }

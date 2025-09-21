@@ -6,8 +6,10 @@ use uuid::Uuid;
 
 use crate::diagnostics::GuardErrorExt;
 use sps2_errors::{DiscrepancySeverity, GuardError};
-use sps2_events::events::GuardDiscrepancyParams;
-use sps2_events::{AppEvent, EventEmitter, EventSender, GuardEvent};
+use sps2_events::{
+    AppEvent, EventEmitter, EventSender, GuardDiscrepancy, GuardEvent, GuardLevel, GuardScope,
+    GuardSeverity, GuardTargetSummary, GuardVerificationMetrics,
+};
 
 use crate::types::{Discrepancy, OperationType, VerificationResult};
 
@@ -30,6 +32,10 @@ pub struct GuardErrorContext {
     metadata: HashMap<String, String>,
     /// Verbosity level for reporting
     verbosity_level: VerbosityLevel,
+    /// Scope captured when the operation started
+    scope: Option<GuardScope>,
+    /// Verification level captured when the operation started
+    level: Option<GuardLevel>,
 }
 
 /// Verbosity levels for error reporting
@@ -94,6 +100,8 @@ impl GuardErrorContext {
             discrepancies: Vec::new(),
             metadata: HashMap::new(),
             verbosity_level,
+            scope: None,
+            level: None,
         }
     }
 
@@ -107,6 +115,18 @@ impl GuardErrorContext {
     #[must_use]
     pub fn verbosity_level(&self) -> VerbosityLevel {
         self.verbosity_level
+    }
+
+    /// Get the guard scope captured at operation start.
+    #[must_use]
+    pub fn scope(&self) -> Option<&GuardScope> {
+        self.scope.as_ref()
+    }
+
+    /// Get the verification level captured at operation start.
+    #[must_use]
+    pub fn level(&self) -> Option<&GuardLevel> {
+        self.level.as_ref()
     }
 
     /// Add metadata to the context
@@ -127,22 +147,22 @@ impl GuardErrorContext {
             .should_report_severity(error.severity())
         {
             let context = error.user_context();
+            let discrepancy = GuardDiscrepancy {
+                kind: format!("{error:?}"),
+                severity: Self::map_severity(error.severity()),
+                location: None,
+                package: None,
+                version: None,
+                message: context.user_message.clone(),
+                auto_heal_available: error.is_recoverable(),
+                requires_confirmation: context.requires_user_action(),
+            };
 
             self.event_sender
-                .emit(AppEvent::Guard(GuardEvent::DiscrepancyFound(
-                    GuardDiscrepancyParams {
-                        discrepancy_type: format!("{error:?}"),
-                        severity: format!("{:?}", error.severity()),
-                        file_path: String::new(), // No specific file path for general errors
-                        package: None,
-                        package_version: None,
-                        user_message: context.user_message.clone(),
-                        technical_details: context.technical_details.clone(),
-                        auto_heal_available: error.is_recoverable(),
-                        requires_confirmation: context.requires_user_action(),
-                        estimated_fix_time_seconds: context.estimated_fix_time.map(|d| d.as_secs()),
-                    },
-                )));
+                .emit(AppEvent::Guard(GuardEvent::DiscrepancyReported {
+                    operation_id: self.operation_id.clone(),
+                    discrepancy,
+                }));
         }
 
         self.errors.push(error);
@@ -156,26 +176,23 @@ impl GuardErrorContext {
             .should_report_severity(discrepancy.severity())
         {
             let context = discrepancy.user_context();
+            let (location, package, version, kind) = Self::discrepancy_metadata(&discrepancy);
+            let discrepancy_event = GuardDiscrepancy {
+                kind,
+                severity: Self::map_severity(discrepancy.severity()),
+                location,
+                package,
+                version,
+                message: context.user_message.clone(),
+                auto_heal_available: discrepancy.can_auto_heal(),
+                requires_confirmation: discrepancy.requires_confirmation(),
+            };
 
             self.event_sender
-                .emit(AppEvent::Guard(GuardEvent::DiscrepancyFound(
-                    GuardDiscrepancyParams {
-                        discrepancy_type: discrepancy.short_description().to_string(),
-                        severity: format!("{:?}", discrepancy.severity()),
-                        file_path: discrepancy.file_path().to_string(),
-                        package: discrepancy.package_name().map(ToString::to_string),
-                        package_version: discrepancy.package_version().map(ToString::to_string),
-                        user_message: context.user_message.clone(),
-                        technical_details: if self.verbosity_level.include_technical_details() {
-                            context.technical_details.clone()
-                        } else {
-                            discrepancy.short_description().to_string()
-                        },
-                        auto_heal_available: discrepancy.can_auto_heal(),
-                        requires_confirmation: discrepancy.requires_confirmation(),
-                        estimated_fix_time_seconds: context.estimated_fix_time.map(|d| d.as_secs()),
-                    },
-                )));
+                .emit(AppEvent::Guard(GuardEvent::DiscrepancyReported {
+                    operation_id: self.operation_id.clone(),
+                    discrepancy: discrepancy_event,
+                }));
         }
 
         self.discrepancies.push(discrepancy);
@@ -224,18 +241,26 @@ impl GuardErrorContext {
 
     /// Emit operation start event
     pub fn emit_operation_start(
-        &self,
+        &mut self,
         scope: &str,
         level: &str,
         packages_count: usize,
         files_count: Option<usize>,
     ) {
+        let scope = Self::map_scope(scope);
+        let level = Self::map_level(level);
+        self.scope = Some(scope.clone());
+        self.level = Some(level.clone());
+
         self.event_sender
             .emit(AppEvent::Guard(GuardEvent::VerificationStarted {
-                scope: scope.to_string(),
-                level: level.to_string(),
-                packages_count,
-                files_count,
+                operation_id: self.operation_id.clone(),
+                scope,
+                level,
+                targets: GuardTargetSummary {
+                    packages: packages_count,
+                    files: files_count,
+                },
             }));
     }
 
@@ -246,16 +271,22 @@ impl GuardErrorContext {
         coverage_percent: f64,
         scope_description: &str,
     ) {
-        let by_severity = self.get_severity_counts();
+        let scope = self
+            .scope
+            .clone()
+            .unwrap_or_else(|| Self::map_scope(scope_description));
+        let metrics = GuardVerificationMetrics {
+            duration_ms: u64::try_from(self.start_time.elapsed().as_millis()).unwrap_or(u64::MAX),
+            cache_hit_rate: cache_hit_rate as f32,
+            coverage_percent: coverage_percent as f32,
+        };
 
         self.event_sender
             .emit(AppEvent::Guard(GuardEvent::VerificationCompleted {
-                total_discrepancies: self.discrepancies.len(),
-                by_severity,
-                duration_ms: self.start_time.elapsed().as_millis() as u64,
-                cache_hit_rate,
-                coverage_percent,
-                scope_description: scope_description.to_string(),
+                operation_id: self.operation_id.clone(),
+                scope,
+                discrepancies: self.discrepancies.len(),
+                metrics,
             }));
     }
 
@@ -268,35 +299,15 @@ impl GuardErrorContext {
         healing_action: &str,
         error: Option<String>,
     ) {
-        let start_time = Instant::now();
-
-        self.event_sender
-            .emit(AppEvent::Guard(GuardEvent::HealingResult {
-                discrepancy_type: discrepancy_type.to_string(),
-                file_path: file_path.to_string(),
-                success,
-                healing_action: healing_action.to_string(),
-                error,
-                duration_ms: start_time.elapsed().as_millis() as u64,
-            }));
-    }
-
-    /// Get severity counts for collected discrepancies
-    #[must_use]
-    pub fn get_severity_counts(&self) -> HashMap<String, usize> {
-        let mut counts = HashMap::new();
-
-        for discrepancy in &self.discrepancies {
-            let severity = format!("{:?}", discrepancy.severity());
-            *counts.entry(severity).or_insert(0) += 1;
+        if self.verbosity_level.include_detailed_context() {
+            let mut message =
+                format!("Healing {discrepancy_type} at {file_path}: {healing_action}");
+            if let Some(error) = error {
+                message.push_str(&format!(" (error: {error})"));
+            }
+            message.push_str(if success { " [success]" } else { " [failed]" });
+            self.event_sender.emit_debug(message);
         }
-
-        for error in &self.errors {
-            let severity = format!("{:?}", error.severity());
-            *counts.entry(severity).or_insert(0) += 1;
-        }
-
-        counts
     }
 
     /// Get summary statistics
@@ -372,6 +383,105 @@ impl GuardErrorContext {
                 stats.overall_severity,
                 stats.operation_duration.as_secs_f64()
             )
+        }
+    }
+
+    fn map_scope(scope: &str) -> GuardScope {
+        match scope.trim().to_lowercase().as_str() {
+            "system" | "system verification" => GuardScope::System,
+            _ => GuardScope::Custom {
+                description: scope.to_string(),
+            },
+        }
+    }
+
+    fn map_level(level: &str) -> GuardLevel {
+        match level.trim().to_lowercase().as_str() {
+            "quick" => GuardLevel::Quick,
+            "standard" => GuardLevel::Standard,
+            "full" => GuardLevel::Full,
+            _ => GuardLevel::Custom(level.to_string()),
+        }
+    }
+
+    fn map_severity(severity: DiscrepancySeverity) -> GuardSeverity {
+        match severity {
+            DiscrepancySeverity::Low => GuardSeverity::Low,
+            DiscrepancySeverity::Medium => GuardSeverity::Medium,
+            DiscrepancySeverity::High => GuardSeverity::High,
+            DiscrepancySeverity::Critical => GuardSeverity::Critical,
+        }
+    }
+
+    fn discrepancy_metadata(
+        discrepancy: &Discrepancy,
+    ) -> (Option<String>, Option<String>, Option<String>, String) {
+        match discrepancy {
+            Discrepancy::MissingFile {
+                package_name,
+                package_version,
+                file_path,
+            }
+            | Discrepancy::TypeMismatch {
+                package_name,
+                package_version,
+                file_path,
+                ..
+            }
+            | Discrepancy::CorruptedFile {
+                package_name,
+                package_version,
+                file_path,
+                ..
+            } => (
+                Some(file_path.clone()),
+                Some(package_name.clone()),
+                Some(package_version.clone()),
+                String::from(match discrepancy {
+                    Discrepancy::MissingFile { .. } => "missing_file",
+                    Discrepancy::TypeMismatch { .. } => "type_mismatch",
+                    _ => "corrupted_file",
+                }),
+            ),
+            Discrepancy::OrphanedFile {
+                file_path,
+                category,
+            } => (
+                Some(file_path.clone()),
+                None,
+                None,
+                format!("orphaned_{category:?}").to_lowercase(),
+            ),
+            Discrepancy::MissingVenv {
+                package_name,
+                package_version,
+                venv_path,
+            } => (
+                Some(venv_path.clone()),
+                Some(package_name.clone()),
+                Some(package_version.clone()),
+                "missing_venv".to_string(),
+            ),
+            Discrepancy::MissingPackageContent {
+                package_name,
+                package_version,
+            } => (
+                None,
+                Some(package_name.clone()),
+                Some(package_version.clone()),
+                "missing_package_content".to_string(),
+            ),
+            Discrepancy::UnsupportedSpecialFile {
+                package_name,
+                package_version,
+                file_path,
+                file_type,
+            } => (
+                Some(file_path.clone()),
+                Some(package_name.clone()),
+                Some(package_version.clone()),
+                format!("unsupported_special_file: {}", file_type.description()),
+            ),
         }
     }
 }

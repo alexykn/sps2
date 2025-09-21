@@ -41,7 +41,7 @@ pub use sps2_types::{
     SearchResult, StateInfo,
 };
 // Re-export health status from events
-pub use sps2_events::events::HealthStatus;
+pub use sps2_events::HealthStatus;
 // Re-export ops-specific types from local types module
 pub use types::{
     ComponentHealth, HealthCheck, HealthIssue, InstallRequest, IssueSeverity, OpReport, VulnDbStats,

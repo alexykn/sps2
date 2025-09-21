@@ -1,10 +1,14 @@
 //! System Health and Diagnostics Operations
 
-use crate::{ComponentHealth, HealthCheck, HealthIssue, HealthStatus, IssueSeverity, OpsCtx};
+use crate::{ComponentHealth, HealthCheck, HealthIssue, IssueSeverity, OpsCtx};
 use sps2_errors::Error;
-use sps2_events::{AppEvent, EventEmitter, PackageEvent};
+use sps2_events::{
+    events::{HealthStatus, PackageOperation, PackageOutcome},
+    AppEvent, EventEmitter, PackageEvent,
+};
 use sps2_guard::{StoreVerificationConfig, StoreVerifier};
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -16,7 +20,9 @@ use std::time::Instant;
 pub async fn check_health(ctx: &OpsCtx) -> Result<HealthCheck, Error> {
     let _start = Instant::now();
 
-    ctx.emit(AppEvent::Package(PackageEvent::HealthCheckStarting));
+    ctx.emit(AppEvent::Package(PackageEvent::OperationStarted {
+        operation: PackageOperation::HealthCheck,
+    }));
 
     let mut components = HashMap::new();
     let mut issues = Vec::new();
@@ -79,13 +85,16 @@ pub async fn check_health(ctx: &OpsCtx) -> Result<HealthCheck, Error> {
         issues,
     };
 
-    ctx.emit(AppEvent::Package(PackageEvent::HealthCheckCompleted {
-        healthy: overall_healthy,
-        issues: health_check
-            .issues
-            .iter()
-            .map(|i| i.description.clone())
-            .collect(),
+    ctx.emit(AppEvent::Package(PackageEvent::OperationCompleted {
+        operation: PackageOperation::HealthCheck,
+        outcome: PackageOutcome::Health {
+            healthy: overall_healthy,
+            issues: health_check
+                .issues
+                .iter()
+                .map(|i| i.description.clone())
+                .collect(),
+        },
     }));
 
     Ok(health_check)

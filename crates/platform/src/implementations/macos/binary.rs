@@ -5,9 +5,15 @@
 
 use async_trait::async_trait;
 use sps2_errors::PlatformError;
-use sps2_events::{events::PlatformEvent, AppEvent};
+use sps2_events::{
+    events::{
+        FailureContext, PlatformEvent, PlatformOperationContext, PlatformOperationKind,
+        PlatformOperationMetrics,
+    },
+    AppEvent,
+};
 use std::path::Path;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::process::Command;
 
 use crate::binary::BinaryOperations;
@@ -28,6 +34,66 @@ impl Default for MacOSBinaryOperations {
     }
 }
 
+fn binary_context(operation: &str, target: &Path) -> PlatformOperationContext {
+    PlatformOperationContext {
+        kind: PlatformOperationKind::Binary,
+        operation: operation.to_string(),
+        target: Some(target.to_path_buf()),
+        source: None,
+        command: None,
+    }
+}
+
+fn binary_metrics(duration: Duration, changes: Option<Vec<String>>) -> PlatformOperationMetrics {
+    PlatformOperationMetrics {
+        duration_ms: Some(duration_to_millis(duration)),
+        exit_code: None,
+        stdout_bytes: None,
+        stderr_bytes: None,
+        changes,
+    }
+}
+
+fn duration_to_millis(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+}
+
+async fn emit_binary_started(ctx: &PlatformContext, operation: &str, target: &Path) {
+    ctx.emit_event(AppEvent::Platform(PlatformEvent::OperationStarted {
+        context: binary_context(operation, target),
+    }))
+    .await;
+}
+
+async fn emit_binary_completed(
+    ctx: &PlatformContext,
+    operation: &str,
+    target: &Path,
+    changes: Option<Vec<String>>,
+    duration: Duration,
+) {
+    ctx.emit_event(AppEvent::Platform(PlatformEvent::OperationCompleted {
+        context: binary_context(operation, target),
+        metrics: Some(binary_metrics(duration, changes)),
+    }))
+    .await;
+}
+
+async fn emit_binary_failed(
+    ctx: &PlatformContext,
+    operation: &str,
+    target: &Path,
+    error: &PlatformError,
+    duration: Duration,
+) {
+    ctx.emit_event(AppEvent::Platform(PlatformEvent::OperationFailed {
+        context: binary_context(operation, target),
+        failure: FailureContext::from_error(error),
+        metrics: Some(binary_metrics(duration, None)),
+    }))
+    .await;
+}
+
 #[async_trait]
 impl BinaryOperations for MacOSBinaryOperations {
     async fn get_install_name(
@@ -36,15 +102,8 @@ impl BinaryOperations for MacOSBinaryOperations {
         binary: &Path,
     ) -> Result<Option<String>, PlatformError> {
         let start = Instant::now();
-        let binary_path = binary.to_string_lossy().to_string();
-
         // Emit operation started event
-        ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationStarted {
-            operation: "get_install_name".to_string(),
-            binary_path: binary_path.clone(),
-            context: std::collections::HashMap::new(),
-        }))
-        .await;
+        emit_binary_started(ctx, "get_install_name", binary).await;
 
         // Use tool registry to get otool path
         let result: Result<Option<String>, PlatformError> = async {
@@ -81,24 +140,10 @@ impl BinaryOperations for MacOSBinaryOperations {
         // Emit completion event
         match &result {
             Ok(_) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::BinaryOperationCompleted {
-                        operation: "get_install_name".to_string(),
-                        binary_path,
-                        changes_made: vec![],
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
-                .await;
+                emit_binary_completed(ctx, "get_install_name", binary, None, duration).await;
             }
             Err(e) => {
-                ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationFailed {
-                    operation: "get_install_name".to_string(),
-                    binary_path,
-                    error_message: e.to_string(),
-                    duration_ms: duration.as_millis() as u64,
-                }))
-                .await;
+                emit_binary_failed(ctx, "get_install_name", binary, e, duration).await;
             }
         }
 
@@ -112,15 +157,8 @@ impl BinaryOperations for MacOSBinaryOperations {
         name: &str,
     ) -> Result<(), PlatformError> {
         let start = Instant::now();
-        let binary_path = binary.to_string_lossy().to_string();
-
         // Emit operation started event
-        ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationStarted {
-            operation: "set_install_name".to_string(),
-            binary_path: binary_path.clone(),
-            context: [("new_name".to_string(), name.to_string())].into(),
-        }))
-        .await;
+        emit_binary_started(ctx, "set_install_name", binary).await;
 
         // Use tool registry to get install_name_tool path
         let result = async {
@@ -164,24 +202,17 @@ impl BinaryOperations for MacOSBinaryOperations {
         // Emit completion event
         match &result {
             Ok(_) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::BinaryOperationCompleted {
-                        operation: "set_install_name".to_string(),
-                        binary_path,
-                        changes_made: vec![format!("Set install name to: {}", name)],
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
+                emit_binary_completed(
+                    ctx,
+                    "set_install_name",
+                    binary,
+                    Some(vec![format!("set_install_name -> {name}")]),
+                    duration,
+                )
                 .await;
             }
             Err(e) => {
-                ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationFailed {
-                    operation: "set_install_name".to_string(),
-                    binary_path,
-                    error_message: e.to_string(),
-                    duration_ms: duration.as_millis() as u64,
-                }))
-                .await;
+                emit_binary_failed(ctx, "set_install_name", binary, e, duration).await;
             }
         }
 
@@ -194,15 +225,7 @@ impl BinaryOperations for MacOSBinaryOperations {
         binary: &Path,
     ) -> Result<Vec<String>, PlatformError> {
         let start = Instant::now();
-        let binary_path = binary.to_string_lossy().to_string();
-
-        // Emit operation started event
-        ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationStarted {
-            operation: "get_dependencies".to_string(),
-            binary_path: binary_path.clone(),
-            context: std::collections::HashMap::new(),
-        }))
-        .await;
+        emit_binary_started(ctx, "get_dependencies", binary).await;
 
         // Use tool registry to get otool path
         let result = async {
@@ -245,24 +268,10 @@ impl BinaryOperations for MacOSBinaryOperations {
         // Emit completion event
         match &result {
             Ok(_) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::BinaryOperationCompleted {
-                        operation: "get_dependencies".to_string(),
-                        binary_path,
-                        changes_made: vec![],
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
-                .await;
+                emit_binary_completed(ctx, "get_dependencies", binary, None, duration).await;
             }
             Err(e) => {
-                ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationFailed {
-                    operation: "get_dependencies".to_string(),
-                    binary_path,
-                    error_message: e.to_string(),
-                    duration_ms: duration.as_millis() as u64,
-                }))
-                .await;
+                emit_binary_failed(ctx, "get_dependencies", binary, e, duration).await;
             }
         }
 
@@ -277,19 +286,7 @@ impl BinaryOperations for MacOSBinaryOperations {
         new: &str,
     ) -> Result<(), PlatformError> {
         let start = Instant::now();
-        let binary_path = binary.to_string_lossy().to_string();
-
-        // Emit operation started event
-        ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationStarted {
-            operation: "change_dependency".to_string(),
-            binary_path: binary_path.clone(),
-            context: [
-                ("old_dependency".to_string(), old.to_string()),
-                ("new_dependency".to_string(), new.to_string()),
-            ]
-            .into(),
-        }))
-        .await;
+        emit_binary_started(ctx, "change_dependency", binary).await;
 
         // Use the proven install_name_tool -change implementation from RPathPatcher
         let result = async {
@@ -322,24 +319,17 @@ impl BinaryOperations for MacOSBinaryOperations {
         // Emit completion event
         match &result {
             Ok(_) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::BinaryOperationCompleted {
-                        operation: "change_dependency".to_string(),
-                        binary_path,
-                        changes_made: vec![format!("Changed dependency: {} -> {}", old, new)],
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
+                emit_binary_completed(
+                    ctx,
+                    "change_dependency",
+                    binary,
+                    Some(vec![format!("change_dependency {old} -> {new}")]),
+                    duration,
+                )
                 .await;
             }
             Err(e) => {
-                ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationFailed {
-                    operation: "change_dependency".to_string(),
-                    binary_path,
-                    error_message: e.to_string(),
-                    duration_ms: duration.as_millis() as u64,
-                }))
-                .await;
+                emit_binary_failed(ctx, "change_dependency", binary, e, duration).await;
             }
         }
 
@@ -353,15 +343,7 @@ impl BinaryOperations for MacOSBinaryOperations {
         rpath: &str,
     ) -> Result<(), PlatformError> {
         let start = Instant::now();
-        let binary_path = binary.to_string_lossy().to_string();
-
-        // Emit operation started event
-        ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationStarted {
-            operation: "add_rpath".to_string(),
-            binary_path: binary_path.clone(),
-            context: [("rpath".to_string(), rpath.to_string())].into(),
-        }))
-        .await;
+        emit_binary_started(ctx, "add_rpath", binary).await;
 
         // Use the proven install_name_tool -add_rpath implementation from RPathPatcher
         let result = async {
@@ -394,24 +376,17 @@ impl BinaryOperations for MacOSBinaryOperations {
         // Emit completion event
         match &result {
             Ok(_) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::BinaryOperationCompleted {
-                        operation: "add_rpath".to_string(),
-                        binary_path,
-                        changes_made: vec![format!("Added rpath: {}", rpath)],
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
+                emit_binary_completed(
+                    ctx,
+                    "add_rpath",
+                    binary,
+                    Some(vec![format!("add_rpath {rpath}")]),
+                    duration,
+                )
                 .await;
             }
             Err(e) => {
-                ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationFailed {
-                    operation: "add_rpath".to_string(),
-                    binary_path,
-                    error_message: e.to_string(),
-                    duration_ms: duration.as_millis() as u64,
-                }))
-                .await;
+                emit_binary_failed(ctx, "add_rpath", binary, e, duration).await;
             }
         }
 
@@ -425,15 +400,7 @@ impl BinaryOperations for MacOSBinaryOperations {
         rpath: &str,
     ) -> Result<(), PlatformError> {
         let start = Instant::now();
-        let binary_path = binary.to_string_lossy().to_string();
-
-        // Emit operation started event
-        ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationStarted {
-            operation: "delete_rpath".to_string(),
-            binary_path: binary_path.clone(),
-            context: [("rpath".to_string(), rpath.to_string())].into(),
-        }))
-        .await;
+        emit_binary_started(ctx, "delete_rpath", binary).await;
 
         // Use the proven install_name_tool -delete_rpath implementation from RPathPatcher
         let result = async {
@@ -466,24 +433,17 @@ impl BinaryOperations for MacOSBinaryOperations {
         // Emit completion event
         match &result {
             Ok(_) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::BinaryOperationCompleted {
-                        operation: "delete_rpath".to_string(),
-                        binary_path,
-                        changes_made: vec![format!("Deleted rpath: {}", rpath)],
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
+                emit_binary_completed(
+                    ctx,
+                    "delete_rpath",
+                    binary,
+                    Some(vec![format!("delete_rpath {rpath}")]),
+                    duration,
+                )
                 .await;
             }
             Err(e) => {
-                ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationFailed {
-                    operation: "delete_rpath".to_string(),
-                    binary_path,
-                    error_message: e.to_string(),
-                    duration_ms: duration.as_millis() as u64,
-                }))
-                .await;
+                emit_binary_failed(ctx, "delete_rpath", binary, e, duration).await;
             }
         }
 
@@ -496,15 +456,7 @@ impl BinaryOperations for MacOSBinaryOperations {
         binary: &Path,
     ) -> Result<Vec<String>, PlatformError> {
         let start = Instant::now();
-        let binary_path = binary.to_string_lossy().to_string();
-
-        // Emit operation started event
-        ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationStarted {
-            operation: "get_rpath_entries".to_string(),
-            binary_path: binary_path.clone(),
-            context: std::collections::HashMap::new(),
-        }))
-        .await;
+        emit_binary_started(ctx, "get_rpath_entries", binary).await;
 
         // Use the proven otool -l implementation from RPathPatcher
         let result = async {
@@ -552,24 +504,10 @@ impl BinaryOperations for MacOSBinaryOperations {
         // Emit completion event
         match &result {
             Ok(_) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::BinaryOperationCompleted {
-                        operation: "get_rpath_entries".to_string(),
-                        binary_path,
-                        changes_made: vec![],
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
-                .await;
+                emit_binary_completed(ctx, "get_rpath_entries", binary, None, duration).await;
             }
             Err(e) => {
-                ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationFailed {
-                    operation: "get_rpath_entries".to_string(),
-                    binary_path,
-                    error_message: e.to_string(),
-                    duration_ms: duration.as_millis() as u64,
-                }))
-                .await;
+                emit_binary_failed(ctx, "get_rpath_entries", binary, e, duration).await;
             }
         }
 
@@ -582,15 +520,7 @@ impl BinaryOperations for MacOSBinaryOperations {
         binary: &Path,
     ) -> Result<bool, PlatformError> {
         let start = Instant::now();
-        let binary_path = binary.to_string_lossy().to_string();
-
-        // Emit operation started event
-        ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationStarted {
-            operation: "verify_signature".to_string(),
-            binary_path: binary_path.clone(),
-            context: std::collections::HashMap::new(),
-        }))
-        .await;
+        emit_binary_started(ctx, "verify_signature", binary).await;
 
         // Use the proven codesign verification implementation from CodeSigner
         let result: Result<bool, PlatformError> = async {
@@ -613,24 +543,17 @@ impl BinaryOperations for MacOSBinaryOperations {
         // Emit completion event
         match &result {
             Ok(valid) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::BinaryOperationCompleted {
-                        operation: "verify_signature".to_string(),
-                        binary_path,
-                        changes_made: vec![format!("Signature valid: {}", valid)],
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
+                emit_binary_completed(
+                    ctx,
+                    "verify_signature",
+                    binary,
+                    Some(vec![format!("signature_valid={valid}")]),
+                    duration,
+                )
                 .await;
             }
             Err(e) => {
-                ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationFailed {
-                    operation: "verify_signature".to_string(),
-                    binary_path,
-                    error_message: e.to_string(),
-                    duration_ms: duration.as_millis() as u64,
-                }))
-                .await;
+                emit_binary_failed(ctx, "verify_signature", binary, e, duration).await;
             }
         }
 
@@ -644,16 +567,9 @@ impl BinaryOperations for MacOSBinaryOperations {
         identity: Option<&str>,
     ) -> Result<(), PlatformError> {
         let start = Instant::now();
-        let binary_path = binary.to_string_lossy().to_string();
         let identity_str = identity.unwrap_or("-");
 
-        // Emit operation started event
-        ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationStarted {
-            operation: "sign_binary".to_string(),
-            binary_path: binary_path.clone(),
-            context: [("identity".to_string(), identity_str.to_string())].into(),
-        }))
-        .await;
+        emit_binary_started(ctx, "sign_binary", binary).await;
 
         // Use the proven codesign implementation from CodeSigner
         let result = async {
@@ -684,24 +600,17 @@ impl BinaryOperations for MacOSBinaryOperations {
         // Emit completion event
         match &result {
             Ok(_) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::BinaryOperationCompleted {
-                        operation: "sign_binary".to_string(),
-                        binary_path,
-                        changes_made: vec![format!("Signed with identity: {}", identity_str)],
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
+                emit_binary_completed(
+                    ctx,
+                    "sign_binary",
+                    binary,
+                    Some(vec![format!("sign_binary {identity_str}")]),
+                    duration,
+                )
                 .await;
             }
             Err(e) => {
-                ctx.emit_event(AppEvent::Platform(PlatformEvent::BinaryOperationFailed {
-                    operation: "sign_binary".to_string(),
-                    binary_path,
-                    error_message: e.to_string(),
-                    duration_ms: duration.as_millis() as u64,
-                }))
-                .await;
+                emit_binary_failed(ctx, "sign_binary", binary, e, duration).await;
             }
         }
 

@@ -5,9 +5,16 @@
 
 use async_trait::async_trait;
 use sps2_errors::{Error, PlatformError};
-use sps2_events::{events::PlatformEvent, AppEvent};
+use sps2_events::{
+    events::{
+        FailureContext, PlatformEvent, PlatformOperationContext, PlatformOperationKind,
+        PlatformOperationMetrics, ProcessCommandDescriptor,
+    },
+    AppEvent,
+};
+use std::convert::TryFrom;
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::process::Command;
 
 use crate::core::PlatformContext;
@@ -28,6 +35,64 @@ impl Default for MacOSProcessOperations {
     }
 }
 
+fn process_context(descriptor: ProcessCommandDescriptor) -> PlatformOperationContext {
+    PlatformOperationContext {
+        kind: PlatformOperationKind::Process,
+        operation: "execute_command".to_string(),
+        target: None,
+        source: None,
+        command: Some(descriptor),
+    }
+}
+
+fn process_metrics(duration: Duration, output: Option<&CommandOutput>) -> PlatformOperationMetrics {
+    PlatformOperationMetrics {
+        duration_ms: Some(duration_to_millis(duration)),
+        exit_code: output.and_then(|o| o.status.code()),
+        stdout_bytes: output.and_then(|o| u64::try_from(o.stdout.len()).ok()),
+        stderr_bytes: output.and_then(|o| u64::try_from(o.stderr.len()).ok()),
+        changes: None,
+    }
+}
+
+fn duration_to_millis(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+}
+
+async fn emit_process_started(ctx: &PlatformContext, descriptor: &ProcessCommandDescriptor) {
+    ctx.emit_event(AppEvent::Platform(PlatformEvent::OperationStarted {
+        context: process_context(descriptor.clone()),
+    }))
+    .await;
+}
+
+async fn emit_process_completed(
+    ctx: &PlatformContext,
+    descriptor: &ProcessCommandDescriptor,
+    output: &CommandOutput,
+    duration: Duration,
+) {
+    ctx.emit_event(AppEvent::Platform(PlatformEvent::OperationCompleted {
+        context: process_context(descriptor.clone()),
+        metrics: Some(process_metrics(duration, Some(output))),
+    }))
+    .await;
+}
+
+async fn emit_process_failed(
+    ctx: &PlatformContext,
+    descriptor: &ProcessCommandDescriptor,
+    error: &PlatformError,
+    duration: Duration,
+) {
+    ctx.emit_event(AppEvent::Platform(PlatformEvent::OperationFailed {
+        context: process_context(descriptor.clone()),
+        failure: FailureContext::from_error(error),
+        metrics: Some(process_metrics(duration, None)),
+    }))
+    .await;
+}
+
 #[async_trait]
 impl ProcessOperations for MacOSProcessOperations {
     async fn execute_command(
@@ -38,16 +103,14 @@ impl ProcessOperations for MacOSProcessOperations {
         let start = Instant::now();
         let command_str = cmd.program().to_string();
         let args_clone = cmd.get_args().to_vec();
+        let descriptor = ProcessCommandDescriptor {
+            program: command_str.clone(),
+            args: args_clone.clone(),
+            cwd: cmd.get_current_dir().cloned(),
+        };
 
         // Emit operation started event
-        ctx.emit_event(AppEvent::Platform(PlatformEvent::ProcessExecutionStarted {
-            command: command_str.clone(),
-            args: args_clone.clone(),
-            working_dir: cmd
-                .get_current_dir()
-                .map(|p| p.to_string_lossy().to_string()),
-        }))
-        .await;
+        emit_process_started(ctx, &descriptor).await;
 
         // Use the proven tokio Command execution pattern from the codebase
         let result: Result<CommandOutput, PlatformError> = async {
@@ -85,24 +148,10 @@ impl ProcessOperations for MacOSProcessOperations {
         // Emit completion event
         match &result {
             Ok(output) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::ProcessExecutionCompleted {
-                        command: command_str,
-                        exit_code: output.status.code().unwrap_or(-1),
-                        duration_ms: duration.as_millis() as u64,
-                        stdout_bytes: output.stdout.len(),
-                        stderr_bytes: output.stderr.len(),
-                    },
-                ))
-                .await;
+                emit_process_completed(ctx, &descriptor, output, duration).await;
             }
             Err(e) => {
-                ctx.emit_event(AppEvent::Platform(PlatformEvent::ProcessExecutionFailed {
-                    command: command_str,
-                    error_message: e.to_string(),
-                    duration_ms: duration.as_millis() as u64,
-                }))
-                .await;
+                emit_process_failed(ctx, &descriptor, e, duration).await;
             }
         }
 

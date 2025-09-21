@@ -5,14 +5,19 @@ use std::sync::Arc;
 // Removed Python venv handling - Python packages are now handled like regular packages
 use crate::{InstallContext, InstallResult, PreparedPackage, StagingManager};
 use sps2_errors::{Error, InstallError};
-use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent, StateEvent, UninstallEvent};
+use sps2_events::events::{StateTransitionContext, TransitionSummary};
+use sps2_events::{
+    AppEvent, EventEmitter, EventSender, FailureContext, GeneralEvent, StateEvent, UninstallEvent,
+};
 use sps2_platform::{core::PlatformContext, PlatformManager};
 
 use sps2_resolver::{PackageId, ResolvedNode};
 use sps2_state::{PackageRef, StateManager};
 use sps2_store::{PackageStore, StoredPackage};
 use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 use uuid::Uuid;
 
 /// Implement EventEmitter for InstallContext
@@ -125,10 +130,15 @@ impl AtomicInstaller {
         let source = transition.parent_id;
         let target = transition.staging_id;
 
-        context.emit(AppEvent::State(StateEvent::TransitionStarted {
+        let transition_context = StateTransitionContext {
             operation: transition.operation.clone(),
             source,
             target,
+        };
+        let transition_start = Instant::now();
+
+        context.emit(AppEvent::State(StateEvent::TransitionStarted {
+            context: transition_context.clone(),
         }));
 
         let transition_data = sps2_state::TransactionData {
@@ -151,11 +161,10 @@ impl AtomicInstaller {
         {
             Ok(journal) => journal,
             Err(e) => {
+                let failure = FailureContext::from_error(&e);
                 context.emit(AppEvent::State(StateEvent::TransitionFailed {
-                    operation: transition.operation.clone(),
-                    source,
-                    target: Some(target),
-                    retryable: false,
+                    context: transition_context.clone(),
+                    failure,
                 }));
                 return Err(e);
             }
@@ -166,20 +175,23 @@ impl AtomicInstaller {
             .execute_filesystem_swap_and_finalize(journal)
             .await
         {
+            let failure = FailureContext::from_error(&e);
             context.emit(AppEvent::State(StateEvent::TransitionFailed {
-                operation: transition.operation.clone(),
-                source,
-                target: Some(target),
-                retryable: false,
+                context: transition_context.clone(),
+                failure,
             }));
             return Err(e);
         }
 
+        let summary = TransitionSummary {
+            duration_ms: Some(
+                u64::try_from(transition_start.elapsed().as_millis()).unwrap_or(u64::MAX),
+            ),
+        };
+
         context.emit(AppEvent::State(StateEvent::TransitionCompleted {
-            operation: transition.operation.clone(),
-            source,
-            target,
-            duration: None,
+            context: transition_context,
+            summary: Some(summary),
         }));
 
         Ok(())

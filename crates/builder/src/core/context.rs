@@ -23,6 +23,8 @@ pub struct BuildContext {
     pub event_sender: Option<EventSender>,
     /// Path to the generated .sp package (set after package creation)
     pub package_path: Option<PathBuf>,
+    /// Optional session identifier used for correlating events.
+    pub session_id: Option<String>,
 }
 
 impl EventEmitter for BuildContext {
@@ -44,6 +46,7 @@ impl BuildContext {
             output_dir,
             event_sender: None,
             package_path: None,
+            session_id: None,
         }
     }
 
@@ -66,6 +69,21 @@ impl BuildContext {
     pub fn with_event_sender(mut self, event_sender: EventSender) -> Self {
         self.event_sender = Some(event_sender);
         self
+    }
+
+    /// Attach a session identifier for event correlation.
+    #[must_use]
+    pub fn with_session_id(mut self, session_id: impl Into<String>) -> Self {
+        self.session_id = Some(session_id.into());
+        self
+    }
+
+    /// Retrieve the session identifier or derive a deterministic fallback.
+    #[must_use]
+    pub fn session_id(&self) -> String {
+        self.session_id
+            .clone()
+            .unwrap_or_else(|| format!("build:{}-{}", self.name, self.version))
     }
 
     /// Get package filename

@@ -2,10 +2,11 @@
 
 use super::{core::BuildEnvironment, types::BuildCommandResult};
 use sps2_errors::{BuildError, Error};
-use sps2_events::{AppEvent, BuildEvent, EventEmitter};
+use sps2_events::{AppEvent, BuildDiagnostic, BuildEvent, EventEmitter, LogStream};
 use sps2_platform::{PlatformContext, PlatformManager};
 use std::collections::HashMap;
 use std::path::Path;
+use uuid::Uuid;
 
 impl BuildEnvironment {
     /// Convert command arguments to strings (no placeholder replacement needed)
@@ -69,16 +70,6 @@ impl BuildEnvironment {
             cmd.current_dir(&self.build_prefix);
         }
 
-        self.emit(AppEvent::Build(BuildEvent::CommandStarted {
-            session_id: format!("build-{}", self.context.name),
-            package: self.context.name.clone(),
-            command_id: format!("cmd-{}", std::process::id()),
-            build_system: sps2_events::BuildSystem::Custom,
-            command: format!("{program} {}", converted_args.join(" ")),
-            working_dir: self.build_prefix.clone(),
-            timeout: None,
-        }));
-
         // Send command info event to show what's running (with replaced paths)
         self.emit_debug_with_context(
             format!("Executing: {program} {}", converted_args.join(" ")),
@@ -109,11 +100,47 @@ impl BuildEnvironment {
             .map(std::string::ToString::to_string)
             .collect();
 
+        let stdout_text = stdout_lines.join("\n");
+        let stderr_text = stderr_lines.join("\n");
+
+        if !stdout_text.is_empty() {
+            let session_id = self.context.session_id();
+            let command_id = Uuid::new_v4().to_string();
+            self.emit(AppEvent::Build(BuildEvent::Diagnostic(
+                BuildDiagnostic::LogChunk {
+                    session_id: session_id.clone(),
+                    command_id: Some(command_id.clone()),
+                    stream: LogStream::Stdout,
+                    text: stdout_text.clone(),
+                },
+            )));
+
+            if !stderr_text.is_empty() {
+                self.emit(AppEvent::Build(BuildEvent::Diagnostic(
+                    BuildDiagnostic::LogChunk {
+                        session_id,
+                        command_id: Some(command_id),
+                        stream: LogStream::Stderr,
+                        text: stderr_text.clone(),
+                    },
+                )));
+            }
+        } else if !stderr_text.is_empty() {
+            self.emit(AppEvent::Build(BuildEvent::Diagnostic(
+                BuildDiagnostic::LogChunk {
+                    session_id: self.context.session_id(),
+                    command_id: Some(Uuid::new_v4().to_string()),
+                    stream: LogStream::Stderr,
+                    text: stderr_text.clone(),
+                },
+            )));
+        }
+
         let result = BuildCommandResult {
             success: output.status.success(),
             exit_code: output.status.code(),
-            stdout: stdout_lines.join("\n"),
-            stderr: stderr_lines.join("\n"),
+            stdout: stdout_text,
+            stderr: stderr_text,
         };
 
         if !result.success && !allow_failure {

@@ -10,11 +10,12 @@ use sps2_builder::{
     BuildEnvironment, BuildPlan, BuilderApi, RecipeMetadata, SecurityContext, YamlRecipe,
 };
 use sps2_errors::{Error, OpsError};
-use sps2_events::{events::BuildPhase, AppEvent, BuildEvent, EventEmitter};
+use sps2_events::{events::BuildPhase, AppEvent, BuildEvent, EventEmitter, PhaseStatus};
 use sps2_types::{BuildReport, Version};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
+use uuid::Uuid;
 
 /// Pack a recipe from its staging directory with post-processing and QA pipeline
 ///
@@ -92,6 +93,7 @@ pub async fn pack_from_directory(
 
     // Create a minimal build context
     let output_path = determine_output_path(output_dir, &package_name, &package_version);
+    let session_id = Uuid::new_v4().to_string();
     let build_context = BuildContext::new(
         package_name.clone(),
         package_version.clone(),
@@ -99,7 +101,8 @@ pub async fn pack_from_directory(
         output_path.parent().unwrap_or(directory).to_path_buf(),
     )
     .with_revision(manifest.package.revision)
-    .with_event_sender(ctx.tx.clone());
+    .with_event_sender(ctx.tx.clone())
+    .with_session_id(session_id);
 
     // Create a minimal build environment pointing to the specified directory
     let mut environment = BuildEnvironment::new(build_context.clone(), directory)?;
@@ -179,6 +182,7 @@ async fn pack_from_recipe_impl(
 
     // Create build context for packaging (same as build command)
     let output_path = determine_output_path(output_dir, &package_name, &package_version);
+    let session_id = Uuid::new_v4().to_string();
     let build_context = BuildContext::new(
         package_name.clone(),
         package_version.clone(),
@@ -186,7 +190,8 @@ async fn pack_from_recipe_impl(
         output_path.parent().unwrap_or(&build_root).to_path_buf(),
     )
     .with_revision(1)
-    .with_event_sender(ctx.tx.clone());
+    .with_event_sender(ctx.tx.clone())
+    .with_session_id(session_id);
 
     // Create build environment pointing to existing staging directory
     let mut environment = BuildEnvironment::new(build_context.clone(), &build_root)?;
@@ -293,11 +298,10 @@ async fn execute_post_steps(
             .event_sender
             .as_ref()
             .unwrap()
-            .emit(AppEvent::Build(BuildEvent::PhaseStarted {
-                session_id: "pack-session".to_string(),
-                package: context.name.clone(),
+            .emit(AppEvent::Build(BuildEvent::PhaseStatus {
+                session_id: context.session_id(),
                 phase: BuildPhase::Build,
-                estimated_duration: None,
+                status: PhaseStatus::Started,
             }));
 
         execute_post_step_with_security(
@@ -313,11 +317,10 @@ async fn execute_post_steps(
             .event_sender
             .as_ref()
             .unwrap()
-            .emit(AppEvent::Build(BuildEvent::PhaseCompleted {
-                session_id: "pack-session".to_string(),
-                package: context.name.clone(),
+            .emit(AppEvent::Build(BuildEvent::PhaseStatus {
+                session_id: context.session_id(),
                 phase: BuildPhase::Build,
-                duration: std::time::Duration::from_secs(0), // Not tracking duration here
+                status: PhaseStatus::Completed { duration_ms: None },
             }));
     }
 

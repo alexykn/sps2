@@ -2,7 +2,10 @@
 
 use crate::{OpsCtx, PackageInfo, PackageStatus, SearchResult};
 use sps2_errors::{Error, OpsError};
-use sps2_events::{AppEvent, EventEmitter, PackageEvent};
+use sps2_events::{
+    events::{PackageOperation, PackageOutcome},
+    AppEvent, EventEmitter, PackageEvent,
+};
 use sps2_hash::Hash;
 use sps2_store::StoredPackage;
 
@@ -14,7 +17,9 @@ use sps2_store::StoredPackage;
 pub async fn list_packages(ctx: &OpsCtx) -> Result<Vec<PackageInfo>, Error> {
     let _correlation = ctx.push_correlation("query:list");
 
-    ctx.emit(AppEvent::Package(PackageEvent::ListStarting));
+    ctx.emit(AppEvent::Package(PackageEvent::OperationStarted {
+        operation: PackageOperation::List,
+    }));
 
     // Get installed packages from state
     let installed_packages = ctx.state.get_installed_packages().await?;
@@ -103,8 +108,11 @@ pub async fn list_packages(ctx: &OpsCtx) -> Result<Vec<PackageInfo>, Error> {
     // Sort by name
     package_infos.sort_by(|a, b| a.name.cmp(&b.name));
 
-    ctx.emit(AppEvent::Package(PackageEvent::ListCompleted {
-        count: package_infos.len(),
+    ctx.emit(AppEvent::Package(PackageEvent::OperationCompleted {
+        operation: PackageOperation::List,
+        outcome: PackageOutcome::List {
+            total: package_infos.len(),
+        },
     }));
 
     Ok(package_infos)
@@ -185,8 +193,8 @@ pub async fn package_info(ctx: &OpsCtx, package_name: &str) -> Result<PackageInf
 pub async fn search_packages(ctx: &OpsCtx, query: &str) -> Result<Vec<SearchResult>, Error> {
     let _correlation = ctx.push_correlation(format!("query:search:{query}"));
 
-    ctx.emit(AppEvent::Package(PackageEvent::SearchStarting {
-        query: query.to_string(),
+    ctx.emit(AppEvent::Package(PackageEvent::OperationStarted {
+        operation: PackageOperation::Search,
     }));
 
     // Search package names in index
@@ -215,9 +223,12 @@ pub async fn search_packages(ctx: &OpsCtx, query: &str) -> Result<Vec<SearchResu
         }
     }
 
-    ctx.emit(AppEvent::Package(PackageEvent::SearchCompleted {
-        query: query.to_string(),
-        count: results.len(),
+    ctx.emit(AppEvent::Package(PackageEvent::OperationCompleted {
+        operation: PackageOperation::Search,
+        outcome: PackageOutcome::Search {
+            query: query.to_string(),
+            total: results.len(),
+        },
     }));
 
     Ok(results)

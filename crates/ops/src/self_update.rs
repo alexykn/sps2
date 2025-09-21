@@ -2,7 +2,10 @@
 
 use crate::OpsCtx;
 use sps2_errors::{Error, OpsError};
-use sps2_events::{AppEvent, EventEmitter, PackageEvent};
+use sps2_events::{
+    events::{PackageOperation, PackageOutcome},
+    AppEvent, EventEmitter, FailureContext, PackageEvent,
+};
 use std::path::Path;
 use std::time::Instant;
 
@@ -15,94 +18,94 @@ use std::time::Instant;
 /// - Failed to download or verify the new binary
 /// - Failed to replace the current executable
 pub async fn self_update(ctx: &OpsCtx, skip_verify: bool, force: bool) -> Result<String, Error> {
-    let start = Instant::now();
-    let current_version = env!("CARGO_PKG_VERSION");
+    let operation_start = Instant::now();
+    let current_version = env!("CARGO_PKG_VERSION").to_string();
 
-    ctx.emit(AppEvent::Package(PackageEvent::SelfUpdateStarting));
-    ctx.emit(AppEvent::Package(PackageEvent::SelfUpdateCheckingVersion {
-        current_version: current_version.to_string(),
+    ctx.emit(AppEvent::Package(PackageEvent::OperationStarted {
+        operation: PackageOperation::SelfUpdate,
     }));
 
-    // Check latest version from GitHub API
-    let latest_version = get_latest_version(&ctx.net, &ctx.tx).await?;
+    let result: Result<(String, String, String), Error> = async {
+        // Check latest version from GitHub API
+        let latest_version = get_latest_version(&ctx.net, &ctx.tx).await?;
 
-    // Compare versions
-    let current = sps2_types::Version::parse(current_version)?;
-    let latest = sps2_types::Version::parse(&latest_version)?;
+        // Compare versions
+        let current = sps2_types::Version::parse(&current_version)?;
+        let latest = sps2_types::Version::parse(&latest_version)?;
 
-    if !force && latest <= current {
-        ctx.emit(AppEvent::Package(PackageEvent::SelfUpdateAlreadyLatest {
-            version: current_version.to_string(),
-        }));
-        return Ok(format!("Already on latest version: {current_version}"));
-    }
+        if !force && latest <= current {
+            return Ok((
+                format!("Already on latest version: {current_version}"),
+                current_version.clone(),
+                current_version.clone(),
+            ));
+        }
 
-    ctx.emit(AppEvent::Package(
-        PackageEvent::SelfUpdateVersionAvailable {
-            current_version: current_version.to_string(),
-            latest_version: latest_version.clone(),
-        },
-    ));
+        // Determine download URLs for ARM64 macOS
+        let binary_url = format!(
+            "https://github.com/sps-io/sps2/releases/download/v{latest_version}/sps2-{latest_version}-aarch64-apple-darwin"
+        );
+        let signature_url = format!("{binary_url}.minisig");
 
-    // Determine download URLs for ARM64 macOS
-    let binary_url = format!(
-        "https://github.com/sps-io/sps2/releases/download/v{latest_version}/sps2-{latest_version}-aarch64-apple-darwin"
-    );
-    let signature_url = format!("{binary_url}.minisig");
-
-    ctx.emit(AppEvent::Package(PackageEvent::SelfUpdateDownloading {
-        version: latest_version.clone(),
-        url: binary_url.clone(),
-    }));
-
-    // Create temporary directory for download
-    let temp_dir = tempfile::tempdir().map_err(|e| OpsError::SelfUpdateFailed {
-        message: format!("Failed to create temp directory: {e}"),
-    })?;
-
-    let temp_binary = temp_dir.path().join("sps2-new");
-    let temp_signature = temp_dir.path().join("sps2-new.minisig");
-
-    // Download new binary
-    sps2_net::download_file(&ctx.net, &binary_url, &temp_binary, None, &ctx.tx)
-        .await
-        .map_err(|e| OpsError::SelfUpdateFailed {
-            message: format!("Failed to download binary: {e}"),
+        // Create temporary directory for download
+        let temp_dir = tempfile::tempdir().map_err(|e| OpsError::SelfUpdateFailed {
+            message: format!("Failed to create temp directory: {e}"),
         })?;
 
-    if !skip_verify {
-        ctx.emit(AppEvent::Package(PackageEvent::SelfUpdateVerifying {
-            version: latest_version.clone(),
-        }));
+        let temp_binary = temp_dir.path().join("sps2-new");
+        let temp_signature = temp_dir.path().join("sps2-new.minisig");
 
-        // Download signature
-        sps2_net::download_file(&ctx.net, &signature_url, &temp_signature, None, &ctx.tx)
+        // Download new binary
+        sps2_net::download_file(&ctx.net, &binary_url, &temp_binary, None, &ctx.tx)
             .await
             .map_err(|e| OpsError::SelfUpdateFailed {
-                message: format!("Failed to download signature: {e}"),
+                message: format!("Failed to download binary: {e}"),
             })?;
 
-        // Verify signature
-        verify_binary_signature(&temp_binary, &temp_signature).await?;
+        if !skip_verify {
+            // Download signature
+            sps2_net::download_file(&ctx.net, &signature_url, &temp_signature, None, &ctx.tx)
+                .await
+                .map_err(|e| OpsError::SelfUpdateFailed {
+                    message: format!("Failed to download signature: {e}"),
+                })?;
+
+            // Verify signature
+            verify_binary_signature(&temp_binary, &temp_signature).await?;
+        }
+
+        // Replace current executable atomically
+        replace_current_executable(&temp_binary).await?;
+
+        Ok((
+            format!("Updated from {current_version} to {latest_version}"),
+            current_version.clone(),
+            latest_version,
+        ))
     }
+    .await;
 
-    ctx.emit(AppEvent::Package(PackageEvent::SelfUpdateInstalling {
-        version: latest_version.clone(),
-    }));
-
-    // Replace current executable atomically
-    replace_current_executable(&temp_binary).await?;
-
-    let duration = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
-    ctx.emit(AppEvent::Package(PackageEvent::SelfUpdateCompleted {
-        old_version: current_version.to_string(),
-        new_version: latest_version.clone(),
-        duration_ms: duration,
-    }));
-
-    Ok(format!(
-        "Updated from {current_version} to {latest_version}"
-    ))
+    match result {
+        Ok((message, from_version, to_version)) => {
+            let duration = u64::try_from(operation_start.elapsed().as_millis()).unwrap_or(u64::MAX);
+            ctx.emit(AppEvent::Package(PackageEvent::OperationCompleted {
+                operation: PackageOperation::SelfUpdate,
+                outcome: PackageOutcome::SelfUpdate {
+                    from: from_version.clone(),
+                    to: to_version.clone(),
+                    duration_ms: duration,
+                },
+            }));
+            Ok(message)
+        }
+        Err(err) => {
+            ctx.emit(AppEvent::Package(PackageEvent::OperationFailed {
+                operation: PackageOperation::SelfUpdate,
+                failure: FailureContext::from_error(&err),
+            }));
+            Err(err)
+        }
+    }
 }
 
 /// Get latest version from GitHub releases API

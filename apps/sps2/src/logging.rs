@@ -72,6 +72,338 @@ pub fn log_event_with_tracing(message: &EventMessage) {
             }
         }
 
+        AppEvent::Build(build_event) => {
+            use sps2_events::{BuildDiagnostic, BuildEvent, LogStream, PhaseStatus};
+            match build_event {
+                BuildEvent::Started { session, target } => {
+                    info!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        package = %target.package,
+                        version = %target.version,
+                        system = ?session.system,
+                        cache_enabled = session.cache_enabled,
+                        "Build started"
+                    );
+                }
+                BuildEvent::Completed {
+                    target,
+                    artifacts,
+                    duration_ms,
+                    ..
+                } => {
+                    info!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        package = %target.package,
+                        version = %target.version,
+                        artifacts = artifacts.len(),
+                        duration_ms,
+                        "Build completed"
+                    );
+                }
+                BuildEvent::Failed {
+                    target,
+                    failure,
+                    phase,
+                    command,
+                    ..
+                } => {
+                    if failure.retryable {
+                        warn!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            package = %target.package,
+                            version = %target.version,
+                            phase = ?phase,
+                            command = ?command.as_ref().map(|c| &c.command),
+                            retryable = failure.retryable,
+                            code = ?failure.code,
+                            message = %failure.message,
+                            hint = ?failure.hint,
+                            "Build failed",
+                        );
+                    } else {
+                        error!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            package = %target.package,
+                            version = %target.version,
+                            phase = ?phase,
+                            command = ?command.as_ref().map(|c| &c.command),
+                            retryable = failure.retryable,
+                            code = ?failure.code,
+                            message = %failure.message,
+                            hint = ?failure.hint,
+                            "Build failed",
+                        );
+                    }
+                }
+                BuildEvent::PhaseStatus { phase, status, .. } => match status {
+                    PhaseStatus::Started => {
+                        info!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            phase = ?phase,
+                            "Build phase started"
+                        );
+                    }
+                    PhaseStatus::Completed { duration_ms } => {
+                        info!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            phase = ?phase,
+                            duration_ms,
+                            "Build phase completed"
+                        );
+                    }
+                },
+                BuildEvent::Diagnostic(diag) => match diag {
+                    BuildDiagnostic::Warning {
+                        message,
+                        source: warn_source,
+                        ..
+                    } => {
+                        warn!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            diagnostic_source = ?warn_source,
+                            message = %message,
+                            "Build warning",
+                        );
+                    }
+                    BuildDiagnostic::LogChunk { stream, text, .. } => match stream {
+                        LogStream::Stdout => {
+                            debug!(
+                                source = meta.source.as_str(),
+                                event_id = %meta.event_id,
+                                correlation = ?meta.correlation_id,
+                                stream = "stdout",
+                                text = %text,
+                                "Build output"
+                            );
+                        }
+                        LogStream::Stderr => {
+                            debug!(
+                                source = meta.source.as_str(),
+                                event_id = %meta.event_id,
+                                correlation = ?meta.correlation_id,
+                                stream = "stderr",
+                                text = %text,
+                                "Build output"
+                            );
+                        }
+                    },
+                    BuildDiagnostic::CachePruned {
+                        removed_items,
+                        freed_bytes,
+                    } => {
+                        debug!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            removed_items,
+                            freed_bytes,
+                            "Build cache pruned"
+                        );
+                    }
+                },
+            }
+        }
+
+        AppEvent::Guard(guard_event) => {
+            use sps2_events::{GuardEvent, GuardScope, GuardSeverity};
+
+            fn scope_label(scope: &GuardScope) -> String {
+                match scope {
+                    GuardScope::System => "system".to_string(),
+                    GuardScope::Package { name, version } => version
+                        .as_ref()
+                        .map(|v| format!("{name}:{v}"))
+                        .unwrap_or_else(|| name.clone()),
+                    GuardScope::Path { path } => path.clone(),
+                    GuardScope::State { id } => format!("state {id}"),
+                    GuardScope::Custom { description } => description.clone(),
+                }
+            }
+
+            match guard_event {
+                GuardEvent::VerificationStarted {
+                    scope,
+                    level,
+                    targets,
+                    ..
+                } => {
+                    info!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        scope = %scope_label(scope),
+                        level = ?level,
+                        packages = targets.packages,
+                        files = ?targets.files,
+                        "Guard verification started"
+                    );
+                }
+                GuardEvent::VerificationCompleted {
+                    scope,
+                    discrepancies,
+                    metrics,
+                    ..
+                } => {
+                    if *discrepancies == 0 {
+                        info!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            scope = %scope_label(scope),
+                            coverage = metrics.coverage_percent,
+                            cache_hit_rate = metrics.cache_hit_rate,
+                            duration_ms = metrics.duration_ms,
+                            "Guard verification completed",
+                        );
+                    } else {
+                        warn!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            scope = %scope_label(scope),
+                            discrepancies = *discrepancies,
+                            coverage = metrics.coverage_percent,
+                            cache_hit_rate = metrics.cache_hit_rate,
+                            duration_ms = metrics.duration_ms,
+                            "Guard verification completed with findings",
+                        );
+                    }
+                }
+                GuardEvent::VerificationFailed { scope, failure, .. } => {
+                    if failure.retryable {
+                        warn!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                        scope = %scope_label(scope),
+                            retryable = failure.retryable,
+                            code = ?failure.code,
+                            message = %failure.message,
+                            hint = ?failure.hint,
+                            "Guard verification failed",
+                        );
+                    } else {
+                        error!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            scope = %scope_label(scope),
+                            retryable = failure.retryable,
+                            code = ?failure.code,
+                            message = %failure.message,
+                            hint = ?failure.hint,
+                            "Guard verification failed",
+                        );
+                    }
+                }
+                GuardEvent::HealingStarted { plan, .. } => {
+                    info!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        total = plan.total,
+                        auto = plan.auto_heal,
+                        confirmation = plan.confirmation_required,
+                        manual = plan.manual_only,
+                        "Guard healing started",
+                    );
+                }
+                GuardEvent::HealingCompleted {
+                    healed,
+                    failed,
+                    duration_ms,
+                    ..
+                } => {
+                    if *failed == 0 {
+                        info!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            healed = *healed,
+                            failed = *failed,
+                            duration_ms = *duration_ms,
+                            "Guard healing completed",
+                        );
+                    } else {
+                        warn!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            healed = *healed,
+                            failed = *failed,
+                            duration_ms = *duration_ms,
+                            "Guard healing completed with failures",
+                        );
+                    }
+                }
+                GuardEvent::HealingFailed {
+                    failure, healed, ..
+                } => {
+                    if failure.retryable {
+                        warn!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            healed = *healed,
+                            retryable = failure.retryable,
+                            code = ?failure.code,
+                            message = %failure.message,
+                            hint = ?failure.hint,
+                            "Guard healing failed",
+                        );
+                    } else {
+                        error!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            healed = *healed,
+                            retryable = failure.retryable,
+                            code = ?failure.code,
+                            message = %failure.message,
+                            hint = ?failure.hint,
+                            "Guard healing failed",
+                        );
+                    }
+                }
+                GuardEvent::DiscrepancyReported { discrepancy, .. } => {
+                    let severity = match discrepancy.severity {
+                        GuardSeverity::Critical => "critical",
+                        GuardSeverity::High => "high",
+                        GuardSeverity::Medium => "medium",
+                        GuardSeverity::Low => "low",
+                    };
+                    warn!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        severity,
+                        kind = %discrepancy.kind,
+                        location = ?discrepancy.location,
+                        package = ?discrepancy.package,
+                        version = ?discrepancy.version,
+                        auto_heal = discrepancy.auto_heal_available,
+                        confirmation = discrepancy.requires_confirmation,
+                        message = %discrepancy.message,
+                        "Guard discrepancy reported",
+                    );
+                }
+            }
+        }
+
         AppEvent::Resolver(resolver_event) => {
             use sps2_events::ResolverEvent;
             match resolver_event {
@@ -256,100 +588,249 @@ pub fn log_event_with_tracing(message: &EventMessage) {
             }
         }
 
-        // State domain events
-        AppEvent::State(state_event) => {
-            use sps2_events::StateEvent;
-            match state_event {
-                StateEvent::TransitionStarted {
-                    operation,
-                    source,
+        AppEvent::Qa(qa_event) => {
+            use sps2_events::{events::QaCheckStatus, QaEvent};
+            match qa_event {
+                QaEvent::PipelineStarted { target, level } => {
+                    info!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        package = %target.package,
+                        version = %target.version,
+                        level = ?level,
+                        "QA pipeline started"
+                    );
+                }
+                QaEvent::PipelineCompleted {
                     target,
+                    total_checks,
+                    passed,
+                    failed,
+                    duration_ms,
                 } => {
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
-                        operation = %operation,
-                        source_state = ?source,
-                        target_state = %target,
-                        "State transition started"
+                        package = %target.package,
+                        version = %target.version,
+                        total_checks = total_checks,
+                        passed = passed,
+                        failed = failed,
+                        duration_ms = duration_ms,
+                        "QA pipeline completed"
                     );
                 }
-                StateEvent::TransitionCompleted {
-                    operation,
-                    source,
-                    target,
-                    duration,
-                } => {
-                    info!(
-                        source = meta.source.as_str(),
-                        event_id = %meta.event_id,
-                        correlation = ?meta.correlation_id,
-                        operation = %operation,
-                        source_state = ?source,
-                        target_state = %target,
-                        duration_ms = duration.map(|d| d.as_millis()),
-                        "State transition completed"
-                    );
-                }
-                StateEvent::TransitionFailed {
-                    operation,
-                    source,
-                    target,
-                    retryable,
-                } => {
+                QaEvent::PipelineFailed { target, failure } => {
                     error!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
-                        operation = %operation,
-                        source_state = ?source,
-                        target_state = ?target,
-                        retryable = retryable,
+                        package = %target.package,
+                        version = %target.version,
+                        code = ?failure.code,
+                        retryable = failure.retryable,
+                        hint = ?failure.hint,
+                        message = %failure.message,
+                        "QA pipeline failed"
+                    );
+                }
+                QaEvent::CheckEvaluated { summary, .. } => {
+                    let status_str = format!("{:?}", summary.status);
+                    let severity = match summary.status {
+                        QaCheckStatus::Passed => tracing::Level::INFO,
+                        QaCheckStatus::Failed => tracing::Level::ERROR,
+                        QaCheckStatus::Skipped => tracing::Level::DEBUG,
+                    };
+                    match severity {
+                        tracing::Level::ERROR => error!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            check_name = %summary.name,
+                            category = %summary.category,
+                            status = %status_str,
+                            findings = summary.findings.len(),
+                            duration_ms = summary.duration_ms,
+                            "QA check evaluated"
+                        ),
+                        tracing::Level::DEBUG => debug!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            check_name = %summary.name,
+                            category = %summary.category,
+                            status = %status_str,
+                            findings = summary.findings.len(),
+                            duration_ms = summary.duration_ms,
+                            "QA check evaluated"
+                        ),
+                        _ => info!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            check_name = %summary.name,
+                            category = %summary.category,
+                            status = %status_str,
+                            findings = summary.findings.len(),
+                            duration_ms = summary.duration_ms,
+                            "QA check evaluated"
+                        ),
+                    }
+                }
+            }
+        }
+
+        AppEvent::Package(package_event) => {
+            use sps2_events::PackageEvent;
+            match package_event {
+                PackageEvent::OperationStarted { operation } => {
+                    info!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        operation = ?operation,
+                        "Package operation started"
+                    );
+                }
+                PackageEvent::OperationCompleted { operation, outcome } => {
+                    info!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        operation = ?operation,
+                        outcome = ?outcome,
+                        "Package operation completed"
+                    );
+                }
+                PackageEvent::OperationFailed { operation, failure } => {
+                    error!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        operation = ?operation,
+                        code = ?failure.code,
+                        retryable = failure.retryable,
+                        hint = ?failure.hint,
+                        message = %failure.message,
+                        "Package operation failed"
+                    );
+                }
+            }
+        }
+
+        // State domain events
+        AppEvent::State(state_event) => {
+            use sps2_events::StateEvent;
+            match state_event {
+                StateEvent::TransitionStarted { context } => {
+                    info!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        operation = %context.operation,
+                        source_state = ?context.source,
+                        target_state = %context.target,
+                        "State transition started"
+                    );
+                }
+                StateEvent::TransitionCompleted { context, summary } => {
+                    info!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        operation = %context.operation,
+                        source_state = ?context.source,
+                        target_state = %context.target,
+                        duration_ms = summary.as_ref().and_then(|s| s.duration_ms),
+                        "State transition completed"
+                    );
+                }
+                StateEvent::TransitionFailed { context, failure } => {
+                    error!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        operation = %context.operation,
+                        source_state = ?context.source,
+                        target_state = %context.target,
+                        code = ?failure.code,
+                        retryable = failure.retryable,
+                        hint = ?failure.hint,
+                        message = %failure.message,
                         "State transition failed"
                     );
                 }
-                StateEvent::RollbackStarted { from, to } => {
+                StateEvent::RollbackStarted { context } => {
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
-                        from_state = %from,
-                        to_state = %to,
+                        from_state = %context.from,
+                        to_state = %context.to,
                         "Rollback started"
                     );
                 }
-                StateEvent::RollbackCompleted { from, to, duration } => {
+                StateEvent::RollbackCompleted { context, summary } => {
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
-                        from_state = %from,
-                        to_state = %to,
-                        duration_ms = duration.map(|d| d.as_millis()),
+                        from_state = %context.from,
+                        to_state = %context.to,
+                        duration_ms = summary.as_ref().and_then(|s| s.duration_ms),
                         "Rollback completed"
                     );
                 }
-                StateEvent::CleanupStarted { planned_states } => {
+                StateEvent::RollbackFailed { context, failure } => {
+                    error!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        from_state = %context.from,
+                        to_state = %context.to,
+                        code = ?failure.code,
+                        retryable = failure.retryable,
+                        hint = ?failure.hint,
+                        message = %failure.message,
+                        "Rollback failed"
+                    );
+                }
+                StateEvent::CleanupStarted { summary } => {
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
-                        planned_states = planned_states,
+                        planned_states = summary.planned_states,
                         "Cleanup started"
                     );
                 }
-                StateEvent::CleanupCompleted {
-                    removed_states,
-                    space_freed,
-                } => {
+                StateEvent::CleanupCompleted { summary } => {
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
-                        removed_states = removed_states,
-                        space_freed_bytes = space_freed,
+                        planned_states = summary.planned_states,
+                        removed_states = summary.removed_states,
+                        space_freed_bytes = summary.space_freed_bytes,
+                        duration_ms = summary.duration_ms,
                         "Cleanup completed"
+                    );
+                }
+                StateEvent::CleanupFailed { summary, failure } => {
+                    error!(
+                        source = meta.source.as_str(),
+                        event_id = %meta.event_id,
+                        correlation = ?meta.correlation_id,
+                        planned_states = summary.planned_states,
+                        removed_states = summary.removed_states,
+                        space_freed_bytes = summary.space_freed_bytes,
+                        code = ?failure.code,
+                        retryable = failure.retryable,
+                        hint = ?failure.hint,
+                        message = %failure.message,
+                        "Cleanup failed"
                     );
                 }
             }

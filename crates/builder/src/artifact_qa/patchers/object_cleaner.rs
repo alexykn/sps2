@@ -3,7 +3,6 @@
 use crate::artifact_qa::{reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
-use sps2_events::{AppEvent, QaEvent};
 
 pub struct ObjectFileCleaner;
 
@@ -11,7 +10,7 @@ impl crate::artifact_qa::traits::Action for ObjectFileCleaner {
     const NAME: &'static str = "Object file cleaner";
 
     async fn run(
-        ctx: &BuildContext,
+        _ctx: &BuildContext,
         env: &BuildEnvironment,
         _findings: Option<&crate::artifact_qa::diagnostics::DiagnosticCollector>,
     ) -> Result<Report, Error> {
@@ -45,22 +44,15 @@ impl crate::artifact_qa::traits::Action for ObjectFileCleaner {
             }
         }
 
+        let mut warnings = Vec::new();
         let removed = removed_files;
-
         if !removed.is_empty() {
-            crate::utils::events::send_event(
-                ctx,
-                AppEvent::Qa(QaEvent::CheckCompleted {
-                    check_type: "patcher".to_string(),
-                    check_name: "object_cleaner".to_string(),
-                    findings_count: removed.len(),
-                    severity_counts: std::collections::HashMap::new(),
-                }),
-            );
+            warnings.push(format!("Removed {} object files", removed.len()));
         }
 
         Ok(Report {
             changed_files: removed,
+            warnings,
             ..Default::default()
         })
     }

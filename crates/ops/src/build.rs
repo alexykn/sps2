@@ -6,7 +6,7 @@
 use crate::{BuildReport, OpsCtx};
 use sps2_builder::{parse_yaml_recipe, BuildContext};
 use sps2_errors::{Error, OpsError};
-use sps2_events::{AppEvent, BuildEvent, EventEmitter};
+use sps2_events::{AppEvent, BuildEvent, BuildSession, BuildTarget, EventEmitter, FailureContext};
 use sps2_types::Version;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -31,86 +31,43 @@ pub async fn build(
     let correlation_label = format!("build:{}", recipe_path.display());
     let _correlation = ctx.push_correlation(correlation_label);
 
-    if !recipe_path.exists() {
-        return Err(OpsError::RecipeNotFound {
-            path: recipe_path.display().to_string(),
-        }
-        .into());
-    }
+    ensure_recipe_path(recipe_path)?;
+    let (package_name, package_version) = load_recipe_metadata(recipe_path).await?;
+    let (session, target, session_id) =
+        build_session(package_name.clone(), package_version.clone());
 
-    let extension = recipe_path.extension().and_then(|ext| ext.to_str());
-    let is_valid = matches!(extension, Some("yaml" | "yml"));
-
-    if !is_valid {
-        return Err(OpsError::InvalidRecipe {
-            path: recipe_path.display().to_string(),
-            reason: "recipe must have .yaml or .yml extension".to_string(),
-        }
-        .into());
-    }
-
-    ctx.emit(AppEvent::Build(BuildEvent::SessionStarted {
-        session_id: "build-session".to_string(),
-        package: "unknown".to_string(), // Will be determined from recipe
-        version: Version::parse("0.0.0").unwrap_or_else(|_| Version::new(0, 0, 0)),
-        build_system: sps2_events::BuildSystem::Custom,
-        cache_enabled: false,
+    ctx.emit(AppEvent::Build(BuildEvent::Started {
+        session: session.clone(),
+        target: target.clone(),
     }));
 
-    // Load and execute recipe to get package metadata
-    // We already validated that extension is yaml or yml
-    let yaml_recipe = parse_yaml_recipe(recipe_path).await?;
-    let package_name = yaml_recipe.metadata.name.clone();
-    let package_version = Version::parse(&yaml_recipe.metadata.version)?;
-
-    // Send updated build starting event with correct info
-    ctx.emit(AppEvent::Build(BuildEvent::SessionStarted {
-        session_id: "build-session".to_string(),
-        package: package_name.clone(),
-        version: package_version.clone(),
-        build_system: sps2_events::BuildSystem::Custom,
-        cache_enabled: false,
-    }));
-
-    // Create build context
-    let output_directory = output_dir.map_or_else(
-        || std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-        PathBuf::from,
-    );
-
-    // Canonicalize recipe path to ensure it's absolute
-    let canonical_recipe_path =
-        recipe_path
-            .canonicalize()
-            .map_err(|e| OpsError::InvalidRecipe {
-                path: recipe_path.display().to_string(),
-                reason: format!("failed to canonicalize recipe path: {e}"),
-            })?;
-
+    let output_directory = resolve_output_directory(output_dir);
+    let canonical_recipe_path = canonicalize_recipe_path(recipe_path)?;
     let build_context = BuildContext::new(
         package_name.clone(),
         package_version.clone(),
         canonical_recipe_path,
         output_directory,
     )
-    .with_event_sender(ctx.tx.clone());
+    .with_event_sender(ctx.tx.clone())
+    .with_session_id(session_id.clone());
 
-    // Configure builder with network and jobs options
-    let mut builder_config = sps2_builder::BuildConfig::default();
-    if network {
-        builder_config.config.build.default_allow_network = true;
-        let _job_count = jobs.unwrap_or(0);
-    }
-    // Pass the sps2 config for command validation
-    builder_config.sps2_config = Some(ctx.config.clone());
-
-    // Create builder with custom configuration
-    let builder = sps2_builder::Builder::with_config(builder_config)
-        .with_resolver(ctx.resolver.clone())
-        .with_store(ctx.store.clone());
+    let builder = configure_builder(ctx, network, jobs);
 
     // Use the builder with custom configuration
-    let result = builder.build(build_context).await?;
+    let result = match builder.build(build_context).await {
+        Ok(result) => result,
+        Err(error) => {
+            ctx.emit(AppEvent::Build(BuildEvent::Failed {
+                session_id: session_id.clone(),
+                target: target.clone(),
+                failure: FailureContext::from_error(&error),
+                phase: None,
+                command: None,
+            }));
+            return Err(error);
+        }
+    };
 
     // Check if install was requested during recipe execution
     if result.install_requested {
@@ -130,17 +87,93 @@ pub async fn build(
         package: package_name,
         version: package_version,
         output_path: result.package_path,
-        duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+        duration_ms: elapsed_millis(start),
         sbom_generated: !result.sbom_files.is_empty(),
     };
 
     ctx.emit(AppEvent::Build(BuildEvent::Completed {
-        session_id: "build-session".to_string(),
-        package: report.package.clone(),
-        version: report.version.clone(),
-        path: report.output_path.clone(),
-        duration: start.elapsed(),
+        session_id,
+        target,
+        artifacts: vec![report.output_path.clone()],
+        duration_ms: report.duration_ms,
     }));
 
     Ok(report)
+}
+
+fn elapsed_millis(start: Instant) -> u64 {
+    u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+fn ensure_recipe_path(recipe_path: &Path) -> Result<(), Error> {
+    if !recipe_path.exists() {
+        return Err(OpsError::RecipeNotFound {
+            path: recipe_path.display().to_string(),
+        }
+        .into());
+    }
+
+    let extension = recipe_path.extension().and_then(|ext| ext.to_str());
+    if matches!(extension, Some("yaml" | "yml")) {
+        return Ok(());
+    }
+
+    Err(OpsError::InvalidRecipe {
+        path: recipe_path.display().to_string(),
+        reason: "recipe must have .yaml or .yml extension".to_string(),
+    }
+    .into())
+}
+
+async fn load_recipe_metadata(recipe_path: &Path) -> Result<(String, Version), Error> {
+    let yaml_recipe = parse_yaml_recipe(recipe_path).await?;
+    let version = Version::parse(&yaml_recipe.metadata.version)?;
+    Ok((yaml_recipe.metadata.name.clone(), version))
+}
+
+fn build_session(
+    package_name: String,
+    package_version: Version,
+) -> (BuildSession, BuildTarget, String) {
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let session = BuildSession {
+        id: session_id.clone(),
+        system: sps2_events::BuildSystem::Custom,
+        cache_enabled: false,
+    };
+    let target = BuildTarget {
+        package: package_name,
+        version: package_version,
+    };
+    (session, target, session_id)
+}
+
+fn resolve_output_directory(output_dir: Option<&Path>) -> PathBuf {
+    output_dir
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+fn canonicalize_recipe_path(recipe_path: &Path) -> Result<PathBuf, Error> {
+    recipe_path.canonicalize().map_err(|e| {
+        OpsError::InvalidRecipe {
+            path: recipe_path.display().to_string(),
+            reason: format!("failed to canonicalize recipe path: {e}"),
+        }
+        .into()
+    })
+}
+
+fn configure_builder(ctx: &OpsCtx, network: bool, jobs: Option<usize>) -> sps2_builder::Builder {
+    let mut builder_config = sps2_builder::BuildConfig::default();
+    if network {
+        builder_config.config.build.default_allow_network = true;
+    }
+    let _ = jobs;
+    builder_config.sps2_config = Some(ctx.config.clone());
+
+    sps2_builder::Builder::with_config(builder_config)
+        .with_resolver(ctx.resolver.clone())
+        .with_store(ctx.store.clone())
 }

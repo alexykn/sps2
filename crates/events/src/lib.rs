@@ -31,19 +31,37 @@ pub use events::{
     AcquisitionEvent,
     AppEvent,
     AuditEvent,
+    BuildDiagnostic,
     BuildEvent,
+    BuildSession,
     BuildSystem,
+    BuildTarget,
+    CleanupSummary,
+    CommandDescriptor,
     DownloadEvent,
     FailureContext,
     GeneralEvent,
+    GuardDiscrepancy,
     GuardEvent,
+    GuardHealingPlan,
+    GuardLevel,
+    GuardScope,
+    GuardSeverity,
+    GuardTargetSummary,
+    GuardVerificationMetrics,
+    HealthStatus,
     // Support types that don't conflict
     InstallEvent,
+    LogStream,
     PackageEvent,
+    PhaseStatus,
+    ProcessCommandDescriptor,
     ProgressEvent,
     QaEvent,
     RepoEvent,
     ResolverEvent,
+    RollbackContext,
+    RollbackSummary,
     StateEvent,
     UninstallEvent,
     UpdateEvent,
@@ -199,39 +217,6 @@ pub trait EventEmitter {
         }));
     }
 
-    /// Emit a build started event
-    fn emit_build_started(
-        &self,
-        session_id: impl Into<String>,
-        package: impl Into<String>,
-        version: sps2_types::Version,
-    ) {
-        self.emit(AppEvent::Build(BuildEvent::SessionStarted {
-            session_id: session_id.into(),
-            package: package.into(),
-            version,
-            build_system: BuildSystem::Custom,
-            cache_enabled: false,
-        }));
-    }
-
-    /// Emit a build completed event
-    fn emit_build_completed(
-        &self,
-        session_id: impl Into<String>,
-        package: impl Into<String>,
-        version: sps2_types::Version,
-        path: std::path::PathBuf,
-    ) {
-        self.emit(AppEvent::Build(BuildEvent::Completed {
-            session_id: session_id.into(),
-            package: package.into(),
-            version,
-            path,
-            duration: std::time::Duration::from_secs(0),
-        }));
-    }
-
     /// Emit a progress started event
     fn emit_progress_started(
         &self,
@@ -244,7 +229,7 @@ pub trait EventEmitter {
         )));
     }
 
-    /// Emit a progress update event  
+    /// Emit a progress update event
     fn emit_progress_updated(&self, id: impl Into<String>, current: u64, total: Option<u64>) {
         self.emit(AppEvent::Progress(ProgressEvent::updated(
             id, current, total,

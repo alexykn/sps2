@@ -6,7 +6,7 @@
 //! to speed up repeated builds and avoid unnecessary recompilation.
 
 use sps2_errors::Error;
-use sps2_events::{AppEvent, BuildEvent, EventEmitter, EventSender};
+use sps2_events::{AppEvent, BuildDiagnostic, BuildEvent, EventEmitter, EventSender};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -91,10 +91,12 @@ impl BuildCache {
         let mut stats = self.stats.write().await;
         *stats = CacheStatistics::default();
 
-        self.emit(AppEvent::Build(BuildEvent::CacheCleaned {
-            removed_items: 0,
-            freed_bytes: 0,
-        }));
+        self.emit(AppEvent::Build(BuildEvent::Diagnostic(
+            BuildDiagnostic::CachePruned {
+                removed_items: 0,
+                freed_bytes: 0,
+            },
+        )));
 
         Ok(())
     }

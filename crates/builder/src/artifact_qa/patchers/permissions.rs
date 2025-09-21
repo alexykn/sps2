@@ -15,7 +15,6 @@
 use crate::artifact_qa::{macho_utils, reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
-use sps2_events::{AppEvent, QaEvent};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
@@ -168,13 +167,14 @@ impl crate::artifact_qa::traits::Action for PermissionsFixer {
     const NAME: &'static str = "Permissions fixer";
 
     async fn run(
-        ctx: &BuildContext,
+        _ctx: &BuildContext,
         env: &BuildEnvironment,
         _findings: Option<&crate::artifact_qa::diagnostics::DiagnosticCollector>,
     ) -> Result<Report, Error> {
         // Default instance uses conservative mode
         let fixer = Self::default();
         let mut fixed_count = 0;
+        let mut warnings = Vec::new();
         let mut errors = Vec::new();
 
         // Walk through all files in staging directory
@@ -214,19 +214,12 @@ impl crate::artifact_qa::traits::Action for PermissionsFixer {
         }
 
         if fixed_count > 0 {
-            crate::utils::events::send_event(
-                ctx,
-                AppEvent::Qa(QaEvent::CheckCompleted {
-                    check_type: "patcher".to_string(),
-                    check_name: "permissions".to_string(),
-                    findings_count: fixed_count,
-                    severity_counts: std::collections::HashMap::new(),
-                }),
-            );
+            warnings.push(format!("Adjusted permissions for {fixed_count} files"));
         }
 
         Ok(Report {
             errors,
+            warnings,
             changed_files: vec![], // Permissions changes don't count as file content changes
             ..Default::default()
         })

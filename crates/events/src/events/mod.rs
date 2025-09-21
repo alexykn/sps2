@@ -170,33 +170,41 @@ impl AppEvent {
             AppEvent::General(GeneralEvent::Error { .. })
             | AppEvent::Download(DownloadEvent::Failed { .. })
             | AppEvent::Build(BuildEvent::Failed { .. })
-            | AppEvent::State(StateEvent::TransitionFailed { .. })
             | AppEvent::Install(InstallEvent::Failed { .. })
             | AppEvent::Uninstall(UninstallEvent::Failed { .. })
             | AppEvent::Update(UpdateEvent::Failed { .. })
             | AppEvent::Acquisition(AcquisitionEvent::Failed { .. })
             | AppEvent::Progress(ProgressEvent::Failed { .. })
+            | AppEvent::Qa(QaEvent::PipelineFailed { .. })
+            | AppEvent::Package(PackageEvent::OperationFailed { .. })
+            | AppEvent::Platform(PlatformEvent::OperationFailed { .. })
             | AppEvent::Guard(
                 GuardEvent::VerificationFailed { .. } | GuardEvent::HealingFailed { .. },
             )
-            | AppEvent::Qa(QaEvent::CheckFailed { .. })
-            | AppEvent::Platform(
-                PlatformEvent::BinaryOperationFailed { .. }
-                | PlatformEvent::FilesystemOperationFailed { .. }
-                | PlatformEvent::ProcessExecutionFailed { .. },
+            | AppEvent::State(
+                StateEvent::TransitionFailed { .. }
+                | StateEvent::RollbackFailed { .. }
+                | StateEvent::CleanupFailed { .. },
             ) => Level::ERROR,
 
             // Warning-level events
             AppEvent::General(GeneralEvent::Warning { .. })
-            | AppEvent::Build(BuildEvent::Warning { .. }) => Level::WARN,
+            | AppEvent::Build(BuildEvent::Diagnostic(build::BuildDiagnostic::Warning { .. })) => {
+                Level::WARN
+            }
 
             // Debug-level events (progress updates, internal state)
             AppEvent::General(GeneralEvent::DebugLog { .. })
-            | AppEvent::Build(BuildEvent::StepOutput { .. })
-            | AppEvent::Progress(ProgressEvent::Updated { .. }) => Level::DEBUG,
+            | AppEvent::Build(BuildEvent::Diagnostic(build::BuildDiagnostic::LogChunk {
+                ..
+            }))
+            | AppEvent::Progress(ProgressEvent::Updated { .. })
+            | AppEvent::Qa(QaEvent::CheckEvaluated { .. }) => Level::DEBUG,
 
             // Trace-level events (very detailed internal operations)
-            AppEvent::Build(BuildEvent::ResourceUsage { .. }) => Level::TRACE,
+            AppEvent::Build(BuildEvent::Diagnostic(build::BuildDiagnostic::CachePruned {
+                ..
+            })) => Level::TRACE,
 
             // Default to INFO for most events
             _ => Level::INFO,

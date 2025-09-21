@@ -1,139 +1,71 @@
-//! Platform-specific operation events
-
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::path::PathBuf;
 
-/// Platform operation events for tracking platform-specific operations
+use super::FailureContext;
+
+/// High-level category for a platform operation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlatformOperationKind {
+    Binary,
+    Filesystem,
+    Process,
+    ToolDiscovery,
+}
+
+/// Descriptor for a process command execution.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessCommandDescriptor {
+    pub program: String,
+    pub args: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<PathBuf>,
+}
+
+/// Context describing the operation being performed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlatformOperationContext {
+    pub kind: PlatformOperationKind,
+    pub operation: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<ProcessCommandDescriptor>,
+}
+
+/// Optional metrics gathered for completed operations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlatformOperationMetrics {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stdout_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stderr_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub changes: Option<Vec<String>>,
+}
+
+/// Platform events surfaced to consumers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PlatformEvent {
-    /// Binary operation started (`install_name_tool`, `otool`, `codesign`)
-    BinaryOperationStarted {
-        /// Operation name (e.g., `get_install_name`, `sign_binary`)
-        operation: String,
-        /// Path to the binary being operated on
-        binary_path: String,
-        /// Additional context for the operation
-        context: HashMap<String, String>,
+    OperationStarted {
+        context: PlatformOperationContext,
     },
-
-    /// Binary operation completed successfully
-    BinaryOperationCompleted {
-        /// Operation name that completed
-        operation: String,
-        /// Path to the binary that was operated on
-        binary_path: String,
-        /// List of changes made during the operation
-        changes_made: Vec<String>,
-        /// Duration of the operation in milliseconds
-        duration_ms: u64,
+    OperationCompleted {
+        context: PlatformOperationContext,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        metrics: Option<PlatformOperationMetrics>,
     },
-
-    /// Binary operation failed
-    BinaryOperationFailed {
-        /// Operation name that failed
-        operation: String,
-        /// Path to the binary that was being operated on
-        binary_path: String,
-        /// Error message
-        error_message: String,
-        /// Duration before failure in milliseconds
-        duration_ms: u64,
-    },
-
-    /// Filesystem operation started (APFS clone, atomic operations)
-    FilesystemOperationStarted {
-        /// Operation name (e.g., `clone_file`, `atomic_rename`)
-        operation: String,
-        /// Source path (if applicable)
-        source_path: Option<String>,
-        /// Target path
-        target_path: String,
-        /// Additional operation context
-        context: HashMap<String, String>,
-    },
-
-    /// Filesystem operation completed successfully
-    FilesystemOperationCompleted {
-        /// Operation name that completed
-        operation: String,
-        /// List of paths affected by the operation
-        paths_affected: Vec<String>,
-        /// Duration of the operation in milliseconds
-        duration_ms: u64,
-    },
-
-    /// Filesystem operation failed
-    FilesystemOperationFailed {
-        /// Operation name that failed
-        operation: String,
-        /// Paths involved in the failed operation
-        paths_involved: Vec<String>,
-        /// Error message
-        error_message: String,
-        /// Duration before failure in milliseconds
-        duration_ms: u64,
-    },
-
-    /// Process execution started
-    ProcessExecutionStarted {
-        /// Command being executed
-        command: String,
-        /// Command arguments
-        args: Vec<String>,
-        /// Working directory (if set)
-        working_dir: Option<String>,
-    },
-
-    /// Process execution completed
-    ProcessExecutionCompleted {
-        /// Command that was executed
-        command: String,
-        /// Exit code from the process
-        exit_code: i32,
-        /// Duration of execution in milliseconds
-        duration_ms: u64,
-        /// Size of stdout in bytes
-        stdout_bytes: usize,
-        /// Size of stderr in bytes
-        stderr_bytes: usize,
-    },
-
-    /// Process execution failed
-    ProcessExecutionFailed {
-        /// Command that failed
-        command: String,
-        /// Error message
-        error_message: String,
-        /// Duration before failure in milliseconds
-        duration_ms: u64,
-    },
-
-    /// Tool discovery started
-    ToolDiscoveryStarted {
-        /// Name of the tool being discovered
-        tool: String,
-        /// Paths being searched for the tool
-        search_paths: Vec<std::path::PathBuf>,
-    },
-
-    /// Tool discovered successfully
-    ToolDiscovered {
-        /// Name of the tool that was discovered
-        tool: String,
-        /// Full path to the discovered tool
-        path: std::path::PathBuf,
-        /// Tool version if detectable
-        version: Option<String>,
-    },
-
-    /// Tool not found after searching
-    ToolNotFound {
-        /// Name of the tool that was not found
-        tool: String,
-        /// Paths that were searched
-        searched_paths: Vec<std::path::PathBuf>,
-        /// Installation suggestion for the tool
-        suggestion: String,
+    OperationFailed {
+        context: PlatformOperationContext,
+        failure: FailureContext,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        metrics: Option<PlatformOperationMetrics>,
     },
 }

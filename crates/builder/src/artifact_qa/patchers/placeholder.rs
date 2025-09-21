@@ -3,7 +3,6 @@
 use crate::artifact_qa::{reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
-use sps2_events::{AppEvent, QaEvent};
 
 use globset::{Glob, GlobSetBuilder};
 use ignore::WalkBuilder;
@@ -13,7 +12,7 @@ impl crate::artifact_qa::traits::Action for PlaceholderPatcher {
     const NAME: &'static str = "Placeholder / build‑path replacer";
 
     async fn run(
-        ctx: &BuildContext,
+        _ctx: &BuildContext,
         env: &BuildEnvironment,
         findings: Option<&crate::artifact_qa::diagnostics::DiagnosticCollector>,
     ) -> Result<Report, Error> {
@@ -38,6 +37,7 @@ impl crate::artifact_qa::traits::Action for PlaceholderPatcher {
         let binaries = gsb.build().unwrap();
 
         let mut changed = Vec::new();
+        let mut warnings = Vec::new();
 
         // Get the list of files to process
         let files_to_process: Box<dyn Iterator<Item = std::path::PathBuf>> =
@@ -103,19 +103,12 @@ impl crate::artifact_qa::traits::Action for PlaceholderPatcher {
 
         // Event message
         if !changed.is_empty() {
-            crate::utils::events::send_event(
-                ctx,
-                AppEvent::Qa(QaEvent::CheckCompleted {
-                    check_type: "patcher".to_string(),
-                    check_name: "placeholder".to_string(),
-                    findings_count: changed.len(),
-                    severity_counts: std::collections::HashMap::new(),
-                }),
-            );
+            warnings.push(format!("Replaced placeholders in {} files", changed.len()));
         }
 
         Ok(Report {
             changed_files: changed,
+            warnings,
             ..Default::default()
         })
     }

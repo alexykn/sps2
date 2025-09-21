@@ -265,13 +265,84 @@ impl EventHandler {
                 }
             }
 
+            AppEvent::Package(package_event) => {
+                use sps2_events::{events::PackageOutcome, PackageEvent};
+                match package_event {
+                    PackageEvent::OperationStarted { operation } => {
+                        self.show_operation(
+                            &meta,
+                            format!("{operation:?} started"),
+                            "package",
+                            EventSeverity::Info,
+                        );
+                    }
+                    PackageEvent::OperationCompleted { operation, outcome } => {
+                        let message = match outcome {
+                            PackageOutcome::List { total } => {
+                                format!("{operation:?} completed: {total} packages")
+                            }
+                            PackageOutcome::Search { query, total } => {
+                                format!("Search for '{query}' matched {total} packages")
+                            }
+                            PackageOutcome::Health { healthy, issues } => {
+                                if healthy {
+                                    "Health check completed successfully".to_string()
+                                } else if issues.is_empty() {
+                                    "Health check reported issues".to_string()
+                                } else {
+                                    format!(
+                                        "Health check reported {} issue(s): {}",
+                                        issues.len(),
+                                        issues.join(", ")
+                                    )
+                                }
+                            }
+                            PackageOutcome::SelfUpdate {
+                                from,
+                                to,
+                                duration_ms,
+                            } => {
+                                format!(
+                                    "Self-update completed: {from} -> {to} ({:.2}s)",
+                                    duration_ms as f64 / 1000.0
+                                )
+                            }
+                            PackageOutcome::Cleanup {
+                                states_removed,
+                                packages_removed,
+                                duration_ms,
+                            } => {
+                                format!(
+                                    "Cleanup removed {states_removed} states, {packages_removed} packages ({:.2}s)",
+                                    duration_ms as f64 / 1000.0
+                                )
+                            }
+                        };
+                        self.show_operation(&meta, message, "package", EventSeverity::Success);
+                    }
+                    PackageEvent::OperationFailed { operation, failure } => {
+                        let hint = failure
+                            .hint
+                            .as_ref()
+                            .map(|h| format!(" (hint: {h})"))
+                            .unwrap_or_default();
+                        self.show_operation(
+                            &meta,
+                            format!("{operation:?} failed: {}{}", failure.message, hint),
+                            "package",
+                            EventSeverity::Error,
+                        );
+                    }
+                }
+            }
+
             // State events
             AppEvent::State(state_event) => {
                 use sps2_events::StateEvent;
                 match state_event {
-                    StateEvent::TransitionStarted {
-                        operation, target, ..
-                    } => {
+                    StateEvent::TransitionStarted { context } => {
+                        let operation = &context.operation;
+                        let target = context.target;
                         self.show_operation(
                             &meta,
                             format!("State transition started ({operation} -> {target})"),
@@ -279,81 +350,106 @@ impl EventHandler {
                             EventSeverity::Info,
                         );
                     }
-                    StateEvent::TransitionCompleted {
-                        operation,
-                        source,
-                        target,
-                        duration,
-                    } => {
-                        let duration_text = duration
-                            .map(|d| format!(" in {}s", d.as_secs()))
-                            .unwrap_or_default();
-                        let source_text = source
+                    StateEvent::TransitionCompleted { context, summary } => {
+                        let source_text = context
+                            .source
                             .map(|s| s.to_string())
                             .unwrap_or_else(|| "<none>".to_string());
+                        let duration_text = summary
+                            .and_then(|s| s.duration_ms)
+                            .map(|ms| format!(" in {:.2}s", ms as f64 / 1000.0))
+                            .unwrap_or_default();
                         self.show_operation(
                             &meta,
                             format!(
-                                "State transition completed ({operation}: {source_text} -> {target}){duration_text}"
+                                "State transition completed ({}: {source_text} -> {}){duration_text}",
+                                context.operation,
+                                context.target
                             ),
                             "state",
                             EventSeverity::Success,
                         );
                     }
-                    StateEvent::TransitionFailed {
-                        operation,
-                        retryable,
-                        ..
-                    } => {
-                        let retry_text = if retryable { " (retryable)" } else { "" };
+                    StateEvent::TransitionFailed { context, failure } => {
                         self.show_operation(
                             &meta,
-                            format!("State transition failed ({operation}){retry_text}"),
+                            format!(
+                                "State transition failed ({} -> {}): {}",
+                                context.operation, context.target, failure.message
+                            ),
                             "state",
                             EventSeverity::Error,
                         );
                     }
-                    StateEvent::RollbackStarted { from, to } => {
+                    StateEvent::RollbackStarted { context } => {
                         self.show_operation(
                             &meta,
-                            format!("Rollback started ({from} -> {to})"),
+                            format!("Rollback started ({} -> {})", context.from, context.to),
                             "rollback",
                             EventSeverity::Info,
                         );
                     }
-                    StateEvent::RollbackCompleted { from, to, duration } => {
-                        let duration_text = duration
-                            .map(|d| format!(" in {}s", d.as_secs()))
+                    StateEvent::RollbackCompleted { context, summary } => {
+                        let duration_text = summary
+                            .and_then(|s| s.duration_ms)
+                            .map(|ms| format!(" in {:.2}s", ms as f64 / 1000.0))
                             .unwrap_or_default();
                         self.show_operation(
                             &meta,
-                            format!("Rollback completed ({from} -> {to}){duration_text}"),
+                            format!(
+                                "Rollback completed ({} -> {}){duration_text}",
+                                context.from, context.to
+                            ),
                             "rollback",
                             EventSeverity::Success,
                         );
                     }
-                    StateEvent::CleanupStarted { planned_states } => {
+                    StateEvent::RollbackFailed { context, failure } => {
+                        self.show_operation(
+                            &meta,
+                            format!(
+                                "Rollback failed ({} -> {}): {}",
+                                context.from, context.to, failure.message
+                            ),
+                            "rollback",
+                            EventSeverity::Error,
+                        );
+                    }
+                    StateEvent::CleanupStarted { summary } => {
+                        let planned = summary.planned_states;
                         if self.debug_enabled {
                             self.show_operation(
                                 &meta,
-                                format!("Cleanup planned for {planned_states} states"),
+                                format!("Cleanup planned for {planned} states"),
                                 "clean",
                                 EventSeverity::Debug,
                             );
                         }
                     }
-                    StateEvent::CleanupCompleted {
-                        removed_states,
-                        space_freed,
-                    } => {
+                    StateEvent::CleanupCompleted { summary } => {
+                        let removed = summary.removed_states.unwrap_or(0);
+                        let bytes = summary.space_freed_bytes.unwrap_or(0);
                         self.show_operation(
                             &meta,
                             format!(
-                                "Cleanup completed: removed {removed_states} states, {} freed",
-                                self.format_bytes(space_freed)
+                                "Cleanup completed: removed {} states, {} freed",
+                                removed,
+                                self.format_bytes(bytes)
                             ),
                             "clean",
                             EventSeverity::Success,
+                        );
+                    }
+                    StateEvent::CleanupFailed { summary, failure } => {
+                        let planned = summary.planned_states;
+                        self.show_operation(
+                            &meta,
+                            format!(
+                                "Cleanup failed after planning {planned} states: {}",
+                                failure.message
+                            ),
+                            "clean",
+                            EventSeverity::Error,
                         );
                     }
                 }
@@ -361,92 +457,155 @@ impl EventHandler {
 
             // Build events
             AppEvent::Build(build_event) => {
-                use sps2_events::BuildEvent;
+                use sps2_events::{BuildDiagnostic, BuildEvent, LogStream, PhaseStatus};
                 match build_event {
-                    BuildEvent::SessionStarted {
-                        package, version, ..
-                    } => {
+                    BuildEvent::Started { session, target } => {
+                        let cache_text = if session.cache_enabled {
+                            " (cache enabled)"
+                        } else {
+                            ""
+                        };
                         self.show_operation(
                             &meta,
-                            format!("Starting build session for {package} {version}"),
+                            format!(
+                                "Build started for {} {} using {:?}{}",
+                                target.package, target.version, session.system, cache_text
+                            ),
                             "build",
                             EventSeverity::Info,
                         );
                     }
                     BuildEvent::Completed {
-                        package,
-                        version,
-                        path,
+                        target,
+                        artifacts,
+                        duration_ms,
                         ..
                     } => {
+                        let duration = std::time::Duration::from_millis(duration_ms);
+                        let artifact_summary = if artifacts.is_empty() {
+                            "no artifacts produced".to_string()
+                        } else {
+                            format!(
+                                "{} artifact{}",
+                                artifacts.len(),
+                                if artifacts.len() == 1 { "" } else { "s" }
+                            )
+                        };
                         self.show_operation(
                             &meta,
-                            format!("Built {} {} -> {}", package, version, path.display()),
+                            format!(
+                                "Build completed for {} {} in {} ({artifact_summary})",
+                                target.package,
+                                target.version,
+                                format_duration(duration)
+                            ),
                             "build",
                             EventSeverity::Success,
                         );
                     }
                     BuildEvent::Failed {
-                        package,
-                        version,
-                        error,
+                        target,
+                        failure,
+                        phase,
+                        command,
                         ..
                     } => {
-                        self.show_operation(
-                            &meta,
-                            format!("Build failed for {package} {version}: {error}"),
-                            "build",
-                            EventSeverity::Error,
+                        let mut message = format!(
+                            "Build failed for {} {}: {}{}{}",
+                            target.package,
+                            target.version,
+                            failure
+                                .code
+                                .as_ref()
+                                .map(|code| format!("[{code}] "))
+                                .unwrap_or_default(),
+                            failure.message,
+                            failure
+                                .hint
+                                .as_ref()
+                                .map(|hint| format!(" (hint: {hint})"))
+                                .unwrap_or_default()
                         );
+                        if let Some(phase) = phase {
+                            message.push_str(&format!(" during phase {phase:?}"));
+                        }
+                        if let Some(command) = command {
+                            message.push_str(&format!(" (command: {})", command.command));
+                        }
+                        let severity = if failure.retryable {
+                            EventSeverity::Warning
+                        } else {
+                            EventSeverity::Error
+                        };
+                        self.show_operation(&meta, message, "build", severity);
                     }
-                    BuildEvent::PhaseStarted { package, phase, .. } => {
-                        self.show_operation(
-                            &meta,
-                            format!("{package} > {phase:?} phase started"),
-                            "build",
-                            EventSeverity::Info,
-                        );
-                    }
-                    BuildEvent::StepOutput { line, .. } => {
-                        // Display build output directly
-                        println!("{line}");
-                    }
-                    BuildEvent::PhaseCompleted { package, phase, .. } => {
-                        self.show_operation(
-                            &meta,
-                            format!("{package} > {phase:?} phase completed"),
-                            "build",
-                            EventSeverity::Success,
-                        );
-                    }
-                    BuildEvent::CommandStarted {
-                        package, command, ..
-                    } => {
-                        self.show_operation(
-                            &meta,
-                            format!("{package} > {command}"),
-                            "build",
-                            EventSeverity::Info,
-                        );
-                    }
-                    BuildEvent::Cleaned { package, .. } => {
-                        self.show_operation(
-                            &meta,
-                            format!("Cleaned build for {package}"),
-                            "clean",
-                            EventSeverity::Success,
-                        );
-                    }
-                    _ => {
-                        // Handle other build events with debug output
-                        if self.debug_enabled {
-                            self.show_meta_message(
+                    BuildEvent::PhaseStatus { phase, status, .. } => match status {
+                        PhaseStatus::Started => {
+                            self.show_operation(
                                 &meta,
-                                format!("Build event: {build_event:?}"),
-                                EventSeverity::Debug,
+                                format!("Entering build phase {phase:?}"),
+                                "build",
+                                EventSeverity::Info,
                             );
                         }
-                    }
+                        PhaseStatus::Completed { duration_ms } => {
+                            let duration_text = duration_ms
+                                .map(|ms| {
+                                    format!(
+                                        " in {}",
+                                        format_duration(std::time::Duration::from_millis(ms))
+                                    )
+                                })
+                                .unwrap_or_default();
+                            self.show_operation(
+                                &meta,
+                                format!("Completed build phase {phase:?}{duration_text}"),
+                                "build",
+                                EventSeverity::Success,
+                            );
+                        }
+                    },
+                    BuildEvent::Diagnostic(diag) => match diag {
+                        BuildDiagnostic::Warning {
+                            message, source, ..
+                        } => {
+                            let source_text = source
+                                .as_ref()
+                                .map(|s| format!(" ({s})"))
+                                .unwrap_or_default();
+                            self.show_operation(
+                                &meta,
+                                format!("Build warning: {message}{source_text}"),
+                                "build",
+                                EventSeverity::Warning,
+                            );
+                        }
+                        BuildDiagnostic::LogChunk { stream, text, .. } => {
+                            let prefix = match stream {
+                                LogStream::Stdout => "[build]",
+                                LogStream::Stderr => "[build:stderr]",
+                            };
+                            for line in text.lines() {
+                                println!("{prefix} {line}");
+                            }
+                        }
+                        BuildDiagnostic::CachePruned {
+                            removed_items,
+                            freed_bytes,
+                        } => {
+                            if self.debug_enabled {
+                                self.show_operation(
+                                    &meta,
+                                    format!(
+                                        "Build cache pruned: {removed_items} entries, {} freed",
+                                        self.format_bytes(freed_bytes)
+                                    ),
+                                    "build",
+                                    EventSeverity::Debug,
+                                );
+                            }
+                        }
+                    },
                 }
             }
 
@@ -798,128 +957,85 @@ impl EventHandler {
             }
 
             AppEvent::Qa(qa_event) => {
-                use sps2_events::QaEvent;
+                use sps2_events::{events::QaCheckStatus, QaEvent};
                 match qa_event {
-                    QaEvent::PipelineStarted {
-                        package,
-                        version,
-                        qa_level,
-                        ..
-                    } => {
+                    QaEvent::PipelineStarted { target, level } => {
                         self.show_operation(
                             &meta,
                             format!(
-                                "Starting QA pipeline for {package} {version} (level: {qa_level})"
+                                "Starting QA pipeline for {} {} (level: {:?})",
+                                target.package, target.version, level
                             ),
                             "qa",
                             EventSeverity::Info,
                         );
                     }
                     QaEvent::PipelineCompleted {
-                        package,
-                        version,
+                        target,
                         total_checks,
                         passed,
                         failed,
-                        duration_seconds,
-                        ..
+                        duration_ms,
                     } => {
-                        if failed == 0 {
-                            self.show_operation(
-                                &meta,
-                                format!(
-                                    "QA pipeline completed for {package} {version}: {passed}/{total_checks} checks passed ({duration_seconds}s)"
-                                ),
-                                "qa",
-                                EventSeverity::Success,
-                            );
+                        let duration_text = format!("{:.2}s", duration_ms as f64 / 1000.0);
+                        let message = if failed == 0 {
+                            format!(
+                                "QA pipeline completed for {} {}: {passed}/{total_checks} checks passed ({duration_text})",
+                                target.package, target.version
+                            )
                         } else {
-                            self.show_operation(
-                                &meta,
-                                format!(
-                                    "QA pipeline completed for {package} {version}: {passed}/{total_checks} passed, {failed} failed ({duration_seconds}s)"
-                                ),
-                                "qa",
-                                EventSeverity::Warning,
-                            );
-                        }
+                            format!(
+                                "QA pipeline completed for {} {}: {passed}/{total_checks} passed, {failed} failed ({duration_text})",
+                                target.package, target.version
+                            )
+                        };
+                        let severity = if failed == 0 {
+                            EventSeverity::Success
+                        } else {
+                            EventSeverity::Warning
+                        };
+                        self.show_operation(&meta, message, "qa", severity);
                     }
-                    QaEvent::CheckStarted {
-                        check_type,
-                        check_name,
-                        ..
-                    } => {
+                    QaEvent::PipelineFailed { target, failure } => {
+                        let hint_text = failure
+                            .hint
+                            .as_ref()
+                            .map(|h| format!(" (hint: {h})"))
+                            .unwrap_or_default();
                         self.show_operation(
                             &meta,
-                            format!("Starting {check_type} check: {check_name}"),
+                            format!(
+                                "QA pipeline failed for {} {}: {}{}",
+                                target.package, target.version, failure.message, hint_text
+                            ),
                             "qa",
-                            EventSeverity::Info,
+                            EventSeverity::Error,
                         );
                     }
-                    QaEvent::CheckCompleted {
-                        check_type,
-                        check_name,
-                        findings_count,
-                        ..
-                    } => {
-                        if findings_count == 0 {
-                            self.show_operation(
-                                &meta,
-                                format!("{check_type} check passed: {check_name}"),
-                                "qa",
-                                EventSeverity::Success,
-                            );
+                    QaEvent::CheckEvaluated { summary, .. } => {
+                        let severity = match summary.status {
+                            QaCheckStatus::Passed => EventSeverity::Info,
+                            QaCheckStatus::Failed => EventSeverity::Error,
+                            QaCheckStatus::Skipped => EventSeverity::Debug,
+                        };
+                        let findings_text = if summary.findings.is_empty() {
+                            String::from("no findings")
                         } else {
-                            self.show_operation(
-                                &meta,
-                                format!(
-                                    "{check_type} check completed: {check_name} ({findings_count} findings)"
-                                ),
-                                "qa",
-                                EventSeverity::Warning,
-                            );
-                        }
-                    }
-                    QaEvent::FindingReported {
-                        check_type,
-                        severity,
-                        message,
-                        file_path,
-                        line,
-                        ..
-                    } => {
-                        let location = match (file_path, line) {
-                            (Some(path), Some(line)) => format!(" ({path}:{line})"),
-                            (Some(path), None) => format!(" ({path})"),
-                            _ => String::new(),
+                            format!("{} finding(s)", summary.findings.len())
                         };
-                        let event_severity = match severity.to_lowercase().as_str() {
-                            "critical" => EventSeverity::Critical,
-                            "high" => EventSeverity::Error,
-                            "medium" => EventSeverity::Warning,
-                            "low" => EventSeverity::Info,
-                            _ => EventSeverity::Info,
-                        };
-                        self.show_meta_message(
+                        let duration_text = summary
+                            .duration_ms
+                            .map(|ms| format!(" in {:.2}s", ms as f64 / 1000.0))
+                            .unwrap_or_default();
+                        self.show_operation(
                             &meta,
                             format!(
-                                "[{}] {}: {}{}",
-                                check_type,
-                                severity.to_uppercase(),
-                                message,
-                                location
+                                "Check {} ({}) -> {:?}: {findings_text}{duration_text}",
+                                summary.name, summary.category, summary.status
                             ),
-                            event_severity,
+                            "qa",
+                            severity,
                         );
-                    }
-                    _ => {
-                        if self.debug_enabled {
-                            self.show_meta_message(
-                                &meta,
-                                format!("QA event: {qa_event:?}"),
-                                EventSeverity::Debug,
-                            );
-                        }
                     }
                 }
             }
@@ -929,127 +1045,192 @@ impl EventHandler {
             }
 
             AppEvent::Guard(guard_event) => {
-                use sps2_events::GuardEvent;
+                use sps2_events::{GuardEvent, GuardScope, GuardSeverity};
+
+                fn scope_label(scope: &GuardScope) -> String {
+                    match scope {
+                        GuardScope::System => "system".to_string(),
+                        GuardScope::Package { name, version } => version
+                            .as_ref()
+                            .map(|v| format!("package {name}:{v}"))
+                            .unwrap_or_else(|| format!("package {name}")),
+                        GuardScope::Path { path } => format!("path {path}"),
+                        GuardScope::State { id } => format!("state {id}"),
+                        GuardScope::Custom { description } => description.clone(),
+                    }
+                }
+
+                let format_failure = |failure: &sps2_events::FailureContext| {
+                    format!(
+                        "{}{}{}",
+                        failure
+                            .code
+                            .as_ref()
+                            .map(|code| format!("[{code}] "))
+                            .unwrap_or_default(),
+                        failure.message,
+                        failure
+                            .hint
+                            .as_ref()
+                            .map(|hint| format!(" (hint: {hint})"))
+                            .unwrap_or_default()
+                    )
+                };
+
                 match guard_event {
                     GuardEvent::VerificationStarted {
                         scope,
                         level,
-                        packages_count,
-                        files_count,
+                        targets,
                         ..
                     } => {
-                        let files_info = if let Some(files) = files_count {
-                            format!(" ({files} files)")
-                        } else {
-                            String::new()
-                        };
-                        self.show_operation(&meta,
+                        let files_info = targets
+                            .files
+                            .map(|files| format!(", {files} files"))
+                            .unwrap_or_default();
+                        self.show_operation(
+                            &meta,
                             format!(
-                                "Starting {level} verification: {scope} ({packages_count} packages{files_info})"
+                                "Starting {:?} verification ({}, {} packages{})",
+                                level,
+                                scope_label(&scope),
+                                targets.packages,
+                                files_info
                             ),
                             "verify",
                             EventSeverity::Info,
                         );
                     }
                     GuardEvent::VerificationCompleted {
-                        total_discrepancies,
-                        by_severity,
-                        duration_ms,
-                        cache_hit_rate,
-                        coverage_percent,
-                        scope_description,
+                        scope,
+                        discrepancies,
+                        metrics,
                         ..
                     } => {
-                        if total_discrepancies == 0 {
+                        let summary = format!(
+                            "coverage {:.1}%, cache hits {:.1}%",
+                            metrics.coverage_percent,
+                            metrics.cache_hit_rate * 100.0
+                        );
+                        if discrepancies == 0 {
                             self.show_operation(
                                 &meta,
                                 format!(
-                                    "Verification completed: {} ({:.1}% coverage, {:.1}% cache hits, {}ms)",
-                                    scope_description,
-                                    coverage_percent,
-                                    cache_hit_rate * 100.0,
-                                    duration_ms
+                                    "Verification succeeded for {} ({summary}, {}ms)",
+                                    scope_label(&scope),
+                                    metrics.duration_ms
                                 ),
                                 "verify",
                                 EventSeverity::Success,
                             );
                         } else {
-                            let severity_breakdown = by_severity
-                                .iter()
-                                .map(|(sev, count)| format!("{sev}: {count}"))
-                                .collect::<Vec<_>>()
-                                .join(", ");
                             self.show_operation(
                                 &meta,
                                 format!(
-                                    "Verification completed: {total_discrepancies} discrepancies found ({severity_breakdown}) ({duration_ms}ms)"
+                                    "Verification found {} issue(s) for {} ({summary}, {}ms)",
+                                    discrepancies,
+                                    scope_label(&scope),
+                                    metrics.duration_ms
                                 ),
                                 "verify",
                                 EventSeverity::Warning,
                             );
                         }
                     }
-                    GuardEvent::DiscrepancyFound(params) => {
-                        let discrepancy_type = &params.discrepancy_type;
-                        let severity = &params.severity;
-                        let file_path = &params.file_path;
-                        let package = &params.package;
-                        let user_message = &params.user_message;
-                        let auto_heal_available = params.auto_heal_available;
-                        let requires_confirmation = params.requires_confirmation;
-                        let severity_level = match severity.to_lowercase().as_str() {
-                            "critical" => EventSeverity::Critical,
-                            "high" => EventSeverity::Error,
-                            "medium" => EventSeverity::Warning,
-                            "low" => EventSeverity::Info,
-                            _ => EventSeverity::Warning,
-                        };
-
-                        let package_info = if let Some(pkg) = package {
-                            format!(" [{pkg}]")
+                    GuardEvent::VerificationFailed { scope, failure, .. } => {
+                        let severity = if failure.retryable {
+                            EventSeverity::Warning
                         } else {
-                            String::new()
+                            EventSeverity::Error
                         };
-
-                        let action_info = if auto_heal_available {
-                            if requires_confirmation {
-                                " (auto-heal available, confirmation required)"
-                            } else {
-                                " (auto-heal available)"
-                            }
+                        self.show_operation(
+                            &meta,
+                            format!(
+                                "Verification failed for {}: {}",
+                                scope_label(&scope),
+                                format_failure(&failure)
+                            ),
+                            "verify",
+                            severity,
+                        );
+                    }
+                    GuardEvent::HealingStarted { plan, .. } => {
+                        let manual = plan.manual_only;
+                        let confirmation = plan.confirmation_required;
+                        let auto = plan.auto_heal;
+                        self.show_operation(
+                            &meta,
+                            format!(
+                                "Healing started: {} total (auto: {}, confirm: {}, manual: {})",
+                                plan.total, auto, confirmation, manual
+                            ),
+                            "verify",
+                            EventSeverity::Info,
+                        );
+                    }
+                    GuardEvent::HealingCompleted {
+                        healed,
+                        failed,
+                        duration_ms,
+                        ..
+                    } => {
+                        let severity = if failed > 0 {
+                            EventSeverity::Warning
                         } else {
-                            " (manual intervention required)"
+                            EventSeverity::Success
                         };
-
+                        self.show_operation(
+                            &meta,
+                            format!(
+                                "Healing finished: {healed} healed, {failed} failed ({duration_ms}ms)"
+                            ),
+                            "verify",
+                            severity,
+                        );
+                    }
+                    GuardEvent::HealingFailed {
+                        failure, healed, ..
+                    } => {
+                        let severity = if failure.retryable {
+                            EventSeverity::Warning
+                        } else {
+                            EventSeverity::Error
+                        };
+                        self.show_operation(
+                            &meta,
+                            format!(
+                                "Healing failed after {healed} success(es): {}",
+                                format_failure(&failure)
+                            ),
+                            "verify",
+                            severity,
+                        );
+                    }
+                    GuardEvent::DiscrepancyReported { discrepancy, .. } => {
+                        let severity = match discrepancy.severity {
+                            GuardSeverity::Critical => EventSeverity::Critical,
+                            GuardSeverity::High => EventSeverity::Error,
+                            GuardSeverity::Medium => EventSeverity::Warning,
+                            GuardSeverity::Low => EventSeverity::Info,
+                        };
+                        let location = discrepancy
+                            .location
+                            .as_ref()
+                            .map(|loc| format!(" ({loc})"))
+                            .unwrap_or_default();
+                        let package_info = match (&discrepancy.package, &discrepancy.version) {
+                            (Some(pkg), Some(ver)) => format!(" [{pkg}:{ver}]"),
+                            (Some(pkg), None) => format!(" [{pkg}]"),
+                            _ => String::new(),
+                        };
                         self.show_meta_message(
                             &meta,
                             format!(
-                                "{}: {}{} - {}{}",
-                                discrepancy_type.to_uppercase(),
-                                severity.to_uppercase(),
-                                package_info,
-                                user_message,
-                                action_info
+                                "{}{}: {}{}",
+                                discrepancy.kind, package_info, discrepancy.message, location
                             ),
-                            severity_level,
+                            severity,
                         );
-
-                        if self.debug_enabled && !file_path.is_empty() {
-                            self.show_meta_message(
-                                &meta,
-                                format!("  File: {file_path}"),
-                                EventSeverity::Debug,
-                            );
-                        }
-                    }
-                    _ => {
-                        if self.debug_enabled {
-                            self.show_meta_message(
-                                &meta,
-                                format!("Guard event: {guard_event:?}"),
-                                EventSeverity::Debug,
-                            );
-                        }
                     }
                 }
             }

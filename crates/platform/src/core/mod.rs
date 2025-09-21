@@ -5,12 +5,19 @@ use crate::filesystem::FilesystemOperations;
 use crate::process::ProcessOperations;
 use serde::{Deserialize, Serialize};
 use sps2_errors::PlatformError;
-use sps2_events::{events::PlatformEvent, AppEvent, EventEmitter, EventSender};
+use sps2_events::{
+    events::{
+        FailureContext, PlatformEvent, PlatformOperationContext, PlatformOperationKind,
+        PlatformOperationMetrics,
+    },
+    AppEvent, EventEmitter, EventSender,
+};
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock, RwLock};
-use std::time::{Instant, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 /// Context for platform operations, providing event emission and metadata tracking
 pub struct PlatformContext {
@@ -105,6 +112,10 @@ pub struct ToolRegistry {
 
     /// Event sender for tool discovery notifications (with interior mutability)
     event_tx: Arc<RwLock<Option<EventSender>>>,
+}
+
+fn duration_to_millis(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
 /// Persistent platform cache for storing discovered tools across process restarts
@@ -300,6 +311,90 @@ impl ToolRegistry {
         }
     }
 
+    fn tool_operation_context(
+        operation: &str,
+        tool: &str,
+        path: Option<&Path>,
+    ) -> PlatformOperationContext {
+        PlatformOperationContext {
+            kind: PlatformOperationKind::ToolDiscovery,
+            operation: format!("{operation}:{tool}"),
+            target: path.map(Path::to_path_buf),
+            source: None,
+            command: None,
+        }
+    }
+
+    fn tool_operation_metrics(
+        duration: Option<Duration>,
+        search_paths: &[PathBuf],
+        notes: Vec<String>,
+    ) -> Option<PlatformOperationMetrics> {
+        let duration_ms = duration.map(duration_to_millis);
+        let mut changes = notes;
+        changes.extend(
+            search_paths
+                .iter()
+                .map(|path| format!("search_path={}", path.display())),
+        );
+
+        if duration_ms.is_none() && changes.is_empty() {
+            return None;
+        }
+
+        Some(PlatformOperationMetrics {
+            duration_ms,
+            exit_code: None,
+            stdout_bytes: None,
+            stderr_bytes: None,
+            changes: if changes.is_empty() {
+                None
+            } else {
+                Some(changes)
+            },
+        })
+    }
+
+    fn emit_tool_operation_started(&self, operation: &str, tool: &str, path: Option<&Path>) {
+        let context = Self::tool_operation_context(operation, tool, path);
+        self.emit_event(AppEvent::Platform(PlatformEvent::OperationStarted {
+            context,
+        }));
+    }
+
+    fn emit_tool_operation_completed(
+        &self,
+        operation: &str,
+        tool: &str,
+        path: Option<&Path>,
+        duration: Option<Duration>,
+        search_paths: &[PathBuf],
+        notes: Vec<String>,
+    ) {
+        let context = Self::tool_operation_context(operation, tool, path);
+        let metrics = Self::tool_operation_metrics(duration, search_paths, notes);
+        self.emit_event(AppEvent::Platform(PlatformEvent::OperationCompleted {
+            context,
+            metrics,
+        }));
+    }
+
+    fn emit_tool_operation_failed(
+        &self,
+        operation: &str,
+        tool: &str,
+        path: Option<&Path>,
+        failure: &PlatformError,
+        metrics: Option<PlatformOperationMetrics>,
+    ) {
+        let context = Self::tool_operation_context(operation, tool, path);
+        self.emit_event(AppEvent::Platform(PlatformEvent::OperationFailed {
+            context,
+            failure: FailureContext::from_error(failure),
+            metrics,
+        }));
+    }
+
     /// Set event sender for tool discovery notifications
     pub fn set_event_sender(&self, tx: EventSender) {
         let mut event_tx = self.event_tx.write().unwrap();
@@ -309,10 +404,9 @@ impl ToolRegistry {
     /// Load tools from persistent cache
     pub async fn load_from_cache(&self) -> Result<(), PlatformError> {
         if let Some(cache) = PlatformCache::load().await? {
-            self.emit_event(AppEvent::Platform(PlatformEvent::ToolDiscoveryStarted {
-                tool: "cache".to_string(),
-                search_paths: vec![PlatformCache::default_path()?],
-            }));
+            let cache_path = PlatformCache::default_path()?;
+            let search_paths = vec![cache_path.clone()];
+            self.emit_tool_operation_started("cache_load", "cache", Some(&cache_path));
 
             // Process cached tools and collect valid ones
             let mut valid_tools = Vec::new();
@@ -349,11 +443,15 @@ impl ToolRegistry {
                 tools.len()
             };
 
-            self.emit_event(AppEvent::Platform(PlatformEvent::ToolDiscovered {
-                tool: "cache".to_string(),
-                path: PlatformCache::default_path()?,
-                version: Some(format!("Loaded {tools_count} tools from cache")),
-            }));
+            let notes = vec![format!("loaded_tools={tools_count}")];
+            self.emit_tool_operation_completed(
+                "cache_load",
+                "cache",
+                Some(&cache_path),
+                None,
+                &search_paths,
+                notes,
+            );
         }
 
         Ok(())
@@ -406,11 +504,8 @@ impl ToolRegistry {
         // Save to persistent cache for future process starts
         if let Err(e) = self.save_to_cache().await {
             // Don't fail the operation if cache save fails
-            self.emit_event(AppEvent::Platform(PlatformEvent::ToolNotFound {
-                tool: "cache_save".to_string(),
-                searched_paths: vec![],
-                suggestion: format!("Failed to save tool cache: {e}"),
-            }));
+            let metrics = Self::tool_operation_metrics(None, &[], vec![format!("error={e}")]);
+            self.emit_tool_operation_failed("cache_save", "cache", None, &e, metrics);
         }
 
         Ok(path)
@@ -454,39 +549,58 @@ impl ToolRegistry {
 
     /// Discover a tool by searching paths
     async fn discover_tool(&self, name: &str) -> Result<PathBuf, PlatformError> {
-        self.emit_event(AppEvent::Platform(PlatformEvent::ToolDiscoveryStarted {
-            tool: name.to_string(),
-            search_paths: self.get_search_paths_for_tool(name),
-        }));
+        let search_paths = self.get_search_paths_for_tool(name);
+        let start = Instant::now();
+        self.emit_tool_operation_started("discover", name, None);
 
         // Try PATH first (fastest)
         if let Ok(path) = self.find_in_path(name).await {
-            self.emit_tool_discovered(name, &path).await;
+            let duration = Some(start.elapsed());
+            let notes = vec!["source=path".to_string()];
+            self.emit_tool_operation_completed(
+                "discover",
+                name,
+                Some(&path),
+                duration,
+                &search_paths,
+                notes,
+            );
             return Ok(path);
         }
 
         // Try fallback paths
-        for search_path in self.get_search_paths_for_tool(name) {
+        for search_path in search_paths.iter() {
             let candidate = search_path.join(name);
             if candidate.exists() && self.is_executable(&candidate) {
-                self.emit_tool_discovered(name, &candidate).await;
+                let duration = Some(start.elapsed());
+                let notes = vec![format!("source=fallback:{}", search_path.display())];
+                self.emit_tool_operation_completed(
+                    "discover",
+                    name,
+                    Some(&candidate),
+                    duration,
+                    &search_paths,
+                    notes,
+                );
                 return Ok(candidate);
             }
         }
 
         // Tool not found
         let metadata = self.get_tool_metadata(name);
-        self.emit_event(AppEvent::Platform(PlatformEvent::ToolNotFound {
+        let suggestion = metadata.install_suggestion;
+        let error = PlatformError::ToolNotFound {
             tool: name.to_string(),
-            searched_paths: self.get_search_paths_for_tool(name),
-            suggestion: metadata.install_suggestion.clone(),
-        }));
+            suggestion: suggestion.clone(),
+            searched_paths: search_paths.clone(),
+        };
 
-        Err(PlatformError::ToolNotFound {
-            tool: name.to_string(),
-            suggestion: metadata.install_suggestion,
-            searched_paths: self.get_search_paths_for_tool(name),
-        })
+        let duration = Some(start.elapsed());
+        let notes = vec![format!("suggestion={suggestion}")];
+        let metrics = Self::tool_operation_metrics(duration, &search_paths, notes);
+        self.emit_tool_operation_failed("discover", name, None, &error, metrics);
+
+        Err(error)
     }
 
     /// Find tool using the system PATH
@@ -651,16 +765,6 @@ impl ToolRegistry {
                 install_suggestion: format!("Tool '{name}' not found. Try: sps2 search {name}"),
             },
         }
-    }
-
-    /// Emit tool discovered event
-    async fn emit_tool_discovered(&self, name: &str, path: &Path) {
-        let version = self.get_tool_version(path).await.ok();
-        self.emit_event(AppEvent::Platform(PlatformEvent::ToolDiscovered {
-            tool: name.to_string(),
-            path: path.to_path_buf(),
-            version,
-        }));
     }
 
     /// Emit an event if sender is available

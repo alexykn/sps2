@@ -5,7 +5,7 @@ use crate::stages::{BuildCommand, EnvironmentStep, PostStep, SourceStep};
 use crate::utils::events::send_event;
 use crate::{BuildCommandResult, BuildContext, BuildEnvironment, BuilderApi};
 use sps2_errors::Error;
-use sps2_events::{AppEvent, BuildEvent, GeneralEvent};
+use sps2_events::{AppEvent, GeneralEvent};
 use std::path::Path;
 use tokio::fs;
 
@@ -350,7 +350,7 @@ async fn cleanup_directories(
 
 /// Execute a list of build commands with security context
 pub async fn execute_build_commands_list_with_security(
-    context: &BuildContext,
+    _context: &BuildContext,
     build_commands: &[BuildCommand],
     api: &mut BuilderApi,
     environment: &mut BuildEnvironment,
@@ -358,19 +358,6 @@ pub async fn execute_build_commands_list_with_security(
     sps2_config: Option<&sps2_config::Config>,
 ) -> Result<(), Error> {
     for command in build_commands {
-        send_event(
-            context,
-            AppEvent::Build(BuildEvent::CommandStarted {
-                session_id: "build".to_string(),
-                package: context.name.clone(),
-                command_id: format!("build_step_{}", std::ptr::addr_of!(*command) as usize),
-                build_system: sps2_events::BuildSystem::Custom,
-                command: format!("{command:?}"),
-                working_dir: environment.build_prefix().join("src"),
-                timeout: None,
-            }),
-        );
-
         execute_build_command_with_security(
             command,
             api,

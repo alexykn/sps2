@@ -1,7 +1,7 @@
 //! Types for operations and results
 
 use serde::{Deserialize, Serialize};
-use sps2_events::events::HealthStatus;
+use sps2_events::HealthStatus;
 use sps2_types::{OpChange, PackageSpec};
 use std::collections::HashMap;
 use std::path::PathBuf;

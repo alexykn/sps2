@@ -7,7 +7,6 @@
 use crate::artifact_qa::{reports::Report, traits::Patcher};
 use crate::{BuildContext, BuildEnvironment};
 use sps2_errors::Error;
-use sps2_events::{AppEvent, QaEvent};
 use std::path::Path;
 use tokio::fs;
 
@@ -192,7 +191,7 @@ impl crate::artifact_qa::traits::Action for PythonBytecodeCleanupPatcher {
     const NAME: &'static str = "Python Bytecode Cleanup";
 
     async fn run(
-        ctx: &BuildContext,
+        _ctx: &BuildContext,
         env: &BuildEnvironment,
         _findings: Option<&crate::artifact_qa::diagnostics::DiagnosticCollector>,
     ) -> Result<Report, Error> {
@@ -221,21 +220,17 @@ impl crate::artifact_qa::traits::Action for PythonBytecodeCleanupPatcher {
         let removed_pip = self_instance.remove_pip_artifacts(staging_dir).await?;
         all_removed.extend(removed_pip);
 
-        // Report results
+        let mut warnings = Vec::new();
         if !all_removed.is_empty() {
-            crate::utils::events::send_event(
-                ctx,
-                AppEvent::Qa(QaEvent::CheckCompleted {
-                    check_type: "patcher".to_string(),
-                    check_name: "python_bytecode_cleanup".to_string(),
-                    findings_count: all_removed.len(),
-                    severity_counts: std::collections::HashMap::new(),
-                }),
-            );
+            warnings.push(format!(
+                "Removed {} Python bytecode artifacts",
+                all_removed.len()
+            ));
         }
 
         Ok(Report {
             changed_files: all_removed,
+            warnings,
             ..Default::default()
         })
     }

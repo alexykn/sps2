@@ -12,7 +12,13 @@ use crate::{utils::events::send_event, BuildContext, BuildEnvironment};
 use diagnostics::DiagnosticCollector;
 use reports::{MergedReport, Report};
 use sps2_errors::{BuildError, Error};
-use sps2_events::{AppEvent, GeneralEvent, QaEvent};
+use sps2_events::{
+    events::{QaCheckStatus, QaCheckSummary, QaFinding, QaLevel, QaSeverity, QaTarget},
+    AppEvent, FailureContext, GeneralEvent, QaEvent,
+};
+use sps2_types::BuildSystemProfile;
+use std::convert::TryFrom;
+use std::time::{Duration, Instant};
 use traits::Action;
 
 /// Enum for all validators
@@ -157,6 +163,10 @@ pub async fn run_quality_pipeline(
     env: &BuildEnvironment,
     qa_override: Option<sps2_types::QaPipelineOverride>,
 ) -> Result<(), Error> {
+    let pipeline_start = Instant::now();
+    let mut stats = QaStats::default();
+    let target = qa_target(ctx);
+
     // Determine which pipeline to use based on build systems and override
     let used_build_systems = env.used_build_systems();
     let profile_opt = router::determine_profile_with_override(used_build_systems, qa_override);
@@ -170,43 +180,78 @@ pub async fn run_quality_pipeline(
         return Ok(());
     }
     let profile = profile_opt.unwrap();
-    // ----------------    PHASE1  -----------------
-    let mut pre = run_validators(
+    let qa_level = qa_level_for_profile(profile);
+
+    send_event(
+        ctx,
+        AppEvent::Qa(QaEvent::PipelineStarted {
+            target: target.clone(),
+            level: qa_level,
+        }),
+    );
+
+    // ----------------    PHASE 1  -----------------
+    let mut pre = match run_validators(
         ctx,
         env,
         router::get_validators_for_profile(profile),
         false, // Don't allow early break - run all validators
+        &target,
+        &mut stats,
     )
-    .await?;
+    .await
+    {
+        Ok(report) => report,
+        Err(err) => {
+            emit_pipeline_failed(ctx, &target, &err);
+            return Err(err);
+        }
+    };
 
     // Extract findings from Phase 1 validators to pass to patchers
     let validator_findings = pre.take_findings();
 
-    // ----------------    PHASE 2  -----------------
-    run_patchers(
+    // ----------------    PHASE 2  -----------------
+    if let Err(err) = run_patchers(
         ctx,
         env,
         validator_findings,
         router::get_patchers_for_profile(profile),
+        &target,
+        &mut stats,
     )
-    .await?;
+    .await
+    {
+        emit_pipeline_failed(ctx, &target, &err);
+        return Err(err);
+    }
 
-    // ----------------    PHASE 3  -----------------
-    let post = run_validators(
+    // ----------------    PHASE 3  -----------------
+    let post = match run_validators(
         ctx,
         env,
         router::get_validators_for_profile(profile),
         true, // Allow early break in final validation
+        &target,
+        &mut stats,
     )
-    .await?;
+    .await
+    {
+        Ok(report) => report,
+        Err(err) => {
+            emit_pipeline_failed(ctx, &target, &err);
+            return Err(err);
+        }
+    };
 
     if post.is_fatal() {
-        return Err(BuildError::Failed {
+        let failure_error: Error = BuildError::Failed {
             message: post.render("Relocatability check failed"),
         }
-        .into());
+        .into();
+        emit_pipeline_failed(ctx, &target, &failure_error);
+        return Err(failure_error);
     } else if !pre.is_fatal() && !post.is_fatal() {
-        // Emit a short success note
         send_event(
             ctx,
             AppEvent::General(GeneralEvent::OperationCompleted {
@@ -215,6 +260,23 @@ pub async fn run_quality_pipeline(
             }),
         );
     }
+
+    let duration_ms = u64::try_from(pipeline_start.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let total_checks = stats.total;
+    let failed_checks = stats.failed;
+    let passed_checks = total_checks.saturating_sub(failed_checks);
+
+    send_event(
+        ctx,
+        AppEvent::Qa(QaEvent::PipelineCompleted {
+            target,
+            total_checks,
+            passed: passed_checks,
+            failed: failed_checks,
+            duration_ms,
+        }),
+    );
+
     Ok(())
 }
 
@@ -224,30 +286,23 @@ async fn run_validators(
     env: &BuildEnvironment,
     actions: Vec<ValidatorAction>,
     allow_early_break: bool,
+    target: &QaTarget,
+    stats: &mut QaStats,
 ) -> Result<MergedReport, Error> {
     let mut merged = MergedReport::default();
 
     for action in &actions {
         let action_name = action.name();
-        send_event(
-            ctx,
-            AppEvent::Qa(QaEvent::CheckStarted {
-                check_type: "validator".to_string(),
-                check_name: action_name.to_string(),
-            }),
-        );
+        let check_start = Instant::now();
         let rep = action.run(ctx, env, None).await?;
-        send_event(
+        emit_qa_check(
             ctx,
-            AppEvent::Qa(QaEvent::CheckCompleted {
-                check_type: "validator".to_string(),
-                check_name: action_name.to_string(),
-                findings_count: rep
-                    .findings
-                    .as_ref()
-                    .map_or(0, diagnostics::DiagnosticCollector::count),
-                severity_counts: std::collections::HashMap::new(),
-            }),
+            target,
+            "validator",
+            action_name,
+            &rep,
+            check_start.elapsed(),
+            stats,
         );
         merged.absorb(rep);
         if allow_early_break && merged.is_fatal() {
@@ -263,30 +318,23 @@ async fn run_patchers(
     env: &BuildEnvironment,
     validator_findings: Option<DiagnosticCollector>,
     actions: Vec<PatcherAction>,
+    target: &QaTarget,
+    stats: &mut QaStats,
 ) -> Result<MergedReport, Error> {
     let mut merged = MergedReport::default();
 
     for action in &actions {
         let action_name = action.name();
-        send_event(
-            ctx,
-            AppEvent::Qa(QaEvent::CheckStarted {
-                check_type: "patcher".to_string(),
-                check_name: action_name.to_string(),
-            }),
-        );
+        let check_start = Instant::now();
         let rep = action.run(ctx, env, validator_findings.as_ref()).await?;
-        send_event(
+        emit_qa_check(
             ctx,
-            AppEvent::Qa(QaEvent::CheckCompleted {
-                check_type: "patcher".to_string(),
-                check_name: action_name.to_string(),
-                findings_count: rep
-                    .findings
-                    .as_ref()
-                    .map_or(0, diagnostics::DiagnosticCollector::count),
-                severity_counts: std::collections::HashMap::new(),
-            }),
+            target,
+            "patcher",
+            action_name,
+            &rep,
+            check_start.elapsed(),
+            stats,
         );
         merged.absorb(rep);
         if merged.is_fatal() {
@@ -294,4 +342,112 @@ async fn run_patchers(
         }
     }
     Ok(merged)
+}
+#[derive(Default)]
+struct QaStats {
+    total: usize,
+    failed: usize,
+}
+
+fn qa_target(ctx: &BuildContext) -> QaTarget {
+    QaTarget {
+        package: ctx.name.clone(),
+        version: ctx.version.clone(),
+    }
+}
+
+fn qa_level_for_profile(profile: BuildSystemProfile) -> QaLevel {
+    match profile {
+        BuildSystemProfile::NativeFull => QaLevel::Strict,
+        BuildSystemProfile::GoMedium => QaLevel::Standard,
+        BuildSystemProfile::ScriptLight | BuildSystemProfile::RustMinimal => QaLevel::Fast,
+    }
+}
+
+fn qa_findings_from_report(report: &Report) -> Vec<QaFinding> {
+    let mut findings = Vec::new();
+
+    for message in &report.errors {
+        findings.push(QaFinding {
+            severity: QaSeverity::Error,
+            message: message.clone(),
+            file: None,
+            line: None,
+        });
+    }
+
+    for message in &report.warnings {
+        findings.push(QaFinding {
+            severity: QaSeverity::Warning,
+            message: message.clone(),
+            file: None,
+            line: None,
+        });
+    }
+
+    if let Some(diags) = &report.findings {
+        for finding in diags.findings() {
+            findings.push(QaFinding {
+                severity: QaSeverity::Warning,
+                message: finding.issue_type.description(),
+                file: Some(finding.file_path.clone()),
+                line: None,
+            });
+        }
+    }
+
+    findings
+}
+
+fn build_check_summary(
+    category: &str,
+    name: &str,
+    report: &Report,
+    duration: Duration,
+) -> QaCheckSummary {
+    QaCheckSummary {
+        name: name.to_string(),
+        category: category.to_string(),
+        status: if report.is_fatal() {
+            QaCheckStatus::Failed
+        } else {
+            QaCheckStatus::Passed
+        },
+        duration_ms: Some(u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)),
+        findings: qa_findings_from_report(report),
+    }
+}
+
+fn emit_qa_check(
+    ctx: &BuildContext,
+    target: &QaTarget,
+    category: &str,
+    action_name: &str,
+    report: &Report,
+    duration: Duration,
+    stats: &mut QaStats,
+) {
+    let summary = build_check_summary(category, action_name, report, duration);
+    stats.total += 1;
+    if matches!(summary.status, QaCheckStatus::Failed) {
+        stats.failed += 1;
+    }
+
+    send_event(
+        ctx,
+        AppEvent::Qa(QaEvent::CheckEvaluated {
+            target: target.clone(),
+            summary,
+        }),
+    );
+}
+
+fn emit_pipeline_failed(ctx: &BuildContext, target: &QaTarget, error: &Error) {
+    send_event(
+        ctx,
+        AppEvent::Qa(QaEvent::PipelineFailed {
+            target: target.clone(),
+            failure: FailureContext::from_error(error),
+        }),
+    );
 }

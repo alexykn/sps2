@@ -7,7 +7,9 @@ use crate::types::{
 };
 use crate::verification;
 use sps2_errors::Error;
-use sps2_events::{AppEvent, EventEmitter, EventSender, GuardEvent};
+use sps2_events::{
+    AppEvent, EventEmitter, EventSender, FailureContext, GuardEvent, GuardHealingPlan, GuardScope,
+};
 use sps2_hash::Hash;
 use sps2_state::{queries, PackageFileEntry, StateManager};
 use sps2_store::PackageStore;
@@ -400,37 +402,40 @@ impl StateVerificationGuard {
 
         // Note: verify_packages_parallel handles orphan detection internally
         // when verification level is not Quick
-        let result = self
+        match self
             .verify_packages_parallel(&packages, &VerificationScope::Full)
-            .await;
-
-        // Emit completion or failure events
-        match &result {
+            .await
+        {
             Ok(verification_result) => {
-                error_ctx.record_verification_result(verification_result);
                 let coverage_percent = verification_result
                     .coverage
                     .as_ref()
                     .map(|c| c.package_coverage_percent)
                     .unwrap_or(100.0);
+                error_ctx.record_verification_result(&verification_result);
                 error_ctx.emit_operation_completed(
                     verification_result.cache_hit_rate,
                     coverage_percent,
                     "system verification",
                 );
                 error_ctx.emit_error_summary();
+                Ok(verification_result)
             }
-            Err(_) => {
+            Err(error) => {
+                let scope = error_ctx
+                    .scope()
+                    .cloned()
+                    .unwrap_or_else(|| GuardScope::Custom {
+                        description: "system".to_string(),
+                    });
                 self.emit(AppEvent::Guard(GuardEvent::VerificationFailed {
-                    retryable: false,
-                    packages_verified: 0,
-                    files_verified: 0,
-                    duration_ms: 0,
+                    operation_id: error_ctx.operation_id().to_string(),
+                    scope,
+                    failure: FailureContext::from_error(&error),
                 }));
+                Err(error)
             }
         }
-
-        result
     }
 
     /// Verify current state with specific scope without healing
@@ -541,10 +546,13 @@ impl StateVerificationGuard {
             verification_result.discrepancies.len() - auto_heal_count - confirmation_required;
 
         self.emit(AppEvent::Guard(GuardEvent::HealingStarted {
-            discrepancies_count: verification_result.discrepancies.len(),
-            auto_heal_count,
-            confirmation_required_count: confirmation_required,
-            manual_intervention_count,
+            operation_id: healing_ctx_events.operation_id().to_string(),
+            plan: GuardHealingPlan {
+                total: verification_result.discrepancies.len(),
+                auto_heal: auto_heal_count,
+                confirmation_required,
+                manual_only: manual_intervention_count,
+            },
         }));
 
         // Create healing context
@@ -673,9 +681,9 @@ impl StateVerificationGuard {
 
         // Emit healing completion event
         self.emit(AppEvent::Guard(GuardEvent::HealingCompleted {
-            healed_count,
-            failed_count: failed_healings.len(),
-            skipped_count: 0,
+            operation_id: healing_ctx_events.operation_id().to_string(),
+            healed: healed_count,
+            failed: failed_healings.len(),
             duration_ms,
         }));
 
@@ -762,10 +770,13 @@ impl StateVerificationGuard {
             verification_result.discrepancies.len() - auto_heal_count - confirmation_required;
 
         self.emit(AppEvent::Guard(GuardEvent::HealingStarted {
-            discrepancies_count: verification_result.discrepancies.len(),
-            auto_heal_count,
-            confirmation_required_count: confirmation_required,
-            manual_intervention_count,
+            operation_id: healing_ctx_events.operation_id().to_string(),
+            plan: GuardHealingPlan {
+                total: verification_result.discrepancies.len(),
+                auto_heal: auto_heal_count,
+                confirmation_required,
+                manual_only: manual_intervention_count,
+            },
         }));
 
         // Create healing context
@@ -884,7 +895,13 @@ impl StateVerificationGuard {
         let duration_ms = u64::try_from(start_time.elapsed().as_millis()).unwrap_or(u64::MAX);
         verification_result.duration_ms = duration_ms;
 
-        // Emit healing complete event
+        self.emit(AppEvent::Guard(GuardEvent::HealingCompleted {
+            operation_id: healing_ctx_events.operation_id().to_string(),
+            healed: healed_count,
+            failed: verification_result.discrepancies.len(),
+            duration_ms,
+        }));
+
         self.emit_debug(format!(
             "Scoped healing completed: {} healed, {} failed in {}ms",
             healed_count,

@@ -1,72 +1,65 @@
 use serde::{Deserialize, Serialize};
 
-/// Package operation events surfaced by ops/CLI
+use super::FailureContext;
+
+/// Named package operations surfaced to consumers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum PackageEvent {
-    /// List operation starting
-    ListStarting,
+#[serde(rename_all = "snake_case")]
+pub enum PackageOperation {
+    List,
+    Search,
+    HealthCheck,
+    SelfUpdate,
+    Cleanup,
+}
 
-    /// List operation completed
-    ListCompleted { count: usize },
-
-    /// Search operation starting
-    SearchStarting { query: String },
-
-    /// Search operation completed
-    SearchCompleted { query: String, count: usize },
-
-    /// Health check starting
-    HealthCheckStarting,
-
-    /// Health check completed
-    HealthCheckCompleted { healthy: bool, issues: Vec<String> },
-
-    /// Self-update starting
-    SelfUpdateStarting,
-
-    /// Self-update checking version
-    SelfUpdateCheckingVersion { current_version: String },
-
-    /// Self-update version available
-    SelfUpdateVersionAvailable {
-        current_version: String,
-        latest_version: String,
+/// Outcome payloads for completed operations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PackageOutcome {
+    List {
+        total: usize,
     },
-
-    /// Self-update already latest
-    SelfUpdateAlreadyLatest { version: String },
-
-    /// Self-update downloading
-    SelfUpdateDownloading { version: String, url: String },
-
-    /// Self-update verifying
-    SelfUpdateVerifying { version: String },
-
-    /// Self-update installing
-    SelfUpdateInstalling { version: String },
-
-    /// Self-update completed
-    SelfUpdateCompleted {
-        old_version: String,
-        new_version: String,
+    Search {
+        query: String,
+        total: usize,
+    },
+    Health {
+        healthy: bool,
+        issues: Vec<String>,
+    },
+    SelfUpdate {
+        from: String,
+        to: String,
         duration_ms: u64,
     },
-
-    /// Cleanup starting
-    CleanupStarting,
-
-    /// Cleanup completed
-    CleanupCompleted {
+    Cleanup {
         states_removed: usize,
         packages_removed: usize,
         duration_ms: u64,
     },
 }
 
-/// Health status for components used by health reports
+/// Package-level events consumed by CLI/log handlers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum PackageEvent {
+    OperationStarted {
+        operation: PackageOperation,
+    },
+    OperationCompleted {
+        operation: PackageOperation,
+        outcome: PackageOutcome,
+    },
+    OperationFailed {
+        operation: PackageOperation,
+        failure: FailureContext,
+    },
+}
+
+/// Health status indicator for health checks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum HealthStatus {
     Healthy,
     Warning,

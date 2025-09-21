@@ -5,12 +5,18 @@
 
 use async_trait::async_trait;
 use sps2_errors::PlatformError;
-use sps2_events::{events::PlatformEvent, AppEvent};
-use std::collections::HashMap;
+use sps2_events::{
+    events::{
+        FailureContext, PlatformEvent, PlatformOperationContext, PlatformOperationKind,
+        PlatformOperationMetrics,
+    },
+    AppEvent,
+};
+
 use std::ffi::CString;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::fs;
 
 use crate::core::PlatformContext;
@@ -52,6 +58,76 @@ impl Default for MacOSFilesystemOperations {
     }
 }
 
+fn filesystem_context(
+    operation: &str,
+    source: Option<&Path>,
+    target: &Path,
+) -> PlatformOperationContext {
+    PlatformOperationContext {
+        kind: PlatformOperationKind::Filesystem,
+        operation: operation.to_string(),
+        target: Some(target.to_path_buf()),
+        source: source.map(Path::to_path_buf),
+        command: None,
+    }
+}
+
+fn filesystem_metrics(
+    duration: Duration,
+    changes: Option<Vec<String>>,
+) -> PlatformOperationMetrics {
+    PlatformOperationMetrics {
+        duration_ms: Some(u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)),
+        exit_code: None,
+        stdout_bytes: None,
+        stderr_bytes: None,
+        changes,
+    }
+}
+
+async fn emit_fs_started(
+    ctx: &PlatformContext,
+    operation: &str,
+    source: Option<&Path>,
+    target: &Path,
+) {
+    ctx.emit_event(AppEvent::Platform(PlatformEvent::OperationStarted {
+        context: filesystem_context(operation, source, target),
+    }))
+    .await;
+}
+
+async fn emit_fs_completed(
+    ctx: &PlatformContext,
+    operation: &str,
+    source: Option<&Path>,
+    target: &Path,
+    changes: Option<Vec<String>>,
+    duration: Duration,
+) {
+    ctx.emit_event(AppEvent::Platform(PlatformEvent::OperationCompleted {
+        context: filesystem_context(operation, source, target),
+        metrics: Some(filesystem_metrics(duration, changes)),
+    }))
+    .await;
+}
+
+async fn emit_fs_failed(
+    ctx: &PlatformContext,
+    operation: &str,
+    source: Option<&Path>,
+    target: &Path,
+    error: &PlatformError,
+    duration: Duration,
+) {
+    ctx.emit_event(AppEvent::Platform(PlatformEvent::OperationFailed {
+        context: filesystem_context(operation, source, target),
+        failure: FailureContext::from_error(error),
+        metrics: Some(filesystem_metrics(duration, None)),
+    }))
+    .await;
+}
+
 #[async_trait]
 impl FilesystemOperations for MacOSFilesystemOperations {
     async fn clone_file(
@@ -61,19 +137,7 @@ impl FilesystemOperations for MacOSFilesystemOperations {
         dst: &Path,
     ) -> Result<(), PlatformError> {
         let start = Instant::now();
-        let src_path = src.to_string_lossy().to_string();
-        let dst_path = dst.to_string_lossy().to_string();
-
-        // Emit operation started event
-        ctx.emit_event(AppEvent::Platform(
-            PlatformEvent::FilesystemOperationStarted {
-                operation: "clone_file".to_string(),
-                source_path: Some(src_path.clone()),
-                target_path: dst_path.clone(),
-                context: std::collections::HashMap::new(),
-            },
-        ))
-        .await;
+        emit_fs_started(ctx, "clone_file", Some(src), dst).await;
 
         // Use the proven APFS clonefile implementation from root crate
         let result = async {
@@ -130,25 +194,18 @@ impl FilesystemOperations for MacOSFilesystemOperations {
         // Emit completion event
         match &result {
             Ok(_) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::FilesystemOperationCompleted {
-                        operation: "clone_file".to_string(),
-                        paths_affected: vec![src_path, dst_path],
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
+                emit_fs_completed(
+                    ctx,
+                    "clone_file",
+                    Some(src),
+                    dst,
+                    Some(vec![format!("{} -> {}", src.display(), dst.display())]),
+                    duration,
+                )
                 .await;
             }
             Err(e) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::FilesystemOperationFailed {
-                        operation: "clone_file".to_string(),
-                        paths_involved: vec![src_path, dst_path],
-                        error_message: e.to_string(),
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
-                .await;
+                emit_fs_failed(ctx, "clone_file", Some(src), dst, e, duration).await;
             }
         }
 
@@ -162,19 +219,7 @@ impl FilesystemOperations for MacOSFilesystemOperations {
         dst: &Path,
     ) -> Result<(), PlatformError> {
         let start = Instant::now();
-        let src_path = src.to_string_lossy().to_string();
-        let dst_path = dst.to_string_lossy().to_string();
-
-        // Emit operation started event
-        ctx.emit_event(AppEvent::Platform(
-            PlatformEvent::FilesystemOperationStarted {
-                operation: "clone_directory".to_string(),
-                source_path: Some(src_path.clone()),
-                target_path: dst_path.clone(),
-                context: std::collections::HashMap::new(),
-            },
-        ))
-        .await;
+        emit_fs_started(ctx, "clone_directory", Some(src), dst).await;
 
         // Use the same clonefile implementation as clone_file since APFS clonefile handles directories
         let result = async {
@@ -231,25 +276,10 @@ impl FilesystemOperations for MacOSFilesystemOperations {
         // Emit completion event
         match &result {
             Ok(_) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::FilesystemOperationCompleted {
-                        operation: "clone_directory".to_string(),
-                        paths_affected: vec![src_path, dst_path],
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
-                .await;
+                emit_fs_completed(ctx, "clone_directory", Some(src), dst, None, duration).await;
             }
             Err(e) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::FilesystemOperationFailed {
-                        operation: "clone_directory".to_string(),
-                        paths_involved: vec![src_path, dst_path],
-                        error_message: e.to_string(),
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
-                .await;
+                emit_fs_failed(ctx, "clone_directory", Some(src), dst, e, duration).await;
             }
         }
 
@@ -263,19 +293,7 @@ impl FilesystemOperations for MacOSFilesystemOperations {
         dst: &Path,
     ) -> Result<(), PlatformError> {
         let start = Instant::now();
-        let src_path = src.to_string_lossy().to_string();
-        let dst_path = dst.to_string_lossy().to_string();
-
-        // Emit operation started event
-        ctx.emit_event(AppEvent::Platform(
-            PlatformEvent::FilesystemOperationStarted {
-                operation: "atomic_rename".to_string(),
-                source_path: Some(src_path.clone()),
-                target_path: dst_path.clone(),
-                context: std::collections::HashMap::new(),
-            },
-        ))
-        .await;
+        emit_fs_started(ctx, "atomic_rename", Some(src), dst).await;
 
         // Use the proven atomic rename implementation from root crate
         let result = async {
@@ -350,25 +368,10 @@ impl FilesystemOperations for MacOSFilesystemOperations {
         // Emit completion event
         match &result {
             Ok(_) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::FilesystemOperationCompleted {
-                        operation: "atomic_rename".to_string(),
-                        paths_affected: vec![src_path, dst_path],
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
-                .await;
+                emit_fs_completed(ctx, "atomic_rename", Some(src), dst, None, duration).await;
             }
             Err(e) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::FilesystemOperationFailed {
-                        operation: "atomic_rename".to_string(),
-                        paths_involved: vec![src_path, dst_path],
-                        error_message: e.to_string(),
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
-                .await;
+                emit_fs_failed(ctx, "atomic_rename", Some(src), dst, e, duration).await;
             }
         }
 
@@ -382,19 +385,7 @@ impl FilesystemOperations for MacOSFilesystemOperations {
         path_b: &Path,
     ) -> Result<(), PlatformError> {
         let start = Instant::now();
-        let path_a_str = path_a.to_string_lossy().to_string();
-        let path_b_str = path_b.to_string_lossy().to_string();
-
-        // Emit operation started event
-        ctx.emit_event(AppEvent::Platform(
-            PlatformEvent::FilesystemOperationStarted {
-                operation: "atomic_swap".to_string(),
-                source_path: Some(path_a_str.clone()),
-                target_path: path_b_str.clone(),
-                context: std::collections::HashMap::new(),
-            },
-        ))
-        .await;
+        emit_fs_started(ctx, "atomic_swap", Some(path_a), path_b).await;
 
         // Use the proven atomic swap implementation from root crate
         let result = async {
@@ -493,25 +484,10 @@ impl FilesystemOperations for MacOSFilesystemOperations {
         // Emit completion event
         match &result {
             Ok(_) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::FilesystemOperationCompleted {
-                        operation: "atomic_swap".to_string(),
-                        paths_affected: vec![path_a_str, path_b_str],
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
-                .await;
+                emit_fs_completed(ctx, "atomic_swap", Some(path_a), path_b, None, duration).await;
             }
             Err(e) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::FilesystemOperationFailed {
-                        operation: "atomic_swap".to_string(),
-                        paths_involved: vec![path_a_str, path_b_str],
-                        error_message: e.to_string(),
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
-                .await;
+                emit_fs_failed(ctx, "atomic_swap", Some(path_a), path_b, e, duration).await;
             }
         }
 
@@ -525,19 +501,7 @@ impl FilesystemOperations for MacOSFilesystemOperations {
         dst: &Path,
     ) -> Result<(), PlatformError> {
         let start = Instant::now();
-        let src_path = src.to_string_lossy().to_string();
-        let dst_path = dst.to_string_lossy().to_string();
-
-        // Emit operation started event
-        ctx.emit_event(AppEvent::Platform(
-            PlatformEvent::FilesystemOperationStarted {
-                operation: "hard_link".to_string(),
-                source_path: Some(src_path.clone()),
-                target_path: dst_path.clone(),
-                context: std::collections::HashMap::new(),
-            },
-        ))
-        .await;
+        emit_fs_started(ctx, "hard_link", Some(src), dst).await;
 
         // Use the proven hard link implementation from root crate
         let result = async {
@@ -595,25 +559,10 @@ impl FilesystemOperations for MacOSFilesystemOperations {
         // Emit completion event
         match &result {
             Ok(_) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::FilesystemOperationCompleted {
-                        operation: "hard_link".to_string(),
-                        paths_affected: vec![src_path, dst_path],
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
-                .await;
+                emit_fs_completed(ctx, "hard_link", Some(src), dst, None, duration).await;
             }
             Err(e) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::FilesystemOperationFailed {
-                        operation: "hard_link".to_string(),
-                        paths_involved: vec![src_path, dst_path],
-                        error_message: e.to_string(),
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
-                .await;
+                emit_fs_failed(ctx, "hard_link", Some(src), dst, e, duration).await;
             }
         }
 
@@ -626,18 +575,7 @@ impl FilesystemOperations for MacOSFilesystemOperations {
         path: &Path,
     ) -> Result<(), PlatformError> {
         let start = Instant::now();
-        let path_str = path.to_string_lossy().to_string();
-
-        // Emit operation started event
-        ctx.emit_event(AppEvent::Platform(
-            PlatformEvent::FilesystemOperationStarted {
-                operation: "create_dir_all".to_string(),
-                source_path: None,
-                target_path: path_str.clone(),
-                context: std::collections::HashMap::new(),
-            },
-        ))
-        .await;
+        emit_fs_started(ctx, "create_dir_all", None, path).await;
 
         // Use standard tokio::fs implementation
         let result =
@@ -653,25 +591,10 @@ impl FilesystemOperations for MacOSFilesystemOperations {
         // Emit completion event
         match &result {
             Ok(_) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::FilesystemOperationCompleted {
-                        operation: "create_dir_all".to_string(),
-                        paths_affected: vec![path_str],
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
-                .await;
+                emit_fs_completed(ctx, "create_dir_all", None, path, None, duration).await;
             }
             Err(e) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::FilesystemOperationFailed {
-                        operation: "create_dir_all".to_string(),
-                        paths_involved: vec![path_str],
-                        error_message: e.to_string(),
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
-                .await;
+                emit_fs_failed(ctx, "create_dir_all", None, path, e, duration).await;
             }
         }
 
@@ -684,18 +607,7 @@ impl FilesystemOperations for MacOSFilesystemOperations {
         path: &Path,
     ) -> Result<(), PlatformError> {
         let start = Instant::now();
-        let path_str = path.to_string_lossy().to_string();
-
-        // Emit operation started event
-        ctx.emit_event(AppEvent::Platform(
-            PlatformEvent::FilesystemOperationStarted {
-                operation: "remove_dir_all".to_string(),
-                source_path: None,
-                target_path: path_str.clone(),
-                context: std::collections::HashMap::new(),
-            },
-        ))
-        .await;
+        emit_fs_started(ctx, "remove_dir_all", None, path).await;
 
         // Use standard tokio::fs implementation
         let result =
@@ -711,25 +623,10 @@ impl FilesystemOperations for MacOSFilesystemOperations {
         // Emit completion event
         match &result {
             Ok(_) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::FilesystemOperationCompleted {
-                        operation: "remove_dir_all".to_string(),
-                        paths_affected: vec![path_str],
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
-                .await;
+                emit_fs_completed(ctx, "remove_dir_all", None, path, None, duration).await;
             }
             Err(e) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::FilesystemOperationFailed {
-                        operation: "remove_dir_all".to_string(),
-                        paths_involved: vec![path_str],
-                        error_message: e.to_string(),
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
-                .await;
+                emit_fs_failed(ctx, "remove_dir_all", None, path, e, duration).await;
             }
         }
 
@@ -744,17 +641,7 @@ impl FilesystemOperations for MacOSFilesystemOperations {
     /// Remove a single file
     async fn remove_file(&self, ctx: &PlatformContext, path: &Path) -> Result<(), PlatformError> {
         let start = Instant::now();
-        let path_str = path.display().to_string();
-
-        ctx.emit_event(AppEvent::Platform(
-            PlatformEvent::FilesystemOperationStarted {
-                operation: "remove_file".to_string(),
-                source_path: None,
-                target_path: path_str.clone(),
-                context: HashMap::new(),
-            },
-        ))
-        .await;
+        emit_fs_started(ctx, "remove_file", None, path).await;
 
         let result = tokio::fs::remove_file(path).await.map_err(|e| {
             PlatformError::FilesystemOperationFailed {
@@ -767,25 +654,10 @@ impl FilesystemOperations for MacOSFilesystemOperations {
 
         match &result {
             Ok(_) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::FilesystemOperationCompleted {
-                        operation: "remove_file".to_string(),
-                        paths_affected: vec![path_str],
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
-                .await;
+                emit_fs_completed(ctx, "remove_file", None, path, None, duration).await;
             }
             Err(e) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::FilesystemOperationFailed {
-                        operation: "remove_file".to_string(),
-                        paths_involved: vec![path_str],
-                        error_message: e.to_string(),
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
-                .await;
+                emit_fs_failed(ctx, "remove_file", None, path, e, duration).await;
             }
         }
 
@@ -795,17 +667,7 @@ impl FilesystemOperations for MacOSFilesystemOperations {
     /// Get the size of a file or directory
     async fn size(&self, ctx: &PlatformContext, path: &Path) -> Result<u64, PlatformError> {
         let start = Instant::now();
-        let path_str = path.display().to_string();
-
-        ctx.emit_event(AppEvent::Platform(
-            PlatformEvent::FilesystemOperationStarted {
-                operation: "size".to_string(),
-                source_path: None,
-                target_path: path_str.clone(),
-                context: HashMap::new(),
-            },
-        ))
-        .await;
+        emit_fs_started(ctx, "size", None, path).await;
 
         let result =
             self.calculate_size(path)
@@ -819,25 +681,10 @@ impl FilesystemOperations for MacOSFilesystemOperations {
 
         match &result {
             Ok(_) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::FilesystemOperationCompleted {
-                        operation: "size".to_string(),
-                        paths_affected: vec![path_str],
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
-                .await;
+                emit_fs_completed(ctx, "size", None, path, None, duration).await;
             }
             Err(e) => {
-                ctx.emit_event(AppEvent::Platform(
-                    PlatformEvent::FilesystemOperationFailed {
-                        operation: "size".to_string(),
-                        paths_involved: vec![path_str],
-                        error_message: e.to_string(),
-                        duration_ms: duration.as_millis() as u64,
-                    },
-                ))
-                .await;
+                emit_fs_failed(ctx, "size", None, path, e, duration).await;
             }
         }
 

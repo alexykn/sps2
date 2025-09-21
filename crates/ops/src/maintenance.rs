@@ -2,7 +2,12 @@
 
 use crate::{ChangeType, OpChange, OpsCtx, StateInfo};
 use sps2_errors::{Error, OpsError};
-use sps2_events::{AppEvent, EventEmitter, GeneralEvent, PackageEvent, StateEvent};
+use sps2_events::{
+    events::{PackageOperation, PackageOutcome},
+    AppEvent, EventEmitter, GeneralEvent, PackageEvent, RollbackContext, RollbackSummary,
+    StateEvent,
+};
+use std::convert::TryFrom;
 use std::time::Instant;
 
 async fn compute_kept_states(
@@ -175,7 +180,9 @@ use uuid::Uuid;
 /// Returns an error if cleanup operation fails.
 pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
     let start = Instant::now();
-    ctx.emit(AppEvent::Package(PackageEvent::CleanupStarting));
+    ctx.emit(AppEvent::Package(PackageEvent::OperationStarted {
+        operation: PackageOperation::Cleanup,
+    }));
 
     // Legacy snapshots and orphaned stagings
     let cleanup_result = ctx
@@ -240,10 +247,13 @@ pub async fn cleanup(ctx: &OpsCtx) -> Result<String, Error> {
         )
     };
 
-    ctx.emit(AppEvent::Package(PackageEvent::CleanupCompleted {
-        states_removed: cleanup_result.states_removed,
-        packages_removed: packages_evicted,
-        duration_ms: duration,
+    ctx.emit(AppEvent::Package(PackageEvent::OperationCompleted {
+        operation: PackageOperation::Cleanup,
+        outcome: PackageOutcome::Cleanup {
+            states_removed: cleanup_result.states_removed,
+            packages_removed: packages_evicted,
+            duration_ms: duration,
+        },
     }));
 
     if let Err(e) = update_gc_timestamp().await {
@@ -285,8 +295,10 @@ pub async fn rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<StateI
     };
 
     ctx.emit(AppEvent::State(StateEvent::RollbackStarted {
-        from: current_before,
-        to: target_id,
+        context: RollbackContext {
+            from: current_before,
+            to: target_id,
+        },
     }));
 
     // Verify target state exists in database
@@ -312,10 +324,17 @@ pub async fn rollback(ctx: &OpsCtx, target_state: Option<Uuid>) -> Result<StateI
     // Get state information with pre-calculated changes
     let state_info = get_rollback_state_info_with_changes(ctx, target_id, rollback_changes).await?;
 
-    ctx.tx.emit(AppEvent::State(StateEvent::RollbackCompleted {
+    let summary = RollbackSummary {
+        duration_ms: Some(u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX)),
+    };
+    let context = RollbackContext {
         from: current_before,
         to: target_id,
-        duration: Some(start.elapsed()),
+    };
+
+    ctx.tx.emit(AppEvent::State(StateEvent::RollbackCompleted {
+        context,
+        summary: Some(summary),
     }));
 
     Ok(state_info)
