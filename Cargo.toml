@@ -50,9 +50,9 @@ sqlx = { version = "0.8.6", features = [
 reqwest = { version = "0.12.23", features = ["json", "stream"] }
 
 # Serialization
-serde = { version = "1.0.224", features = ["derive"] }
+serde = { version = "1.0.226", features = ["derive"] }
 serde_json = "1.0.145"
-toml = "0.9.6"
+toml = "0.9.7"
 
 # Error handl2.0.12
 thiserror = "2.0.16"
@@ -70,10 +70,10 @@ minisign-verify = "0.2.4"
 dashmap = "6.1.0"
 crossbeam = "0.8.4"
 
-clap = { version = "4.5.47", features = ["derive", "env"] }
+clap = { version = "4.5.48", features = ["derive", "env"] }
 
 tar = "0.4.44"
 
 tempfile = "3.22.0"
-proptest = "1.7.0"
+proptest = "1.8.0"
 futures = "0.3.31"

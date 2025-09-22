@@ -34,7 +34,7 @@ minisign-verify = "0.2.4"
 hex = "0.4.3"
 walkdir = "2.5.0"
 sps2-signing = { path = "../signing" }
-toml = "0.9.6"
+toml = "0.9.7"
 base64 = "0.22.1"
 dialoguer = "0.12.0"
 
