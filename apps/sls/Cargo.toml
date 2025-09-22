@@ -8,7 +8,7 @@ sps2-hash = { path = "../../crates/hash" }
 sps2-state = { path = "../../crates/state" }
 sps2-config = { path = "../../crates/config" }
 
-clap = { version = "4.5.47", features = ["derive"] }
+clap = { version = "4.5.48", features = ["derive"] }
 tokio = { version = "1.47.1", features = ["full"] }
 chrono = "0.4.42"
 sqlx = { version = "0.8.6", features = ["runtime-tokio", "sqlite"] }
