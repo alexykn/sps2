@@ -1,6 +1,6 @@
 //! Atomic installer implementation using APFS optimizations
 
-use crate::atomic::transition::StateTransition;
+use crate::atomic::transition::{StagingCreation, StagingMode, StateTransition};
 use std::sync::Arc;
 // Removed Python venv handling - Python packages are now handled like regular packages
 use crate::{InstallContext, InstallResult, PreparedPackage, StagingManager};
@@ -9,6 +9,7 @@ use sps2_events::events::{StateTransitionContext, TransitionSummary};
 use sps2_events::{
     AppEvent, EventEmitter, EventSender, FailureContext, GeneralEvent, StateEvent, UninstallEvent,
 };
+use sps2_hash::Hash;
 use sps2_platform::{core::PlatformContext, PlatformManager};
 
 use sps2_resolver::{PackageId, ResolvedNode};
@@ -59,55 +60,108 @@ impl AtomicInstaller {
         (platform, context)
     }
 
+    async fn populate_legacy_file_entries(
+        &self,
+        transition: &mut StateTransition,
+        parent_id: &Uuid,
+        package: &sps2_state::models::Package,
+    ) -> Result<(), Error> {
+        let mut tx = self.state_manager.begin_transaction().await?;
+        let file_paths = sps2_state::queries::get_package_files(
+            &mut tx,
+            parent_id,
+            &package.name,
+            &package.version,
+        )
+        .await?;
+        tx.commit().await?;
+
+        for file_path in file_paths {
+            let staging_file = transition.staging_path.join(&file_path);
+            let is_directory = staging_file.is_dir();
+            transition.package_files.push((
+                package.name.clone(),
+                package.version.clone(),
+                file_path,
+                is_directory,
+            ));
+        }
+
+        Ok(())
+    }
+
     /// Create staging directory using platform abstraction
     async fn create_staging_directory(
         &self,
         live_path: &Path,
         staging_path: &Path,
-    ) -> Result<(), Error> {
+        allow_clone: bool,
+    ) -> Result<StagingCreation, Error> {
         let (platform, ctx) = self.create_platform_context();
-
-        if platform.filesystem().exists(&ctx, live_path).await {
-            // Live directory exists - clone it to staging
-
-            // Ensure parent directory exists for staging path
-            if let Some(parent) = staging_path.parent() {
-                platform
-                    .filesystem()
-                    .create_dir_all(&ctx, parent)
-                    .await
-                    .map_err(|e| InstallError::FilesystemError {
-                        operation: "create_dir_all".to_string(),
-                        path: parent.display().to_string(),
-                        message: e.to_string(),
-                    })?;
-            }
-
-            // Remove existing staging directory if it exists (required for APFS clonefile)
-            if platform.filesystem().exists(&ctx, staging_path).await {
-                platform
-                    .filesystem()
-                    .remove_dir_all(&ctx, staging_path)
-                    .await
-                    .map_err(|e| InstallError::FilesystemError {
-                        operation: "remove_dir_all".to_string(),
-                        path: staging_path.display().to_string(),
-                        message: e.to_string(),
-                    })?;
-            }
-
-            // Clone the live directory to staging using APFS clonefile
+        // Ensure parent directory exists for staging path
+        if let Some(parent) = staging_path.parent() {
             platform
+                .filesystem()
+                .create_dir_all(&ctx, parent)
+                .await
+                .map_err(|e| InstallError::FilesystemError {
+                    operation: "create_dir_all".to_string(),
+                    path: parent.display().to_string(),
+                    message: e.to_string(),
+                })?;
+        }
+
+        if platform.filesystem().exists(&ctx, staging_path).await {
+            platform
+                .filesystem()
+                .remove_dir_all(&ctx, staging_path)
+                .await
+                .map_err(|e| InstallError::FilesystemError {
+                    operation: "remove_dir_all".to_string(),
+                    path: staging_path.display().to_string(),
+                    message: e.to_string(),
+                })?;
+        }
+
+        let live_exists = platform.filesystem().exists(&ctx, live_path).await;
+
+        if allow_clone && live_exists {
+            match platform
                 .filesystem()
                 .clone_directory(&ctx, live_path, staging_path)
                 .await
-                .map_err(|e| InstallError::FilesystemError {
-                    operation: "clone_directory".to_string(),
-                    path: format!("{} -> {}", live_path.display(), staging_path.display()),
-                    message: e.to_string(),
-                })?;
+            {
+                Ok(()) => {
+                    return Ok(StagingCreation {
+                        mode: StagingMode::Cloned,
+                        clone_attempted: true,
+                        clone_error: None,
+                    });
+                }
+                Err(e) => {
+                    // Fallback to fresh staging if clone fails
+                    let _ = platform
+                        .filesystem()
+                        .remove_dir_all(&ctx, staging_path)
+                        .await;
+                    platform
+                        .filesystem()
+                        .create_dir_all(&ctx, staging_path)
+                        .await
+                        .map_err(|err| InstallError::FilesystemError {
+                            operation: "create_dir_all".to_string(),
+                            path: staging_path.display().to_string(),
+                            message: err.to_string(),
+                        })?;
+
+                    return Ok(StagingCreation {
+                        mode: StagingMode::Fresh,
+                        clone_attempted: true,
+                        clone_error: Some(e.to_string()),
+                    });
+                }
+            }
         } else {
-            // No live directory exists - create empty staging directory for fresh installation
             platform
                 .filesystem()
                 .create_dir_all(&ctx, staging_path)
@@ -119,7 +173,11 @@ impl AtomicInstaller {
                 })?;
         }
 
-        Ok(())
+        Ok(StagingCreation {
+            mode: StagingMode::Fresh,
+            clone_attempted: allow_clone && live_exists,
+            clone_error: None,
+        })
     }
     /// Execute two-phase commit flow for a transition
     async fn execute_two_phase_commit<T: EventEmitter>(
@@ -210,8 +268,18 @@ impl AtomicInstaller {
                     continue;
                 }
 
-                // Just add the package reference - no need to re-link files
+                let hash = Hash::from_hex(&pkg.hash).map_err(|e| {
+                    Error::from(InstallError::AtomicOperationFailed {
+                        message: format!(
+                            "invalid package hash for {}-{}: {e}",
+                            pkg.name, pkg.version
+                        ),
+                    })
+                })?;
+
+                let store_path = self.store.package_path(&hash);
                 let package_id = PackageId::new(pkg.name.clone(), pkg.version());
+
                 let package_ref = PackageRef {
                     state_id: transition.staging_id,
                     package_id: package_id.clone(),
@@ -220,27 +288,21 @@ impl AtomicInstaller {
                 };
                 transition.package_refs.push(package_ref);
 
-                // Carry forward package file information from parent state
-                let mut tx = self.state_manager.begin_transaction().await?;
-                let file_paths = sps2_state::queries::get_package_files(
-                    &mut tx,
-                    &parent_id,
-                    &pkg.name,
-                    &pkg.version,
-                )
-                .await?;
-                tx.commit().await?;
+                match transition.staging_mode {
+                    StagingMode::Fresh => {
+                        let had_hashes = self
+                            .link_package_to_staging(transition, &store_path, &package_id, false)
+                            .await?;
 
-                // Add file paths to transition
-                for file_path in file_paths {
-                    let staging_file = transition.staging_path.join(&file_path);
-                    let is_directory = staging_file.is_dir();
-                    transition.package_files.push((
-                        pkg.name.clone(),
-                        pkg.version.clone(),
-                        file_path,
-                        is_directory,
-                    ));
+                        if !had_hashes {
+                            self.populate_legacy_file_entries(transition, &parent_id, pkg)
+                                .await?;
+                        }
+                    }
+                    StagingMode::Cloned => {
+                        self.populate_legacy_file_entries(transition, &parent_id, pkg)
+                            .await?;
+                    }
                 }
             }
         }
@@ -260,14 +322,26 @@ impl AtomicInstaller {
         // Set event sender on transition
         transition.event_sender = context.event_sender().cloned();
 
-        // Clone current state to staging directory
-        self.create_staging_directory(&self.live_path, &transition.staging_path)
+        // Initialize staging directory
+        let creation = self
+            .create_staging_directory(&self.live_path, &transition.staging_path, true)
             .await?;
+        transition.staging_mode = creation.mode;
 
-        context.emit_debug(format!(
-            "Created staging directory at: {}",
-            transition.staging_path.display()
-        ));
+        let mut message = format!(
+            "Prepared staging directory at: {} (mode: {:?})",
+            transition.staging_path.display(),
+            creation.mode
+        );
+        if creation.clone_attempted && creation.mode == StagingMode::Fresh {
+            if let Some(err) = creation.clone_error {
+                message.push_str("; clone fallback due to: ");
+                message.push_str(&err);
+            } else {
+                message.push_str("; clone not available");
+            }
+        }
+        context.emit_debug(message);
 
         Ok(transition)
     }
@@ -412,7 +486,8 @@ impl AtomicInstaller {
             .await?;
 
         // Link package files to staging
-        self.link_package_to_staging(transition, store_path, package_id)
+        let _ = self
+            .link_package_to_staging(transition, store_path, package_id, true)
             .await?;
 
         // Add the package reference
@@ -438,7 +513,8 @@ impl AtomicInstaller {
         transition: &mut StateTransition,
         store_path: &Path,
         package_id: &PackageId,
-    ) -> Result<(), Error> {
+        record_hashes: bool,
+    ) -> Result<bool, Error> {
         let staging_prefix = &transition.staging_path;
         let mut file_paths = Vec::new();
 
@@ -455,12 +531,16 @@ impl AtomicInstaller {
 
         stored_package.link_to(staging_prefix).await?;
 
+        let mut had_file_hashes = false;
         // Collect file paths for database tracking AND store file hash info
         if let Some(file_hashes) = stored_package.file_hashes() {
+            had_file_hashes = true;
             // Store the file hash information for later use when we have package IDs
-            transition
-                .pending_file_hashes
-                .push((package_id.clone(), file_hashes.to_vec()));
+            if record_hashes {
+                transition
+                    .pending_file_hashes
+                    .push((package_id.clone(), file_hashes.to_vec()));
+            }
 
             for file_hash in file_hashes {
                 // Skip manifest.toml and sbom files - they should not be tracked in package_files
@@ -499,7 +579,7 @@ impl AtomicInstaller {
             ));
         }
 
-        Ok(())
+        Ok(had_file_hashes)
     }
 
     // Removed install_python_package - Python packages are now handled like regular packages
@@ -546,10 +626,10 @@ impl AtomicInstaller {
 
             if should_remove {
                 result.add_removed(PackageId::new(pkg.name.clone(), pkg.version()));
-
-                self.remove_package_from_staging(&mut transition, pkg)
-                    .await?;
-
+                if transition.staging_mode == StagingMode::Cloned {
+                    self.remove_package_from_staging(&mut transition, pkg)
+                        .await?;
+                }
                 context.emit_debug(format!("Removed package {} from staging", pkg.name));
             }
         }
@@ -724,58 +804,83 @@ impl AtomicInstaller {
         // Setup staging and clone current live
         let mut transition =
             StateTransition::new(&self.state_manager, "rollback".to_string()).await?;
-        self.create_staging_directory(&self.live_path, &transition.staging_path)
-            .await?;
-
-        // Compute diffs current -> target using DB
-        let current_packages = self
-            .state_manager
-            .get_installed_packages_in_state(&current_state_id)
+        let creation = self
+            .create_staging_directory(&self.live_path, &transition.staging_path, true)
             .await?;
         let target_packages = self
             .state_manager
             .get_installed_packages_in_state(&target_state_id)
             .await?;
+        transition.staging_mode = creation.mode;
 
-        let current_map: HashMap<String, sps2_state::models::Package> = current_packages
-            .into_iter()
-            .map(|p| (p.name.clone(), p))
-            .collect();
-        let target_map: HashMap<String, sps2_state::models::Package> = target_packages
-            .into_iter()
-            .map(|p| (p.name.clone(), p))
-            .collect();
-
-        // Remove anything not in target or with version change
-        for (name, cur) in &current_map {
-            match target_map.get(name) {
-                None => {
-                    self.remove_package_from_staging(&mut transition, cur)
-                        .await?;
+        if let Some(sender) = &transition.event_sender {
+            let mut msg = format!(
+                "Rollback staging prepared at {} (mode {:?})",
+                transition.staging_path.display(),
+                creation.mode
+            );
+            if creation.clone_attempted && creation.mode == StagingMode::Fresh {
+                if let Some(err) = creation.clone_error {
+                    msg.push_str("; clone fallback due to: ");
+                    msg.push_str(&err);
+                } else {
+                    msg.push_str("; clone not available");
                 }
-                Some(tgt) if tgt.version != cur.version => {
-                    self.remove_package_from_staging(&mut transition, cur)
-                        .await?;
-                }
-                _ => {}
             }
+            sender.emit(AppEvent::General(GeneralEvent::DebugLog {
+                message: msg,
+                context: std::collections::HashMap::new(),
+            }));
         }
 
-        // Add/link anything present in target and missing/different in current
-        for (name, tgt) in &target_map {
-            let needs_add = match current_map.get(name) {
-                None => true,
-                Some(cur) => cur.version != tgt.version,
-            };
-            if needs_add {
-                let hash = sps2_hash::Hash::from_hex(&tgt.hash).map_err(|e| {
-                    sps2_errors::Error::internal(format!("invalid hash {}: {e}", tgt.hash))
-                })?;
-                let store_path = self.store.package_path(&hash);
-                let pkg_id = sps2_resolver::PackageId::new(tgt.name.clone(), tgt.version());
-                self.link_package_to_staging(&mut transition, &store_path, &pkg_id)
-                    .await?;
+        if transition.staging_mode == StagingMode::Cloned {
+            let current_packages = self
+                .state_manager
+                .get_installed_packages_in_state(&current_state_id)
+                .await?;
+
+            let current_map: HashMap<String, sps2_state::models::Package> = current_packages
+                .into_iter()
+                .map(|pkg| (pkg.name.clone(), pkg))
+                .collect();
+            let target_map: HashMap<String, &sps2_state::models::Package> = target_packages
+                .iter()
+                .map(|pkg| (pkg.name.clone(), pkg))
+                .collect();
+
+            for (name, cur_pkg) in &current_map {
+                match target_map.get(name) {
+                    Some(tgt_pkg) if tgt_pkg.version == cur_pkg.version => {}
+                    _ => {
+                        self.remove_package_from_staging(&mut transition, cur_pkg)
+                            .await?;
+                        if let Some(sender) = &transition.event_sender {
+                            sender.emit(AppEvent::General(GeneralEvent::DebugLog {
+                                message: format!(
+                                    "Rollback removed package {}@{} from staging",
+                                    cur_pkg.name, cur_pkg.version
+                                ),
+                                context: std::collections::HashMap::new(),
+                            }));
+                        }
+                    }
+                }
             }
+        }
+        // Compute diffs current -> target using DB
+        let target_packages = self
+            .state_manager
+            .get_installed_packages_in_state(&target_state_id)
+            .await?;
+        for tgt in &target_packages {
+            let hash = Hash::from_hex(&tgt.hash).map_err(|e| {
+                sps2_errors::Error::internal(format!("invalid hash {}: {e}", tgt.hash))
+            })?;
+            let store_path = self.store.package_path(&hash);
+            let pkg_id = sps2_resolver::PackageId::new(tgt.name.clone(), tgt.version());
+            let _ = self
+                .link_package_to_staging(&mut transition, &store_path, &pkg_id, false)
+                .await?;
         }
 
         // Journal and finalize: mark the target state as new active
@@ -910,6 +1015,114 @@ mod tests {
             .await
             .unwrap();
         row.map_or(0, |o| o.ref_count)
+    }
+
+    #[tokio::test]
+    async fn cloned_staging_carries_forward_package_files() {
+        let (_td, state, store) = mk_env().await;
+        let (hash_a, path_a, size_a, _file_hashes_a) = make_sp_and_add_to_store(
+            &store,
+            "A",
+            "1.0.0",
+            &[("bin/a", "alpha"), ("share/doc.txt", "alpha docs")],
+        )
+        .await;
+        let (hash_b, path_b, size_b, _file_hashes_b) = make_sp_and_add_to_store(
+            &store,
+            "B",
+            "1.0.0",
+            &[("bin/b", "beta"), ("share/readme.txt", "beta docs")],
+        )
+        .await;
+
+        let mut installer = AtomicInstaller::new(state.clone(), store.clone())
+            .await
+            .unwrap();
+
+        // Install package A
+        let mut resolved_a: HashMap<PackageId, ResolvedNode> = HashMap::new();
+        let pid_a = PackageId::new(
+            "A".to_string(),
+            sps2_types::Version::parse("1.0.0").unwrap(),
+        );
+        resolved_a.insert(
+            pid_a.clone(),
+            ResolvedNode::local(
+                pid_a.name.clone(),
+                pid_a.version.clone(),
+                path_a.clone(),
+                vec![],
+            ),
+        );
+        let mut prepared_a = HashMap::new();
+        prepared_a.insert(
+            pid_a.clone(),
+            crate::PreparedPackage {
+                hash: hash_a.clone(),
+                size: size_a,
+                store_path: path_a.clone(),
+                is_local: true,
+            },
+        );
+        let ctx = crate::InstallContext {
+            packages: vec![],
+            local_files: vec![],
+            force: false,
+            event_sender: None,
+        };
+        let _ = installer
+            .install(&ctx, &resolved_a, Some(&prepared_a))
+            .await
+            .unwrap();
+
+        // Install package B (forces cloned staging when clone succeeds)
+        let mut resolved_b: HashMap<PackageId, ResolvedNode> = HashMap::new();
+        let pid_b = PackageId::new(
+            "B".to_string(),
+            sps2_types::Version::parse("1.0.0").unwrap(),
+        );
+        resolved_b.insert(
+            pid_b.clone(),
+            ResolvedNode::local(
+                pid_b.name.clone(),
+                pid_b.version.clone(),
+                path_b.clone(),
+                vec![],
+            ),
+        );
+        let mut prepared_b = HashMap::new();
+        prepared_b.insert(
+            pid_b.clone(),
+            crate::PreparedPackage {
+                hash: hash_b.clone(),
+                size: size_b,
+                store_path: path_b.clone(),
+                is_local: true,
+            },
+        );
+        let ctx_b = crate::InstallContext {
+            packages: vec![],
+            local_files: vec![],
+            force: false,
+            event_sender: None,
+        };
+        let _ = installer
+            .install(&ctx_b, &resolved_b, Some(&prepared_b))
+            .await
+            .unwrap();
+
+        let active_state = state.get_current_state_id().await.unwrap();
+        let mut tx = state.begin_transaction().await.unwrap();
+        let pkg_a_files =
+            sps2_state::queries::get_package_files(&mut tx, &active_state, "A", "1.0.0")
+                .await
+                .unwrap();
+        tx.commit().await.unwrap();
+
+        assert!(
+            !pkg_a_files.is_empty(),
+            "package_files entries for package A should be preserved after cloned staging"
+        );
     }
 
     #[tokio::test]

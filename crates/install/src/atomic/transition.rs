@@ -7,6 +7,19 @@ use sps2_state::{FileReference, PackageRef, StateManager};
 use std::path::PathBuf;
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StagingMode {
+    Cloned,
+    Fresh,
+}
+
+#[derive(Debug)]
+pub struct StagingCreation {
+    pub mode: StagingMode,
+    pub clone_attempted: bool,
+    pub clone_error: Option<String>,
+}
+
 /// State transition for atomic operations
 ///
 /// This is now a simple data container that holds information about
@@ -19,6 +32,8 @@ pub struct StateTransition {
     pub parent_id: Option<Uuid>,
     /// Staging directory path
     pub staging_path: PathBuf,
+    /// How the staging directory was initialized
+    pub staging_mode: StagingMode,
     /// Package references to be added during commit
     pub package_refs: Vec<PackageRef>,
     // Removed package_refs_with_venv - Python packages now handled like regular packages
@@ -54,6 +69,7 @@ impl StateTransition {
             staging_id,
             parent_id: Some(parent_id),
             staging_path,
+            staging_mode: StagingMode::Fresh,
             package_refs: Vec::new(),
             package_files: Vec::new(),
             file_references: Vec::new(),

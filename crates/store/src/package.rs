@@ -185,14 +185,13 @@ impl StoredPackage {
                 // Recursively link subdirectories
                 Box::pin(self.link_dir(&src_path, &dest_path)).await?;
             } else if metadata.is_file() {
-                // Hard link the file
+                // Clone file to maintain copy-on-write semantics
                 if platform.filesystem().exists(&ctx, &dest_path).await {
-                    // Remove existing file/link
                     platform.filesystem().remove_file(&ctx, &dest_path).await?;
                 }
                 platform
                     .filesystem()
-                    .hard_link(&ctx, &src_path, &dest_path)
+                    .clone_file(&ctx, &src_path, &dest_path)
                     .await?;
             } else if metadata.is_symlink() {
                 // Copy symlinks
