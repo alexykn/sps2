@@ -236,7 +236,7 @@ async fn execute_command(
 
         // Large operations (delegate to specialized crates)
         Commands::Install { packages } => {
-            let report = sps2_ops::install_with_verification(&ctx, &packages).await?;
+            let report = sps2_ops::install(&ctx, &packages).await?;
             Ok(OperationResult::InstallReport(report))
         }
 
@@ -246,12 +246,12 @@ async fn execute_command(
         }
 
         Commands::Upgrade { packages } => {
-            let report = sps2_ops::upgrade_with_verification(&ctx, &packages).await?;
+            let report = sps2_ops::upgrade(&ctx, &packages).await?;
             Ok(OperationResult::InstallReport(report))
         }
 
         Commands::Uninstall { packages } => {
-            let report = sps2_ops::uninstall_with_verification(&ctx, &packages).await?;
+            let report = sps2_ops::uninstall(&ctx, &packages).await?;
             Ok(OperationResult::InstallReport(report))
         }
 
@@ -366,9 +366,12 @@ async fn execute_command(
         }
 
         Commands::Verify {
-            heal, level, scope, ..
+            heal,
+            level,
+            scope,
+            sync_refcounts,
         } => {
-            let result = sps2_ops::verify(&ctx, heal, &level, &scope).await?;
+            let result = sps2_ops::verify(&ctx, heal, &level, &scope, sync_refcounts).await?;
             Ok(OperationResult::VerificationResult(result))
         }
     }
@@ -381,7 +384,7 @@ async fn build_ops_context(
     config: Config,
     check_mode: bool,
 ) -> Result<sps2_ops::OpsCtx, CliError> {
-    let mut ctx = OpsContextBuilder::new()
+    let ctx = OpsContextBuilder::new()
         .with_store(setup.store().clone())
         .with_state(setup.state().clone())
         .with_index(setup.index().clone())
@@ -392,11 +395,6 @@ async fn build_ops_context(
         .with_config(config)
         .with_check_mode(check_mode)
         .build()?;
-
-    // Initialize the state verification guard if enabled
-    info!("Initializing guard system");
-    ctx.initialize_guard()?;
-    info!("Guard initialization completed");
 
     Ok(ctx)
 }
@@ -520,22 +518,12 @@ fn apply_cli_config(
     }
 
     // Command-specific CLI flags
-    match command {
-        cli::Commands::Build {
-            jobs: Some(job_count),
-            ..
-        } => {
-            config.builder.build.build_jobs = *job_count;
-        }
-        cli::Commands::Verify { sync_refcounts, .. } => {
-            if *sync_refcounts {
-                // Ensure top-level guard config exists, then enable one-off refcount sync
-                let mut guard_cfg = config.guard.clone().unwrap_or_default();
-                guard_cfg.store_verification.sync_refcounts = true;
-                config.guard = Some(guard_cfg);
-            }
-        }
-        _ => {}
+    if let cli::Commands::Build {
+        jobs: Some(job_count),
+        ..
+    } = command
+    {
+        config.builder.build.build_jobs = *job_count;
     }
 
     Ok(())

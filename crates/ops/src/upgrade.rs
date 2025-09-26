@@ -11,7 +11,6 @@ use sps2_events::{
     AppEvent, EventEmitter, FailureContext, GeneralEvent, ProgressEvent, ProgressManager,
     UpdateEvent,
 };
-use sps2_guard::{OperationResult as GuardOperationResult, PackageChange as GuardPackageChange};
 use sps2_install::{InstallConfig, Installer, UpdateContext};
 use sps2_types::{PackageSpec, Version};
 use std::time::Instant;
@@ -422,242 +421,26 @@ fn determine_upgrade_type(from: &Version, to: &Version) -> String {
     }
 }
 
-/// Convert `InstallReport` to `GuardOperationResult` for upgrade operations
-fn create_guard_operation_result_for_upgrade(report: &InstallReport) -> GuardOperationResult {
-    GuardOperationResult {
-        installed: report
-            .installed
-            .iter()
-            .map(|pkg| GuardPackageChange {
-                name: pkg.name.clone(),
-                from_version: pkg
-                    .from_version
-                    .as_ref()
-                    .map(std::string::ToString::to_string),
-                to_version: pkg
-                    .to_version
-                    .as_ref()
-                    .map(std::string::ToString::to_string),
-                size: pkg.size,
-            })
-            .collect(),
-        updated: report
-            .updated
-            .iter()
-            .map(|pkg| GuardPackageChange {
-                name: pkg.name.clone(),
-                from_version: pkg
-                    .from_version
-                    .as_ref()
-                    .map(std::string::ToString::to_string),
-                to_version: pkg
-                    .to_version
-                    .as_ref()
-                    .map(std::string::ToString::to_string),
-                size: pkg.size,
-            })
-            .collect(),
-        removed: report
-            .removed
-            .iter()
-            .map(|pkg| GuardPackageChange {
-                name: pkg.name.clone(),
-                from_version: pkg
-                    .from_version
-                    .as_ref()
-                    .map(std::string::ToString::to_string),
-                to_version: pkg
-                    .to_version
-                    .as_ref()
-                    .map(std::string::ToString::to_string),
-                size: pkg.size,
-            })
-            .collect(),
-        state_id: report.state_id,
-        duration_ms: report.duration_ms,
-        modified_directories: vec![
-            std::path::PathBuf::from(sps2_config::fixed_paths::LIVE_DIR),
-            std::path::PathBuf::from(sps2_config::fixed_paths::BIN_DIR),
-            std::path::PathBuf::from(format!("{}/lib", sps2_config::fixed_paths::LIVE_DIR)),
-            std::path::PathBuf::from(format!("{}/share", sps2_config::fixed_paths::LIVE_DIR)),
-        ],
-        install_triggered: false, // Standard upgrade operation
-    }
-}
-
-/// Upgrade packages with state verification enabled
-///
-/// This wrapper uses the advanced `GuardedOperation` pattern providing:
-/// - Cache warming before operation
-/// - Operation-specific verification scoping for old→new transition verification
-/// - Pre-verification of existing packages before upgrade
-/// - Post-verification ensuring clean old→new package transitions
-/// - Progressive verification when appropriate
-/// - Smart cache invalidation after operation
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - Pre-upgrade verification fails (when `fail_on_discrepancy` is true)
-/// - Upgrade operation fails
-/// - Post-upgrade verification fails (when `fail_on_discrepancy` is true)
-pub async fn upgrade_with_verification(
-    ctx: &OpsCtx,
-    package_names: &[String],
-) -> Result<InstallReport, Error> {
-    let package_names_vec = package_names.iter().map(ToString::to_string).collect();
-
-    ctx.guarded_upgrade(package_names_vec)
-        .execute(|| async {
-            let report = upgrade(ctx, package_names).await?;
-            let guard_result = create_guard_operation_result_for_upgrade(&report);
-            Ok((report, guard_result))
-        })
-        .await
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::OpsContextBuilder;
-    use sps2_builder::Builder;
-    use sps2_config::Config;
-    use sps2_index::IndexManager;
-    use sps2_net::NetClient;
-    use sps2_resolver::Resolver;
-    use sps2_state::StateManager;
-    use sps2_store::PackageStore;
-    use tempfile::TempDir;
 
-    #[tokio::test]
-    async fn test_upgrade_with_verification_disabled() {
-        let temp_dir = TempDir::new().unwrap();
-        let state_dir = temp_dir.path().join("state");
-        let store_dir = temp_dir.path().join("store");
+    #[test]
+    fn classify_upgrade_types() {
+        let mut v1 = Version::new(1, 0, 0);
+        let mut v2 = Version::new(2, 0, 0);
+        assert_eq!(determine_upgrade_type(&v1, &v2), "major");
 
-        tokio::fs::create_dir_all(&state_dir).await.unwrap();
-        tokio::fs::create_dir_all(&store_dir).await.unwrap();
+        v1 = Version::new(1, 1, 0);
+        v2 = Version::new(1, 2, 0);
+        assert_eq!(determine_upgrade_type(&v1, &v2), "minor");
 
-        let state = StateManager::new(&state_dir).await.unwrap();
-        let store = PackageStore::new(store_dir.clone());
-        let (tx, _rx) = sps2_events::channel();
-        let config = Config::default(); // Verification disabled by default
+        v1 = Version::new(1, 1, 1);
+        v2 = Version::new(1, 1, 2);
+        assert_eq!(determine_upgrade_type(&v1, &v2), "patch");
 
-        let index = IndexManager::new(&store_dir);
-        let net = NetClient::new(sps2_net::NetConfig::default()).unwrap();
-        let resolver = Resolver::with_events(index.clone(), tx.clone());
-        let builder = Builder::new();
-
-        let ctx = OpsContextBuilder::new()
-            .with_state(state)
-            .with_store(store)
-            .with_event_sender(tx)
-            .with_config(config)
-            .with_index(index)
-            .with_net(net)
-            .with_resolver(resolver)
-            .with_builder(builder)
-            .build()
-            .unwrap();
-
-        // Test that upgrade_with_verification works without verification enabled
-        // Should succeed with no changes when package doesn't exist
-        let result = upgrade_with_verification(&ctx, &["test-package".to_string()]).await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_upgrade_with_verification_enabled() {
-        let temp_dir = TempDir::new().unwrap();
-        let state_dir = temp_dir.path().join("state");
-        let store_dir = temp_dir.path().join("store");
-
-        tokio::fs::create_dir_all(&state_dir).await.unwrap();
-        tokio::fs::create_dir_all(&store_dir).await.unwrap();
-
-        let state = StateManager::new(&state_dir).await.unwrap();
-        let store = PackageStore::new(store_dir.clone());
-        let (tx, _rx) = sps2_events::channel();
-
-        let mut config = Config::default();
-        config.verification.enabled = true;
-        config.verification.level = "standard".to_string();
-
-        let index = IndexManager::new(&store_dir);
-        let net = NetClient::new(sps2_net::NetConfig::default()).unwrap();
-        let resolver = Resolver::with_events(index.clone(), tx.clone());
-        let builder = Builder::new();
-
-        let mut ctx = OpsContextBuilder::new()
-            .with_state(state)
-            .with_store(store)
-            .with_event_sender(tx)
-            .with_config(config)
-            .with_index(index)
-            .with_net(net)
-            .with_resolver(resolver)
-            .with_builder(builder)
-            .build()
-            .unwrap();
-
-        // Initialize the guard
-        ctx.initialize_guard().unwrap();
-
-        // Test that upgrade_with_verification runs verification
-        // Should succeed with no changes when package doesn't exist
-        let result = upgrade_with_verification(&ctx, &["test-package".to_string()]).await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_create_guard_operation_result_for_upgrade() {
-        let report = InstallReport {
-            installed: vec![],
-            updated: vec![crate::PackageChange {
-                name: "test-package".to_string(),
-                from_version: Some(sps2_types::Version::parse("1.0.0").unwrap()),
-                to_version: Some(sps2_types::Version::parse("2.0.0").unwrap()),
-                size: Some(2048),
-            }],
-            removed: vec![],
-            state_id: uuid::Uuid::new_v4(),
-            duration_ms: 150,
-        };
-
-        let guard_result = create_guard_operation_result_for_upgrade(&report);
-
-        assert_eq!(guard_result.installed.len(), 0);
-        assert_eq!(guard_result.updated.len(), 1);
-        assert_eq!(guard_result.removed.len(), 0);
-        assert_eq!(guard_result.updated[0].name, "test-package");
-        assert_eq!(
-            guard_result.updated[0].from_version,
-            Some("1.0.0".to_string())
-        );
-        assert_eq!(
-            guard_result.updated[0].to_version,
-            Some("2.0.0".to_string())
-        );
-        assert!(!guard_result.install_triggered); // Standard upgrade operation
-        assert!(guard_result
-            .modified_directories
-            .contains(&std::path::PathBuf::from(
-                sps2_config::fixed_paths::LIVE_DIR
-            )));
-        assert!(guard_result
-            .modified_directories
-            .contains(&std::path::PathBuf::from(sps2_config::fixed_paths::BIN_DIR)));
-        assert!(guard_result
-            .modified_directories
-            .contains(&std::path::PathBuf::from(format!(
-                "{}/lib",
-                sps2_config::fixed_paths::LIVE_DIR
-            ))));
-        assert!(guard_result
-            .modified_directories
-            .contains(&std::path::PathBuf::from(format!(
-                "{}/share",
-                sps2_config::fixed_paths::LIVE_DIR
-            ))));
+        v1 = Version::new(1, 1, 1);
+        v2 = Version::new(1, 1, 1);
+        assert_eq!(determine_upgrade_type(&v1, &v2), "prerelease");
     }
 }

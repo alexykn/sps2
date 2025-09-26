@@ -8,7 +8,6 @@ use sps2_errors::{Error, OpsError};
 use sps2_events::{
     patterns::UninstallProgressConfig, AppEvent, EventEmitter, GeneralEvent, ProgressManager,
 };
-use sps2_guard::{OperationResult as GuardOperationResult, PackageChange as GuardPackageChange};
 use sps2_install::{InstallConfig, Installer, UninstallContext};
 use std::time::Instant;
 use uuid::Uuid;
@@ -217,97 +216,6 @@ async fn preview_uninstall(ctx: &OpsCtx, package_names: &[String]) -> Result<Ins
     })
 }
 
-/// Convert `InstallReport` to `GuardOperationResult` for uninstall operations
-fn create_guard_operation_result_for_uninstall(report: &InstallReport) -> GuardOperationResult {
-    GuardOperationResult {
-        installed: report
-            .installed
-            .iter()
-            .map(|pkg| GuardPackageChange {
-                name: pkg.name.clone(),
-                from_version: pkg
-                    .from_version
-                    .as_ref()
-                    .map(std::string::ToString::to_string),
-                to_version: pkg
-                    .to_version
-                    .as_ref()
-                    .map(std::string::ToString::to_string),
-                size: pkg.size,
-            })
-            .collect(),
-        updated: report
-            .updated
-            .iter()
-            .map(|pkg| GuardPackageChange {
-                name: pkg.name.clone(),
-                from_version: pkg
-                    .from_version
-                    .as_ref()
-                    .map(std::string::ToString::to_string),
-                to_version: pkg
-                    .to_version
-                    .as_ref()
-                    .map(std::string::ToString::to_string),
-                size: pkg.size,
-            })
-            .collect(),
-        removed: report
-            .removed
-            .iter()
-            .map(|pkg| GuardPackageChange {
-                name: pkg.name.clone(),
-                from_version: pkg
-                    .from_version
-                    .as_ref()
-                    .map(std::string::ToString::to_string),
-                to_version: pkg
-                    .to_version
-                    .as_ref()
-                    .map(std::string::ToString::to_string),
-                size: pkg.size,
-            })
-            .collect(),
-        state_id: report.state_id,
-        duration_ms: report.duration_ms,
-        modified_directories: vec![
-            std::path::PathBuf::from(sps2_config::fixed_paths::LIVE_DIR),
-            std::path::PathBuf::from(sps2_config::fixed_paths::BIN_DIR),
-            std::path::PathBuf::from(format!("{}/lib", sps2_config::fixed_paths::LIVE_DIR)),
-        ],
-        install_triggered: false, // Uninstall operations never trigger installs
-    }
-}
-
-/// Uninstall packages with state verification enabled
-///
-/// This wrapper uses the advanced `GuardedOperation` pattern providing:
-/// - Cache warming before operation
-/// - Operation-specific verification scoping with orphan detection
-/// - Progressive verification when appropriate  
-/// - Smart cache invalidation after operation
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - Pre-uninstall verification fails (when `fail_on_discrepancy` is true)
-/// - Uninstallation fails
-/// - Post-uninstall verification fails (when `fail_on_discrepancy` is true)
-pub async fn uninstall_with_verification(
-    ctx: &OpsCtx,
-    package_names: &[String],
-) -> Result<InstallReport, Error> {
-    let package_names_vec = package_names.iter().map(ToString::to_string).collect();
-
-    ctx.guarded_uninstall(package_names_vec)
-        .execute(|| async {
-            let report = uninstall(ctx, package_names).await?;
-            let guard_result = create_guard_operation_result_for_uninstall(&report);
-            Ok((report, guard_result))
-        })
-        .await
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -322,7 +230,7 @@ mod tests {
     use tempfile::TempDir;
 
     #[tokio::test]
-    async fn test_uninstall_with_verification_disabled() {
+    async fn preview_without_packages_reports_not_found() {
         let temp_dir = TempDir::new().unwrap();
         let state_dir = temp_dir.path().join("state");
         let store_dir = temp_dir.path().join("store");
@@ -333,7 +241,7 @@ mod tests {
         let state = StateManager::new(&state_dir).await.unwrap();
         let store = PackageStore::new(store_dir.clone());
         let (tx, _rx) = sps2_events::channel();
-        let config = Config::default(); // Verification disabled by default
+        let config = Config::default();
 
         let index = IndexManager::new(&store_dir);
         let net = NetClient::new(sps2_net::NetConfig::default()).unwrap();
@@ -352,100 +260,7 @@ mod tests {
             .build()
             .unwrap();
 
-        // Test that uninstall_with_verification works without verification enabled
-        let result = uninstall_with_verification(&ctx, &[]).await;
-
-        // Should fail with NoPackagesSpecified, not verification error
-        assert!(result.is_err());
-        if let Err(e) = result {
-            assert!(
-                !e.to_string().contains("verification"),
-                "Should not fail due to verification"
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn test_uninstall_with_verification_enabled() {
-        let temp_dir = TempDir::new().unwrap();
-        let state_dir = temp_dir.path().join("state");
-        let store_dir = temp_dir.path().join("store");
-
-        tokio::fs::create_dir_all(&state_dir).await.unwrap();
-        tokio::fs::create_dir_all(&store_dir).await.unwrap();
-
-        let state = StateManager::new(&state_dir).await.unwrap();
-        let store = PackageStore::new(store_dir.clone());
-        let (tx, _rx) = sps2_events::channel();
-
-        let mut config = Config::default();
-        config.verification.enabled = true;
-        config.verification.level = "standard".to_string();
-
-        let index = IndexManager::new(&store_dir);
-        let net = NetClient::new(sps2_net::NetConfig::default()).unwrap();
-        let resolver = Resolver::with_events(index.clone(), tx.clone());
-        let builder = Builder::new();
-
-        let mut ctx = OpsContextBuilder::new()
-            .with_state(state)
-            .with_store(store)
-            .with_event_sender(tx)
-            .with_config(config)
-            .with_index(index)
-            .with_net(net)
-            .with_resolver(resolver)
-            .with_builder(builder)
-            .build()
-            .unwrap();
-
-        // Initialize the guard
-        ctx.initialize_guard().unwrap();
-
-        // Test that uninstall_with_verification runs verification
-        let result = uninstall_with_verification(&ctx, &[]).await;
-
-        // Should still fail with NoPackagesSpecified
-        assert!(result.is_err());
-        if let Err(e) = result {
-            assert!(
-                !e.to_string().contains("verification failed"),
-                "Should not fail due to verification on empty state"
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn test_create_guard_operation_result_for_uninstall() {
-        let report = InstallReport {
-            installed: vec![],
-            updated: vec![],
-            removed: vec![crate::PackageChange {
-                name: "test-package".to_string(),
-                from_version: Some(sps2_types::Version::parse("1.0.0").unwrap()),
-                to_version: None,
-                size: Some(1024),
-            }],
-            state_id: uuid::Uuid::new_v4(),
-            duration_ms: 100,
-        };
-
-        let guard_result = create_guard_operation_result_for_uninstall(&report);
-
-        assert_eq!(guard_result.installed.len(), 0);
-        assert_eq!(guard_result.updated.len(), 0);
-        assert_eq!(guard_result.removed.len(), 1);
-        assert_eq!(guard_result.removed[0].name, "test-package");
-        assert_eq!(
-            guard_result.removed[0].from_version,
-            Some("1.0.0".to_string())
-        );
-        assert_eq!(guard_result.removed[0].to_version, None);
-        assert!(!guard_result.install_triggered); // Uninstall never triggers install
-        assert!(guard_result
-            .modified_directories
-            .contains(&std::path::PathBuf::from(
-                sps2_config::fixed_paths::LIVE_DIR
-            )));
+        let preview = preview_uninstall(&ctx, &[]).await.unwrap();
+        assert!(preview.removed.is_empty());
     }
 }

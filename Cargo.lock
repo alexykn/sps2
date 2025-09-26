@@ -3443,18 +3443,13 @@ dependencies = [
 name = "sps2-guard"
 version = "0.1.0"
 dependencies = [
- "futures",
  "serde",
- "sps2-config",
  "sps2-errors",
  "sps2-events",
  "sps2-hash",
- "sps2-install",
  "sps2-platform",
- "sps2-resolver",
  "sps2-state",
  "sps2-store",
- "sps2-types",
  "tempfile",
  "tokio",
  "uuid",

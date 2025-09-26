@@ -133,11 +133,11 @@ pub async fn get_all_active_packages(
         WITH RECURSIVE state_chain AS (
             -- Start with the current state
             SELECT id, parent_id FROM states WHERE id = ?1
-            
+
             UNION ALL
-            
+
             -- Recursively get parent states
-            SELECT s.id, s.parent_id 
+            SELECT s.id, s.parent_id
             FROM states s
             INNER JOIN state_chain sc ON s.id = sc.parent_id
         )
@@ -811,7 +811,7 @@ pub async fn get_package_files(
     let id_str = state_id.to_string();
 
     let rows = query(
-        "SELECT file_path FROM package_files 
+        "SELECT file_path FROM package_files
          WHERE state_id = ?1 AND package_name = ?2 AND package_version = ?3
          ORDER BY file_path",
     )
@@ -846,11 +846,11 @@ pub async fn get_package_files_with_inheritance(
         WITH RECURSIVE state_chain AS (
             -- Start with the current state
             SELECT id, parent_id FROM states WHERE id = ?1
-            
+
             UNION ALL
-            
+
             -- Recursively get parent states
-            SELECT s.id, s.parent_id 
+            SELECT s.id, s.parent_id
             FROM states s
             INNER JOIN state_chain sc ON s.id = sc.parent_id
         )
@@ -898,7 +898,7 @@ pub async fn remove_package_files(
     let id_str = state_id.to_string();
 
     query(
-        "DELETE FROM package_files 
+        "DELETE FROM package_files
          WHERE state_id = ?1 AND package_name = ?2 AND package_version = ?3",
     )
     .bind(id_str)
@@ -980,7 +980,7 @@ pub async fn get_package_venv_path(
     let id_str = state_id.to_string();
 
     let row = query(
-        "SELECT venv_path FROM packages 
+        "SELECT venv_path FROM packages
          WHERE state_id = ?1 AND name = ?2 AND version = ?3",
     )
     .bind(id_str)
@@ -1004,8 +1004,8 @@ pub async fn get_packages_with_venvs(
     let id_str = state_id.to_string();
 
     let rows = query(
-        "SELECT name, version, venv_path 
-         FROM packages 
+        "SELECT name, version, venv_path
+         FROM packages
          WHERE state_id = ?1 AND venv_path IS NOT NULL",
     )
     .bind(id_str)

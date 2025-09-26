@@ -32,8 +32,8 @@ mod upgrade;
 
 pub use context::{OpsContextBuilder, OpsCtx};
 pub use sps2_guard::{
-    Discrepancy, StateVerificationGuard, StateVerificationGuardBuilder, VerificationLevel,
-    VerificationResult,
+    Discrepancy, StoreVerificationConfig, StoreVerificationStats, StoreVerifier, VerificationLevel,
+    VerificationResult, Verifier,
 };
 // Re-export consolidated types from sps2_types
 pub use sps2_types::{
@@ -50,21 +50,20 @@ pub use types::{
 // Re-export operation functions
 pub use build::build;
 pub use draft::draft_recipe;
-pub use install::{install, install_with_verification};
+pub use install::install;
 pub use pack::{pack_from_directory, pack_from_recipe, pack_from_recipe_no_post};
 pub use small_ops::{
     audit, check_health, cleanup, history, list_packages, package_info, reposync, rollback,
     search_packages, self_update, update_vulndb, vulndb_stats,
 };
-pub use uninstall::{uninstall, uninstall_with_verification};
+pub use uninstall::uninstall;
 pub use update::update;
-pub use upgrade::{upgrade, upgrade_with_verification};
+pub use upgrade::upgrade;
 
 // Re-export audit types needed by the audit function
 pub use sps2_audit::{AuditReport, Severity};
 
 use sps2_errors::Error;
-use sps2_guard::{StoreVerificationConfig, StoreVerifier};
 use std::sync::Arc;
 
 /// Verify the integrity of the current state
@@ -78,17 +77,20 @@ pub async fn verify(
     heal: bool,
     level: &str,
     scope: &str,
+    sync_refcounts: bool,
 ) -> Result<VerificationResult, Error> {
-    let verification_level = match level {
+    let mut verification_level = match level {
         "quick" => VerificationLevel::Quick,
         "full" => VerificationLevel::Full,
         _ => VerificationLevel::Standard,
     };
 
+    if heal {
+        verification_level = VerificationLevel::Full;
+    }
+
     match scope {
         "store" => {
-            // Store-only verification using StoreVerifier
-
             let config = StoreVerificationConfig::default();
             let verifier = StoreVerifier::new(
                 Arc::new(ctx.state.clone()),
@@ -97,63 +99,49 @@ pub async fn verify(
             );
 
             let stats = verifier.verify_with_progress(&ctx.tx).await?;
-
-            // Convert store verification stats to VerificationResult
-            // For store verification, we create a synthetic result
             let state_id = ctx.state.get_active_state().await?;
-            let discrepancies = Vec::new(); // Store verification doesn't use discrepancies
-            let duration_ms = stats.duration.as_millis() as u64;
 
             Ok(VerificationResult::new(
                 state_id,
-                discrepancies,
-                duration_ms,
+                Vec::new(),
+                stats.duration.as_millis() as u64,
             ))
         }
         "all" => {
-            // Both live and store verification
-            // First verify live files
-            let mut guard = StateVerificationGuard::builder()
-                .with_state_manager(ctx.state.clone())
-                .with_store(ctx.store.clone())
-                .with_event_sender(ctx.tx.clone())
-                .with_level(verification_level)
-                .build()?;
-
-            let live_result = if heal {
-                guard.verify_and_heal(&ctx.config).await?
+            let verifier = Verifier::new(ctx.state.clone(), ctx.store.clone(), ctx.tx.clone());
+            let result = if heal {
+                verifier.verify_and_heal(VerificationLevel::Full).await?
             } else {
-                guard.verify_only().await?
+                verifier.verify(verification_level).await?
             };
 
-            // Then verify store
-
             let config = StoreVerificationConfig::default();
-            let verifier = StoreVerifier::new(
+            let store_verifier = StoreVerifier::new(
                 Arc::new(ctx.state.clone()),
                 Arc::new(ctx.store.file_store().clone()),
                 config,
             );
+            let _ = store_verifier.verify_with_progress(&ctx.tx).await?;
 
-            let _store_stats = verifier.verify_with_progress(&ctx.tx).await?;
+            if sync_refcounts {
+                verifier.sync_refcounts().await?;
+            }
 
-            // Return the live verification result (store verification is reported via events)
-            Ok(live_result)
+            Ok(result)
         }
         _ => {
-            // Default: live files only (existing behavior)
-            let mut guard = StateVerificationGuard::builder()
-                .with_state_manager(ctx.state.clone())
-                .with_store(ctx.store.clone())
-                .with_event_sender(ctx.tx.clone())
-                .with_level(verification_level)
-                .build()?;
-
-            if heal {
-                guard.verify_and_heal(&ctx.config).await
+            let verifier = Verifier::new(ctx.state.clone(), ctx.store.clone(), ctx.tx.clone());
+            let result = if heal {
+                verifier.verify_and_heal(VerificationLevel::Full).await?
             } else {
-                guard.verify_only().await
+                verifier.verify(verification_level).await?
+            };
+
+            if sync_refcounts {
+                verifier.sync_refcounts().await?;
             }
+
+            Ok(result)
         }
     }
 }

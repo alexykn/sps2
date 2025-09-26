@@ -8,7 +8,6 @@ use sps2_errors::{Error, OpsError};
 use sps2_events::{
     AppEvent, EventEmitter, FailureContext, GeneralEvent, ProgressEvent, ResolverEvent,
 };
-use sps2_guard::{OperationResult as GuardOperationResult, PackageChange as GuardPackageChange};
 use sps2_install::{InstallConfig, InstallContext, Installer};
 use sps2_types::{PackageSpec, Version};
 use std::convert::TryFrom;
@@ -567,95 +566,4 @@ fn parse_install_requests(specs: &[String]) -> Result<Vec<InstallRequest>, Error
     }
 
     Ok(requests)
-}
-
-/// Convert `InstallReport` to `GuardOperationResult` for guard integration
-fn create_guard_operation_result(report: &InstallReport) -> GuardOperationResult {
-    GuardOperationResult {
-        installed: report
-            .installed
-            .iter()
-            .map(|pkg| GuardPackageChange {
-                name: pkg.name.clone(),
-                from_version: pkg
-                    .from_version
-                    .as_ref()
-                    .map(std::string::ToString::to_string),
-                to_version: pkg
-                    .to_version
-                    .as_ref()
-                    .map(std::string::ToString::to_string),
-                size: pkg.size,
-            })
-            .collect(),
-        updated: report
-            .updated
-            .iter()
-            .map(|pkg| GuardPackageChange {
-                name: pkg.name.clone(),
-                from_version: pkg
-                    .from_version
-                    .as_ref()
-                    .map(std::string::ToString::to_string),
-                to_version: pkg
-                    .to_version
-                    .as_ref()
-                    .map(std::string::ToString::to_string),
-                size: pkg.size,
-            })
-            .collect(),
-        removed: report
-            .removed
-            .iter()
-            .map(|pkg| GuardPackageChange {
-                name: pkg.name.clone(),
-                from_version: pkg
-                    .from_version
-                    .as_ref()
-                    .map(std::string::ToString::to_string),
-                to_version: pkg
-                    .to_version
-                    .as_ref()
-                    .map(std::string::ToString::to_string),
-                size: pkg.size,
-            })
-            .collect(),
-        state_id: report.state_id,
-        duration_ms: report.duration_ms,
-        modified_directories: vec![
-            std::path::PathBuf::from(sps2_config::fixed_paths::LIVE_DIR),
-            std::path::PathBuf::from(sps2_config::fixed_paths::BIN_DIR),
-            std::path::PathBuf::from(format!("{}/lib", sps2_config::fixed_paths::LIVE_DIR)),
-        ],
-        install_triggered: false, // Standard install operation
-    }
-}
-
-/// Install packages with state verification enabled
-///
-/// This wrapper uses the advanced `GuardedOperation` pattern providing:
-/// - Cache warming before operation
-/// - Operation-specific verification scoping
-/// - Progressive verification when appropriate
-/// - Smart cache invalidation after operation
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - Pre-install verification fails (when `fail_on_discrepancy` is true)
-/// - Installation fails
-/// - Post-install verification fails (when `fail_on_discrepancy` is true)
-pub async fn install_with_verification(
-    ctx: &OpsCtx,
-    package_specs: &[String],
-) -> Result<InstallReport, Error> {
-    let package_specs_vec = package_specs.iter().map(ToString::to_string).collect();
-
-    ctx.guarded_install(package_specs_vec)
-        .execute(|| async {
-            let report = install(ctx, package_specs).await?;
-            let guard_result = create_guard_operation_result(&report);
-            Ok((report, guard_result))
-        })
-        .await
 }

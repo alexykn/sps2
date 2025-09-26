@@ -9,19 +9,14 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-sps2-resolver = { path = "../resolver", optional = true }
 sps2-errors = { path = "../errors" }
-sps2-types = { path = "../types" }
 sps2-events = { path = "../events" }
 sps2-state = { path = "../state" }
-sps2-install = { path = "../install" }
 sps2-hash = { path = "../hash" }
 sps2-store = { path = "../store" }
-sps2-config = { path = "../config" }
 sps2-platform = { path = "../platform" }
 serde = { workspace = true }
 tokio = { workspace = true, features = ["fs"] }
-futures = "0.3.31"
 walkdir = "2.5.0"
 uuid = { workspace = true, features = ["v4"]}
 
