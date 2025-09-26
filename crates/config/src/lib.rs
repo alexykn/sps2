@@ -100,12 +100,6 @@ impl Config {
             message: e.to_string(),
         })?;
 
-        // Apply legacy field conversions
-        config.verification.apply_legacy_fields();
-        if let Some(ref mut guard) = config.guard {
-            guard.apply_legacy_fields();
-        }
-
         // Load builder config
         config.builder = BuilderConfig::load().await?;
 
@@ -131,12 +125,6 @@ impl Config {
         let mut config: Self = toml::from_str(&contents).map_err(|e| ConfigError::ParseError {
             message: e.to_string(),
         })?;
-
-        // Apply legacy field conversions
-        config.verification.apply_legacy_fields();
-        if let Some(ref mut guard) = config.guard {
-            guard.apply_legacy_fields();
-        }
 
         // Load builder config
         config.builder = BuilderConfig::load_or_default(builder_path).await?;

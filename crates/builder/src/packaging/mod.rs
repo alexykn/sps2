@@ -154,7 +154,7 @@ pub async fn create_package(
 /// - Zstd compression fails
 /// - Cleanup operations fail
 pub async fn create_sp_package(
-    config: &BuildConfig,
+    _config: &BuildConfig,
     context: &BuildContext,
     staging_dir: &Path,
     output_path: &Path,
@@ -249,19 +249,14 @@ pub async fn create_sp_package(
         }),
     );
 
-    // Step 5: Compress with zstd at configured level
+    // Step 5: Compress with zstd at default level
     send_event(
         context,
         AppEvent::General(GeneralEvent::OperationStarted {
             operation: "Compressing package with zstd".to_string(),
         }),
     );
-    compress_with_zstd(
-        &config.packaging_settings().compression,
-        &tar_path,
-        output_path,
-    )
-    .await?;
+    compress_with_zstd(&tar_path, output_path).await?;
     send_event(
         context,
         AppEvent::General(GeneralEvent::OperationCompleted {

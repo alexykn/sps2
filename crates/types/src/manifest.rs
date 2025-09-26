@@ -5,11 +5,8 @@
 //! This module defines the `manifest.toml` format and provides
 //! serialization/deserialization and validation for package metadata.
 
-use crate::{
-    format::CompressionFormatType, package::PackageSpec, Arch, PackageFormatVersion,
-    PythonPackageMetadata, Version,
-};
-use serde::{Deserialize, Serialize};
+use crate::{package::PackageSpec, Arch, PackageFormatVersion, PythonPackageMetadata, Version};
+use serde::{de::IgnoredAny, Deserialize, Serialize};
 use sps2_errors::{Error, PackageError};
 
 /// Package manifest (manifest.toml contents)
@@ -40,8 +37,9 @@ pub struct PackageInfo {
     pub homepage: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub compression: Option<CompressionInfo>,
+    /// Legacy compression configuration retained for backward compatibility
+    #[serde(default, alias = "compression", skip_serializing)]
+    pub legacy_compression: Option<IgnoredAny>,
 }
 
 /// Dependencies section
@@ -61,19 +59,6 @@ pub struct SbomInfo {
     pub cyclonedx: Option<String>, // BLAKE3 hash (hex)
 }
 
-/// Compression information section
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CompressionInfo {
-    /// Compression format type
-    pub format: CompressionFormatType,
-    /// Frame size for seekable compression (in bytes)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub frame_size: Option<usize>,
-    /// Number of frames (seekable format only)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub frame_count: Option<usize>,
-}
-
 impl Manifest {
     /// Create a new manifest
     #[must_use]
@@ -88,7 +73,7 @@ impl Manifest {
                 description: None,
                 homepage: None,
                 license: None,
-                compression: None,
+                legacy_compression: None,
             },
             dependencies: Dependencies::default(),
             sbom: None,

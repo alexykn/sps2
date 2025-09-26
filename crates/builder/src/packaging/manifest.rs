@@ -101,23 +101,14 @@ pub fn create_manifest(
     recipe_metadata: &RecipeMetadata,
     environment: &BuildEnvironment,
 ) -> Manifest {
-    use sps2_types::format::CompressionFormatType;
     use sps2_types::{
-        ManifestCompressionInfo as CompressionInfo, ManifestDependencies as Dependencies,
-        ManifestPackageInfo as PackageInfo, SbomInfo,
+        ManifestDependencies as Dependencies, ManifestPackageInfo as PackageInfo, SbomInfo,
     };
 
     // Create SBOM info if files are available
     let sbom_info = sbom_files.spdx_hash.as_ref().map(|spdx_hash| SbomInfo {
         spdx: spdx_hash.clone(),
         cyclonedx: sbom_files.cyclonedx_hash.clone(),
-    });
-
-    // Create compression info
-    let compression_info = Some(CompressionInfo {
-        format: CompressionFormatType::Legacy,
-        frame_size: None,
-        frame_count: None,
     });
 
     // Generate Python metadata if this is a Python package
@@ -137,7 +128,7 @@ pub fn create_manifest(
             description: recipe_metadata.description.clone(),
             homepage: recipe_metadata.homepage.clone(),
             license: recipe_metadata.license.clone(),
-            compression: compression_info,
+            legacy_compression: None,
         },
         dependencies: Dependencies {
             runtime: runtime_deps,

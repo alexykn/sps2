@@ -13,7 +13,7 @@ use sps2_hash::Hash;
 use sps2_platform::{core::PlatformContext, PlatformManager};
 
 use sps2_resolver::{PackageId, ResolvedNode};
-use sps2_state::{PackageRef, StateManager};
+use sps2_state::{file_queries_runtime, PackageRef, StateManager};
 use sps2_store::{PackageStore, StoredPackage};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
@@ -58,36 +58,6 @@ impl AtomicInstaller {
         let platform = PlatformManager::instance().platform();
         let context = platform.create_context(None);
         (platform, context)
-    }
-
-    async fn populate_legacy_file_entries(
-        &self,
-        transition: &mut StateTransition,
-        parent_id: &Uuid,
-        package: &sps2_state::models::Package,
-    ) -> Result<(), Error> {
-        let mut tx = self.state_manager.begin_transaction().await?;
-        let file_paths = sps2_state::queries::get_package_files(
-            &mut tx,
-            parent_id,
-            &package.name,
-            &package.version,
-        )
-        .await?;
-        tx.commit().await?;
-
-        for file_path in file_paths {
-            let staging_file = transition.staging_path.join(&file_path);
-            let is_directory = staging_file.is_dir();
-            transition.package_files.push((
-                package.name.clone(),
-                package.version.clone(),
-                file_path,
-                is_directory,
-            ));
-        }
-
-        Ok(())
     }
 
     /// Create staging directory using platform abstraction
@@ -201,7 +171,6 @@ impl AtomicInstaller {
 
         let transition_data = sps2_state::TransactionData {
             package_refs: &transition.package_refs,
-            package_files: &transition.package_files,
             file_references: &transition.file_references,
             pending_file_hashes: &transition.pending_file_hashes,
         };
@@ -262,7 +231,7 @@ impl AtomicInstaller {
         parent_packages: &[sps2_state::models::Package],
         exclude_names: &HashSet<String>,
     ) -> Result<(), Error> {
-        if let Some(parent_id) = transition.parent_id {
+        if transition.parent_id.is_some() {
             for pkg in parent_packages {
                 if exclude_names.contains(&pkg.name) {
                     continue;
@@ -288,20 +257,23 @@ impl AtomicInstaller {
                 };
                 transition.package_refs.push(package_ref);
 
+                let stored_package = StoredPackage::load(&store_path).await?;
+                let file_hashes = stored_package.file_hashes().ok_or_else(|| {
+                    Error::from(InstallError::AtomicOperationFailed {
+                        message: format!(
+                            "legacy packages without file hashes are no longer supported: {}-{}",
+                            pkg.name, pkg.version
+                        ),
+                    })
+                })?;
+
                 match transition.staging_mode {
                     StagingMode::Fresh => {
-                        let had_hashes = self
-                            .link_package_to_staging(transition, &store_path, &package_id, false)
+                        self.link_package_to_staging(transition, &store_path, &package_id, true)
                             .await?;
-
-                        if !had_hashes {
-                            self.populate_legacy_file_entries(transition, &parent_id, pkg)
-                                .await?;
-                        }
                     }
                     StagingMode::Cloned => {
-                        self.populate_legacy_file_entries(transition, &parent_id, pkg)
-                            .await?;
+                        self.register_file_hashes(transition, &package_id, file_hashes);
                     }
                 }
             }
@@ -516,7 +488,6 @@ impl AtomicInstaller {
         record_hashes: bool,
     ) -> Result<bool, Error> {
         let staging_prefix = &transition.staging_path;
-        let mut file_paths = Vec::new();
 
         // Load the stored package
         let stored_package = StoredPackage::load(store_path).await?;
@@ -532,27 +503,16 @@ impl AtomicInstaller {
         stored_package.link_to(staging_prefix).await?;
 
         let mut had_file_hashes = false;
+        let mut linked_entry_count = 0usize;
         // Collect file paths for database tracking AND store file hash info
         if let Some(file_hashes) = stored_package.file_hashes() {
             had_file_hashes = true;
+            linked_entry_count = file_hashes.len();
             // Store the file hash information for later use when we have package IDs
             if record_hashes {
                 transition
                     .pending_file_hashes
                     .push((package_id.clone(), file_hashes.to_vec()));
-            }
-
-            for file_hash in file_hashes {
-                // Skip manifest.toml and sbom files - they should not be tracked in package_files
-                if !file_hash.is_directory
-                    && (file_hash.relative_path == "manifest.toml"
-                        || file_hash.relative_path == "sbom.spdx.json"
-                        || file_hash.relative_path == "sbom.cdx.json")
-                {
-                    continue;
-                }
-
-                file_paths.push((file_hash.relative_path.clone(), file_hash.is_directory));
             }
         }
 
@@ -561,25 +521,24 @@ impl AtomicInstaller {
             sender.emit(AppEvent::General(GeneralEvent::DebugLog {
                 message: format!(
                     "Linked {} files/directories for package {}",
-                    file_paths.len(),
-                    package_id.name
+                    linked_entry_count, package_id.name
                 ),
                 context: std::collections::HashMap::new(),
             }));
         }
 
-        // Store file information to be added during commit
-        // Paths are already relative to staging root
-        for (file_path, is_directory) in file_paths {
-            transition.package_files.push((
-                package_id.name.clone(),
-                package_id.version.to_string(),
-                file_path,
-                is_directory,
-            ));
-        }
-
         Ok(had_file_hashes)
+    }
+
+    fn register_file_hashes(
+        &self,
+        transition: &mut StateTransition,
+        package_id: &PackageId,
+        file_hashes: &[sps2_hash::FileHashResult],
+    ) {
+        transition
+            .pending_file_hashes
+            .push((package_id.clone(), file_hashes.to_vec()));
     }
 
     // Removed install_python_package - Python packages are now handled like regular packages
@@ -663,11 +622,29 @@ impl AtomicInstaller {
         package: &sps2_state::models::Package,
     ) -> Result<(), Error> {
         // Get all files belonging to this package from the database
+        let state_id = Uuid::parse_str(&package.state_id).map_err(|e| {
+            InstallError::AtomicOperationFailed {
+                message: format!(
+                    "failed to parse associated state ID for package {}: {e}",
+                    package.name
+                ),
+            }
+        })?;
+
         let mut tx = self.state_manager.begin_transaction().await?;
-        let file_paths =
-            sps2_state::queries::get_active_package_files(&mut tx, &package.name, &package.version)
-                .await?;
+        let entries = file_queries_runtime::get_package_file_entries_by_name(
+            &mut tx,
+            &state_id,
+            &package.name,
+            &package.version,
+        )
+        .await?;
         tx.commit().await?;
+
+        let file_paths: Vec<String> = entries
+            .into_iter()
+            .map(|entry| entry.relative_path)
+            .collect();
 
         // Detect if this is a Python package for later cleanup
         let python_package_dir = self.detect_python_package_directory(&file_paths);
@@ -1113,10 +1090,14 @@ mod tests {
 
         let active_state = state.get_current_state_id().await.unwrap();
         let mut tx = state.begin_transaction().await.unwrap();
-        let pkg_a_files =
-            sps2_state::queries::get_package_files(&mut tx, &active_state, "A", "1.0.0")
-                .await
-                .unwrap();
+        let pkg_a_files = sps2_state::file_queries_runtime::get_package_file_entries_by_name(
+            &mut tx,
+            &active_state,
+            "A",
+            "1.0.0",
+        )
+        .await
+        .unwrap();
         tx.commit().await.unwrap();
 
         assert!(

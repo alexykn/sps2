@@ -116,99 +116,31 @@ impl StoredPackage {
 
     /// Link package contents to a destination
     ///
-    /// For new file-level packages, this links from the file store.
-    /// For legacy packages, this links from the package directory.
-    ///
     /// # Errors
     ///
-    /// Returns an error if:
-    /// - The files directory is missing or corrupted
-    /// - File linking operations fail
-    /// - Directory creation fails
-    ///
-    /// # Panics
-    /// Panics if the package path doesn't have expected parent directories
+    /// Returns an error if file linking operations fail or the package lacks
+    /// file-level hashes (legacy packages are no longer supported).
     pub async fn link_to(&self, dest_root: &Path) -> Result<(), Error> {
-        // Check if this is a new file-level package
-        if let Some(file_hashes) = &self.file_hashes {
-            // New file-level package - link from file store
-            let store_base = self.path.parent().unwrap().parent().unwrap();
-            let file_store = crate::FileStore::new(store_base);
+        let file_hashes = self
+            .file_hashes
+            .as_ref()
+            .ok_or_else(|| PackageError::Corrupted {
+                message: "package is missing file hashes and is no longer supported".to_string(),
+            })?;
 
-            // Link all files from the file store
-            file_store
-                .link_files(file_hashes, &PathBuf::new(), dest_root)
-                .await?;
-            Ok(())
-        } else {
-            // Legacy package - link from package directory
-            let files_dir = self.files_path();
-            let (platform, ctx) = Self::create_platform_context();
+        let store_base = self
+            .path
+            .parent()
+            .and_then(std::path::Path::parent)
+            .ok_or_else(|| StorageError::InvalidPath {
+                path: self.path.display().to_string(),
+            })?;
+        let file_store = crate::FileStore::new(store_base);
 
-            if !platform.filesystem().exists(&ctx, &files_dir).await {
-                return Err(PackageError::Corrupted {
-                    message: "missing files directory".to_string(),
-                }
-                .into());
-            }
-
-            // Recursively link all files
-            self.link_dir(&files_dir, dest_root).await
-        }
-    }
-
-    async fn link_dir(&self, src: &Path, dest: &Path) -> Result<(), Error> {
-        let (platform, ctx) = Self::create_platform_context();
-
-        // Create destination directory
-        platform.filesystem().create_dir_all(&ctx, dest).await?;
-
-        let mut entries = fs::read_dir(src).await?;
-        while let Some(entry) = entries.next_entry().await? {
-            let src_path = entry.path();
-            let file_name = entry.file_name();
-
-            // Skip manifest.toml and sbom files - they should only exist in store
-            let file_name_str = file_name.to_string_lossy();
-            if file_name_str == "manifest.toml"
-                || file_name_str == "sbom.spdx.json"
-                || file_name_str == "sbom.cdx.json"
-            {
-                continue;
-            }
-
-            let dest_path = dest.join(&file_name);
-
-            let metadata = entry.metadata().await?;
-
-            if metadata.is_dir() {
-                // Recursively link subdirectories
-                Box::pin(self.link_dir(&src_path, &dest_path)).await?;
-            } else if metadata.is_file() {
-                // Clone file to maintain copy-on-write semantics
-                if platform.filesystem().exists(&ctx, &dest_path).await {
-                    platform.filesystem().remove_file(&ctx, &dest_path).await?;
-                }
-                platform
-                    .filesystem()
-                    .clone_file(&ctx, &src_path, &dest_path)
-                    .await?;
-            } else if metadata.is_symlink() {
-                // Copy symlinks
-                let target = fs::read_link(&src_path).await?;
-
-                if platform.filesystem().exists(&ctx, &dest_path).await {
-                    platform.filesystem().remove_file(&ctx, &dest_path).await?;
-                }
-
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::symlink;
-                    symlink(&target, &dest_path)?;
-                }
-            }
-        }
-
+        // Link all files from the file store
+        file_store
+            .link_files(file_hashes, &PathBuf::new(), dest_root)
+            .await?;
         Ok(())
     }
 

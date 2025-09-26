@@ -181,9 +181,6 @@ description = "GNU Autoconf is a tool for producing shell scripts that automatic
 homepage = "https://www.gnu.org/software/autoconf/"
 license = "GPL-3.0-or-later"
 
-[package.compression]
-format = "legacy"
-
 [dependencies]
 
 [sbom]

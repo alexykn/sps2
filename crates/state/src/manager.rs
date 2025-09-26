@@ -97,27 +97,6 @@ impl StateManager {
         Ok((package_id_map, store_inc_count))
     }
 
-    // Helper: add legacy package_files rows
-    async fn add_legacy_package_files(
-        &self,
-        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-        staging_id: &Uuid,
-        package_files: &[(String, String, String, bool)],
-    ) -> Result<(), Error> {
-        for (package_name, package_version, file_path, is_directory) in package_files {
-            queries::add_package_file(
-                tx,
-                staging_id,
-                package_name,
-                package_version,
-                file_path,
-                *is_directory,
-            )
-            .await?;
-        }
-        Ok(())
-    }
-
     // Helper: process pending hashes for packages with computed file hashes
     async fn process_pending_file_hashes(
         &self,
@@ -194,6 +173,7 @@ impl StateManager {
             if hashed_set.contains(&pkg_ref.package_id) {
                 continue;
             }
+
             let Some(&new_db_pkg_id) = package_id_map.get(&pkg_ref.package_id) else {
                 continue;
             };
@@ -1161,8 +1141,6 @@ impl StateManager {
 pub struct TransactionData<'a> {
     /// Package references to be added during commit
     pub package_refs: &'a [PackageRef],
-    /// Package files to be added during commit (legacy)
-    pub package_files: &'a [(String, String, String, bool)], // (package_name, package_version, file_path, is_directory)
     /// File references for file-level storage
     pub file_references: &'a [(i64, crate::FileReference)], // (package_id, file_reference)
     /// Pending file hashes to be converted to file references after packages are added
@@ -1286,10 +1264,6 @@ impl StateManager {
             .add_package_refs_and_build_id_map(&mut tx, transition_data.package_refs)
             .await?;
 
-        // Add legacy package_files rows
-        self.add_legacy_package_files(&mut tx, staging_id, transition_data.package_files)
-            .await?;
-
         // Add file-level entries for newly hashed packages
         let mut file_inc_count = self
             .process_pending_file_hashes(
@@ -1304,7 +1278,7 @@ impl StateManager {
             .process_file_references(&mut tx, transition_data.file_references)
             .await?;
 
-        // Backfill carry-forward packages without hashes for this transition
+        // Backfill file entries for carry-forward packages that didn't compute hashes
         file_inc_count += self
             .backfill_carry_forward_files(
                 &mut tx,
@@ -1488,7 +1462,6 @@ mod tests {
         };
         let td = TransactionData {
             package_refs: &[pref],
-            package_files: &[],
             file_references: &[],
             pending_file_hashes: &[],
         };
@@ -1545,7 +1518,6 @@ mod tests {
         ];
         let td = TransactionData {
             package_refs: &[pref],
-            package_files: &[],
             file_references: &[],
             pending_file_hashes: &[(
                 sps2_resolver::PackageId::new(
@@ -1581,7 +1553,6 @@ mod tests {
 
         let td = TransactionData {
             package_refs: &[],
-            package_files: &[],
             file_references: &[],
             pending_file_hashes: &[],
         };
@@ -1628,7 +1599,6 @@ mod tests {
         };
         let td = TransactionData {
             package_refs: &[pref],
-            package_files: &[],
             file_references: &[],
             pending_file_hashes: &[(pid, vec![fh])],
         };

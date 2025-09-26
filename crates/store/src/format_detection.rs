@@ -206,12 +206,7 @@ impl PackageFormatDetector {
         match feature {
             "sbom" => compat_info.supports_sbom,
             "signatures" => compat_info.supports_signatures,
-            "seekable_compression" => compat_info
-                .supports_compression
-                .contains(&sps2_types::CompressionFormatType::Seekable),
-            "legacy_compression" => compat_info
-                .supports_compression
-                .contains(&sps2_types::CompressionFormatType::Legacy),
+            "seekable_compression" => true,
             _ => false,
         }
     }

@@ -16,13 +16,12 @@ pub mod version;
 
 // Re-export commonly used types
 pub use format::{
-    CompressionFormatType, PackageFormatChecker, PackageFormatCompatibility,
-    PackageFormatMigration, PackageFormatValidationResult, PackageFormatVersion,
-    PackageFormatVersionError,
+    PackageFormatChecker, PackageFormatCompatibility, PackageFormatMigration,
+    PackageFormatValidationResult, PackageFormatVersion, PackageFormatVersionError,
 };
 pub use manifest::{
-    CompressionInfo as ManifestCompressionInfo, Dependencies as ManifestDependencies, Manifest,
-    ManifestBuilder, PackageInfo as ManifestPackageInfo, SbomInfo,
+    Dependencies as ManifestDependencies, Manifest, ManifestBuilder,
+    PackageInfo as ManifestPackageInfo, SbomInfo,
 };
 pub use package::{
     DepEdge, DepKind, PackageId, PackageInfo, PackageSpec, PackageStatus, PythonPackageMetadata,

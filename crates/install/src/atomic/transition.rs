@@ -36,9 +36,6 @@ pub struct StateTransition {
     pub staging_mode: StagingMode,
     /// Package references to be added during commit
     pub package_refs: Vec<PackageRef>,
-    // Removed package_refs_with_venv - Python packages now handled like regular packages
-    /// Package files to be added during commit (legacy)
-    pub package_files: Vec<(String, String, String, bool)>, // (package_name, package_version, file_path, is_directory)
     /// File references for file-level storage
     pub file_references: Vec<(i64, FileReference)>, // (package_id, file_reference)
     /// Pending file hashes to be converted to file references after we have package IDs
@@ -71,7 +68,6 @@ impl StateTransition {
             staging_path,
             staging_mode: StagingMode::Fresh,
             package_refs: Vec::new(),
-            package_files: Vec::new(),
             file_references: Vec::new(),
             pending_file_hashes: Vec::new(),
             event_sender: None,

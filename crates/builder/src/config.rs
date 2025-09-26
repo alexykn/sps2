@@ -6,9 +6,9 @@
 //! centralized in the config crate.
 
 use sps2_config::builder::{
-    BuildSettings, BuilderConfig, CacheSettings, CompressionSettings, EnvironmentSettings,
-    PackagingSettings, PerformanceSettings, SbomSettings, SecuritySettings, ShellExpansionPolicy,
-    SigningSettings, ValidationConfig, ValidationMode,
+    BuildSettings, BuilderConfig, CacheSettings, EnvironmentSettings, PackagingSettings,
+    PerformanceSettings, SbomSettings, SecuritySettings, ShellExpansionPolicy, SigningSettings,
+    ValidationConfig, ValidationMode,
 };
 use sps2_resources::ResourceManager;
 use std::sync::Arc;
@@ -95,12 +95,6 @@ impl BuildConfig {
     #[must_use]
     pub fn signing_config(&self) -> &SigningSettings {
         &self.config.packaging.signing
-    }
-
-    /// Get compression configuration
-    #[must_use]
-    pub fn compression_config(&self) -> &CompressionSettings {
-        &self.config.packaging.compression
     }
 
     /// Get cache configuration
@@ -232,52 +226,6 @@ impl BuildConfig {
     pub fn with_jobs(mut self, jobs: usize) -> Self {
         self.config.build.build_jobs = jobs;
         self
-    }
-
-    /// Set compression configuration
-    #[must_use]
-    pub fn with_compression_config(mut self, compression_config: CompressionSettings) -> Self {
-        self.config.packaging.compression = compression_config;
-        self
-    }
-
-    /// Set compression level
-    #[must_use]
-    pub fn with_compression_level(mut self, level: String) -> Self {
-        self.config.packaging.compression.level = level;
-        self
-    }
-
-    /// Enable fast compression for development builds
-    #[must_use]
-    pub fn with_fast_compression() -> Self {
-        let mut config = BuilderConfig::default();
-        config.packaging.compression.level = "fast".to_string();
-        Self::new(config)
-    }
-
-    /// Enable balanced compression (default)
-    #[must_use]
-    pub fn with_balanced_compression() -> Self {
-        let mut config = BuilderConfig::default();
-        config.packaging.compression.level = "balanced".to_string();
-        Self::new(config)
-    }
-
-    /// Enable maximum compression for production builds
-    #[must_use]
-    pub fn with_maximum_compression() -> Self {
-        let mut config = BuilderConfig::default();
-        config.packaging.compression.level = "maximum".to_string();
-        Self::new(config)
-    }
-
-    /// Enable custom compression level
-    #[must_use]
-    pub fn with_custom_compression(level: u8) -> Self {
-        let mut config = BuilderConfig::default();
-        config.packaging.compression.level = level.to_string();
-        Self::new(config)
     }
 
     /// Set build root directory

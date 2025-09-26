@@ -1,6 +1,6 @@
 //! Builder configuration for package building and compilation
 
-use serde::{Deserialize, Serialize};
+use serde::{de::IgnoredAny, Deserialize, Serialize};
 use sps2_errors::{ConfigError, Error};
 use std::path::{Path, PathBuf};
 use tokio::fs;
@@ -61,8 +61,9 @@ pub struct PackagingSettings {
     pub sbom: SbomSettings,
     #[serde(default)]
     pub signing: SigningSettings,
-    #[serde(default)]
-    pub compression: CompressionSettings,
+    /// Legacy compression configuration retained for backward compatibility
+    #[serde(default, alias = "compression", skip_serializing)]
+    pub legacy_compression: Option<IgnoredAny>,
 }
 
 /// SBOM (Software Bill of Materials) generation settings
@@ -115,43 +116,6 @@ impl Default for SigningSettings {
             keychain_path: None,
             enable_hardened_runtime: true,
             entitlements_file: None,
-        }
-    }
-}
-
-/// Compression and archive settings
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct CompressionSettings {
-    #[serde(default = "default_compression_algorithm")]
-    pub algorithm: String, // "zstd", "gzip", "bzip2", etc.
-    #[serde(default = "default_compression_level")]
-    pub level: String, // "fast", "balanced", "maximum", or custom number
-    #[serde(default = "default_compression_threads")]
-    pub threads: Option<usize>, // None = auto-detect
-}
-
-impl CompressionSettings {
-    /// Get the actual zstd compression level for this setting
-    #[must_use]
-    pub fn zstd_level(&self) -> i32 {
-        match self.level.as_str() {
-            "fast" => 3,     // Fast but still reasonable compression
-            "balanced" => 9, // Good balance of speed vs compression
-            "maximum" => 19, // Maximum compression (zstd default max)
-            level => {
-                // Clamp to valid zstd range (1-22)
-                level.parse::<i32>().unwrap_or(9).clamp(1, 22)
-            }
-        }
-    }
-}
-
-impl Default for CompressionSettings {
-    fn default() -> Self {
-        Self {
-            algorithm: "zstd".to_string(),
-            level: "balanced".to_string(),
-            threads: None,
         }
     }
 }
@@ -512,20 +476,6 @@ impl BuilderConfig {
             .into());
         }
 
-        // Validate compression settings
-        match self.packaging.compression.level.as_str() {
-            "fast" | "balanced" | "maximum" => {}
-            level if level.parse::<u8>().is_ok() => {}
-            _ => {
-                return Err(ConfigError::InvalidValue {
-                    field: "packaging.compression.level".to_string(),
-                    value: self.packaging.compression.level.clone(),
-                }
-                .into());
-            }
-        }
-
-        // Validate paths are absolute
         for path in &self.environment.allowed_read_paths {
             if !path.is_absolute() {
                 return Err(ConfigError::InvalidValue {
@@ -601,18 +551,6 @@ fn default_signing_enabled() -> bool {
 
 fn default_enable_hardened_runtime() -> bool {
     true
-}
-
-fn default_compression_algorithm() -> String {
-    "zstd".to_string()
-}
-
-fn default_compression_level() -> String {
-    "balanced".to_string()
-}
-
-fn default_compression_threads() -> Option<usize> {
-    None
 }
 
 fn default_allowed_env_vars() -> Vec<String> {

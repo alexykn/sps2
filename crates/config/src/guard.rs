@@ -121,14 +121,6 @@ pub struct VerificationConfig {
     pub guard: GuardConfigToml,
     #[serde(default)]
     pub performance: PerformanceConfigToml,
-
-    // Legacy compatibility fields - deprecated
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fail_on_discrepancy: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub auto_heal: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub preserve_user_files: Option<bool>,
 }
 
 impl Default for VerificationConfig {
@@ -142,9 +134,6 @@ impl Default for VerificationConfig {
             user_file_policy: UserFilePolicy::default(),
             guard: GuardConfigToml::default(),
             performance: PerformanceConfigToml::default(),
-            fail_on_discrepancy: None,
-            auto_heal: None,
-            preserve_user_files: None,
         }
     }
 }
@@ -289,36 +278,6 @@ impl Default for GuardConfiguration {
 }
 
 impl VerificationConfig {
-    /// Apply legacy fields if present and convert to new enum-based fields
-    pub fn apply_legacy_fields(&mut self) {
-        // Handle legacy fail_on_discrepancy and auto_heal
-        match (self.fail_on_discrepancy, self.auto_heal) {
-            (Some(true), Some(true)) => {
-                self.discrepancy_handling = DiscrepancyHandling::AutoHealOrFail;
-            }
-            (Some(false), Some(true)) => self.discrepancy_handling = DiscrepancyHandling::AutoHeal,
-            (Some(true), Some(false)) => self.discrepancy_handling = DiscrepancyHandling::FailFast,
-            (Some(false), Some(false)) => {
-                self.discrepancy_handling = DiscrepancyHandling::ReportOnly;
-            }
-            _ => {} // Keep current discrepancy_handling
-        }
-
-        // Handle legacy preserve_user_files
-        if let Some(preserve) = self.preserve_user_files {
-            self.user_file_policy = if preserve {
-                UserFilePolicy::Preserve
-            } else {
-                UserFilePolicy::Remove
-            };
-        }
-
-        // Clear legacy fields after conversion
-        self.fail_on_discrepancy = None;
-        self.auto_heal = None;
-        self.preserve_user_files = None;
-    }
-
     /// Check if should fail on discrepancy (for backward compatibility)
     #[must_use]
     pub fn should_fail_on_discrepancy(&self) -> bool {
@@ -339,36 +298,6 @@ impl VerificationConfig {
 }
 
 impl GuardConfiguration {
-    /// Apply legacy fields if present and convert to new enum-based fields
-    pub fn apply_legacy_fields(&mut self) {
-        // Handle legacy fail_on_discrepancy and auto_heal
-        match (self.fail_on_discrepancy, self.auto_heal) {
-            (Some(true), Some(true)) => {
-                self.discrepancy_handling = DiscrepancyHandling::AutoHealOrFail;
-            }
-            (Some(false), Some(true)) => self.discrepancy_handling = DiscrepancyHandling::AutoHeal,
-            (Some(true), Some(false)) => self.discrepancy_handling = DiscrepancyHandling::FailFast,
-            (Some(false), Some(false)) => {
-                self.discrepancy_handling = DiscrepancyHandling::ReportOnly;
-            }
-            _ => {} // Keep current discrepancy_handling
-        }
-
-        // Handle legacy preserve_user_files
-        if let Some(preserve) = self.preserve_user_files {
-            self.user_file_policy = if preserve {
-                UserFilePolicy::Preserve
-            } else {
-                UserFilePolicy::Remove
-            };
-        }
-
-        // Clear legacy fields after conversion
-        self.fail_on_discrepancy = None;
-        self.auto_heal = None;
-        self.preserve_user_files = None;
-    }
-
     /// Check if should fail on discrepancy (for backward compatibility)
     #[must_use]
     pub fn should_fail_on_discrepancy(&self) -> bool {

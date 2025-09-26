@@ -109,10 +109,6 @@ impl PackageFormatVersion {
                 version: self.clone(),
                 minimum_reader_version: Self::new(1, 0, 0),
                 maximum_reader_version: Self::new(1, u32::MAX, u32::MAX),
-                supports_compression: vec![
-                    CompressionFormatType::Legacy,
-                    CompressionFormatType::Seekable,
-                ],
                 supports_sbom: true,
                 supports_signatures: true,
                 deprecation_warning: None,
@@ -122,10 +118,6 @@ impl PackageFormatVersion {
                 version: self.clone(),
                 minimum_reader_version: self.clone(),
                 maximum_reader_version: self.clone(),
-                supports_compression: vec![
-                    CompressionFormatType::Legacy,
-                    CompressionFormatType::Seekable,
-                ],
                 supports_sbom: true,
                 supports_signatures: true,
                 deprecation_warning: Some(format!(
@@ -213,28 +205,12 @@ pub struct PackageFormatCompatibility {
     pub minimum_reader_version: PackageFormatVersion,
     /// Maximum version of sps2 that can read this format
     pub maximum_reader_version: PackageFormatVersion,
-    /// Supported compression formats in this version
-    pub supports_compression: Vec<CompressionFormatType>,
     /// Whether this version supports SBOM integration
     pub supports_sbom: bool,
     /// Whether this version supports package signatures
     pub supports_signatures: bool,
     /// Optional deprecation warning message
     pub deprecation_warning: Option<String>,
-}
-
-/// Compression format types supported across different package format versions
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum CompressionFormatType {
-    /// Legacy non-seekable zstd compression (v1.0.0+)
-    Legacy,
-    /// Seekable zstd compression with frame boundaries (v1.0.0+)
-    Seekable,
-    // Future compression formats would be added here
-    // For example:
-    // Lz4,     // Hypothetical v1.1.0 addition
-    // Brotli,  // Hypothetical v1.2.0 addition
 }
 
 /// Migration information for upgrading packages between format versions
@@ -402,17 +378,6 @@ impl PackageFormatChecker {
             }],
             estimated_duration: MigrationDuration::Seconds(30),
         }
-    }
-
-    /// Check if a specific compression format is supported in a version
-    #[must_use]
-    pub fn supports_compression(
-        &self,
-        version: &PackageFormatVersion,
-        compression: &CompressionFormatType,
-    ) -> bool {
-        let compat_info = version.compatibility_info();
-        compat_info.supports_compression.contains(compression)
     }
 
     /// Get all migration paths available from a version
