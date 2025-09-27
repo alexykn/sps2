@@ -1,16 +1,15 @@
-//! Atomic installer implementation using APFS optimizations
+//! Atomic installer implementation using slot-based staging.
 
-use crate::atomic::transition::{StagingCreation, StagingMode, StateTransition};
-use std::sync::Arc;
+use crate::atomic::transition::StateTransition;
 // Removed Python venv handling - Python packages are now handled like regular packages
-use crate::{InstallContext, InstallResult, PreparedPackage, StagingManager};
+use crate::{InstallContext, InstallResult, PreparedPackage};
 use sps2_errors::{Error, InstallError};
 use sps2_events::events::{StateTransitionContext, TransitionSummary};
 use sps2_events::{
     AppEvent, EventEmitter, EventSender, FailureContext, GeneralEvent, StateEvent, UninstallEvent,
 };
 use sps2_hash::Hash;
-use sps2_platform::{core::PlatformContext, PlatformManager};
+use sps2_platform::filesystem_helpers as fs_helpers;
 
 use sps2_resolver::{PackageId, ResolvedNode};
 use sps2_state::{file_queries_runtime, PackageRef, StateManager};
@@ -46,109 +45,11 @@ impl EventEmitter for crate::UpdateContext {
 pub struct AtomicInstaller {
     /// State manager for atomic transitions
     state_manager: StateManager,
-    /// Live prefix path
-    live_path: PathBuf,
     /// Content-addressable package store
     store: PackageStore,
 }
 
 impl AtomicInstaller {
-    /// Create a platform context for filesystem operations
-    fn create_platform_context(&self) -> (&'static sps2_platform::Platform, PlatformContext) {
-        let platform = PlatformManager::instance().platform();
-        let context = platform.create_context(None);
-        (platform, context)
-    }
-
-    /// Create staging directory using platform abstraction
-    async fn create_staging_directory(
-        &self,
-        live_path: &Path,
-        staging_path: &Path,
-        allow_clone: bool,
-    ) -> Result<StagingCreation, Error> {
-        let (platform, ctx) = self.create_platform_context();
-        // Ensure parent directory exists for staging path
-        if let Some(parent) = staging_path.parent() {
-            platform
-                .filesystem()
-                .create_dir_all(&ctx, parent)
-                .await
-                .map_err(|e| InstallError::FilesystemError {
-                    operation: "create_dir_all".to_string(),
-                    path: parent.display().to_string(),
-                    message: e.to_string(),
-                })?;
-        }
-
-        if platform.filesystem().exists(&ctx, staging_path).await {
-            platform
-                .filesystem()
-                .remove_dir_all(&ctx, staging_path)
-                .await
-                .map_err(|e| InstallError::FilesystemError {
-                    operation: "remove_dir_all".to_string(),
-                    path: staging_path.display().to_string(),
-                    message: e.to_string(),
-                })?;
-        }
-
-        let live_exists = platform.filesystem().exists(&ctx, live_path).await;
-
-        if allow_clone && live_exists {
-            match platform
-                .filesystem()
-                .clone_directory(&ctx, live_path, staging_path)
-                .await
-            {
-                Ok(()) => {
-                    return Ok(StagingCreation {
-                        mode: StagingMode::Cloned,
-                        clone_attempted: true,
-                        clone_error: None,
-                    });
-                }
-                Err(e) => {
-                    // Fallback to fresh staging if clone fails
-                    let _ = platform
-                        .filesystem()
-                        .remove_dir_all(&ctx, staging_path)
-                        .await;
-                    platform
-                        .filesystem()
-                        .create_dir_all(&ctx, staging_path)
-                        .await
-                        .map_err(|err| InstallError::FilesystemError {
-                            operation: "create_dir_all".to_string(),
-                            path: staging_path.display().to_string(),
-                            message: err.to_string(),
-                        })?;
-
-                    return Ok(StagingCreation {
-                        mode: StagingMode::Fresh,
-                        clone_attempted: true,
-                        clone_error: Some(e.to_string()),
-                    });
-                }
-            }
-        } else {
-            platform
-                .filesystem()
-                .create_dir_all(&ctx, staging_path)
-                .await
-                .map_err(|e| InstallError::FilesystemError {
-                    operation: "create_dir_all".to_string(),
-                    path: staging_path.display().to_string(),
-                    message: e.to_string(),
-                })?;
-        }
-
-        Ok(StagingCreation {
-            mode: StagingMode::Fresh,
-            clone_attempted: allow_clone && live_exists,
-            clone_error: None,
-        })
-    }
     /// Execute two-phase commit flow for a transition
     async fn execute_two_phase_commit<T: EventEmitter>(
         &self,
@@ -157,6 +58,11 @@ impl AtomicInstaller {
     ) -> Result<(), Error> {
         let source = transition.parent_id;
         let target = transition.staging_id;
+        let parent_id = transition.parent_id.ok_or_else(|| {
+            Error::from(InstallError::AtomicOperationFailed {
+                message: "state transition missing parent state".to_string(),
+            })
+        })?;
 
         let transition_context = StateTransitionContext {
             operation: transition.operation.clone(),
@@ -179,8 +85,8 @@ impl AtomicInstaller {
             .state_manager
             .prepare_transaction(
                 &transition.staging_id,
-                &transition.parent_id.unwrap_or_default(),
-                &transition.staging_path,
+                &parent_id,
+                transition.staging_slot,
                 &transition.operation,
                 &transition_data,
             )
@@ -231,40 +137,99 @@ impl AtomicInstaller {
         parent_packages: &[sps2_state::models::Package],
         exclude_names: &HashSet<String>,
     ) -> Result<(), Error> {
-        if transition.parent_id.is_some() {
-            for pkg in parent_packages {
-                if exclude_names.contains(&pkg.name) {
-                    continue;
-                }
+        if transition.parent_id.is_none() {
+            return Ok(());
+        }
 
-                let hash = Hash::from_hex(&pkg.hash).map_err(|e| {
-                    Error::from(InstallError::AtomicOperationFailed {
-                        message: format!(
-                            "invalid package hash for {}-{}: {e}",
-                            pkg.name, pkg.version
-                        ),
-                    })
-                })?;
+        for pkg in parent_packages {
+            if exclude_names.contains(&pkg.name) {
+                continue;
+            }
 
-                let store_path = self.store.package_path(&hash);
-                let package_id = PackageId::new(pkg.name.clone(), pkg.version());
+            let package_ref = PackageRef {
+                state_id: transition.staging_id,
+                package_id: PackageId::new(pkg.name.clone(), pkg.version()),
+                hash: pkg.hash.clone(),
+                size: pkg.size,
+            };
+            transition.package_refs.push(package_ref);
+        }
+        Ok(())
+    }
 
-                let package_ref = PackageRef {
-                    state_id: transition.staging_id,
-                    package_id: package_id.clone(),
-                    hash: pkg.hash.clone(),
-                    size: pkg.size,
-                };
-                transition.package_refs.push(package_ref);
+    async fn sync_slot_with_parent(
+        &self,
+        transition: &mut StateTransition,
+        parent_packages: &[sps2_state::models::Package],
+    ) -> Result<(), Error> {
+        let Some(parent_state) = transition.parent_id else {
+            // No prior state to mirror; ensure slot metadata is cleared.
+            self.state_manager
+                .set_slot_state(transition.staging_slot, None)
+                .await?;
+            return Ok(());
+        };
 
-                if matches!(transition.staging_mode, StagingMode::Fresh) {
-                    // Fresh staging needs actual files linked, but we skip recording hashes
-                    // because the package version already has file metadata.
-                    self.link_package_to_staging(transition, &store_path, &package_id, false)
-                        .await?;
-                }
+        let slot_state = self
+            .state_manager
+            .slot_state(transition.staging_slot)
+            .await;
+
+        if slot_state == Some(parent_state) {
+            return Ok(());
+        }
+
+        let slot_packages = if let Some(slot_state_id) = slot_state {
+            self.state_manager
+                .get_installed_packages_in_state(&slot_state_id)
+                .await?
+        } else {
+            Vec::new()
+        };
+
+        let parent_keys: HashSet<String> = parent_packages
+            .iter()
+            .map(|pkg| format!("{}::{}", pkg.name, pkg.version))
+            .collect();
+
+        let slot_map: HashMap<String, sps2_state::models::Package> = slot_packages
+            .into_iter()
+            .map(|pkg| (format!("{}::{}", pkg.name, pkg.version), pkg))
+            .collect();
+
+        // Remove packages that should no longer be present in the slot
+        for (key, pkg) in &slot_map {
+            if !parent_keys.contains(key) {
+                self.remove_package_from_staging(transition, pkg).await?;
             }
         }
+
+        // Link packages that are present in the parent state but missing from the slot
+        for pkg in parent_packages {
+            let key = format!("{}::{}", pkg.name, pkg.version);
+            if slot_map.contains_key(&key) {
+                continue;
+            }
+
+            let hash = Hash::from_hex(&pkg.hash).map_err(|e| {
+                Error::from(InstallError::AtomicOperationFailed {
+                    message: format!(
+                        "invalid package hash for {}-{} during slot sync: {e}",
+                        pkg.name, pkg.version
+                    ),
+                })
+            })?;
+
+            let store_path = self.store.package_path(&hash);
+            let package_id = PackageId::new(pkg.name.clone(), pkg.version());
+            self.link_package_to_staging(transition, &store_path, &package_id, false)
+                .await?;
+        }
+
+        self.state_manager
+            .set_slot_state(transition.staging_slot, Some(parent_state))
+            .await?;
+
         Ok(())
     }
 
@@ -281,26 +246,11 @@ impl AtomicInstaller {
         // Set event sender on transition
         transition.event_sender = context.event_sender().cloned();
 
-        // Initialize staging directory
-        let creation = self
-            .create_staging_directory(&self.live_path, &transition.staging_path, true)
-            .await?;
-        transition.staging_mode = creation.mode;
-
-        let mut message = format!(
-            "Prepared staging directory at: {} (mode: {:?})",
-            transition.staging_path.display(),
-            creation.mode
-        );
-        if creation.clone_attempted && creation.mode == StagingMode::Fresh {
-            if let Some(err) = creation.clone_error {
-                message.push_str("; clone fallback due to: ");
-                message.push_str(&err);
-            } else {
-                message.push_str("; clone not available");
-            }
-        }
-        context.emit_debug(message);
+        context.emit_debug(format!(
+            "Prepared staging slot {} at {}",
+            transition.staging_slot,
+            transition.slot_path.display()
+        ));
 
         Ok(transition)
     }
@@ -309,18 +259,10 @@ impl AtomicInstaller {
     ///
     /// # Errors
     ///
-    /// Returns an error if staging manager initialization fails
+    /// Returns an error if initialization fails
     pub async fn new(state_manager: StateManager, store: PackageStore) -> Result<Self, Error> {
-        // Derive staging base path from StateManager's state path for test isolation
-        let staging_base_path = state_manager.state_path().join("staging");
-        let resources = Arc::new(sps2_resources::ResourceManager::default());
-        let _staging_manager =
-            StagingManager::new(store.clone(), staging_base_path, resources).await?;
-        let live_path = state_manager.live_path().to_path_buf();
-
         Ok(Self {
             state_manager,
-            live_path,
             store,
         })
     }
@@ -355,8 +297,11 @@ impl AtomicInstaller {
             .map(|pkg| (pkg.name.clone(), pkg))
             .collect();
 
-        // APFS clonefile already copies all existing packages, so we don't need to re-link them.
-        // We only need to carry forward the package references and file information in the database.
+        self.sync_slot_with_parent(&mut transition, &parent_packages)
+            .await?;
+
+        // The staging slot now mirrors the parent state, so carry-forward only needs to
+        // register package references for unchanged packages.
         let exclude_names: HashSet<String> = resolved_packages
             .keys()
             .map(|pkg| pkg.name.clone())
@@ -477,7 +422,7 @@ impl AtomicInstaller {
         package_id: &PackageId,
         record_hashes: bool,
     ) -> Result<bool, Error> {
-        let staging_prefix = &transition.staging_path;
+        let staging_prefix = &transition.slot_path;
 
         // Load the stored package
         let stored_package = StoredPackage::load(store_path).await?;
@@ -536,8 +481,7 @@ impl AtomicInstaller {
         // Setup state transition and staging directory
         let mut transition = self.setup_state_transition("uninstall", context).await?;
 
-        // APFS clonefile already copies all existing packages, so we don't need to re-link them.
-        // We only need to remove the packages being uninstalled and carry forward other package references.
+        // Ensure the staging slot mirrors the current parent state before applying removals.
         let mut result = InstallResult::new(transition.staging_id);
 
         for pkg in packages_to_remove {
@@ -556,6 +500,9 @@ impl AtomicInstaller {
             Vec::new()
         };
 
+        self.sync_slot_with_parent(&mut transition, &parent_packages)
+            .await?;
+
         for pkg in &parent_packages {
             // Check if this package should be removed
             let should_remove = packages_to_remove
@@ -564,10 +511,8 @@ impl AtomicInstaller {
 
             if should_remove {
                 result.add_removed(PackageId::new(pkg.name.clone(), pkg.version()));
-                if transition.staging_mode == StagingMode::Cloned {
-                    self.remove_package_from_staging(&mut transition, pkg)
-                        .await?;
-                }
+                self.remove_package_from_staging(&mut transition, pkg)
+                    .await?;
                 context.emit_debug(format!("Removed package {} from staging", pkg.name));
             }
         }
@@ -635,7 +580,7 @@ impl AtomicInstaller {
         let mut directories = Vec::new();
 
         for file_path in file_paths {
-            let staging_file = transition.staging_path.join(&file_path);
+            let staging_file = transition.slot_path.join(&file_path);
 
             if staging_file.exists() {
                 // Check if it's a symlink
@@ -655,7 +600,7 @@ impl AtomicInstaller {
 
         // 1. Remove symlinks
         for file_path in symlinks {
-            let staging_file = transition.staging_path.join(&file_path);
+            let staging_file = transition.slot_path.join(&file_path);
             if staging_file.exists() {
                 tokio::fs::remove_file(&staging_file).await.map_err(|e| {
                     InstallError::FilesystemError {
@@ -669,7 +614,7 @@ impl AtomicInstaller {
 
         // 2. Remove regular files
         for file_path in regular_files {
-            let staging_file = transition.staging_path.join(&file_path);
+            let staging_file = transition.slot_path.join(&file_path);
             if staging_file.exists() {
                 tokio::fs::remove_file(&staging_file).await.map_err(|e| {
                     InstallError::FilesystemError {
@@ -684,7 +629,7 @@ impl AtomicInstaller {
         // 3. Remove directories in reverse order (deepest first)
         directories.sort_by(|a, b| b.cmp(a)); // Reverse lexicographic order
         for file_path in directories {
-            let staging_file = transition.staging_path.join(&file_path);
+            let staging_file = transition.slot_path.join(&file_path);
             if staging_file.exists() {
                 // Try to remove directory if it's empty
                 if let Ok(mut entries) = tokio::fs::read_dir(&staging_file).await {
@@ -703,7 +648,7 @@ impl AtomicInstaller {
 
         // After removing all tracked files, clean up any remaining Python runtime artifacts
         if let Some(python_dir) = python_package_dir {
-            let python_staging_dir = transition.staging_path.join(&python_dir);
+            let python_staging_dir = transition.slot_path.join(&python_dir);
 
             if python_staging_dir.exists() {
                 // Check if directory still has content (runtime artifacts)
@@ -757,96 +702,34 @@ impl AtomicInstaller {
     pub async fn rollback_move_to_state(&mut self, target_state_id: Uuid) -> Result<(), Error> {
         let current_state_id = self.state_manager.get_current_state_id().await?;
 
-        // Setup staging and clone current live
         let mut transition =
             StateTransition::new(&self.state_manager, "rollback".to_string()).await?;
-        let creation = self
-            .create_staging_directory(&self.live_path, &transition.staging_path, true)
-            .await?;
         let target_packages = self
             .state_manager
             .get_installed_packages_in_state(&target_state_id)
             .await?;
-        transition.staging_mode = creation.mode;
 
-        if let Some(sender) = &transition.event_sender {
-            let mut msg = format!(
-                "Rollback staging prepared at {} (mode {:?})",
-                transition.staging_path.display(),
-                creation.mode
-            );
-            if creation.clone_attempted && creation.mode == StagingMode::Fresh {
-                if let Some(err) = creation.clone_error {
-                    msg.push_str("; clone fallback due to: ");
-                    msg.push_str(&err);
-                } else {
-                    msg.push_str("; clone not available");
-                }
-            }
-            sender.emit(AppEvent::General(GeneralEvent::DebugLog {
-                message: msg,
-                context: std::collections::HashMap::new(),
-            }));
-        }
+        fs_helpers::ensure_empty_dir(&transition.slot_path).await?;
 
-        if transition.staging_mode == StagingMode::Cloned {
-            let current_packages = self
-                .state_manager
-                .get_installed_packages_in_state(&current_state_id)
-                .await?;
-
-            let current_map: HashMap<String, sps2_state::models::Package> = current_packages
-                .into_iter()
-                .map(|pkg| (pkg.name.clone(), pkg))
-                .collect();
-            let target_map: HashMap<String, &sps2_state::models::Package> = target_packages
-                .iter()
-                .map(|pkg| (pkg.name.clone(), pkg))
-                .collect();
-
-            for (name, cur_pkg) in &current_map {
-                match target_map.get(name) {
-                    Some(tgt_pkg) if tgt_pkg.version == cur_pkg.version => {}
-                    _ => {
-                        self.remove_package_from_staging(&mut transition, cur_pkg)
-                            .await?;
-                        if let Some(sender) = &transition.event_sender {
-                            sender.emit(AppEvent::General(GeneralEvent::DebugLog {
-                                message: format!(
-                                    "Rollback removed package {}@{} from staging",
-                                    cur_pkg.name, cur_pkg.version
-                                ),
-                                context: std::collections::HashMap::new(),
-                            }));
-                        }
-                    }
-                }
-            }
-        }
-        // Compute diffs current -> target using DB
-        let target_packages = self
-            .state_manager
-            .get_installed_packages_in_state(&target_state_id)
-            .await?;
-        for tgt in &target_packages {
-            let hash = Hash::from_hex(&tgt.hash).map_err(|e| {
-                sps2_errors::Error::internal(format!("invalid hash {}: {e}", tgt.hash))
+        for pkg in &target_packages {
+            let hash = Hash::from_hex(&pkg.hash).map_err(|e| {
+                sps2_errors::Error::internal(format!("invalid hash {}: {e}", pkg.hash))
             })?;
             let store_path = self.store.package_path(&hash);
-            let pkg_id = sps2_resolver::PackageId::new(tgt.name.clone(), tgt.version());
-            let _ = self
-                .link_package_to_staging(&mut transition, &store_path, &pkg_id, false)
+            let pkg_id = PackageId::new(pkg.name.clone(), pkg.version());
+            self.link_package_to_staging(&mut transition, &store_path, &pkg_id, false)
                 .await?;
         }
 
-        // Journal and finalize: mark the target state as new active
-        // Note: Refcount semantics are handled centrally by StateManager::prepare_transaction.
-        // The installer only performs the filesystem swap and DB finalization steps.
+        self.state_manager
+            .set_slot_state(transition.staging_slot, Some(target_state_id))
+            .await?;
 
         let journal = sps2_types::state::TransactionJournal {
             new_state_id: target_state_id,
             parent_state_id: current_state_id,
-            staging_path: transition.staging_path.clone(),
+            staging_path: transition.slot_path.clone(),
+            staging_slot: transition.staging_slot,
             phase: sps2_types::state::TransactionPhase::Prepared,
             operation: "rollback".to_string(),
         };

@@ -6,9 +6,10 @@
 //! internally leveraging the platform's `FilesystemOperations` implementation.
 
 use crate::PlatformManager;
-use sps2_errors::StorageError;
+use sps2_errors::{Error, StorageError};
 use std::path::Path;
 use tokio::fs;
+use tokio::task;
 
 /// Result type for filesystem operations
 pub type Result<T> = std::result::Result<T, sps2_errors::Error>;
@@ -397,4 +398,110 @@ pub async fn remove_file(path: &Path) -> Result<()> {
                 .into(),
             }
         })
+}
+
+#[cfg(unix)]
+fn symlink_inner(target: &Path, link: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::symlink;
+
+    if let Some(parent) = link.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    if let Ok(metadata) = std::fs::symlink_metadata(link) {
+        if metadata.file_type().is_dir() {
+            std::fs::remove_dir_all(link)?;
+        } else {
+            std::fs::remove_file(link)?;
+        }
+    }
+
+    symlink(target, link)
+}
+
+/// Create a symbolic link using platform-safe operations (Unix only).
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Creating parent directories fails
+/// - Removing a pre-existing path at the link location fails
+/// - The symlink creation itself fails
+#[cfg(unix)]
+pub async fn symlink(target: &Path, link: &Path) -> Result<()> {
+    let target = target.to_path_buf();
+    let link = link.to_path_buf();
+
+    let result = task::spawn_blocking(move || symlink_inner(&target, &link))
+        .await
+        .map_err(|e| {
+            Error::from(StorageError::IoError {
+                message: format!("symlink task failed: {e}"),
+            })
+        })?;
+
+    result
+        .map_err(|e| {
+            Error::from(StorageError::IoError {
+                message: format!("symlink operation failed: {e}"),
+            })
+        })?;
+
+    Ok(())
+}
+
+/// Create a symbolic link (not supported on non-Unix platforms).
+#[cfg(not(unix))]
+pub async fn symlink(_target: &Path, _link: &Path) -> Result<()> {
+    Err(StorageError::IoError {
+        message: "symlink is not supported on this platform".to_string(),
+    }
+    .into())
+}
+
+#[cfg(unix)]
+async fn remove_tmp_link(path: &Path) -> Result<()> {
+    if !exists(path).await {
+        return Ok(());
+    }
+
+    match tokio::fs::symlink_metadata(path).await {
+        Ok(metadata) if metadata.file_type().is_dir() => remove_dir_all(path).await?,
+        Ok(_) => remove_file(path).await?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => {
+            return Err(StorageError::IoError {
+                message: format!("failed to inspect temporary link: {e}"),
+            }
+            .into())
+        }
+    }
+
+    Ok(())
+}
+
+/// Atomically replace a symbolic link with a new target (Unix only).
+///
+/// This helper creates a temporary symlink pointing at `target` and swaps it into
+/// place using the platform's atomic rename primitive.
+#[cfg(unix)]
+pub async fn replace_symlink(target: &Path, link: &Path) -> Result<()> {
+    if let Some(parent) = link.parent() {
+        create_dir_all(parent).await?;
+    }
+
+    let temp_link = link.with_extension("tmp-link");
+    remove_tmp_link(&temp_link).await?;
+
+    symlink(target, &temp_link).await?;
+    atomic_rename(&temp_link, link).await
+}
+
+/// Atomically replace a symbolic link with a new target (not supported on non-Unix platforms).
+#[cfg(not(unix))]
+pub async fn replace_symlink(_target: &Path, _link: &Path) -> Result<()> {
+    Err(StorageError::IoError {
+        message: "replace_symlink is not supported on this platform".to_string(),
+    }
+    .into())
 }

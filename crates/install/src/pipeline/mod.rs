@@ -11,7 +11,7 @@ pub mod download;
 pub mod operation;
 pub mod staging;
 
-use crate::staging::StagingManager;
+// use crate::staging::StagingManager; // removed in slot-based implementation
 use batch::{BatchManager, BatchResult, BatchStats, RollbackInfo};
 pub use config::PipelineConfig;
 use dashmap::DashMap;
@@ -74,10 +74,7 @@ impl PipelineMaster {
         let progress_manager = Arc::new(ProgressManager::new());
 
         let downloader = PackageDownloader::new(download_config, (*progress_manager).clone())?;
-        let staging_manager = Arc::new(
-            StagingManager::new(store.clone(), staging_base_path.clone(), resources.clone())
-                .await?,
-        );
+        // staging manager removed; extraction now handled earlier per new pipeline
 
         // Initialize pipeline stages
         let download_pipeline = DownloadPipeline::new(
@@ -93,7 +90,7 @@ impl PipelineMaster {
             config.enable_streaming,
         );
 
-        let staging_pipeline = StagingPipeline::new(staging_manager.clone(), store);
+        let staging_pipeline = StagingPipeline::new(store);
 
         Ok(Self {
             config,

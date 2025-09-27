@@ -20,6 +20,7 @@
 pub mod db;
 pub mod file_models;
 pub mod file_queries_runtime;
+pub mod live_slots;
 pub mod manager;
 pub mod models;
 

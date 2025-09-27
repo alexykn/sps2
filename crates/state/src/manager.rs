@@ -1,6 +1,7 @@
 //! State manager implementation
 
 use crate::{
+    live_slots::LiveSlots,
     models::{Package, PackageRef, State, StoreRef},
     queries,
 };
@@ -8,11 +9,13 @@ use sps2_errors::Error;
 use sps2_events::{AppEvent, CleanupSummary, EventEmitter, EventSender, GeneralEvent, StateEvent};
 use sps2_hash::Hash;
 use sps2_platform::filesystem_helpers as sps2_root;
-use sps2_types::StateId;
+use sps2_types::{state::SlotId, StateId};
 use sqlx::{Pool, Sqlite};
 use std::convert::TryFrom;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 /// State manager for atomic updates
@@ -21,6 +24,7 @@ pub struct StateManager {
     pool: Pool<Sqlite>,
     state_path: PathBuf,
     live_path: PathBuf,
+    live_slots: Arc<Mutex<LiveSlots>>,
     tx: EventSender,
 }
 
@@ -146,12 +150,23 @@ impl StateManager {
         // Create event channel (events will be ignored for now)
         let (tx, _rx) = sps2_events::channel();
 
-        Ok(Self {
+        let live_slots = LiveSlots::initialize(state_path.clone(), live_path.clone()).await?;
+        let live_slots = Arc::new(Mutex::new(live_slots));
+
+        let mut manager = Self {
             pool,
             state_path,
             live_path,
+            live_slots,
             tx,
-        })
+        };
+
+        // Attempt to recover from a previous transaction if a journal exists
+        if let Err(e) = manager.recover_from_journal().await {
+            manager.emit(AppEvent::General(GeneralEvent::warning(format!("Recovery failed: {e}"))));
+        }
+
+        Ok(manager)
     }
 
     /// Create a new state manager with existing pool and event sender
@@ -160,12 +175,14 @@ impl StateManager {
         pool: Pool<Sqlite>,
         state_path: PathBuf,
         live_path: PathBuf,
+        live_slots: Arc<Mutex<LiveSlots>>,
         tx: EventSender,
     ) -> Self {
         Self {
             pool,
             state_path,
             live_path,
+            live_slots,
             tx,
         }
     }
@@ -192,6 +209,71 @@ impl StateManager {
     #[must_use]
     pub fn state_path(&self) -> &std::path::Path {
         &self.state_path
+    }
+
+    /// Returns the identifier of the currently active slot.
+    pub async fn active_slot(&self) -> SlotId {
+        self.live_slots.lock().await.active_slot()
+    }
+
+    /// Returns the identifier of the inactive slot.
+    pub async fn inactive_slot(&self) -> SlotId {
+        self.live_slots.lock().await.inactive_slot()
+    }
+
+    /// Resolve the filesystem path for a slot.
+    pub async fn slot_path(&self, slot: SlotId) -> PathBuf {
+        self.live_slots.lock().await.slot_path(slot)
+    }
+
+    /// Read the recorded state for a slot.
+    pub async fn slot_state(&self, slot: SlotId) -> Option<Uuid> {
+        self.live_slots.lock().await.slot_state(slot)
+    }
+
+    /// Ensure the given slot directory exists and return its path.
+    pub async fn ensure_slot_dir(&self, slot: SlotId) -> Result<PathBuf, Error> {
+        self.live_slots.lock().await.ensure_slot_dir(slot).await
+    }
+
+    /// Recovers a transaction from the journal file if one exists.
+    pub async fn recover_from_journal(&mut self) -> Result<(), Error> {
+        if let Some(journal) = self.read_journal().await? {
+            self.emit(AppEvent::General(GeneralEvent::debug_with_context(
+                format!("Starting recovery from journal for state {}", journal.new_state_id),
+                std::collections::HashMap::new(),
+            )));
+
+            match journal.phase {
+                sps2_types::state::TransactionPhase::Prepared => {
+                    self.emit(AppEvent::General(GeneralEvent::debug_with_context(
+                        "Recovering from Prepared state".to_string(),
+                        std::collections::HashMap::new(),
+                    )));
+                    self.execute_filesystem_swap_and_finalize(journal).await?;
+                }
+                sps2_types::state::TransactionPhase::Swapped => {
+                    self.emit(AppEvent::General(GeneralEvent::debug_with_context(
+                        "Recovering from Swapped state".to_string(),
+                        std::collections::HashMap::new(),
+                    )));
+                    self.finalize_db_state(journal.new_state_id).await?;
+                    self.clear_journal().await?;
+                }
+            }
+
+            self.emit(AppEvent::General(GeneralEvent::debug_with_context(
+                "Recovery completed".to_string(),
+                std::collections::HashMap::new(),
+            )));
+        }
+        Ok(())
+    }
+
+    /// Persist the association between a slot and a state identifier.
+    pub async fn set_slot_state(&self, slot: SlotId, state: Option<Uuid>) -> Result<(), Error> {
+        let mut slots = self.live_slots.lock().await;
+        slots.record_slot_state(slot, state).await
     }
 
     /// Get all installed packages in current state
@@ -448,10 +530,7 @@ impl StateManager {
         for hash in &hashes {
             if let Err(e) = store.remove_package(hash).await {
                 // Log warning but continue with other packages
-                self.tx.emit(AppEvent::General(GeneralEvent::Warning {
-                    message: format!("Failed to remove package {}: {e}", hash.to_hex()),
-                    context: None,
-                }));
+                self.tx.emit(AppEvent::General(GeneralEvent::warning(format!("Failed to remove package {}: {e}", hash.to_hex()))));
             }
         }
 
@@ -1133,10 +1212,17 @@ impl StateManager {
         &self,
         staging_id: &Uuid,
         parent_id: &Uuid,
-        staging_path: &std::path::Path,
+        staging_slot: SlotId,
         operation: &str,
         transition_data: &TransactionData<'_>,
     ) -> Result<sps2_types::state::TransactionJournal, Error> {
+        let slot_path = {
+            let mut slots = self.live_slots.lock().await;
+            let path = slots.ensure_slot_dir(staging_slot).await?;
+            slots.record_slot_state(staging_slot, Some(*staging_id)).await?;
+            path
+        };
+
         // Start DB transaction
         let mut tx = self.pool.begin().await?;
 
@@ -1185,7 +1271,8 @@ impl StateManager {
         let journal = sps2_types::state::TransactionJournal {
             new_state_id: *staging_id,
             parent_state_id: *parent_id,
-            staging_path: staging_path.to_path_buf(),
+            staging_path: slot_path,
+            staging_slot,
             phase: sps2_types::state::TransactionPhase::Prepared,
             operation: operation.to_string(),
         };
@@ -1205,12 +1292,12 @@ impl StateManager {
         &self,
         mut journal: sps2_types::state::TransactionJournal,
     ) -> Result<(), Error> {
-        // New default behavior: atomically rename staging to live (no archive kept)
-        // Ensure parent directory of live_path exists
-        if let Some(live_parent) = self.live_path.parent() {
-            sps2_root::create_dir_all(live_parent).await?;
+        {
+            let mut slots = self.live_slots.lock().await;
+            slots
+                .swap_to_live(journal.staging_slot, journal.new_state_id, journal.parent_state_id)
+                .await?;
         }
-        sps2_root::atomic_rename(&journal.staging_path, &self.live_path).await?;
 
         // Update the journal to the 'Swapped' phase. If a crash happens now,
         // recovery will know the swap is done
@@ -1355,9 +1442,9 @@ mod tests {
             pending_file_hashes: &[],
         };
 
-        let staging_path = state.state_path().join(format!("staging-{staging_id}"));
+        let staging_slot = state.inactive_slot().await;
         let _journal = state
-            .prepare_transaction(&staging_id, &parent_id, &staging_path, "test-carry", &td)
+            .prepare_transaction(&staging_id, &parent_id, staging_slot, "test-carry", &td)
             .await
             .expect("prepare");
 
@@ -1416,9 +1503,9 @@ mod tests {
                 file_hashes,
             )],
         };
-        let staging_path = state.state_path().join(format!("staging-{staging_id}"));
+        let staging_slot = state.inactive_slot().await;
         let _ = state
-            .prepare_transaction(&staging_id, &parent_id, &staging_path, "install", &td)
+            .prepare_transaction(&staging_id, &parent_id, staging_slot, "install", &td)
             .await
             .expect("prepare");
 
@@ -1446,9 +1533,9 @@ mod tests {
             pending_file_hashes: &[],
         };
         let staging_id = uuid::Uuid::new_v4();
-        let staging_path = state.state_path().join(format!("staging-{staging_id}"));
+        let staging_slot = state.inactive_slot().await;
         let _ = state
-            .prepare_transaction(&staging_id, &parent_id, &staging_path, "uninstall", &td)
+            .prepare_transaction(&staging_id, &parent_id, staging_slot, "uninstall", &td)
             .await
             .expect("prepare");
 
@@ -1491,9 +1578,9 @@ mod tests {
             file_references: &[],
             pending_file_hashes: &[(pid, vec![fh])],
         };
-        let staging_path = state.state_path().join(format!("staging-{staging_id}"));
+        let staging_slot = state.inactive_slot().await;
         let _ = state
-            .prepare_transaction(&staging_id, &parent_id, &staging_path, "update", &td)
+            .prepare_transaction(&staging_id, &parent_id, staging_slot, "update", &td)
             .await
             .expect("prepare");
 

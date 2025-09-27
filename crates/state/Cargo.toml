@@ -26,6 +26,10 @@ serde_json = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 
+[[test]]
+name = "recovery"
+path = "tests/recovery.rs"
+
 [features]
 default = ["runtime-queries"]
 runtime-queries = []

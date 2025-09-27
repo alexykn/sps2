@@ -1,12 +1,11 @@
 //! Staging and installation pipeline stage
 
 use crate::pipeline::decompress::DecompressResult;
-use crate::staging::StagingManager;
+// use crate::staging::StagingManager; // removed in slot-based implementation
 use sps2_errors::Error;
 use sps2_events::{AppEvent, EventEmitter, EventSender, GeneralEvent, InstallEvent};
 use sps2_resolver::PackageId;
 use sps2_store::PackageStore;
-use std::sync::Arc;
 use tokio::task::JoinHandle;
 
 struct StagingContext {
@@ -21,15 +20,13 @@ impl EventEmitter for StagingContext {
 
 /// Staging pipeline stage coordinator
 pub struct StagingPipeline {
-    staging_manager: Arc<StagingManager>,
     store: PackageStore,
 }
 
 impl StagingPipeline {
     /// Create a new staging pipeline
-    pub fn new(staging_manager: Arc<StagingManager>, store: PackageStore) -> Self {
+    pub fn new(store: PackageStore) -> Self {
         Self {
-            staging_manager,
             store,
         }
     }
@@ -78,13 +75,11 @@ impl StagingPipeline {
         progress_id: String,
         tx: EventSender,
     ) -> JoinHandle<Result<PackageId, (PackageId, Error)>> {
-        let staging_manager = self.staging_manager.clone();
         let store = self.store.clone();
 
         tokio::spawn(async move {
             match Self::stage_and_install_package(
                 &decompress_result,
-                &staging_manager,
                 &store,
                 &tx,
                 &progress_id,
@@ -100,7 +95,6 @@ impl StagingPipeline {
     /// Stage and install a single package
     async fn stage_and_install_package(
         decompress_result: &DecompressResult,
-        staging_manager: &StagingManager,
         store: &PackageStore,
         tx: &EventSender,
         progress_id: &str,
@@ -126,38 +120,21 @@ impl StagingPipeline {
             event_sender: Some(tx.clone()),
         };
 
-        let staging_dir = staging_manager
-            .extract_validated_tar_to_staging(
-                &decompress_result.decompressed_path,
-                &decompress_result.package_id,
-                &staging_context,
-                Some(progress_id), // Pass progress ID for child progress tracking
-            )
-            .await?;
-
-        tx.emit(AppEvent::General(GeneralEvent::DebugLog {
-            message: format!(
-                "DEBUG: Extracted to staging directory: {}",
-                staging_dir.path().display()
-            ),
-            context: std::collections::HashMap::new(),
-        }));
-
-        // Install from staging directory
-        tx.emit(AppEvent::General(GeneralEvent::DebugLog {
-            message: "DEBUG: Adding package to store from staging".to_string(),
-            context: std::collections::HashMap::new(),
-        }));
-
+        // In the slot-based implementation, the package has already been decompressed
+        // and validated. We can add it to the store directly from decompressed_path.
         let stored_package = store
-            .add_package_from_staging(staging_dir.path(), &decompress_result.package_id)
+            .add_package_from_staging(&decompress_result.decompressed_path, &decompress_result.package_id)
             .await?;
+
+        tx.emit(AppEvent::General(GeneralEvent::DebugLog {
+            message: "DEBUG: Decompressed package ready for store ingestion".to_string(),
+            context: std::collections::HashMap::new(),
+        }));
 
         tx.emit(AppEvent::General(GeneralEvent::DebugLog {
             message: "DEBUG: Package added to store successfully".to_string(),
             context: std::collections::HashMap::new(),
         }));
-
         tx.emit(AppEvent::Install(InstallEvent::Completed {
             package: decompress_result.package_id.name.clone(),
             version: decompress_result.package_id.version.clone(),

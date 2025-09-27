@@ -65,4 +65,7 @@ pub trait FilesystemOperations: Send + Sync {
 
     /// Get the size of a file or directory
     async fn size(&self, ctx: &PlatformContext, path: &Path) -> Result<u64, PlatformError>;
+
+    /// Check if a path points to a directory.
+    async fn is_dir(&self, ctx: &PlatformContext, path: &Path) -> bool;
 }

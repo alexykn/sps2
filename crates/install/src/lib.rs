@@ -64,7 +64,8 @@ pub use pipeline::config::PipelineConfig;
 pub use pipeline::PipelineMaster;
 // Note: Python package handling has been moved to builder-centric approach
 // The installer now treats Python packages like regular file packages
-pub use staging::{StagingDirectory, StagingGuard, StagingManager};
+// legacy staging interfaces removed in slot-based implementation
+// pub use staging::{StagingDirectory, StagingGuard, StagingManager};
 pub use validation::{
     validate_sp_file, validate_tar_archive_content, PackageFormat, ValidationResult,
 };

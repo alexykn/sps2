@@ -690,4 +690,11 @@ impl FilesystemOperations for MacOSFilesystemOperations {
 
         result
     }
+
+    async fn is_dir(&self, _ctx: &PlatformContext, path: &Path) -> bool {
+        tokio::fs::metadata(path)
+            .await
+            .map(|m| m.is_dir())
+            .unwrap_or(false)
+    }
 }

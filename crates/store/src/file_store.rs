@@ -204,8 +204,14 @@ impl FileStore {
             platform.filesystem().create_dir_all(&ctx, parent).await?;
         }
 
-        // Remove existing file if it exists
+        // Idempotency check: if the correct file already exists, do nothing.
         if platform.filesystem().exists(&ctx, dest_path).await {
+            if let Ok(actual_hash) = Hash::hash_file_with_algorithm(dest_path, hash.algorithm()).await {
+                if actual_hash == *hash {
+                    return Ok(()); // File is already correct, skip.
+                }
+            }
+            // File exists but is wrong, or we couldn't hash it; proceed to remove.
             platform.filesystem().remove_file(&ctx, dest_path).await?;
         }
 
@@ -302,9 +308,21 @@ impl FileStore {
                         platform.filesystem().create_dir_all(&ctx, parent).await?;
                     }
 
-                    // Remove existing symlink if it exists
+                    // Idempotency check: if correct symlink exists, do nothing.
+                    if let Ok(existing_target) = fs::read_link(&dest_path).await {
+                        if existing_target == target {
+                            continue; // Symlink is already correct, skip.
+                        }
+                    }
+
+                    // If we're here, the path is either not a symlink, or the wrong one.
                     if platform.filesystem().exists(&ctx, &dest_path).await {
-                        platform.filesystem().remove_file(&ctx, &dest_path).await?;
+                        // Use remove_dir_all in case it's a directory.
+                        if platform.filesystem().is_dir(&ctx, &dest_path).await {
+                            platform.filesystem().remove_dir_all(&ctx, &dest_path).await?;
+                        } else {
+                            platform.filesystem().remove_file(&ctx, &dest_path).await?;
+                        }
                     }
 
                     // Create symlink

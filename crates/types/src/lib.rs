@@ -35,7 +35,7 @@ pub use recipe::{
 };
 pub use reports::{BuildReport, InstallReport, PackageChange};
 pub use semver::Version;
-pub use state::{ChangeType, OpChange, StateId, StateInfo, StateTransition};
+pub use state::{ChangeType, OpChange, SlotId, StateId, StateInfo, StateTransition};
 pub use uuid::Uuid;
 pub use version::{VersionConstraint, VersionSpec};
 

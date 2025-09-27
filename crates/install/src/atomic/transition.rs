@@ -2,23 +2,10 @@
 
 use sps2_events::EventSender;
 use sps2_hash::FileHashResult;
-use sps2_platform::{core::PlatformContext, PlatformManager};
 use sps2_state::{FileReference, PackageRef, StateManager};
+use sps2_types::state::SlotId;
 use std::path::PathBuf;
 use uuid::Uuid;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StagingMode {
-    Cloned,
-    Fresh,
-}
-
-#[derive(Debug)]
-pub struct StagingCreation {
-    pub mode: StagingMode,
-    pub clone_attempted: bool,
-    pub clone_error: Option<String>,
-}
 
 /// State transition for atomic operations
 ///
@@ -28,12 +15,12 @@ pub struct StagingCreation {
 pub struct StateTransition {
     /// Staging state ID
     pub staging_id: Uuid,
-    /// Parent state ID  
+    /// Parent state ID
     pub parent_id: Option<Uuid>,
-    /// Staging directory path
-    pub staging_path: PathBuf,
-    /// How the staging directory was initialized
-    pub staging_mode: StagingMode,
+    /// Slot that will hold the prepared state
+    pub staging_slot: SlotId,
+    /// Filesystem path to the staging slot
+    pub slot_path: PathBuf,
     /// Package references to be added during commit
     pub package_refs: Vec<PackageRef>,
     /// File references for file-level storage
@@ -57,53 +44,20 @@ impl StateTransition {
         operation: String,
     ) -> Result<Self, sps2_errors::Error> {
         let staging_id = Uuid::new_v4();
-        let parent_id = state_manager.get_current_state_id().await?;
-        let staging_path = state_manager
-            .state_path()
-            .join(format!("staging-{staging_id}"));
+        let parent_id = Some(state_manager.get_current_state_id().await?);
+        let staging_slot = state_manager.inactive_slot().await;
+        let slot_path = state_manager.ensure_slot_dir(staging_slot).await?;
 
         Ok(Self {
             staging_id,
-            parent_id: Some(parent_id),
-            staging_path,
-            staging_mode: StagingMode::Fresh,
+            parent_id,
+            staging_slot,
+            slot_path,
             package_refs: Vec::new(),
             file_references: Vec::new(),
             pending_file_hashes: Vec::new(),
             event_sender: None,
             operation,
         })
-    }
-
-    /// Create a platform context for filesystem operations
-    fn create_platform_context(&self) -> (&'static sps2_platform::Platform, PlatformContext) {
-        let platform = PlatformManager::instance().platform();
-        let context = platform.create_context(None);
-        (platform, context)
-    }
-
-    /// Clean up staging directory
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if directory removal fails.
-    pub async fn cleanup(&self, state_manager: &StateManager) -> Result<(), sps2_errors::Error> {
-        let (platform, ctx) = self.create_platform_context();
-
-        if platform.filesystem().exists(&ctx, &self.staging_path).await {
-            // Check if staging directory can be safely removed
-            if state_manager.can_remove_staging(&self.staging_id).await? {
-                platform
-                    .filesystem()
-                    .remove_dir_all(&ctx, &self.staging_path)
-                    .await
-                    .map_err(|e| sps2_errors::InstallError::FilesystemError {
-                        operation: "remove_dir_all".to_string(),
-                        path: self.staging_path.display().to_string(),
-                        message: e.to_string(),
-                    })?;
-            }
-        }
-        Ok(())
     }
 }

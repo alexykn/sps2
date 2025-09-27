@@ -2,7 +2,8 @@
 
 use crate::Version;
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::fmt;
 use uuid::Uuid;
 
 /// State identifier
@@ -68,12 +69,81 @@ pub enum ChangeType {
     Downgrade,
 }
 
+/// Identifier for the live slot containing a state snapshot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum SlotId {
+    /// Primary slot (`live-A`).
+    A,
+    /// Secondary slot (`live-B`).
+    B,
+}
+
+impl SlotId {
+    /// All available slots.
+    pub const ALL: [SlotId; 2] = [SlotId::A, SlotId::B];
+
+    /// Directory name associated with the slot.
+    #[must_use]
+    pub fn dir_name(self) -> &'static str {
+        match self {
+            SlotId::A => "live-A",
+            SlotId::B => "live-B",
+        }
+    }
+
+    /// Return the opposite slot.
+    #[must_use]
+    pub fn other(self) -> SlotId {
+        match self {
+            SlotId::A => SlotId::B,
+            SlotId::B => SlotId::A,
+        }
+    }
+}
+
+impl Default for SlotId {
+    fn default() -> Self {
+        SlotId::A
+    }
+}
+
+impl fmt::Display for SlotId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.dir_name())
+    }
+}
+
+impl Serialize for SlotId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.dir_name())
+    }
+}
+
+impl<'de> Deserialize<'de> for SlotId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        match raw.as_str() {
+            "live-A" | "A" | "a" => Ok(SlotId::A),
+            "live-B" | "B" | "b" => Ok(SlotId::B),
+            other => Err(serde::de::Error::custom(format!(
+                "unknown slot identifier: {other}"
+            ))),
+        }
+    }
+}
+
 /// Phase of a two-phase commit transaction
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TransactionPhase {
     /// The database changes are committed, and the system is ready for the filesystem swap
     Prepared,
-    /// The filesystem swap is complete; only the final database activation is pending
+    /// Filesystem swap has been executed
     Swapped,
 }
 
@@ -86,6 +156,9 @@ pub struct TransactionJournal {
     pub parent_state_id: Uuid,
     /// Path to the staging directory
     pub staging_path: std::path::PathBuf,
+    /// Slot containing the prepared state
+    #[serde(default)]
+    pub staging_slot: SlotId,
     /// Current phase of the transaction
     pub phase: TransactionPhase,
     /// Operation type (install, uninstall, rollback, etc.)

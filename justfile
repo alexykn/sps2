@@ -11,6 +11,10 @@ fmt *args:
     rustup show active-toolchain
     cargo fmt "$@"
 
+check *args:
+    rustup show active-toolchain
+    cargo check
+
 lint *args:
     rustup show active-toolchain
     cargo clippy --all-targets --all-features "$@"
