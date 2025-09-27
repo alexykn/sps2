@@ -163,7 +163,9 @@ impl StateManager {
 
         // Attempt to recover from a previous transaction if a journal exists
         if let Err(e) = manager.recover_from_journal().await {
-            manager.emit(AppEvent::General(GeneralEvent::warning(format!("Recovery failed: {e}"))));
+            manager.emit(AppEvent::General(GeneralEvent::warning(format!(
+                "Recovery failed: {e}"
+            ))));
         }
 
         Ok(manager)
@@ -240,7 +242,10 @@ impl StateManager {
     pub async fn recover_from_journal(&mut self) -> Result<(), Error> {
         if let Some(journal) = self.read_journal().await? {
             self.emit(AppEvent::General(GeneralEvent::debug_with_context(
-                format!("Starting recovery from journal for state {}", journal.new_state_id),
+                format!(
+                    "Starting recovery from journal for state {}",
+                    journal.new_state_id
+                ),
                 std::collections::HashMap::new(),
             )));
 
@@ -274,6 +279,13 @@ impl StateManager {
     pub async fn set_slot_state(&self, slot: SlotId, state: Option<Uuid>) -> Result<(), Error> {
         let mut slots = self.live_slots.lock().await;
         slots.record_slot_state(slot, state).await
+    }
+
+    #[allow(dead_code)]
+    /// Refresh slot states from disk markers.
+    pub async fn refresh_live_slots(&self) -> Result<(), Error> {
+        let mut slots = self.live_slots.lock().await;
+        slots.refresh_slot_states().await
     }
 
     /// Get all installed packages in current state
@@ -530,7 +542,11 @@ impl StateManager {
         for hash in &hashes {
             if let Err(e) = store.remove_package(hash).await {
                 // Log warning but continue with other packages
-                self.tx.emit(AppEvent::General(GeneralEvent::warning(format!("Failed to remove package {}: {e}", hash.to_hex()))));
+                self.tx
+                    .emit(AppEvent::General(GeneralEvent::warning(format!(
+                        "Failed to remove package {}: {e}",
+                        hash.to_hex()
+                    ))));
             }
         }
 
@@ -1219,7 +1235,9 @@ impl StateManager {
         let slot_path = {
             let mut slots = self.live_slots.lock().await;
             let path = slots.ensure_slot_dir(staging_slot).await?;
-            slots.record_slot_state(staging_slot, Some(*staging_id)).await?;
+            slots
+                .record_slot_state(staging_slot, Some(*staging_id))
+                .await?;
             path
         };
 
@@ -1295,7 +1313,11 @@ impl StateManager {
         {
             let mut slots = self.live_slots.lock().await;
             slots
-                .swap_to_live(journal.staging_slot, journal.new_state_id, journal.parent_state_id)
+                .swap_to_live(
+                    journal.staging_slot,
+                    journal.new_state_id,
+                    journal.parent_state_id,
+                )
                 .await?;
         }
 
@@ -1400,13 +1422,9 @@ mod tests {
                 .await
                 .expect("pfe");
         }
-        let _ = crate::db::refcount_deltas::apply_all_refcount_deltas(
-            &mut tx,
-            None,
-            &sid,
-        )
-        .await
-        .expect("delta");
+        let _ = crate::db::refcount_deltas::apply_all_refcount_deltas(&mut tx, None, &sid)
+            .await
+            .expect("delta");
         tx.commit().await.expect("commit");
     }
 
