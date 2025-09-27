@@ -471,7 +471,7 @@ async fn install_remote_packages_parallel(
 
     // Perform atomic installation using the prepared packages
     let mut atomic_installer =
-        sps2_install::AtomicInstaller::new(ctx.state.clone(), ctx.store.clone()).await?;
+        sps2_install::AtomicInstaller::new(ctx.state.clone(), ctx.store.clone());
 
     let install_context = sps2_install::InstallContext::new()
         .with_event_sender(ctx.tx.clone())

@@ -70,9 +70,10 @@ pub enum ChangeType {
 }
 
 /// Identifier for the live slot containing a state snapshot.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub enum SlotId {
     /// Primary slot (`live-A`).
+    #[default]
     A,
     /// Secondary slot (`live-B`).
     B,
@@ -98,12 +99,6 @@ impl SlotId {
             SlotId::A => SlotId::B,
             SlotId::B => SlotId::A,
         }
-    }
-}
-
-impl Default for SlotId {
-    fn default() -> Self {
-        SlotId::A
     }
 }
 

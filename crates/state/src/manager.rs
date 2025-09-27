@@ -234,11 +234,19 @@ impl StateManager {
     }
 
     /// Ensure the given slot directory exists and return its path.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if creating the directory fails.
     pub async fn ensure_slot_dir(&self, slot: SlotId) -> Result<PathBuf, Error> {
         self.live_slots.lock().await.ensure_slot_dir(slot).await
     }
 
     /// Recovers a transaction from the journal file if one exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if journal reading or recovery operations fail.
     pub async fn recover_from_journal(&mut self) -> Result<(), Error> {
         if let Some(journal) = self.read_journal().await? {
             self.emit(AppEvent::General(GeneralEvent::debug_with_context(
@@ -276,6 +284,10 @@ impl StateManager {
     }
 
     /// Persist the association between a slot and a state identifier.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if persisting the slot state fails.
     pub async fn set_slot_state(&self, slot: SlotId, state: Option<Uuid>) -> Result<(), Error> {
         let mut slots = self.live_slots.lock().await;
         slots.record_slot_state(slot, state).await
@@ -283,6 +295,10 @@ impl StateManager {
 
     #[allow(dead_code)]
     /// Refresh slot states from disk markers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if refreshing slot states fails.
     pub async fn refresh_live_slots(&self) -> Result<(), Error> {
         let mut slots = self.live_slots.lock().await;
         slots.refresh_slot_states().await

@@ -131,7 +131,7 @@ impl AtomicInstaller {
     }
 
     /// Carry forward packages from parent state, excluding specified packages
-    async fn carry_forward_packages(
+    fn carry_forward_packages(
         &self,
         transition: &mut StateTransition,
         parent_packages: &[sps2_state::models::Package],
@@ -257,11 +257,11 @@ impl AtomicInstaller {
     /// # Errors
     ///
     /// Returns an error if initialization fails
-    pub async fn new(state_manager: StateManager, store: PackageStore) -> Result<Self, Error> {
-        Ok(Self {
+    pub fn new(state_manager: StateManager, store: PackageStore) -> Self {
+        Self {
             state_manager,
             store,
-        })
+        }
     }
 
     /// Perform atomic installation
@@ -303,8 +303,7 @@ impl AtomicInstaller {
             .keys()
             .map(|pkg| pkg.name.clone())
             .collect();
-        self.carry_forward_packages(&mut transition, &parent_packages, &exclude_names)
-            .await?;
+        self.carry_forward_packages(&mut transition, &parent_packages, &exclude_names)?;
 
         // Apply package changes to staging
         let mut result = InstallResult::new(transition.staging_id);
@@ -519,8 +518,7 @@ impl AtomicInstaller {
             .iter()
             .map(|pkg| pkg.name.clone())
             .collect();
-        self.carry_forward_packages(&mut transition, &parent_packages, &exclude_names)
-            .await?;
+        self.carry_forward_packages(&mut transition, &parent_packages, &exclude_names)?;
 
         // Execute two-phase commit
         self.execute_two_phase_commit(&transition, context).await?;
@@ -871,9 +869,7 @@ mod tests {
         )
         .await;
 
-        let mut installer = AtomicInstaller::new(state.clone(), store.clone())
-            .await
-            .unwrap();
+        let mut installer = AtomicInstaller::new(state.clone(), store.clone());
 
         // Install package A
         let mut resolved_a: HashMap<PackageId, ResolvedNode> = HashMap::new();
@@ -987,9 +983,7 @@ mod tests {
         )
         .await;
 
-        let mut ai = AtomicInstaller::new(state.clone(), store.clone())
-            .await
-            .unwrap();
+        let mut ai = AtomicInstaller::new(state.clone(), store.clone());
 
         // Initial install of v1
         let mut resolved: HashMap<PackageId, ResolvedNode> = HashMap::new();
@@ -1114,9 +1108,7 @@ mod tests {
             make_sp_and_add_to_store(&store, "A", "1.0.0", &[("bin/x", "same"), ("share/a", "A")])
                 .await;
 
-        let mut ai = AtomicInstaller::new(state.clone(), store.clone())
-            .await
-            .unwrap();
+        let mut ai = AtomicInstaller::new(state.clone(), store.clone());
         let mut resolved: HashMap<PackageId, ResolvedNode> = HashMap::new();
         let pid = PackageId::new(
             "A".to_string(),
@@ -1205,9 +1197,7 @@ mod tests {
             .unwrap()
             .clone();
 
-        let mut ai = AtomicInstaller::new(state.clone(), store.clone())
-            .await
-            .unwrap();
+        let mut ai = AtomicInstaller::new(state.clone(), store.clone());
 
         // Install A then B
         let mut resolved: HashMap<PackageId, ResolvedNode> = HashMap::new();

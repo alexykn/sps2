@@ -102,7 +102,7 @@ impl InstallOperation {
 
         // Perform atomic installation
         let mut atomic_installer =
-            AtomicInstaller::new(self.state_manager.clone(), self.store.clone()).await?;
+            AtomicInstaller::new(self.state_manager.clone(), self.store.clone());
 
         let result = atomic_installer
             .install(&context, &resolution.nodes, Some(&prepared_packages))
@@ -264,7 +264,7 @@ impl UninstallOperation {
             .collect();
 
         let mut atomic_installer =
-            AtomicInstaller::new(self.state_manager.clone(), self.store.clone()).await?;
+            AtomicInstaller::new(self.state_manager.clone(), self.store.clone());
         let result = atomic_installer.uninstall(&package_ids, &context).await?;
 
         Ok(result)

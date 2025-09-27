@@ -467,7 +467,9 @@ impl Verifier {
                 Err(_) => continue,
             };
 
-            if rel_path.ends_with(".pyc") || rel_path.contains("__pycache__") {
+            if rel_path.ends_with(".pyc") 
+                || rel_path.contains("__pycache__") 
+                || rel_path == "STATE" {
                 continue;
             }
 

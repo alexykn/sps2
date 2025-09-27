@@ -429,9 +429,7 @@ mod tests {
             event_sender: None,
         };
 
-        let mut atomic = AtomicInstaller::new(state.clone(), store.clone())
-            .await
-            .expect("atomic installer");
+        let mut atomic = AtomicInstaller::new(state.clone(), store.clone());
         let _ = atomic
             .install(&ctx, &resolved, Some(&prepared))
             .await

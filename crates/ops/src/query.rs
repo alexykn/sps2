@@ -301,9 +301,7 @@ mod tests {
         let description = "Demo package description";
         let (hash, store_path, size) = make_package(&store, "demo", "1.2.3", description).await;
 
-        let mut atomic = AtomicInstaller::new(state.clone(), store.clone())
-            .await
-            .expect("atomic installer");
+        let mut atomic = AtomicInstaller::new(state.clone(), store.clone());
         let pkg_id = PackageId::new("demo".to_string(), Version::parse("1.2.3").unwrap());
         let mut resolved_nodes = HashMap::new();
         resolved_nodes.insert(

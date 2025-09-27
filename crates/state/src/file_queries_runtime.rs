@@ -10,6 +10,10 @@ use sqlx::{query, Row, Sqlite, Transaction};
 use std::collections::HashMap;
 
 /// Insert or increment a file object entry.
+///
+/// # Errors
+///
+/// Returns an error if the database operations fail.
 pub async fn add_file_object(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &Hash,
@@ -77,7 +81,7 @@ pub async fn add_file_object(
     })
 }
 
-/// Helper to ensure a file_verification row exists.
+/// Helper to ensure a `file_verification` row exists.
 async fn ensure_file_verification_row(
     tx: &mut Transaction<'_, Sqlite>,
     hash_str: &str,
@@ -97,7 +101,11 @@ async fn ensure_file_verification_row(
     Ok(())
 }
 
-/// Insert a package file entry for a state_packages row.
+/// Insert a package file entry for a `state_packages` row.
+///
+/// # Errors
+///
+/// Returns an error if the database operations fail or if the package ID is unknown.
 pub async fn add_package_file_entry(
     tx: &mut Transaction<'_, Sqlite>,
     package_id: i64,
@@ -152,6 +160,10 @@ pub async fn add_package_file_entry(
 }
 
 /// Decrement a file refcount and return the new value.
+///
+/// # Errors
+///
+/// Returns an error if the database operations fail.
 pub async fn decrement_file_object_ref(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &str,
@@ -175,6 +187,10 @@ pub async fn decrement_file_object_ref(
 }
 
 /// Increment a file refcount and return the new value.
+///
+/// # Errors
+///
+/// Returns an error if the database operations fail.
 pub async fn increment_file_object_ref(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &str,
@@ -200,6 +216,10 @@ pub async fn increment_file_object_ref(
 }
 
 /// Decrement all file refs for the given state package ID.
+///
+/// # Errors
+///
+/// Returns an error if the database operations fail.
 pub async fn decrement_file_object_refs_for_package(
     tx: &mut Transaction<'_, Sqlite>,
     package_id: i64,
@@ -229,6 +249,10 @@ pub async fn decrement_file_object_refs_for_package(
 }
 
 /// Force set a file object's refcount.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn set_file_object_ref_count(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &str,
@@ -247,7 +271,11 @@ pub async fn set_file_object_ref_count(
     Ok(res.rows_affected())
 }
 
-/// Fetch a file object
+/// Fetch a file object.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_file_object(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &Hash,
@@ -279,7 +307,11 @@ pub async fn get_file_object(
     }))
 }
 
-/// Fetch all file objects
+/// Fetch all file objects.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_all_file_objects(
     tx: &mut Transaction<'_, Sqlite>,
 ) -> Result<Vec<FileObject>, Error> {
@@ -311,7 +343,11 @@ pub async fn get_all_file_objects(
         .collect())
 }
 
-/// Hash -> last reference timestamp from states
+/// Hash -> last reference timestamp from states.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_file_last_ref_map(
     tx: &mut Transaction<'_, Sqlite>,
 ) -> Result<HashMap<String, i64>, Error> {
@@ -337,7 +373,11 @@ pub async fn get_file_last_ref_map(
     Ok(map)
 }
 
-/// Fetch file entries for a state package ID
+/// Fetch file entries for a state package ID.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_package_file_entries(
     tx: &mut Transaction<'_, Sqlite>,
     package_id: i64,
@@ -381,7 +421,11 @@ pub async fn get_package_file_entries(
         .collect())
 }
 
-/// Fetch file entries by hash
+/// Fetch file entries by hash.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_file_entries_by_hash(
     tx: &mut Transaction<'_, Sqlite>,
     file_hash: &str,
@@ -417,7 +461,11 @@ pub async fn get_file_entries_by_hash(
         .collect())
 }
 
-/// Update (or insert) an mtime tracker entry
+/// Update (or insert) an mtime tracker entry.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn update_file_mtime(
     tx: &mut Transaction<'_, Sqlite>,
     file_path: &str,
@@ -442,7 +490,11 @@ pub async fn update_file_mtime(
     Ok(())
 }
 
-/// Fetch package file entries for a state + name + version
+/// Fetch package file entries for a state + name + version.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_package_file_entries_by_name(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &uuid::Uuid,
@@ -491,7 +543,11 @@ pub async fn get_package_file_entries_by_name(
         .collect())
 }
 
-/// Fetch package file entries across all states for name/version
+/// Fetch package file entries across all states for name/version.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_package_file_entries_all_states(
     tx: &mut Transaction<'_, Sqlite>,
     package_name: &str,
@@ -543,7 +599,11 @@ pub async fn get_package_file_entries_all_states(
         .collect())
 }
 
-/// Fetch a file mtime tracker row
+/// Fetch a file mtime tracker row.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_file_mtime(
     tx: &mut Transaction<'_, Sqlite>,
     file_path: &str,
@@ -569,6 +629,10 @@ pub async fn get_file_mtime(
 }
 
 /// Legacy: mark package file hashed (no-op under schema v2)
+///
+/// # Errors
+///
+/// This function does not return an error.
 pub async fn mark_package_file_hashed(
     _tx: &mut Transaction<'_, Sqlite>,
     _package_id: i64,
@@ -577,7 +641,11 @@ pub async fn mark_package_file_hashed(
     Ok(())
 }
 
-/// Fetch mtime trackers for a package name/version
+/// Fetch mtime trackers for a package name/version.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_package_file_mtimes(
     tx: &mut Transaction<'_, Sqlite>,
     package_name: &str,
@@ -610,7 +678,11 @@ pub async fn get_package_file_mtimes(
         .collect())
 }
 
-/// Clear mtime trackers for a package name/version
+/// Clear mtime trackers for a package name/version.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn clear_package_mtime_trackers(
     tx: &mut Transaction<'_, Sqlite>,
     package_name: &str,
@@ -637,7 +709,11 @@ pub async fn clear_package_mtime_trackers(
     Ok(result.rows_affected())
 }
 
-/// Remove stale mtime trackers older than threshold
+/// Remove stale mtime trackers older than threshold.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn clear_old_mtime_trackers(
     tx: &mut Transaction<'_, Sqlite>,
     max_age_seconds: i64,
@@ -653,7 +729,11 @@ pub async fn clear_old_mtime_trackers(
     Ok(res.rows_affected())
 }
 
-/// Fetch file objects that need verification
+/// Fetch file objects that need verification.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_objects_needing_verification(
     tx: &mut Transaction<'_, Sqlite>,
     max_age_seconds: i64,
@@ -713,7 +793,11 @@ pub async fn get_objects_needing_verification(
         .collect())
 }
 
-/// Update verification status for a hash
+/// Update verification status for a hash.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn update_verification_status(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &Hash,
@@ -745,7 +829,11 @@ pub async fn update_verification_status(
     Ok(())
 }
 
-/// Aggregate verification stats for live file objects
+/// Aggregate verification stats for live file objects.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_verification_stats(
     tx: &mut Transaction<'_, Sqlite>,
 ) -> Result<(i64, i64, i64, i64, i64), Error> {
@@ -777,7 +865,11 @@ pub async fn get_verification_stats(
     ))
 }
 
-/// Fetch failed verification objects up to limit
+/// Fetch failed verification objects up to limit.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_failed_verification_objects(
     tx: &mut Transaction<'_, Sqlite>,
     limit: i64,
@@ -813,7 +905,11 @@ pub async fn get_failed_verification_objects(
         .collect())
 }
 
-/// Quarantine a file object
+/// Quarantine a file object.
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn quarantine_file_object(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &Hash,
@@ -842,7 +938,11 @@ pub async fn quarantine_file_object(
     Ok(())
 }
 
-/// Verify a file object and update tracking
+/// Verify a file object and update tracking.
+///
+/// # Errors
+///
+/// Returns an error if the database operations or file store operations fail.
 pub async fn verify_file_with_tracking(
     tx: &mut Transaction<'_, Sqlite>,
     file_store: &sps2_store::FileStore,

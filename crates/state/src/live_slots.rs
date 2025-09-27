@@ -61,6 +61,10 @@ pub struct LiveSlots {
 
 impl LiveSlots {
     /// Initialize slot tracking.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if filesystem operations fail or metadata loading fails.
     pub async fn initialize(state_dir: PathBuf, live_path: PathBuf) -> Result<Self, Error> {
         let slots_dir = state_dir.join("slots");
         fs::create_dir_all(&slots_dir).await?;
@@ -87,26 +91,34 @@ impl LiveSlots {
     }
 
     /// Returns the currently active slot.
+    #[must_use]
     pub fn active_slot(&self) -> SlotId {
         self.metadata.active
     }
 
     /// Returns the inactive slot (target for staging).
+    #[must_use]
     pub fn inactive_slot(&self) -> SlotId {
         self.metadata.active.other()
     }
 
     /// Filesystem path for a slot directory.
+    #[must_use]
     pub fn slot_path(&self, slot: SlotId) -> PathBuf {
         self.slots_dir.join(slot.dir_name())
     }
 
     /// Lookup the recorded state for a slot.
+    #[must_use]
     pub fn slot_state(&self, slot: SlotId) -> Option<Uuid> {
         self.metadata.state(slot)
     }
 
     /// Ensure a slot directory exists and return its path.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if creating the directory fails.
     pub async fn ensure_slot_dir(&mut self, slot: SlotId) -> Result<PathBuf, Error> {
         let path = self.slot_path(slot);
         fs::create_dir_all(&path).await?;
@@ -114,6 +126,10 @@ impl LiveSlots {
     }
 
     /// Record (or clear) the state marker for a slot and persist metadata.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing the marker or persisting metadata fails.
     pub async fn record_slot_state(
         &mut self,
         slot: SlotId,
@@ -125,12 +141,20 @@ impl LiveSlots {
     }
 
     /// Update metadata without touching markers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if persisting metadata fails.
     pub async fn set_slot_state(&mut self, slot: SlotId, state: Option<Uuid>) -> Result<(), Error> {
         self.metadata.set_state(slot, state);
         self.persist_metadata().await
     }
 
     /// Refresh state markers from disk.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if reading markers or persisting metadata fails.
     pub async fn refresh_slot_states(&mut self) -> Result<(), Error> {
         for slot in SlotId::ALL {
             let marker_path = self.slot_path(slot).join(SLOT_STATE_FILENAME);
@@ -151,6 +175,10 @@ impl LiveSlots {
 
     /// Swap the prepared slot into `/opt/pm/live`, preserving the previous live
     /// directory under the previously active slot path.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if filesystem operations fail.
     pub async fn swap_to_live(
         &mut self,
         staging_slot: SlotId,

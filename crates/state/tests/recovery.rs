@@ -60,7 +60,7 @@ async fn test_recovers_from_prepared_state() {
     // The journal file should be gone.
     let journal_path = state_base_path.join("transaction.json");
     assert!(
-        !tokio::fs::metadata(&journal_path).await.is_ok(),
+        tokio::fs::metadata(&journal_path).await.is_err(),
         "Journal file should be cleared after recovery"
     );
 
@@ -124,7 +124,7 @@ async fn test_recovers_from_swapped_state() {
     // The journal file should be gone.
     let journal_path = state_base_path.join("transaction.json");
     assert!(
-        !tokio::fs::metadata(&journal_path).await.is_ok(),
+        tokio::fs::metadata(&journal_path).await.is_err(),
         "Journal file should be cleared after recovery"
     );
 }

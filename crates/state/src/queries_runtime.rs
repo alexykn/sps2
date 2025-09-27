@@ -8,6 +8,10 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 
 /// Get the current active state
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_active_state(tx: &mut Transaction<'_, Sqlite>) -> Result<StateId, Error> {
     let row = query("SELECT state_id FROM active_state WHERE id = 1")
         .fetch_optional(&mut **tx)
@@ -25,6 +29,10 @@ pub async fn get_active_state(tx: &mut Transaction<'_, Sqlite>) -> Result<StateI
 }
 
 /// Set the active state pointer
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn set_active_state(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
@@ -42,6 +50,10 @@ pub async fn set_active_state(
 }
 
 /// Insert a new state row
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn create_state(
     tx: &mut Transaction<'_, Sqlite>,
     id: &StateId,
@@ -66,6 +78,10 @@ pub async fn create_state(
 }
 
 /// Get packages present in a particular state snapshot
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_state_packages(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
@@ -106,7 +122,11 @@ pub async fn get_state_packages(
         .collect())
 }
 
-/// All packages for a state (same as get_state_packages under v2 schema)
+/// All packages for a state (same as `get_state_packages` under v2 schema)
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_all_active_packages(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
@@ -115,6 +135,10 @@ pub async fn get_all_active_packages(
 }
 
 /// Ensure a package version exists and add it to a state snapshot
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn add_package(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
@@ -167,6 +191,10 @@ pub async fn add_package(
 }
 
 /// Remove a package version reference from a state snapshot
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn remove_package(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
@@ -188,6 +216,10 @@ pub async fn remove_package(
 }
 
 /// Ensure an archive CAS row exists
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_or_create_store_ref(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &str,
@@ -209,6 +241,10 @@ pub async fn get_or_create_store_ref(
 }
 
 /// Increment archive refcount
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn increment_store_ref(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &str,
@@ -221,6 +257,10 @@ pub async fn increment_store_ref(
 }
 
 /// Decrement archive refcount
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn decrement_store_ref(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &str,
@@ -233,6 +273,10 @@ pub async fn decrement_store_ref(
 }
 
 /// Force-set archive refcount
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn set_store_ref_count(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &str,
@@ -249,6 +293,10 @@ pub async fn set_store_ref_count(
 }
 
 /// Fetch archive CAS rows with refcount <= 0
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_unreferenced_items(
     tx: &mut Transaction<'_, Sqlite>,
 ) -> Result<Vec<StoreRef>, Error> {
@@ -274,6 +322,10 @@ pub async fn get_unreferenced_items(
 }
 
 /// Check whether a given state exists
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn state_exists(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
@@ -287,6 +339,10 @@ pub async fn state_exists(
 }
 
 /// List state IDs ordered by creation time (desc)
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn list_states(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<StateId>, Error> {
     let rows = query("SELECT id FROM states ORDER BY created_at DESC")
         .fetch_all(&mut **tx)
@@ -303,6 +359,10 @@ pub async fn list_states(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<StateId
 }
 
 /// List state names for a given state (unique package names)
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_state_package_names(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
@@ -324,6 +384,10 @@ pub async fn get_state_package_names(
 }
 
 /// List all states with metadata
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_all_states(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<State>, Error> {
     let rows = query(
         r#"
@@ -350,6 +414,10 @@ pub async fn get_all_states(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<Stat
 }
 
 /// States eligible for cleanup by age and retention count
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_states_for_cleanup(
     tx: &mut Transaction<'_, Sqlite>,
     keep_count: usize,
@@ -375,6 +443,10 @@ pub async fn get_states_for_cleanup(
 }
 
 /// Delete a state row
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn delete_state(tx: &mut Transaction<'_, Sqlite>, state_id: &str) -> Result<(), Error> {
     query("DELETE FROM states WHERE id = ?1")
         .bind(state_id)
@@ -383,7 +455,11 @@ pub async fn delete_state(tx: &mut Transaction<'_, Sqlite>, state_id: &str) -> R
     Ok(())
 }
 
-/// Alias for get_states_for_cleanup
+/// Alias for `get_states_for_cleanup`
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_states_to_cleanup(
     tx: &mut Transaction<'_, Sqlite>,
     keep_count: usize,
@@ -393,6 +469,10 @@ pub async fn get_states_to_cleanup(
 }
 
 /// Strict retention: keep only N newest states
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_states_for_cleanup_strict(
     tx: &mut Transaction<'_, Sqlite>,
     keep_count: usize,
@@ -414,7 +494,11 @@ pub async fn get_states_for_cleanup_strict(
     Ok(rows.into_iter().map(|r| r.get("id")).collect())
 }
 
-/// Alias for get_unreferenced_items (kept for callers)
+/// Alias for `get_unreferenced_items` (kept for callers)
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_unreferenced_store_items(
     tx: &mut Transaction<'_, Sqlite>,
 ) -> Result<Vec<StoreRef>, Error> {
@@ -422,6 +506,10 @@ pub async fn get_unreferenced_store_items(
 }
 
 /// Delete archive CAS rows for given hashes
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn delete_unreferenced_store_items(
     tx: &mut Transaction<'_, Sqlite>,
     hashes: &[String],
@@ -436,6 +524,10 @@ pub async fn delete_unreferenced_store_items(
 }
 
 /// Fetch all archive CAS rows
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_all_store_refs(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<StoreRef>, Error> {
     let rows = query(
         r#"SELECT hash, ref_count, size_bytes AS size, created_at FROM cas_objects WHERE kind = 'archive'"#,
@@ -455,6 +547,10 @@ pub async fn get_all_store_refs(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<
 }
 
 /// Map archive hash -> last reference timestamp
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_package_last_ref_map(
     tx: &mut Transaction<'_, Sqlite>,
 ) -> Result<HashMap<String, i64>, Error> {
@@ -478,6 +574,10 @@ pub async fn get_package_last_ref_map(
 }
 
 /// Insert archive eviction log entry
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn insert_package_eviction(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &str,
@@ -501,6 +601,10 @@ pub async fn insert_package_eviction(
 }
 
 /// Insert file eviction log entry
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn insert_file_object_eviction(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &str,
@@ -524,6 +628,10 @@ pub async fn insert_file_object_eviction(
 }
 
 /// List package names that depend on the given package name across all versions
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_package_dependents(
     tx: &mut Transaction<'_, Sqlite>,
     package_name: &str,
@@ -543,12 +651,20 @@ pub async fn get_package_dependents(
     Ok(rows.into_iter().map(|r| r.get("name")).collect())
 }
 
-/// Detailed state list (alias for get_all_states)
+/// Detailed state list (alias for `get_all_states`)
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn list_states_detailed(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<State>, Error> {
     get_all_states(tx).await
 }
 
 /// States older than cutoff timestamp
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_states_older_than(
     tx: &mut Transaction<'_, Sqlite>,
     cutoff: i64,
@@ -561,6 +677,10 @@ pub async fn get_states_older_than(
 }
 
 /// Mark states as pruned (except the active one)
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn mark_pruned_states(
     tx: &mut Transaction<'_, Sqlite>,
     ids: &[String],
@@ -585,6 +705,10 @@ pub async fn mark_pruned_states(
 }
 
 /// Clear pruned marker for a state
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn unprune_state(tx: &mut Transaction<'_, Sqlite>, id: &str) -> Result<(), Error> {
     query("UPDATE states SET pruned_at = NULL WHERE id = ?1")
         .bind(id)
@@ -594,6 +718,10 @@ pub async fn unprune_state(tx: &mut Transaction<'_, Sqlite>, id: &str) -> Result
 }
 
 /// Fetch parent state ID if any
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_parent_state_id(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
@@ -619,6 +747,10 @@ pub async fn get_parent_state_id(
 }
 
 /// Legacy helper: record package files for directory entries (no-op for new schema)
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn add_package_file(
     tx: &mut Transaction<'_, Sqlite>,
     _state_id: &StateId,
@@ -648,6 +780,10 @@ pub async fn add_package_file(
 }
 
 /// Fetch package file paths for a given version
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_package_files(
     tx: &mut Transaction<'_, Sqlite>,
     _state_id: &StateId,
@@ -671,6 +807,10 @@ pub async fn get_package_files(
 }
 
 /// Fetch package files ensuring version is present in state
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_package_files_with_inheritance(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
@@ -701,6 +841,10 @@ pub async fn get_package_files_with_inheritance(
 }
 
 /// Package files for the active state
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_active_package_files(
     tx: &mut Transaction<'_, Sqlite>,
     package_name: &str,
@@ -711,6 +855,10 @@ pub async fn get_active_package_files(
 }
 
 /// Remove package files for a given version
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn remove_package_files(
     tx: &mut Transaction<'_, Sqlite>,
     _state_id: &StateId,
@@ -731,6 +879,10 @@ pub async fn remove_package_files(
 }
 
 /// Insert GC run entry
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn insert_gc_log(
     tx: &mut Transaction<'_, Sqlite>,
     items_removed: i64,
@@ -752,6 +904,10 @@ pub async fn insert_gc_log(
 }
 
 /// Add package with venv path (venv ignored in v2 schema)
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn add_package_with_venv(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
@@ -765,6 +921,10 @@ pub async fn add_package_with_venv(
 }
 
 /// Venv path lookup (always None now)
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_package_venv_path(
     _tx: &mut Transaction<'_, Sqlite>,
     _state_id: &StateId,
@@ -775,6 +935,10 @@ pub async fn get_package_venv_path(
 }
 
 /// Packages with venvs (empty under v2 schema)
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_packages_with_venvs(
     _tx: &mut Transaction<'_, Sqlite>,
     _state_id: &StateId,
@@ -783,6 +947,10 @@ pub async fn get_packages_with_venvs(
 }
 
 /// Update venv path (no-op)
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn update_package_venv_path(
     _tx: &mut Transaction<'_, Sqlite>,
     _state_id: &StateId,
@@ -793,7 +961,11 @@ pub async fn update_package_venv_path(
     Ok(())
 }
 
-/// Record package mapping (now writes to package_versions)
+/// Record package mapping (now writes to `package_versions`)
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn add_package_map(
     tx: &mut Transaction<'_, Sqlite>,
     name: &str,
@@ -822,6 +994,10 @@ pub async fn add_package_map(
 }
 
 /// Lookup store hash by name+version
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_package_hash(
     tx: &mut Transaction<'_, Sqlite>,
     name: &str,
@@ -836,6 +1012,10 @@ pub async fn get_package_hash(
 }
 
 /// Lookup store hash by package archive hash
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn get_store_hash_for_package_hash(
     tx: &mut Transaction<'_, Sqlite>,
     package_hash: &str,
@@ -848,6 +1028,10 @@ pub async fn get_store_hash_for_package_hash(
 }
 
 /// Remove package mapping entry
+///
+/// # Errors
+///
+/// Returns an error if the database operation fails.
 pub async fn remove_package_map(
     tx: &mut Transaction<'_, Sqlite>,
     name: &str,
