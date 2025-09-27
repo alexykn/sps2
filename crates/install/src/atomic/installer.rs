@@ -1419,7 +1419,10 @@ mod tests {
             force: true,
             event_sender: None,
         };
-        let _u = ai.uninstall(&[pid_a.clone()], &uctx).await.unwrap();
+        let _u = ai
+            .uninstall(std::slice::from_ref(&pid_a), &uctx)
+            .await
+            .unwrap();
 
         // Shared file remains referenced by B
         assert!(refcount_file(&state, &h_same.to_hex()).await > 0);

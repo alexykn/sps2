@@ -839,7 +839,7 @@ impl BuildSystem for PythonBuildSystem {
         let pip_path = venv_path.join("bin/pip");
 
         // Install wheel using pip
-        let pip_args = Self::get_pip_args(ctx, &[wheel_path.clone()]);
+        let pip_args = Self::get_pip_args(ctx, std::slice::from_ref(&wheel_path));
         let arg_refs: Vec<&str> = pip_args.iter().map(String::as_str).collect();
 
         let mut merged_env = ctx.get_all_env_vars();

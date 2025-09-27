@@ -14,10 +14,8 @@ use sps2_errors::{BuildError, Error};
 /// Validate and convert a source step
 pub fn validate_source_step(step: &SourceStep, _recipe_dir: &std::path::Path) -> Result<(), Error> {
     match step {
-        SourceStep::Fetch { url, .. } => {
-            validate_url(url)?;
-        }
-        SourceStep::FetchMd5 { url, .. }
+        SourceStep::Fetch { url, .. }
+        | SourceStep::FetchMd5 { url, .. }
         | SourceStep::FetchSha256 { url, .. }
         | SourceStep::FetchBlake3 { url, .. } => {
             validate_url(url)?;
@@ -27,13 +25,11 @@ pub fn validate_source_step(step: &SourceStep, _recipe_dir: &std::path::Path) ->
         }
         SourceStep::Copy {
             src_path: Some(path),
-        } => {
+        }
+        | SourceStep::ApplyPatch { path } => {
             validate_path(path)?;
         }
         SourceStep::Copy { src_path: None } | SourceStep::Cleanup | SourceStep::Extract { .. } => {}
-        SourceStep::ApplyPatch { path } => {
-            validate_path(path)?;
-        }
     }
     Ok(())
 }

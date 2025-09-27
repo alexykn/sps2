@@ -202,7 +202,7 @@ impl SatSolver {
             }
 
             // Restart heuristic (every 100 conflicts)
-            if self.stats.conflicts > 0 && self.stats.conflicts % 100 == 0 {
+            if self.stats.conflicts > 0 && self.stats.conflicts.is_multiple_of(100) {
                 self.restart();
                 self.stats.restarts += 1;
             }
