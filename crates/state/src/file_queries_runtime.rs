@@ -28,16 +28,14 @@ pub async fn add_file_object(
 
     if let Some(row) = existing {
         let current: i64 = row.get("ref_count");
-        query(
-            "UPDATE cas_objects SET last_seen_at = ?2 WHERE hash = ?1 AND kind = 'file'",
-        )
-        .bind(&hash_str)
-        .bind(now)
-        .execute(&mut **tx)
-        .await
-        .map_err(|e| StateError::DatabaseError {
-            message: format!("failed to update file metadata: {e}"),
-        })?;
+        query("UPDATE cas_objects SET last_seen_at = ?2 WHERE hash = ?1 AND kind = 'file'")
+            .bind(&hash_str)
+            .bind(now)
+            .execute(&mut **tx)
+            .await
+            .map_err(|e| StateError::DatabaseError {
+                message: format!("failed to update file metadata: {e}"),
+            })?;
 
         ensure_file_verification_row(tx, &hash_str).await?;
         return Ok(DeduplicationResult {

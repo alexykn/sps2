@@ -440,12 +440,11 @@ pub async fn symlink(target: &Path, link: &Path) -> Result<()> {
             })
         })?;
 
-    result
-        .map_err(|e| {
-            Error::from(StorageError::IoError {
-                message: format!("symlink operation failed: {e}"),
-            })
-        })?;
+    result.map_err(|e| {
+        Error::from(StorageError::IoError {
+            message: format!("symlink operation failed: {e}"),
+        })
+    })?;
 
     Ok(())
 }

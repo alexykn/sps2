@@ -16,7 +16,7 @@ use sps2_state::{file_queries_runtime, PackageRef, StateManager};
 use sps2_store::{PackageStore, StoredPackage};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
- use std::path::Path;
+use std::path::Path;
 use std::time::Instant;
 use uuid::Uuid;
 
@@ -170,10 +170,7 @@ impl AtomicInstaller {
             return Ok(());
         };
 
-        let slot_state = self
-            .state_manager
-            .slot_state(transition.staging_slot)
-            .await;
+        let slot_state = self.state_manager.slot_state(transition.staging_slot).await;
 
         if slot_state == Some(parent_state) {
             return Ok(());

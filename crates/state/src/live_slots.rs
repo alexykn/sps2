@@ -179,7 +179,8 @@ impl LiveSlots {
         // Recreate an empty directory for the slot we just promoted so future
         // operations can stage into it once it becomes inactive again.
         fs::create_dir_all(&staging_path).await?;
-        self.write_slot_marker(staging_slot, Some(new_state)).await?;
+        self.write_slot_marker(staging_slot, Some(new_state))
+            .await?;
 
         self.metadata.active = staging_slot;
         self.metadata.set_state(staging_slot, Some(new_state));
@@ -190,11 +191,9 @@ impl LiveSlots {
     async fn write_slot_marker(&self, slot: SlotId, state: Option<Uuid>) -> Result<(), Error> {
         let marker_path = self.slot_path(slot).join(SLOT_STATE_FILENAME);
         match state {
-            Some(id) => {
-                tokio_fs::write(&marker_path, id.to_string())
-                    .await
-                    .map_err(|e| Error::internal(format!("failed to write slot marker: {e}")))?
-            }
+            Some(id) => tokio_fs::write(&marker_path, id.to_string())
+                .await
+                .map_err(|e| Error::internal(format!("failed to write slot marker: {e}")))?,
             None => {
                 if fs::exists(&marker_path).await {
                     fs::remove_file(&marker_path).await?;

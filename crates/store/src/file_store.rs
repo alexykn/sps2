@@ -206,7 +206,9 @@ impl FileStore {
 
         // Idempotency check: if the correct file already exists, do nothing.
         if platform.filesystem().exists(&ctx, dest_path).await {
-            if let Ok(actual_hash) = Hash::hash_file_with_algorithm(dest_path, hash.algorithm()).await {
+            if let Ok(actual_hash) =
+                Hash::hash_file_with_algorithm(dest_path, hash.algorithm()).await
+            {
                 if actual_hash == *hash {
                     return Ok(()); // File is already correct, skip.
                 }
@@ -319,7 +321,10 @@ impl FileStore {
                     if platform.filesystem().exists(&ctx, &dest_path).await {
                         // Use remove_dir_all in case it's a directory.
                         if platform.filesystem().is_dir(&ctx, &dest_path).await {
-                            platform.filesystem().remove_dir_all(&ctx, &dest_path).await?;
+                            platform
+                                .filesystem()
+                                .remove_dir_all(&ctx, &dest_path)
+                                .await?;
                         } else {
                             platform.filesystem().remove_file(&ctx, &dest_path).await?;
                         }
