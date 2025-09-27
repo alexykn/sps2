@@ -601,26 +601,45 @@ impl ParallelExecutor {
             }
         }
 
-        if context.force_redownload() {
+        let previous_store_hash = if context.force_redownload() {
             if let Some(expected_hash) = node.expected_hash.as_ref() {
-                if let Some(store_hash_hex) = state_manager
+                state_manager
                     .get_store_hash_for_package_hash(&expected_hash.to_hex())
                     .await?
-                {
-                    let store_hash = sps2_hash::Hash::from_hex(&store_hash_hex)?;
-                    store.remove_package(&store_hash).await?;
-                }
+                    .map(|store_hash_hex| sps2_hash::Hash::from_hex(&store_hash_hex))
+                    .transpose()?
+            } else {
+                None
             }
-        }
+        } else {
+            None
+        };
 
         // Add to store and prepare package data
-        let stored_package = store
+        let mut stored_package = store
             .add_package_from_file(
                 &download_result.package_path,
                 &package_id.name,
                 &package_id.version,
             )
             .await?;
+
+        if let Some(prev_hash) = previous_store_hash {
+            if let Some(current_hash) = stored_package.hash() {
+                if current_hash == prev_hash {
+                    store.remove_package(&prev_hash).await?;
+                    stored_package = store
+                        .add_package_from_file(
+                            &download_result.package_path,
+                            &package_id.name,
+                            &package_id.version,
+                        )
+                        .await?;
+                } else {
+                    store.remove_package(&prev_hash).await?;
+                }
+            }
+        }
 
         if let Some(hash) = stored_package.hash() {
             let size = stored_package.size().await?;
