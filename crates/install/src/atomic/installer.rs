@@ -16,7 +16,7 @@ use sps2_state::{file_queries_runtime, PackageRef, StateManager};
 use sps2_store::{PackageStore, StoredPackage};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
-use std::path::{Path, PathBuf};
+ use std::path::Path;
 use std::time::Instant;
 use uuid::Uuid;
 

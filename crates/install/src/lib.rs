@@ -50,25 +50,24 @@ mod common;
 mod installer;
 mod operations;
 mod parallel;
-mod pipeline;
-mod staging;
-pub mod validation;
+//mod pipeline;
+//pub mod validation;
 
 pub use atomic::{AtomicInstaller, StateTransition};
 pub use installer::{InstallConfig, Installer};
 pub use operations::{InstallOperation, UninstallOperation, UpdateOperation};
 pub use parallel::SecurityPolicy;
 pub use parallel::{ExecutionContext, ParallelExecutor};
-pub use pipeline::batch::{BatchResult, BatchStats};
-pub use pipeline::config::PipelineConfig;
-pub use pipeline::PipelineMaster;
+//pub use pipeline::batch::{BatchResult, BatchStats};
+//pub use pipeline::config::PipelineConfig;
+//pub use pipeline::PipelineMaster;
 // Note: Python package handling has been moved to builder-centric approach
 // The installer now treats Python packages like regular file packages
 // legacy staging interfaces removed in slot-based implementation
 // pub use staging::{StagingDirectory, StagingGuard, StagingManager};
-pub use validation::{
-    validate_sp_file, validate_tar_archive_content, PackageFormat, ValidationResult,
-};
+//pub use validation::{
+//    validate_sp_file, validate_tar_archive_content, PackageFormat, ValidationResult,
+//};
 
 // Removed unused imports: Error, EventSender, ResolutionResult, Version, HashMap
 // These will be imported where needed in future implementations

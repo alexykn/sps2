@@ -1,10 +1,9 @@
 //! tests/recovery.rs
 
+use sps2_state::PackageRef;
 use sps2_state::StateManager;
 use sps2_state::TransactionData;
-use sps2_state::PackageRef;
 use sps2_types::Version;
-use std::collections::HashMap;
 use tempfile::TempDir;
 use uuid::Uuid;
 
@@ -16,7 +15,7 @@ async fn mk_state() -> (TempDir, StateManager) {
 
 #[tokio::test]
 async fn test_recovers_from_prepared_state() {
-    let (_td, mut state) = mk_state().await;
+    let (_td, state) = mk_state().await;
     let parent_id = state.get_current_state_id().await.unwrap();
 
     // 1. Prepare a transaction, which writes the journal in the `Prepared` state.
@@ -43,7 +42,10 @@ async fn test_recovers_from_prepared_state() {
     // At this point, a crash happens. The journal file exists.
     // The live directory should still point to the parent state.
     let live_path = state.live_path().to_path_buf();
-    assert!(!live_path.join("A-1.0.0").exists(), "Live dir should not be updated yet");
+    assert!(
+        !live_path.join("A-1.0.0").exists(),
+        "Live dir should not be updated yet"
+    );
 
     // 2. Simulate an application restart by creating a new StateManager.
     // The new manager should automatically run recovery.
@@ -57,7 +59,10 @@ async fn test_recovers_from_prepared_state() {
 
     // The journal file should be gone.
     let journal_path = state_base_path.join("transaction.json");
-    assert!(!tokio::fs::metadata(&journal_path).await.is_ok(), "Journal file should be cleared after recovery");
+    assert!(
+        !tokio::fs::metadata(&journal_path).await.is_ok(),
+        "Journal file should be cleared after recovery"
+    );
 
     // The live directory should have been swapped.
     // We can't easily check the content here without more setup, but we can check the slot state.
@@ -69,7 +74,7 @@ async fn test_recovers_from_prepared_state() {
 
 #[tokio::test]
 async fn test_recovers_from_swapped_state() {
-    let (_td, mut state) = mk_state().await;
+    let (_td, state) = mk_state().await;
     let parent_id = state.get_current_state_id().await.unwrap();
 
     // 1. Prepare a transaction.
@@ -89,7 +94,11 @@ async fn test_recovers_from_swapped_state() {
     {
         let mut slots = state.live_slots.lock().await; // Assuming live_slots is public for test
         slots
-            .swap_to_live(journal.staging_slot, journal.new_state_id, journal.parent_state_id)
+            .swap_to_live(
+                journal.staging_slot,
+                journal.new_state_id,
+                journal.parent_state_id,
+            )
             .await
             .unwrap();
     }
@@ -98,7 +107,10 @@ async fn test_recovers_from_swapped_state() {
 
     // At this point, a crash happens. The filesystem is updated, but the DB is not.
     let db_active_id = state.get_current_state_id().await.unwrap();
-    assert_eq!(db_active_id, parent_id, "DB active state should not be updated yet");
+    assert_eq!(
+        db_active_id, parent_id,
+        "DB active state should not be updated yet"
+    );
 
     // 3. Simulate an application restart.
     let state_base_path = _td.path().to_path_buf();
@@ -111,5 +123,8 @@ async fn test_recovers_from_swapped_state() {
 
     // The journal file should be gone.
     let journal_path = state_base_path.join("transaction.json");
-    assert!(!tokio::fs::metadata(&journal_path).await.is_ok(), "Journal file should be cleared after recovery");
+    assert!(
+        !tokio::fs::metadata(&journal_path).await.is_ok(),
+        "Journal file should be cleared after recovery"
+    );
 }
