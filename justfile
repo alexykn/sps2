@@ -23,6 +23,10 @@ build *args:
     rustup show active-toolchain
     cargo build --release --target=aarch64-apple-darwin
 
+test *args:
+    rustup show active-toolchain
+    cargo test
+
 push:
     git push origin main
 
