@@ -24,7 +24,7 @@ pub struct StateManager {
     pool: Pool<Sqlite>,
     state_path: PathBuf,
     live_path: PathBuf,
-    live_slots: Arc<Mutex<LiveSlots>>,
+    pub live_slots: Arc<Mutex<LiveSlots>>,
     tx: EventSender,
 }
 

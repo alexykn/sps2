@@ -2,7 +2,7 @@
 
 use sps2_state::StateManager;
 use sps2_state::TransactionData;
-use sps2_types::state::PackageRef;
+use sps2_state::PackageRef;
 use sps2_types::Version;
 use std::collections::HashMap;
 use tempfile::TempDir;
