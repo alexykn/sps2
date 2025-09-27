@@ -1,3 +1,4 @@
+#![warn(mismatched_lifetime_syntaxes)]
 //! sls - Store List utility for sps2
 //!
 //! A simple ls-like tool to explore the content-addressed store

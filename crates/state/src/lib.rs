@@ -1,3 +1,4 @@
+#![warn(mismatched_lifetime_syntaxes)]
 #![deny(clippy::pedantic, unsafe_code)]
 #![allow(
     clippy::needless_raw_string_hashes,

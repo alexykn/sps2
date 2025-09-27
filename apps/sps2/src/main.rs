@@ -1,3 +1,4 @@
+#![warn(mismatched_lifetime_syntaxes)]
 //! sps2 - Modern package manager for macOS ARM64
 //!
 //! This is the main CLI application that orchestrates all package management

@@ -1,3 +1,4 @@
+#![warn(mismatched_lifetime_syntaxes)]
 #![deny(clippy::pedantic, unsafe_code)]
 
 use base64::{engine::general_purpose, Engine as _};

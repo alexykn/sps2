@@ -1,3 +1,4 @@
+#![warn(mismatched_lifetime_syntaxes)]
 //! Platform abstraction layer for macOS ARM64 package manager operations.
 //!
 //! This crate provides a unified interface for platform-specific operations including:

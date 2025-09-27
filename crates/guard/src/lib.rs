@@ -1,3 +1,4 @@
+#![warn(mismatched_lifetime_syntaxes)]
 //! Lightweight state guard utilities for verifying and healing package installations.
 
 mod refcount;

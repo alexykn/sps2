@@ -1,3 +1,4 @@
+#![warn(mismatched_lifetime_syntaxes)]
 #![deny(clippy::pedantic, unsafe_code)]
 // Allow some placeholder implementation issues - will be removed gradually
 

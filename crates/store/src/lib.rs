@@ -1,3 +1,4 @@
+#![warn(mismatched_lifetime_syntaxes)]
 #![deny(clippy::pedantic, unsafe_code)]
 
 //! Content-addressed storage for sps2

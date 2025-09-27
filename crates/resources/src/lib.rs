@@ -1,3 +1,4 @@
+#![warn(mismatched_lifetime_syntaxes)]
 #![deny(clippy::pedantic, unsafe_code)]
 
 //! Resource management utilities for sps2

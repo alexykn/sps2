@@ -1,0 +1,12 @@
+# .cargo/config.toml
+[profile.profiling]
+inherits = "release"
+debug = true
+lto = "off"
+codegen-units = 16
+
+[profile.profiling.build-override]
+opt-level = 3
+
+[build]
+rustflags = ["-C", "force-frame-pointers=yes", "-C", "target-cpu=native"]
