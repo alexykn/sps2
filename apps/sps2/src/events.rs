@@ -217,6 +217,81 @@ impl EventHandler {
                 }
             }
 
+            AppEvent::Acquisition(acq_event) => {
+                use sps2_events::events::{AcquisitionEvent, AcquisitionSource};
+                match acq_event {
+                    AcquisitionEvent::Started {
+                        package,
+                        version,
+                        source,
+                    } => {
+                        if let AcquisitionSource::StoreCache { hash } = source {
+                            self.show_operation(
+                                &meta,
+                                format!("Reusing stored package {package} {version} (hash {hash})"),
+                                "acquire",
+                                EventSeverity::Info,
+                            );
+                        } else if self.debug_enabled {
+                            self.show_meta_message(
+                                &meta,
+                                format!("Acquisition started for {package} {version}"),
+                                EventSeverity::Debug,
+                            );
+                        }
+                    }
+                    AcquisitionEvent::Completed {
+                        package,
+                        version,
+                        source,
+                        size,
+                    } => {
+                        if let AcquisitionSource::StoreCache { hash } = source {
+                            self.show_operation(
+                                &meta,
+                                format!(
+                                    "Prepared stored package {package} {version} ({}, hash {hash})",
+                                    self.format_bytes(size)
+                                ),
+                                "acquire",
+                                EventSeverity::Success,
+                            );
+                        } else if self.debug_enabled {
+                            self.show_meta_message(
+                                &meta,
+                                format!(
+                                    "Acquisition completed for {package} {version} ({size} bytes)"
+                                ),
+                                EventSeverity::Debug,
+                            );
+                        }
+                    }
+                    AcquisitionEvent::Failed {
+                        package,
+                        version,
+                        source,
+                        failure,
+                    } => {
+                        let message = match source {
+                            AcquisitionSource::StoreCache { hash } => format!(
+                                "Failed to prepare stored package {package} {version} (hash {hash}): {}",
+                                failure.message
+                            ),
+                            AcquisitionSource::Remote { .. } => format!(
+                                "Acquisition failed for {package} {version}: {}",
+                                failure.message
+                            ),
+                        };
+                        let severity = if failure.retryable {
+                            EventSeverity::Warning
+                        } else {
+                            EventSeverity::Error
+                        };
+                        self.show_operation(&meta, message, "acquire", severity);
+                    }
+                }
+            }
+
             // Install events (replaces package events)
             AppEvent::Install(install_event) => {
                 use sps2_events::InstallEvent;

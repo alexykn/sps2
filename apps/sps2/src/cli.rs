@@ -80,6 +80,10 @@ pub enum Commands {
     Install {
         /// Package specifications (name, name>=version, or ./file.sp)
         packages: Vec<String>,
+
+        /// Force re-download even if package exists in cache
+        #[arg(long)]
+        force_download: bool,
     },
 
     /// Update packages to newer compatible versions

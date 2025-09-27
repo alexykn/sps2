@@ -235,8 +235,11 @@ async fn execute_command(
         }
 
         // Large operations (delegate to specialized crates)
-        Commands::Install { packages } => {
-            let report = sps2_ops::install(&ctx, &packages).await?;
+        Commands::Install {
+            packages,
+            force_download,
+        } => {
+            let report = sps2_ops::install(&ctx, &packages, force_download).await?;
             Ok(OperationResult::InstallReport(report))
         }
 

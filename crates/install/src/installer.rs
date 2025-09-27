@@ -417,6 +417,7 @@ mod tests {
                 size,
                 store_path,
                 is_local: true,
+                package_hash: None,
             },
         );
 
@@ -424,6 +425,7 @@ mod tests {
             packages: vec![],
             local_files: vec![],
             force: false,
+            force_download: false,
             event_sender: None,
         };
 

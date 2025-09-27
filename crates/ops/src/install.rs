@@ -27,7 +27,11 @@ use uuid::Uuid;
 /// - Package specifications cannot be parsed
 /// - Installation fails
 #[allow(clippy::too_many_lines)] // Complex orchestration function coordinating multiple subsystems
-pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallReport, Error> {
+pub async fn install(
+    ctx: &OpsCtx,
+    package_specs: &[String],
+    force_download: bool,
+) -> Result<InstallReport, Error> {
     let start = Instant::now();
 
     if package_specs.is_empty() {
@@ -69,7 +73,7 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
     // Use different strategies based on the mix of packages with enhanced error handling
     let result = if !remote_specs.is_empty() && local_files.is_empty() {
         // All remote packages - use high-performance parallel pipeline
-        match install_remote_packages_parallel(ctx, &remote_specs).await {
+        match install_remote_packages_parallel(ctx, &remote_specs, force_download).await {
             Ok(result) => result,
             Err(e) => {
                 // Provide specific guidance for remote package failures
@@ -79,7 +83,7 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
         }
     } else if remote_specs.is_empty() && !local_files.is_empty() {
         // All local files - use local installer
-        match install_local_packages(ctx, &local_files).await {
+        match install_local_packages(ctx, &local_files, force_download).await {
             Ok(result) => result,
             Err(e) => {
                 // Provide specific guidance for local file failures
@@ -98,7 +102,7 @@ pub async fn install(ctx: &OpsCtx, package_specs: &[String]) -> Result<InstallRe
         }
     } else {
         // Mixed local and remote - use hybrid approach
-        match install_mixed_packages(ctx, &remote_specs, &local_files).await {
+        match install_mixed_packages(ctx, &remote_specs, &local_files, force_download).await {
             Ok(result) => result,
             Err(e) => {
                 // Provide guidance for mixed installation failures
@@ -345,6 +349,7 @@ async fn preview_install(ctx: &OpsCtx, package_specs: &[String]) -> Result<Insta
 async fn install_remote_packages_parallel(
     ctx: &OpsCtx,
     specs: &[PackageSpec],
+    force_download: bool,
 ) -> Result<sps2_install::InstallResult, Error> {
     use sps2_events::{patterns::InstallProgressConfig, ProgressManager};
     // use sps2_state::PackageRef;
@@ -429,7 +434,8 @@ async fn install_remote_packages_parallel(
         .with_security_policy(sps2_install::SecurityPolicy {
             verify_signatures: ctx.config.security.verify_signatures,
             allow_unsigned: ctx.config.security.allow_unsigned,
-        });
+        })
+        .with_force_redownload(force_download);
 
     // Create parallel executor
     let resources = std::sync::Arc::new(sps2_resources::ResourceManager::default());
@@ -467,7 +473,9 @@ async fn install_remote_packages_parallel(
     let mut atomic_installer =
         sps2_install::AtomicInstaller::new(ctx.state.clone(), ctx.store.clone()).await?;
 
-    let install_context = sps2_install::InstallContext::new().with_event_sender(ctx.tx.clone());
+    let install_context = sps2_install::InstallContext::new()
+        .with_event_sender(ctx.tx.clone())
+        .with_force_download(force_download);
 
     let install_result = atomic_installer
         .install(
@@ -498,6 +506,7 @@ async fn install_remote_packages_parallel(
 async fn install_local_packages(
     ctx: &OpsCtx,
     files: &[PathBuf],
+    force_download: bool,
 ) -> Result<sps2_install::InstallResult, Error> {
     // Create installer for local files
     let config = InstallConfig::default();
@@ -511,7 +520,8 @@ async fn install_local_packages(
     // Build install context for local files
     let install_context = InstallContext::new()
         .with_event_sender(ctx.tx.clone())
-        .with_local_files(files.to_vec());
+        .with_local_files(files.to_vec())
+        .with_force_download(force_download);
 
     // Execute installation
     installer.install(install_context).await
@@ -522,6 +532,7 @@ async fn install_mixed_packages(
     ctx: &OpsCtx,
     remote_specs: &[PackageSpec],
     local_files: &[PathBuf],
+    force_download: bool,
 ) -> Result<sps2_install::InstallResult, Error> {
     // For mixed installs, use the regular installer for now
     // TODO: Optimize this by using pipeline for remote and merging results
@@ -536,7 +547,8 @@ async fn install_mixed_packages(
     // Build install context with both remote and local
     let mut install_context = InstallContext::new()
         .with_event_sender(ctx.tx.clone())
-        .with_local_files(local_files.to_vec());
+        .with_local_files(local_files.to_vec())
+        .with_force_download(force_download);
 
     for spec in remote_specs {
         install_context = install_context.add_package(spec.clone());

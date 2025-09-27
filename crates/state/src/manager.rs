@@ -1017,10 +1017,11 @@ impl StateManager {
         &self,
         name: &str,
         version: &str,
-        hash: &str,
+        store_hash: &str,
+        package_hash: Option<&str>,
     ) -> Result<(), Error> {
         let mut tx = self.pool.begin().await?;
-        queries::add_package_map(&mut tx, name, version, hash).await?;
+        queries::add_package_map(&mut tx, name, version, store_hash, package_hash).await?;
         tx.commit().await?;
         Ok(())
     }
@@ -1037,6 +1038,21 @@ impl StateManager {
     ) -> Result<Option<String>, Error> {
         let mut tx = self.pool.begin().await?;
         let hash = queries::get_package_hash(&mut tx, name, version).await?;
+        tx.commit().await?;
+        Ok(hash)
+    }
+
+    /// Get the store hash associated with a package archive hash
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    pub async fn get_store_hash_for_package_hash(
+        &self,
+        package_hash: &str,
+    ) -> Result<Option<String>, Error> {
+        let mut tx = self.pool.begin().await?;
+        let hash = queries::get_store_hash_for_package_hash(&mut tx, package_hash).await?;
         tx.commit().await?;
         Ok(hash)
     }

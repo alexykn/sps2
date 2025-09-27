@@ -93,6 +93,24 @@ impl PackageStore {
         platform.filesystem().exists(&ctx, &path).await
     }
 
+    /// Load a stored package if it exists in the store
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the package metadata cannot be loaded from disk.
+    pub async fn load_package_if_exists(
+        &self,
+        hash: &Hash,
+    ) -> Result<Option<StoredPackage>, Error> {
+        if self.has_package(hash).await {
+            let package_path = self.package_path(hash);
+            let package = StoredPackage::load(&package_path).await?;
+            Ok(Some(package))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Add a package to the store from a .sp file
     ///
     /// This extracts the package, hashes individual files for deduplication,

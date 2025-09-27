@@ -78,7 +78,8 @@ impl InstallOperation {
             .with_security_policy(SecurityPolicy {
                 verify_signatures: true, // default to verify in this path
                 allow_unsigned: false,
-            });
+            })
+            .with_force_redownload(context.force_download);
 
         // Debug: Check what packages we're trying to process
         context.emit_debug(format!(

@@ -1060,16 +1060,18 @@ pub async fn add_package_map(
     tx: &mut Transaction<'_, Sqlite>,
     name: &str,
     version: &str,
-    hash: &str,
+    store_hash: &str,
+    package_hash: Option<&str>,
 ) -> Result<(), Error> {
     let now = chrono::Utc::now().to_rfc3339();
 
     query(
-        "INSERT OR REPLACE INTO package_map (name, version, hash, created_at) VALUES (?1, ?2, ?3, ?4)",
+        "INSERT OR REPLACE INTO package_map (name, version, hash, package_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
     )
     .bind(name)
     .bind(version)
-    .bind(hash)
+    .bind(store_hash)
+    .bind(package_hash)
     .bind(now)
     .execute(&mut **tx)
     .await?;
@@ -1090,6 +1092,23 @@ pub async fn get_package_hash(
     let row = query("SELECT hash FROM package_map WHERE name = ?1 AND version = ?2")
         .bind(name)
         .bind(version)
+        .fetch_optional(&mut **tx)
+        .await?;
+
+    Ok(row.map(|r| r.get("hash")))
+}
+
+/// Look up the store hash for a given package archive hash
+///
+/// # Errors
+///
+/// Returns an error if the database query fails.
+pub async fn get_store_hash_for_package_hash(
+    tx: &mut Transaction<'_, Sqlite>,
+    package_hash: &str,
+) -> Result<Option<String>, Error> {
+    let row = query("SELECT hash FROM package_map WHERE package_hash = ?1")
+        .bind(package_hash)
         .fetch_optional(&mut **tx)
         .await?;
 

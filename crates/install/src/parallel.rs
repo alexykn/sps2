@@ -335,7 +335,7 @@ impl ParallelExecutor {
             node,
             context,
             store,
-            state_manager: _state_manager,
+            state_manager,
             timeout_duration,
             prepared_packages,
             permit: _permit,
@@ -364,6 +364,7 @@ impl ParallelExecutor {
                             &package_id,
                             &node,
                             &store,
+                            &state_manager,
                             &context,
                             &prepared_packages,
                         ),
@@ -480,6 +481,7 @@ impl ParallelExecutor {
                             size,
                             store_path,
                             is_local: true,
+                            package_hash: None,
                         };
 
                         prepared_packages.insert(package_id.clone(), prepared_package);
@@ -521,9 +523,23 @@ impl ParallelExecutor {
         package_id: &PackageId,
         node: &ResolvedNode,
         store: &PackageStore,
+        state_manager: &StateManager,
         context: &ExecutionContext,
         prepared_packages: &Arc<DashMap<PackageId, PreparedPackage>>,
     ) -> Result<u64, Error> {
+        if let Some(size) = Self::try_prepare_from_store(
+            package_id,
+            node,
+            store,
+            state_manager,
+            context,
+            prepared_packages,
+        )
+        .await?
+        {
+            return Ok(size);
+        }
+
         context.emit(AppEvent::Acquisition(AcquisitionEvent::Started {
             package: package_id.name.clone(),
             version: package_id.version.clone(),
@@ -585,6 +601,18 @@ impl ParallelExecutor {
             }
         }
 
+        if context.force_redownload() {
+            if let Some(expected_hash) = node.expected_hash.as_ref() {
+                if let Some(store_hash_hex) = state_manager
+                    .get_store_hash_for_package_hash(&expected_hash.to_hex())
+                    .await?
+                {
+                    let store_hash = sps2_hash::Hash::from_hex(&store_hash_hex)?;
+                    store.remove_package(&store_hash).await?;
+                }
+            }
+        }
+
         // Add to store and prepare package data
         let stored_package = store
             .add_package_from_file(
@@ -603,6 +631,7 @@ impl ParallelExecutor {
                 size,
                 store_path,
                 is_local: false,
+                package_hash: node.expected_hash.clone(),
             };
 
             prepared_packages.insert(package_id.clone(), prepared_package);
@@ -623,6 +652,78 @@ impl ParallelExecutor {
             }
             .into())
         }
+    }
+
+    async fn try_prepare_from_store(
+        package_id: &PackageId,
+        node: &ResolvedNode,
+        store: &PackageStore,
+        state_manager: &StateManager,
+        context: &ExecutionContext,
+        prepared_packages: &Arc<DashMap<PackageId, PreparedPackage>>,
+    ) -> Result<Option<u64>, Error> {
+        if context.force_redownload() {
+            return Ok(None);
+        }
+
+        let Some(expected_hash) = node.expected_hash.as_ref() else {
+            return Ok(None);
+        };
+
+        let Some(store_hash_hex) = state_manager
+            .get_store_hash_for_package_hash(&expected_hash.to_hex())
+            .await?
+        else {
+            return Ok(None);
+        };
+
+        let store_hash = sps2_hash::Hash::from_hex(&store_hash_hex)?;
+
+        let Some(stored_package) = store.load_package_if_exists(&store_hash).await? else {
+            return Ok(None);
+        };
+
+        context.emit(AppEvent::Acquisition(AcquisitionEvent::Started {
+            package: package_id.name.clone(),
+            version: package_id.version.clone(),
+            source: AcquisitionSource::StoreCache {
+                hash: expected_hash.to_hex(),
+            },
+        }));
+
+        let size = stored_package.size().await?;
+        let store_path = stored_package.path().to_path_buf();
+
+        let prepared_package = PreparedPackage {
+            hash: store_hash,
+            size,
+            store_path,
+            is_local: false,
+            package_hash: Some(expected_hash.clone()),
+        };
+
+        prepared_packages.insert(package_id.clone(), prepared_package);
+
+        context.emit(AppEvent::General(GeneralEvent::DebugLog {
+            message: format!(
+                "Reusing stored package {}-{} with hash {}",
+                package_id.name,
+                package_id.version,
+                expected_hash.to_hex()
+            ),
+            context: std::collections::HashMap::new(),
+        }));
+
+        context.emit(AppEvent::Acquisition(AcquisitionEvent::Completed {
+            package: package_id.name.clone(),
+            version: package_id.version.clone(),
+            source: AcquisitionSource::StoreCache {
+                hash: expected_hash.to_hex(),
+            },
+            size,
+        }));
+
+        Ok(Some(size))
     }
 
     /// Wait for at least one task to complete
@@ -683,6 +784,8 @@ pub struct ExecutionContext {
     event_sender: Option<EventSender>,
     /// Optional security policy for signature enforcement
     security_policy: Option<SecurityPolicy>,
+    /// Whether downloads should bypass cache reuse
+    force_redownload: bool,
 }
 
 impl ExecutionContext {
@@ -692,6 +795,7 @@ impl ExecutionContext {
         Self {
             event_sender: None,
             security_policy: None,
+            force_redownload: false,
         }
     }
 
@@ -707,6 +811,18 @@ impl ExecutionContext {
     pub fn with_security_policy(mut self, policy: SecurityPolicy) -> Self {
         self.security_policy = Some(policy);
         self
+    }
+
+    /// Set whether downloads must ignore cached packages
+    #[must_use]
+    pub fn with_force_redownload(mut self, force: bool) -> Self {
+        self.force_redownload = force;
+        self
+    }
+
+    /// Should downstream logic bypass store reuse
+    pub fn force_redownload(&self) -> bool {
+        self.force_redownload
     }
 }
 
@@ -744,7 +860,9 @@ pub struct SecurityPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sps2_events::events::{AcquisitionEvent, AcquisitionSource};
     use sps2_events::{AppEvent, InstallEvent};
+    use sps2_hash::{Hash as PackageHash, HashAlgorithm};
     use sps2_resolver::{DependencyGraph, ResolvedNode};
     use sps2_store::{create_package, PackageStore};
     use sps2_types::{Arch, Manifest, Version};
@@ -876,5 +994,144 @@ mod tests {
             completes[0].0 < starts[1].0,
             "second package should only start after first completes"
         );
+    }
+
+    #[tokio::test]
+    async fn try_prepare_from_store_returns_package_when_available() {
+        let (_td, state, store) = mk_env().await;
+        let (_pkg_dir, pkg_sp) = create_sp("pkg-cache", "1.0.0").await;
+
+        let stored_package = store.add_package(&pkg_sp).await.expect("store package");
+        let store_hash = stored_package.hash().expect("hash");
+        let expected_size = stored_package.size().await.expect("size");
+        let package_hash = PackageHash::hash_file_with_algorithm(&pkg_sp, HashAlgorithm::Blake3)
+            .await
+            .expect("package hash");
+
+        state
+            .ensure_store_ref(&store_hash.to_hex(), expected_size as i64)
+            .await
+            .expect("store ref");
+
+        state
+            .add_package_map(
+                "pkg-cache",
+                "1.0.0",
+                &store_hash.to_hex(),
+                Some(&package_hash.to_hex()),
+            )
+            .await
+            .expect("package map insert");
+
+        let mut node = ResolvedNode::download(
+            "pkg-cache".to_string(),
+            Version::parse("1.0.0").unwrap(),
+            "https://example.invalid/pkg-cache.sp".to_string(),
+            vec![],
+        );
+        node.expected_hash = Some(package_hash.clone());
+
+        let pkg_id = node.package_id();
+        let prepared_packages = Arc::new(DashMap::new());
+        let (tx, mut rx) = sps2_events::channel();
+        let context = ExecutionContext::new().with_event_sender(tx);
+
+        let size = ParallelExecutor::try_prepare_from_store(
+            &pkg_id,
+            &node,
+            &store,
+            &state,
+            &context,
+            &prepared_packages,
+        )
+        .await
+        .expect("reuse succeeds")
+        .expect("should reuse store package");
+
+        assert_eq!(size, expected_size);
+
+        let entry = prepared_packages
+            .get(&pkg_id)
+            .expect("prepared package present");
+        assert_eq!(entry.hash, store_hash);
+        assert_eq!(entry.size, expected_size);
+        assert!(!entry.is_local);
+        assert_eq!(entry.package_hash.as_ref(), Some(&package_hash));
+        drop(entry);
+
+        let mut saw_store_acquisition = false;
+        while let Ok(message) = rx.try_recv() {
+            if let AppEvent::Acquisition(acq) = message.event {
+                if matches!(
+                    acq,
+                    AcquisitionEvent::Completed {
+                        source: AcquisitionSource::StoreCache { .. },
+                        ..
+                    }
+                ) {
+                    saw_store_acquisition = true;
+                }
+            }
+        }
+        assert!(saw_store_acquisition, "expected store acquisition event");
+    }
+
+    #[tokio::test]
+    async fn try_prepare_from_store_respects_force_download() {
+        let (_td, state, store) = mk_env().await;
+        let (_pkg_dir, pkg_sp) = create_sp("pkg-force", "1.0.0").await;
+
+        let stored_package = store.add_package(&pkg_sp).await.expect("store package");
+        let store_hash = stored_package.hash().expect("hash");
+        let package_hash = PackageHash::hash_file_with_algorithm(&pkg_sp, HashAlgorithm::Blake3)
+            .await
+            .expect("package hash");
+
+        state
+            .ensure_store_ref(
+                &store_hash.to_hex(),
+                stored_package.size().await.expect("size") as i64,
+            )
+            .await
+            .expect("store ref");
+
+        state
+            .add_package_map(
+                "pkg-force",
+                "1.0.0",
+                &store_hash.to_hex(),
+                Some(&package_hash.to_hex()),
+            )
+            .await
+            .expect("package map insert");
+
+        let mut node = ResolvedNode::download(
+            "pkg-force".to_string(),
+            Version::parse("1.0.0").unwrap(),
+            "https://example.invalid/pkg-force.sp".to_string(),
+            vec![],
+        );
+        node.expected_hash = Some(package_hash);
+
+        let pkg_id = node.package_id();
+        let prepared_packages = Arc::new(DashMap::new());
+        let (tx, _rx) = sps2_events::channel();
+        let context = ExecutionContext::new()
+            .with_event_sender(tx)
+            .with_force_redownload(true);
+
+        let result = ParallelExecutor::try_prepare_from_store(
+            &pkg_id,
+            &node,
+            &store,
+            &state,
+            &context,
+            &prepared_packages,
+        )
+        .await
+        .expect("call succeeds");
+
+        assert!(result.is_none(), "expected force download to skip reuse");
+        assert!(prepared_packages.is_empty());
     }
 }

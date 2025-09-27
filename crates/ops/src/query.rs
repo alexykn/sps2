@@ -323,12 +323,14 @@ mod tests {
                 size,
                 store_path,
                 is_local: true,
+                package_hash: None,
             },
         );
         let install_ctx = InstallContext {
             packages: vec![],
             local_files: vec![],
             force: false,
+            force_download: false,
             event_sender: None,
         };
         atomic

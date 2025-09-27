@@ -427,6 +427,8 @@ impl AtomicInstaller {
         let hash = &prepared.hash;
         let store_path = &prepared.store_path;
         let size = prepared.size;
+        let store_hash_hex = hash.to_hex();
+        let package_hash_hex = prepared.package_hash.as_ref().map(sps2_hash::Hash::to_hex);
 
         let mut was_present = false;
         let mut version_changed = false;
@@ -445,7 +447,7 @@ impl AtomicInstaller {
 
         // Ensure store_refs entry exists before adding to package_map
         self.state_manager
-            .ensure_store_ref(&hash.to_hex(), size as i64)
+            .ensure_store_ref(&store_hash_hex, size as i64)
             .await?;
 
         // Ensure package is in package_map for future lookups
@@ -453,7 +455,8 @@ impl AtomicInstaller {
             .add_package_map(
                 &package_id.name,
                 &package_id.version.to_string(),
-                &hash.to_hex(),
+                &store_hash_hex,
+                package_hash_hex.as_deref(),
             )
             .await?;
 
@@ -466,7 +469,7 @@ impl AtomicInstaller {
         let package_ref = PackageRef {
             state_id: transition.staging_id,
             package_id: package_id.clone(),
-            hash: hash.to_hex(),
+            hash: store_hash_hex.clone(),
             size: size as i64,
         };
         transition.package_refs.push(package_ref);
@@ -1039,12 +1042,14 @@ mod tests {
                 size: size_a,
                 store_path: path_a.clone(),
                 is_local: true,
+                package_hash: None,
             },
         );
         let ctx = crate::InstallContext {
             packages: vec![],
             local_files: vec![],
             force: false,
+            force_download: false,
             event_sender: None,
         };
         let _ = installer
@@ -1075,12 +1080,14 @@ mod tests {
                 size: size_b,
                 store_path: path_b.clone(),
                 is_local: true,
+                package_hash: None,
             },
         );
         let ctx_b = crate::InstallContext {
             packages: vec![],
             local_files: vec![],
             force: false,
+            force_download: false,
             event_sender: None,
         };
         let _ = installer
@@ -1151,12 +1158,14 @@ mod tests {
                 size: size_v1,
                 store_path: path_v1.clone(),
                 is_local: true,
+                package_hash: None,
             },
         );
         let ctx = crate::InstallContext {
             packages: vec![],
             local_files: vec![],
             force: false,
+            force_download: false,
             event_sender: None,
         };
         let _ = ai.install(&ctx, &resolved, Some(&prepared)).await.unwrap();
@@ -1198,12 +1207,14 @@ mod tests {
                 size: size_v2,
                 store_path: path_v2.clone(),
                 is_local: true,
+                package_hash: None,
             },
         );
         let update_ctx = crate::InstallContext {
             packages: vec![],
             local_files: vec![],
             force: true,
+            force_download: false,
             event_sender: None,
         };
         let update_result = ai
@@ -1272,12 +1283,14 @@ mod tests {
                 size,
                 store_path: store_path.clone(),
                 is_local: true,
+                package_hash: None,
             },
         );
         let ctx = crate::InstallContext {
             packages: vec![],
             local_files: vec![],
             force: false,
+            force_download: false,
             event_sender: None,
         };
         let _res = ai.install(&ctx, &resolved, Some(&prepared)).await.unwrap();
@@ -1377,6 +1390,7 @@ mod tests {
                 size: size_a,
                 store_path: path_a.clone(),
                 is_local: true,
+                package_hash: None,
             },
         );
         prepared.insert(
@@ -1386,12 +1400,14 @@ mod tests {
                 size: size_b,
                 store_path: path_b.clone(),
                 is_local: true,
+                package_hash: None,
             },
         );
         let ctx = crate::InstallContext {
             packages: vec![],
             local_files: vec![],
             force: false,
+            force_download: false,
             event_sender: None,
         };
         let _res = ai.install(&ctx, &resolved, Some(&prepared)).await.unwrap();

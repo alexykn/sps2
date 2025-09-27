@@ -75,7 +75,7 @@ pub async fn build(
 
         // Install the built package
         let package_path_str = result.package_path.to_string_lossy().to_string();
-        let _install_report = crate::install(ctx, &[package_path_str]).await?;
+        let _install_report = crate::install(ctx, &[package_path_str], false).await?;
 
         ctx.emit_operation_completed(
             format!("Installed {package_name} {package_version} successfully"),

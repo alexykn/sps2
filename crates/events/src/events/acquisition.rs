@@ -35,4 +35,7 @@ pub enum AcquisitionEvent {
 pub enum AcquisitionSource {
     /// Remote HTTP/HTTPS download
     Remote { url: String, mirror_priority: u8 },
+
+    /// Cached package pulled directly from the content-addressed store
+    StoreCache { hash: String },
 }

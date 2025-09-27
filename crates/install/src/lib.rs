@@ -91,6 +91,9 @@ pub struct InstallContext {
     /// Force reinstallation
     pub force: bool,
 
+    /// Force re-download even if cached in the store
+    pub force_download: bool,
+
     /// Event sender for progress reporting
     pub event_sender: Option<EventSender>,
 }
@@ -100,6 +103,7 @@ context_builder! {
         packages: Vec<PackageSpec>,
         local_files: Vec<PathBuf>,
         force: bool,
+        force_download: bool,
 
     }
 }
@@ -212,4 +216,6 @@ pub struct PreparedPackage {
     pub store_path: PathBuf,
     /// Whether this package was downloaded or local
     pub is_local: bool,
+    /// Optional package archive hash (BLAKE3) provided by the repository
+    pub package_hash: Option<Hash>,
 }
