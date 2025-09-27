@@ -40,41 +40,6 @@ impl EventEmitter for StateManager {
 }
 
 impl StateManager {
-    // Helper: decrement all refs from parent and return a (name,version)->Package map with counters
-    async fn decrement_parent_refs_and_build_map(
-        &self,
-        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-        parent_id: &Uuid,
-    ) -> Result<
-        (
-            std::collections::HashMap<(String, String), crate::models::Package>,
-            usize,
-            usize,
-        ),
-        Error,
-    > {
-        let parent_packages = queries::get_state_packages(tx, parent_id).await?;
-        let mut parent_pkg_map: std::collections::HashMap<
-            (String, String),
-            crate::models::Package,
-        > = std::collections::HashMap::new();
-        for pkg in &parent_packages {
-            parent_pkg_map.insert((pkg.name.clone(), pkg.version.clone()), pkg.clone());
-        }
-
-        let mut store_dec_count: usize = 0;
-        let mut file_dec_count: usize = 0;
-        for pkg in &parent_packages {
-            queries::decrement_store_ref(tx, &pkg.hash).await?;
-            store_dec_count += 1;
-            let dec =
-                crate::file_queries_runtime::decrement_file_object_refs_for_package(tx, pkg.id)
-                    .await?;
-            file_dec_count += dec;
-        }
-        Ok((parent_pkg_map, store_dec_count, file_dec_count))
-    }
-
     // Helper: add package refs and build map PackageId -> db id, returning increment count
     async fn add_package_refs_and_build_id_map(
         &self,
@@ -88,13 +53,23 @@ impl StateManager {
         Error,
     > {
         let mut package_id_map = std::collections::HashMap::new();
-        let mut store_inc_count = 0usize;
         for package_ref in package_refs {
-            let package_id = self.add_package_ref_with_tx(tx, package_ref).await?;
+            let package_id = queries::add_package(
+                tx,
+                &package_ref.state_id,
+                &package_ref.package_id.name,
+                &package_ref.package_id.version.to_string(),
+                &package_ref.hash,
+                package_ref.size,
+            )
+            .await?;
+
+            // Ensure the CAS row exists, but do not adjust refcounts here.
+            queries::get_or_create_store_ref(tx, &package_ref.hash, package_ref.size).await?;
+
             package_id_map.insert(package_ref.package_id.clone(), package_id);
-            store_inc_count += 1;
         }
-        Ok((package_id_map, store_inc_count))
+        Ok((package_id_map, package_refs.len()))
     }
 
     // Helper: process pending hashes for packages with computed file hashes
@@ -149,107 +124,6 @@ impl StateManager {
             file_inc_count += 1;
         }
         Ok(file_inc_count)
-    }
-
-    // Helper: backfill carry-forward packages' file entries from parent
-    async fn backfill_carry_forward_files(
-        &self,
-        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-        parent_pkg_map: &std::collections::HashMap<(String, String), crate::models::Package>,
-        package_id_map: &std::collections::HashMap<sps2_resolver::PackageId, i64>,
-        transition_data: &TransactionData<'_>,
-    ) -> Result<usize, Error> {
-        use sps2_hash::Hash as Sps2Hash;
-        let mut file_inc_count = 0usize;
-
-        // Build set of packages that had file hashes computed in this transition
-        let mut hashed_set: std::collections::HashSet<sps2_resolver::PackageId> =
-            std::collections::HashSet::new();
-        for (pid, _hashes) in transition_data.pending_file_hashes {
-            hashed_set.insert(pid.clone());
-        }
-
-        for pkg_ref in transition_data.package_refs {
-            if hashed_set.contains(&pkg_ref.package_id) {
-                continue;
-            }
-
-            let Some(&new_db_pkg_id) = package_id_map.get(&pkg_ref.package_id) else {
-                continue;
-            };
-
-            if let Some(parent_pkg) = parent_pkg_map.get(&(
-                pkg_ref.package_id.name.clone(),
-                pkg_ref.package_id.version.to_string(),
-            )) {
-                let parent_entries =
-                    crate::file_queries_runtime::get_package_file_entries(tx, parent_pkg.id)
-                        .await?;
-                for entry in parent_entries {
-                    let hash_hex = entry.file_hash.clone();
-                    let fh = Sps2Hash::from_hex(&hash_hex).map_err(|e| {
-                        Error::internal(format!("invalid file hash {hash_hex}: {e}"))
-                    })?;
-
-                    let existing = crate::file_queries_runtime::get_file_object(tx, &fh).await?;
-
-                    if existing.is_none() {
-                        let metadata = crate::FileMetadata {
-                            size: 0,
-                            permissions: entry.permissions as u32,
-                            uid: entry.uid as u32,
-                            gid: entry.gid as u32,
-                            mtime: entry.mtime,
-                            is_executable: false,
-                            is_symlink: false,
-                            symlink_target: None,
-                        };
-                        let _ = queries::add_file_object(tx, &fh, &metadata).await?;
-                    }
-
-                    let file_ref = crate::FileReference {
-                        package_id: new_db_pkg_id,
-                        relative_path: entry.relative_path.clone(),
-                        hash: fh.clone(),
-                        metadata: crate::FileMetadata {
-                            size: existing.as_ref().map(|o| o.size).unwrap_or(0),
-                            permissions: entry.permissions as u32,
-                            uid: entry.uid as u32,
-                            gid: entry.gid as u32,
-                            mtime: entry.mtime,
-                            is_executable: existing
-                                .as_ref()
-                                .map(|o| o.is_executable)
-                                .unwrap_or(false),
-                            is_symlink: existing.as_ref().map(|o| o.is_symlink).unwrap_or(false),
-                            symlink_target: existing
-                                .as_ref()
-                                .and_then(|o| o.symlink_target.clone()),
-                        },
-                    };
-                    let _ =
-                        queries::add_file_object(tx, &file_ref.hash, &file_ref.metadata).await?;
-                    queries::add_package_file_entry(tx, new_db_pkg_id, &file_ref).await?;
-                    file_inc_count += 1;
-                }
-            }
-        }
-
-        Ok(file_inc_count)
-    }
-
-    // Helper: clamp negative refcounts to zero
-    async fn clamp_negatives(
-        &self,
-        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-    ) -> Result<(), Error> {
-        sqlx::query("UPDATE store_refs SET ref_count = 0 WHERE ref_count < 0")
-            .execute(&mut **tx)
-            .await?;
-        sqlx::query("UPDATE file_objects SET ref_count = 0 WHERE ref_count < 0")
-            .execute(&mut **tx)
-            .await?;
-        Ok(())
     }
 
     /// Create a new state manager with database setup
@@ -1266,17 +1140,13 @@ impl StateManager {
         // Start DB transaction
         let mut tx = self.pool.begin().await?;
 
-        // Write all DB changes: new state record, package refs, file lists
-        // DO NOT update the `active_state` table yet
+        // Write all DB changes: new state record, package refs, file lists.
+        // DO NOT update the `active_state` table yet.
         self.create_state_with_tx(&mut tx, staging_id, Some(parent_id), operation)
             .await?;
-        // Active-state refcount semantics: decrement all refs from parent, then increment for new state
-        let (parent_pkg_map, store_dec_count, file_dec_count) = self
-            .decrement_parent_refs_and_build_map(&mut tx, parent_id)
-            .await?;
 
-        // Add all package references and build map of db IDs
-        let (package_id_map, store_inc_count) = self
+        // Add all package references and build map of db IDs (new / updated packages only).
+        let (package_id_map, _store_inc_count) = self
             .add_package_refs_and_build_id_map(&mut tx, transition_data.package_refs)
             .await?;
 
@@ -1294,25 +1164,21 @@ impl StateManager {
             .process_file_references(&mut tx, transition_data.file_references)
             .await?;
 
-        // Backfill file entries for carry-forward packages that didn't compute hashes
-        file_inc_count += self
-            .backfill_carry_forward_files(
-                &mut tx,
-                &parent_pkg_map,
-                &package_id_map,
-                transition_data,
-            )
-            .await?;
-
-        // Clamp negatives to zero defensively
-        self.clamp_negatives(&mut tx).await?;
+        // Apply archive + file refcount deltas (parent -> new state)
+        let (archive_delta, file_delta) = crate::db::refcount_deltas::apply_all_refcount_deltas(
+            &mut tx,
+            Some(parent_id),
+            staging_id,
+        )
+        .await?;
 
         // Commit the DB transaction
         tx.commit().await?;
 
         // Emit debug summary
         self.emit_debug(format!(
-            "2PC refcounts: store +{store_inc_count} -{store_dec_count}, files +{file_inc_count} -{file_dec_count}"
+            "2PC refcounts: archives +{} -{}, files +{} -{} (file entries +{})",
+            archive_delta.0, archive_delta.1, file_delta.0, file_delta.1, file_inc_count,
         ));
 
         // Create the journal file on disk. This is the "commit point" for Phase 1
@@ -1447,6 +1313,13 @@ mod tests {
                 .await
                 .expect("pfe");
         }
+        let _ = crate::db::refcount_deltas::apply_all_refcount_deltas(
+            &mut tx,
+            None,
+            &sid,
+        )
+        .await
+        .expect("delta");
         tx.commit().await.expect("commit");
     }
 

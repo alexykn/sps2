@@ -17,7 +17,7 @@
 //! This crate manages the `SQLite` database that tracks system state,
 //! installed packages, and enables atomic updates with rollback.
 
-pub mod file_migration;
+pub mod db;
 pub mod file_models;
 pub mod file_queries_runtime;
 pub mod manager;
@@ -57,16 +57,35 @@ pub async fn create_pool(db_path: &Path) -> Result<Pool<Sqlite>, Error> {
         .journal_mode(SqliteJournalMode::Wal)
         .busy_timeout(Duration::from_secs(30));
 
-    SqlitePoolOptions::new()
+    let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .connect_with(options)
         .await
         .map_err(|e| {
-            sps2_errors::StateError::DatabaseError {
+            Error::from(sps2_errors::StateError::DatabaseError {
                 message: e.to_string(),
-            }
-            .into()
-        })
+            })
+        })?;
+
+    if let Ok(mut conn) = pool.acquire().await {
+        let _ = sqlx::query("PRAGMA synchronous = NORMAL")
+            .execute(&mut *conn)
+            .await;
+        let _ = sqlx::query("PRAGMA temp_store = MEMORY")
+            .execute(&mut *conn)
+            .await;
+        let _ = sqlx::query("PRAGMA mmap_size = 268435456")
+            .execute(&mut *conn)
+            .await;
+        let _ = sqlx::query("PRAGMA cache_size = -20000")
+            .execute(&mut *conn)
+            .await;
+        let _ = sqlx::query("PRAGMA wal_autocheckpoint = 1000")
+            .execute(&mut *conn)
+            .await;
+    }
+
+    Ok(pool)
 }
 
 /// Run database migrations

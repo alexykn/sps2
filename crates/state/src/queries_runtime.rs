@@ -1,16 +1,13 @@
-//! Runtime SQL queries for state operations (temporary until sqlx prepare is run)
+//! Runtime SQL queries for state operations (schema v2)
 
 use crate::models::{Package, State, StoreRef};
 use sps2_errors::{Error, StateError};
 use sps2_types::StateId;
 use sqlx::{query, Row, Sqlite, Transaction};
 use std::collections::HashMap;
+use std::convert::TryFrom;
 
 /// Get the current active state
-///
-/// # Errors
-///
-/// Returns an error if the database query fails or no active state is found.
 pub async fn get_active_state(tx: &mut Transaction<'_, Sqlite>) -> Result<StateId, Error> {
     let row = query("SELECT state_id FROM active_state WHERE id = 1")
         .fetch_optional(&mut **tx)
@@ -27,11 +24,7 @@ pub async fn get_active_state(tx: &mut Transaction<'_, Sqlite>) -> Result<StateI
     }
 }
 
-/// Set the active state
-///
-/// # Errors
-///
-/// Returns an error if the database update fails.
+/// Set the active state pointer
 pub async fn set_active_state(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
@@ -48,11 +41,7 @@ pub async fn set_active_state(
     Ok(())
 }
 
-/// Create a new state
-///
-/// # Errors
-///
-/// Returns an error if the database insert fails.
+/// Insert a new state row
 pub async fn create_state(
     tx: &mut Transaction<'_, Sqlite>,
     id: &StateId,
@@ -64,8 +53,7 @@ pub async fn create_state(
     let now = chrono::Utc::now().timestamp();
 
     query(
-        "INSERT INTO states (id, parent_id, created_at, operation, success)
-         VALUES (?1, ?2, ?3, ?4, 1)",
+        "INSERT INTO states (id, parent_id, created_at, operation, success) VALUES (?1, ?2, ?3, ?4, 1)",
     )
     .bind(id_str)
     .bind(parent_str)
@@ -77,250 +65,204 @@ pub async fn create_state(
     Ok(())
 }
 
-/// Get packages in a state
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// Get packages present in a particular state snapshot
 pub async fn get_state_packages(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
 ) -> Result<Vec<Package>, Error> {
     let id_str = state_id.to_string();
-
-    let rows = query(
-        "SELECT id, state_id, name, version, hash, size, installed_at, venv_path
-         FROM packages WHERE state_id = ?1",
-    )
-    .bind(id_str)
-    .fetch_all(&mut **tx)
-    .await?;
-
-    let packages = rows
-        .into_iter()
-        .map(|row| Package {
-            id: row.get("id"),
-            state_id: row.get("state_id"),
-            name: row.get("name"),
-            version: row.get("version"),
-            hash: row.get("hash"),
-            size: row.get("size"),
-            installed_at: row.get("installed_at"),
-            venv_path: row.get("venv_path"),
-        })
-        .collect();
-
-    Ok(packages)
-}
-
-/// Get all packages including from parent states
-///
-/// This follows the parent chain and returns all packages that are effectively
-/// installed in the current state, including those inherited from parent states.
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
-pub async fn get_all_active_packages(
-    tx: &mut Transaction<'_, Sqlite>,
-    state_id: &StateId,
-) -> Result<Vec<Package>, Error> {
-    let id_str = state_id.to_string();
-
-    // Use a recursive CTE to get all states in the parent chain
     let rows = query(
         r#"
-        WITH RECURSIVE state_chain AS (
-            -- Start with the current state
-            SELECT id, parent_id FROM states WHERE id = ?1
-
-            UNION ALL
-
-            -- Recursively get parent states
-            SELECT s.id, s.parent_id
-            FROM states s
-            INNER JOIN state_chain sc ON s.id = sc.parent_id
-        )
-        SELECT DISTINCT p.id, p.state_id, p.name, p.version, p.hash, p.size, p.installed_at, p.venv_path
-        FROM packages p
-        INNER JOIN state_chain sc ON p.state_id = sc.id
-        -- Group by name to handle package updates/removals
-        -- We want the most recent version of each package
-        WHERE p.id IN (
-            SELECT MAX(p2.id)
-            FROM packages p2
-            INNER JOIN state_chain sc2 ON p2.state_id = sc2.id
-            WHERE p2.name = p.name
-            GROUP BY p2.name
-        )
-        ORDER BY p.name
+        SELECT
+            sp.id              AS pkg_row_id,
+            sp.state_id        AS state_id,
+            pv.name            AS name,
+            pv.version         AS version,
+            pv.store_hash      AS hash,
+            pv.size_bytes      AS size,
+            sp.added_at        AS installed_at
+        FROM state_packages sp
+        JOIN package_versions pv ON pv.id = sp.package_version_id
+        WHERE sp.state_id = ?1
+        ORDER BY pv.name
         "#,
     )
     .bind(id_str)
     .fetch_all(&mut **tx)
     .await?;
 
-    let packages = rows
+    Ok(rows
         .into_iter()
         .map(|row| Package {
-            id: row.get("id"),
+            id: row.get("pkg_row_id"),
             state_id: row.get("state_id"),
             name: row.get("name"),
             version: row.get("version"),
             hash: row.get("hash"),
             size: row.get("size"),
             installed_at: row.get("installed_at"),
-            venv_path: row.get("venv_path"),
+            venv_path: None,
         })
-        .collect();
-
-    Ok(packages)
+        .collect())
 }
 
-/// Add a package to a state
-///
-/// # Errors
-///
-/// Returns an error if the database insert fails.
+/// All packages for a state (same as get_state_packages under v2 schema)
+pub async fn get_all_active_packages(
+    tx: &mut Transaction<'_, Sqlite>,
+    state_id: &StateId,
+) -> Result<Vec<Package>, Error> {
+    get_state_packages(tx, state_id).await
+}
+
+/// Ensure a package version exists and add it to a state snapshot
 pub async fn add_package(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
     name: &str,
     version: &str,
-    hash: &str,
+    store_hash: &str,
     size: i64,
 ) -> Result<i64, Error> {
     let id_str = state_id.to_string();
     let now = chrono::Utc::now().timestamp();
 
-    let result = query(
-        "INSERT INTO packages (state_id, name, version, hash, size, installed_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+    query(
+        r#"
+        INSERT INTO package_versions (name, version, store_hash, size_bytes, created_at)
+        VALUES (?1, ?2, ?3, ?4, ?5)
+        ON CONFLICT(name, version) DO UPDATE SET
+            store_hash = excluded.store_hash,
+            size_bytes = excluded.size_bytes
+        "#,
     )
-    .bind(id_str)
     .bind(name)
     .bind(version)
-    .bind(hash)
+    .bind(store_hash)
     .bind(size)
     .bind(now)
     .execute(&mut **tx)
     .await?;
 
-    Ok(result.last_insert_rowid())
+    query(
+        r#"
+        INSERT INTO state_packages (state_id, package_version_id, install_size_bytes, added_at)
+        VALUES (?1,
+            (SELECT id FROM package_versions WHERE name = ?2 AND version = ?3),
+            ?4,
+            ?5)
+        "#,
+    )
+    .bind(&id_str)
+    .bind(name)
+    .bind(version)
+    .bind(size)
+    .bind(now)
+    .execute(&mut **tx)
+    .await?;
+
+    let row = query("SELECT last_insert_rowid() as id")
+        .fetch_one(&mut **tx)
+        .await?;
+    Ok(row.get("id"))
 }
 
-/// Remove a package from a state
-///
-/// # Errors
-///
-/// Returns an error if the database delete fails.
+/// Remove a package version reference from a state snapshot
 pub async fn remove_package(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
     name: &str,
 ) -> Result<(), Error> {
     let id_str = state_id.to_string();
-
-    query("DELETE FROM packages WHERE state_id = ?1 AND name = ?2")
-        .bind(id_str)
-        .bind(name)
-        .execute(&mut **tx)
-        .await?;
-
+    query(
+        r#"
+        DELETE FROM state_packages
+        WHERE state_id = ?1
+          AND package_version_id IN (SELECT id FROM package_versions WHERE name = ?2)
+        "#,
+    )
+    .bind(id_str)
+    .bind(name)
+    .execute(&mut **tx)
+    .await?;
     Ok(())
 }
 
-/// Get or create a store reference
-///
-/// # Errors
-///
-/// Returns an error if the database insert fails.
+/// Ensure an archive CAS row exists
 pub async fn get_or_create_store_ref(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &str,
     size: i64,
 ) -> Result<(), Error> {
     let now = chrono::Utc::now().timestamp();
-
     query(
-        "INSERT OR IGNORE INTO store_refs (hash, ref_count, size, created_at)
-         VALUES (?1, 0, ?2, ?3)",
+        r#"
+        INSERT OR IGNORE INTO cas_objects (hash, kind, size_bytes, created_at, ref_count)
+        VALUES (?1, 'archive', ?2, ?3, 0)
+        "#,
     )
     .bind(hash)
     .bind(size)
     .bind(now)
     .execute(&mut **tx)
     .await?;
-
     Ok(())
 }
 
-/// Increment store reference count
-///
-/// # Errors
-///
-/// Returns an error if the database update fails.
+/// Increment archive refcount
 pub async fn increment_store_ref(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &str,
 ) -> Result<(), Error> {
-    query("UPDATE store_refs SET ref_count = ref_count + 1 WHERE hash = ?1")
+    query("UPDATE cas_objects SET ref_count = ref_count + 1 WHERE hash = ?1 AND kind = 'archive'")
         .bind(hash)
         .execute(&mut **tx)
         .await?;
-
     Ok(())
 }
 
-/// Decrement store reference count
-///
-/// # Errors
-///
-/// Returns an error if the database update fails.
+/// Decrement archive refcount
 pub async fn decrement_store_ref(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &str,
 ) -> Result<(), Error> {
-    query("UPDATE store_refs SET ref_count = ref_count - 1 WHERE hash = ?1")
+    query("UPDATE cas_objects SET ref_count = ref_count - 1 WHERE hash = ?1 AND kind = 'archive'")
         .bind(hash)
         .execute(&mut **tx)
         .await?;
-
     Ok(())
 }
 
-/// Set store reference count to an exact value
-///
-/// # Errors
-///
-/// Returns an error if the database update fails.
+/// Force-set archive refcount
 pub async fn set_store_ref_count(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &str,
     count: i64,
 ) -> Result<u64, Error> {
-    let res = query("UPDATE store_refs SET ref_count = ?1 WHERE hash = ?2 AND ref_count <> ?1")
-        .bind(count)
-        .bind(hash)
-        .execute(&mut **tx)
-        .await?;
+    let res = query(
+        "UPDATE cas_objects SET ref_count = ?1 WHERE hash = ?2 AND kind = 'archive' AND ref_count <> ?1",
+    )
+    .bind(count)
+    .bind(hash)
+    .execute(&mut **tx)
+    .await?;
     Ok(res.rows_affected())
 }
 
-/// Get unreferenced store items
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// Fetch archive CAS rows with refcount <= 0
 pub async fn get_unreferenced_items(
     tx: &mut Transaction<'_, Sqlite>,
 ) -> Result<Vec<StoreRef>, Error> {
-    let rows =
-        query("SELECT hash, ref_count, size, created_at FROM store_refs WHERE ref_count <= 0")
-            .fetch_all(&mut **tx)
-            .await?;
+    let rows = query(
+        r#"
+        SELECT hash, ref_count, size_bytes AS size, created_at
+        FROM cas_objects
+        WHERE kind = 'archive' AND ref_count <= 0
+        "#,
+    )
+    .fetch_all(&mut **tx)
+    .await?;
 
-    let items = rows
+    Ok(rows
         .into_iter()
         .map(|row| StoreRef {
             hash: row.get("hash"),
@@ -328,16 +270,10 @@ pub async fn get_unreferenced_items(
             size: row.get("size"),
             created_at: row.get("created_at"),
         })
-        .collect();
-
-    Ok(items)
+        .collect())
 }
 
-/// Check if state exists
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// Check whether a given state exists
 pub async fn state_exists(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
@@ -350,60 +286,56 @@ pub async fn state_exists(
     Ok(row.is_some())
 }
 
-/// List all states
-///
-/// # Errors
-///
-/// Returns an error if the database query fails or state IDs are invalid.
+/// List state IDs ordered by creation time (desc)
 pub async fn list_states(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<StateId>, Error> {
     let rows = query("SELECT id FROM states ORDER BY created_at DESC")
         .fetch_all(&mut **tx)
         .await?;
-
-    let mut states = Vec::new();
-    for row in rows {
-        let id_str: String = row.get("id");
-        let id = uuid::Uuid::parse_str(&id_str)
-            .map_err(|e| Error::internal(format!("invalid state ID: {e}")))?;
-        states.push(id);
+    let mut result = Vec::with_capacity(rows.len());
+    for r in rows {
+        let id: String = r.get("id");
+        result.push(
+            uuid::Uuid::parse_str(&id)
+                .map_err(|e| Error::internal(format!("invalid state ID: {e}")))?,
+        );
     }
-    Ok(states)
+    Ok(result)
 }
 
-/// Get package names in a state
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// List state names for a given state (unique package names)
 pub async fn get_state_package_names(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
 ) -> Result<Vec<String>, Error> {
     let id_str = state_id.to_string();
-    let rows = query("SELECT name FROM packages WHERE state_id = ?1")
-        .bind(id_str)
-        .fetch_all(&mut **tx)
-        .await?;
-
-    let packages = rows.into_iter().map(|row| row.get("name")).collect();
-    Ok(packages)
+    let rows = query(
+        r#"
+        SELECT DISTINCT pv.name
+        FROM state_packages sp
+        JOIN package_versions pv ON pv.id = sp.package_version_id
+        WHERE sp.state_id = ?1
+        ORDER BY pv.name
+        "#,
+    )
+    .bind(id_str)
+    .fetch_all(&mut **tx)
+    .await?;
+    Ok(rows.into_iter().map(|r| r.get("name")).collect())
 }
 
-/// Get all states
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// List all states with metadata
 pub async fn get_all_states(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<State>, Error> {
     let rows = query(
-        r"SELECT id, parent_id, created_at, operation,
-           success, rollback_of, pruned_at
-           FROM states ORDER BY created_at DESC",
+        r#"
+        SELECT id, parent_id, created_at, operation, success, rollback_of, pruned_at
+        FROM states
+        ORDER BY created_at DESC
+        "#,
     )
     .fetch_all(&mut **tx)
     .await?;
 
-    let states = rows
+    Ok(rows
         .into_iter()
         .map(|row| State {
             id: row.get("id"),
@@ -414,65 +346,44 @@ pub async fn get_all_states(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<Stat
             rollback_of: row.get("rollback_of"),
             pruned_at: row.get("pruned_at"),
         })
-        .collect();
-
-    Ok(states)
+        .collect())
 }
 
-/// Get states for cleanup
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// States eligible for cleanup by age and retention count
 pub async fn get_states_for_cleanup(
     tx: &mut Transaction<'_, Sqlite>,
     keep_count: usize,
     cutoff_time: i64,
 ) -> Result<Vec<String>, Error> {
     let rows = query(
-        r"
+        r#"
         SELECT id FROM states
         WHERE id NOT IN (
             SELECT id FROM states ORDER BY created_at DESC LIMIT ?1
         )
         AND created_at < ?2
-        AND id NOT IN (
-            SELECT state_id FROM active_state WHERE id = 1
-        )
+        AND id NOT IN (SELECT state_id FROM active_state WHERE id = 1)
         AND success = 1
         ORDER BY created_at ASC
-        ",
+        "#,
     )
-    .bind(
-        i64::try_from(keep_count)
-            .map_err(|e| Error::internal(format!("keep_count too large: {e}")))?,
-    )
+    .bind(i64::try_from(keep_count).map_err(|e| Error::internal(e.to_string()))?)
     .bind(cutoff_time)
     .fetch_all(&mut **tx)
     .await?;
-
     Ok(rows.into_iter().map(|r| r.get("id")).collect())
 }
 
-/// Delete a state
-///
-/// # Errors
-///
-/// Returns an error if the database delete fails.
+/// Delete a state row
 pub async fn delete_state(tx: &mut Transaction<'_, Sqlite>, state_id: &str) -> Result<(), Error> {
     query("DELETE FROM states WHERE id = ?1")
         .bind(state_id)
         .execute(&mut **tx)
         .await?;
-
     Ok(())
 }
 
-/// Get states to cleanup (alias for `get_states_for_cleanup`)
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// Alias for get_states_for_cleanup
 pub async fn get_states_to_cleanup(
     tx: &mut Transaction<'_, Sqlite>,
     keep_count: usize,
@@ -481,64 +392,42 @@ pub async fn get_states_to_cleanup(
     get_states_for_cleanup(tx, keep_count, cutoff_time).await
 }
 
-/// Get states for cleanup with strict retention (keeps only N newest states)
-///
-/// This function keeps only the N newest states based on creation time,
-/// ignoring age cutoff. This fixes the issue where if all states are young,
-/// they would accumulate because age-based filtering fails.
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// Strict retention: keep only N newest states
 pub async fn get_states_for_cleanup_strict(
     tx: &mut Transaction<'_, Sqlite>,
     keep_count: usize,
 ) -> Result<Vec<String>, Error> {
     let rows = query(
-        r"
+        r#"
         SELECT id FROM states
         WHERE id NOT IN (
             SELECT id FROM states ORDER BY created_at DESC LIMIT ?1
         )
-        AND id NOT IN (
-            SELECT state_id FROM active_state WHERE id = 1
-        )
+        AND id NOT IN (SELECT state_id FROM active_state WHERE id = 1)
         AND success = 1
         ORDER BY created_at ASC
-        ",
+        "#,
     )
-    .bind(
-        i64::try_from(keep_count)
-            .map_err(|e| Error::internal(format!("keep_count too large: {e}")))?,
-    )
+    .bind(i64::try_from(keep_count).map_err(|e| Error::internal(e.to_string()))?)
     .fetch_all(&mut **tx)
     .await?;
-
     Ok(rows.into_iter().map(|r| r.get("id")).collect())
 }
 
-/// Get unreferenced store items (alias)
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// Alias for get_unreferenced_items (kept for callers)
 pub async fn get_unreferenced_store_items(
     tx: &mut Transaction<'_, Sqlite>,
 ) -> Result<Vec<StoreRef>, Error> {
     get_unreferenced_items(tx).await
 }
 
-/// Delete unreferenced store items
-///
-/// # Errors
-///
-/// Returns an error if the database delete fails.
+/// Delete archive CAS rows for given hashes
 pub async fn delete_unreferenced_store_items(
     tx: &mut Transaction<'_, Sqlite>,
     hashes: &[String],
 ) -> Result<(), Error> {
     for hash in hashes {
-        query("DELETE FROM store_refs WHERE hash = ?1")
+        query("DELETE FROM cas_objects WHERE hash = ?1 AND kind = 'archive'")
             .bind(hash)
             .execute(&mut **tx)
             .await?;
@@ -546,17 +435,15 @@ pub async fn delete_unreferenced_store_items(
     Ok(())
 }
 
-/// Get all `store_refs` rows
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// Fetch all archive CAS rows
 pub async fn get_all_store_refs(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<StoreRef>, Error> {
-    let rows = query("SELECT hash, ref_count, size, created_at FROM store_refs")
-        .fetch_all(&mut **tx)
-        .await?;
+    let rows = query(
+        r#"SELECT hash, ref_count, size_bytes AS size, created_at FROM cas_objects WHERE kind = 'archive'"#,
+    )
+    .fetch_all(&mut **tx)
+    .await?;
 
-    let items = rows
+    Ok(rows
         .into_iter()
         .map(|row| StoreRef {
             hash: row.get("hash"),
@@ -564,44 +451,33 @@ pub async fn get_all_store_refs(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<
             size: row.get("size"),
             created_at: row.get("created_at"),
         })
-        .collect();
-
-    Ok(items)
+        .collect())
 }
 
-/// Build a map of package hash -> last reference timestamp across all states
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// Map archive hash -> last reference timestamp
 pub async fn get_package_last_ref_map(
     tx: &mut Transaction<'_, Sqlite>,
 ) -> Result<HashMap<String, i64>, Error> {
     let rows = query(
         r#"
-        SELECT p.hash AS hash, COALESCE(MAX(s.created_at), 0) AS last_ref
-        FROM packages p
-        JOIN states s ON s.id = p.state_id
-        GROUP BY p.hash
+        SELECT pv.store_hash AS hash, COALESCE(MAX(s.created_at), 0) AS last_ref
+        FROM state_packages sp
+        JOIN package_versions pv ON pv.id = sp.package_version_id
+        JOIN states s ON s.id = sp.state_id
+        GROUP BY pv.store_hash
         "#,
     )
     .fetch_all(&mut **tx)
     .await?;
 
     let mut map = HashMap::new();
-    for r in rows {
-        let hash: String = r.get("hash");
-        let last_ref: i64 = r.get("last_ref");
-        map.insert(hash, last_ref);
+    for row in rows {
+        map.insert(row.get("hash"), row.get("last_ref"));
     }
     Ok(map)
 }
 
-/// Insert a package eviction log entry
-///
-/// # Errors
-///
-/// Returns an error if the database insert fails.
+/// Insert archive eviction log entry
 pub async fn insert_package_eviction(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &str,
@@ -610,7 +486,10 @@ pub async fn insert_package_eviction(
 ) -> Result<(), Error> {
     let now = chrono::Utc::now().timestamp();
     query(
-        "INSERT OR REPLACE INTO package_evictions (hash, evicted_at, size, reason) VALUES (?1, ?2, ?3, ?4)",
+        r#"
+        INSERT OR REPLACE INTO cas_evictions (hash, kind, evicted_at, size_bytes, reason)
+        VALUES (?1, 'archive', ?2, ?3, ?4)
+        "#,
     )
     .bind(hash)
     .bind(now)
@@ -621,11 +500,7 @@ pub async fn insert_package_eviction(
     Ok(())
 }
 
-/// Insert a file object eviction log entry
-///
-/// # Errors
-///
-/// Returns an error if the database insert fails.
+/// Insert file eviction log entry
 pub async fn insert_file_object_eviction(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &str,
@@ -634,7 +509,10 @@ pub async fn insert_file_object_eviction(
 ) -> Result<(), Error> {
     let now = chrono::Utc::now().timestamp();
     query(
-        "INSERT OR REPLACE INTO file_object_evictions (hash, evicted_at, size, reason) VALUES (?1, ?2, ?3, ?4)",
+        r#"
+        INSERT OR REPLACE INTO cas_evictions (hash, kind, evicted_at, size_bytes, reason)
+        VALUES (?1, 'file', ?2, ?3, ?4)
+        "#,
     )
     .bind(hash)
     .bind(now)
@@ -645,60 +523,44 @@ pub async fn insert_file_object_eviction(
     Ok(())
 }
 
-/// Get packages that depend on the given package
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// List package names that depend on the given package name across all versions
 pub async fn get_package_dependents(
     tx: &mut Transaction<'_, Sqlite>,
     package_name: &str,
 ) -> Result<Vec<String>, Error> {
     let rows = query(
-        r"
-        SELECT DISTINCT p.name
-        FROM packages p
-        JOIN dependencies d ON p.id = d.package_id
+        r#"
+        SELECT DISTINCT pv.name
+        FROM package_versions pv
+        JOIN package_deps d ON d.package_version_id = pv.id
         WHERE d.dep_name = ?1
-        ",
+        ORDER BY pv.name
+        "#,
     )
     .bind(package_name)
     .fetch_all(&mut **tx)
     .await?;
-
     Ok(rows.into_iter().map(|r| r.get("name")).collect())
 }
 
-/// List all states with details
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// Detailed state list (alias for get_all_states)
 pub async fn list_states_detailed(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<State>, Error> {
     get_all_states(tx).await
 }
 
-/// Get states older than cutoff (unix timestamp)
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// States older than cutoff timestamp
 pub async fn get_states_older_than(
     tx: &mut Transaction<'_, Sqlite>,
     cutoff: i64,
 ) -> Result<Vec<String>, Error> {
-    let rows = query(r"SELECT id FROM states WHERE created_at < ? ORDER BY created_at ASC")
+    let rows = query("SELECT id FROM states WHERE created_at < ? ORDER BY created_at ASC")
         .bind(cutoff)
         .fetch_all(&mut **tx)
         .await?;
     Ok(rows.into_iter().map(|r| r.get("id")).collect())
 }
 
-/// Mark a list of states as pruned (sets `pruned_at` to provided timestamp) except active state
-///
-/// # Errors
-///
-/// Returns an error if the database update fails.
+/// Mark states as pruned (except the active one)
 pub async fn mark_pruned_states(
     tx: &mut Transaction<'_, Sqlite>,
     ids: &[String],
@@ -710,8 +572,7 @@ pub async fn mark_pruned_states(
         if id == active_id {
             continue;
         }
-        // Only mark if not already pruned
-        let res = query(r"UPDATE states SET pruned_at = ? WHERE id = ? AND pruned_at IS NULL")
+        let res = query("UPDATE states SET pruned_at = ?1 WHERE id = ?2 AND pruned_at IS NULL")
             .bind(ts)
             .bind(id)
             .execute(&mut **tx)
@@ -723,24 +584,16 @@ pub async fn mark_pruned_states(
     Ok(updated)
 }
 
-/// Unprune a state by clearing `pruned_at`
-///
-/// # Errors
-///
-/// Returns an error if the database update fails.
+/// Clear pruned marker for a state
 pub async fn unprune_state(tx: &mut Transaction<'_, Sqlite>, id: &str) -> Result<(), Error> {
-    query(r"UPDATE states SET pruned_at = NULL WHERE id = ?")
+    query("UPDATE states SET pruned_at = NULL WHERE id = ?1")
         .bind(id)
         .execute(&mut **tx)
         .await?;
     Ok(())
 }
 
-/// Get parent state ID for a given state
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// Fetch parent state ID if any
 pub async fn get_parent_state_id(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
@@ -750,88 +603,74 @@ pub async fn get_parent_state_id(
         .bind(id_str)
         .fetch_optional(&mut **tx)
         .await?;
-
     match row {
         Some(r) => {
-            let parent_id: Option<String> = r.get("parent_id");
-            match parent_id {
-                Some(parent_str) => {
-                    let parent_uuid = uuid::Uuid::parse_str(&parent_str)
-                        .map_err(|e| Error::internal(format!("invalid parent state ID: {e}")))?;
-                    Ok(Some(parent_uuid))
-                }
-                None => Ok(None),
+            let parent: Option<String> = r.get("parent_id");
+            if let Some(p) = parent {
+                let id = uuid::Uuid::parse_str(&p)
+                    .map_err(|e| Error::internal(format!("invalid parent state ID: {e}")))?;
+                Ok(Some(id))
+            } else {
+                Ok(None)
             }
         }
         None => Ok(None),
     }
 }
 
-/// Add a file to the `package_files` table
-///
-/// # Errors
-///
-/// Returns an error if the database insert fails.
+/// Legacy helper: record package files for directory entries (no-op for new schema)
 pub async fn add_package_file(
     tx: &mut Transaction<'_, Sqlite>,
-    state_id: &StateId,
+    _state_id: &StateId,
     package_name: &str,
     package_version: &str,
     file_path: &str,
     is_directory: bool,
 ) -> Result<(), Error> {
-    let id_str = state_id.to_string();
-
+    let mode = if is_directory { 0 } else { 0o644 };
     query(
-        "INSERT INTO package_files (state_id, package_name, package_version, file_path, is_directory)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
+        r#"
+        INSERT OR IGNORE INTO package_files
+          (package_version_id, file_hash, rel_path, mode, uid, gid, mtime)
+        VALUES (
+          (SELECT id FROM package_versions WHERE name = ?1 AND version = ?2),
+          '', ?3, ?4, 0, 0, NULL
+        )
+        "#,
     )
-    .bind(id_str)
     .bind(package_name)
     .bind(package_version)
     .bind(file_path)
-    .bind(is_directory)
+    .bind(i64::from(mode))
     .execute(&mut **tx)
     .await?;
-
     Ok(())
 }
 
-/// Get all files for a package in a specific state
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// Fetch package file paths for a given version
 pub async fn get_package_files(
     tx: &mut Transaction<'_, Sqlite>,
-    state_id: &StateId,
+    _state_id: &StateId,
     package_name: &str,
     package_version: &str,
 ) -> Result<Vec<String>, Error> {
-    let id_str = state_id.to_string();
-
     let rows = query(
-        "SELECT file_path FROM package_files
-         WHERE state_id = ?1 AND package_name = ?2 AND package_version = ?3
-         ORDER BY file_path",
+        r#"
+        SELECT pf.rel_path
+        FROM package_files pf
+        JOIN package_versions pv ON pv.id = pf.package_version_id
+        WHERE pv.name = ?1 AND pv.version = ?2
+        ORDER BY pf.rel_path
+        "#,
     )
-    .bind(id_str)
     .bind(package_name)
     .bind(package_version)
     .fetch_all(&mut **tx)
     .await?;
-
-    Ok(rows.into_iter().map(|r| r.get("file_path")).collect())
+    Ok(rows.into_iter().map(|r| r.get("rel_path")).collect())
 }
 
-/// Get package files including from parent states
-///
-/// This follows the parent chain to find files for a package that might be
-/// defined in a parent state rather than the current state.
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// Fetch package files ensuring version is present in state
 pub async fn get_package_files_with_inheritance(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
@@ -839,223 +678,122 @@ pub async fn get_package_files_with_inheritance(
     package_version: &str,
 ) -> Result<Vec<String>, Error> {
     let id_str = state_id.to_string();
-
-    // Use a recursive CTE to get all states in the parent chain
-    let rows = query(
+    let exists = query(
         r#"
-        WITH RECURSIVE state_chain AS (
-            -- Start with the current state
-            SELECT id, parent_id FROM states WHERE id = ?1
-
-            UNION ALL
-
-            -- Recursively get parent states
-            SELECT s.id, s.parent_id
-            FROM states s
-            INNER JOIN state_chain sc ON s.id = sc.parent_id
-        )
-        SELECT DISTINCT pf.file_path
-        FROM package_files pf
-        INNER JOIN state_chain sc ON pf.state_id = sc.id
-        WHERE pf.package_name = ?2 AND pf.package_version = ?3
-        ORDER BY pf.file_path
+        SELECT 1
+        FROM state_packages sp
+        JOIN package_versions pv ON pv.id = sp.package_version_id
+        WHERE sp.state_id = ?1 AND pv.name = ?2 AND pv.version = ?3
+        LIMIT 1
         "#,
     )
     .bind(id_str)
     .bind(package_name)
     .bind(package_version)
-    .fetch_all(&mut **tx)
-    .await?;
+    .fetch_optional(&mut **tx)
+    .await?
+    .is_some();
 
-    Ok(rows.into_iter().map(|r| r.get("file_path")).collect())
+    if !exists {
+        return Ok(Vec::new());
+    }
+    get_package_files(tx, state_id, package_name, package_version).await
 }
 
-/// Get all files for a package in the active state
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// Package files for the active state
 pub async fn get_active_package_files(
     tx: &mut Transaction<'_, Sqlite>,
     package_name: &str,
     package_version: &str,
 ) -> Result<Vec<String>, Error> {
-    let active_state = get_active_state(tx).await?;
-    get_package_files(tx, &active_state, package_name, package_version).await
+    let active = get_active_state(tx).await?;
+    get_package_files(tx, &active, package_name, package_version).await
 }
 
-/// Remove all files for a package from `package_files` table
-///
-/// # Errors
-///
-/// Returns an error if the database delete fails.
+/// Remove package files for a given version
 pub async fn remove_package_files(
     tx: &mut Transaction<'_, Sqlite>,
-    state_id: &StateId,
+    _state_id: &StateId,
     package_name: &str,
     package_version: &str,
 ) -> Result<(), Error> {
-    let id_str = state_id.to_string();
-
     query(
-        "DELETE FROM package_files
-         WHERE state_id = ?1 AND package_name = ?2 AND package_version = ?3",
+        r#"
+        DELETE FROM package_files
+        WHERE package_version_id = (SELECT id FROM package_versions WHERE name = ?1 AND version = ?2)
+        "#,
     )
-    .bind(id_str)
     .bind(package_name)
     .bind(package_version)
     .execute(&mut **tx)
     .await?;
-
     Ok(())
 }
 
-/// Insert a garbage collection log entry
-///
-/// # Errors
-///
-/// Returns an error if the database insert fails.
+/// Insert GC run entry
 pub async fn insert_gc_log(
     tx: &mut Transaction<'_, Sqlite>,
     items_removed: i64,
     space_freed: i64,
 ) -> Result<(), Error> {
     let now = chrono::Utc::now().timestamp();
-
-    query("INSERT INTO gc_log (run_at, items_removed, space_freed) VALUES (?1, ?2, ?3)")
-        .bind(now)
-        .bind(items_removed)
-        .bind(space_freed)
-        .execute(&mut **tx)
-        .await?;
-
+    query(
+        r#"
+        INSERT INTO gc_runs (run_at, scope, items_removed, bytes_freed, notes)
+        VALUES (?1, 'both', ?2, ?3, NULL)
+        "#,
+    )
+    .bind(now)
+    .bind(items_removed)
+    .bind(space_freed)
+    .execute(&mut **tx)
+    .await?;
     Ok(())
 }
 
-/// Add a package to a state with venv path
-///
-/// # Errors
-///
-/// Returns an error if the database insert fails.
+/// Add package with venv path (venv ignored in v2 schema)
 pub async fn add_package_with_venv(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &StateId,
     name: &str,
     version: &str,
-    hash: &str,
+    store_hash: &str,
     size: i64,
-    venv_path: Option<&str>,
+    _venv_path: Option<&str>,
 ) -> Result<i64, Error> {
-    let id_str = state_id.to_string();
-    let now = chrono::Utc::now().timestamp();
-
-    let result = query(
-        "INSERT INTO packages (state_id, name, version, hash, size, installed_at, venv_path)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-    )
-    .bind(id_str)
-    .bind(name)
-    .bind(version)
-    .bind(hash)
-    .bind(size)
-    .bind(now)
-    .bind(venv_path)
-    .execute(&mut **tx)
-    .await?;
-
-    Ok(result.last_insert_rowid())
+    add_package(tx, state_id, name, version, store_hash, size).await
 }
 
-/// Get the venv path for a package
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// Venv path lookup (always None now)
 pub async fn get_package_venv_path(
-    tx: &mut Transaction<'_, Sqlite>,
-    state_id: &StateId,
-    package_name: &str,
-    package_version: &str,
+    _tx: &mut Transaction<'_, Sqlite>,
+    _state_id: &StateId,
+    _package_name: &str,
+    _package_version: &str,
 ) -> Result<Option<String>, Error> {
-    let id_str = state_id.to_string();
-
-    let row = query(
-        "SELECT venv_path FROM packages
-         WHERE state_id = ?1 AND name = ?2 AND version = ?3",
-    )
-    .bind(id_str)
-    .bind(package_name)
-    .bind(package_version)
-    .fetch_optional(&mut **tx)
-    .await?;
-
-    Ok(row.and_then(|r| r.get("venv_path")))
+    Ok(None)
 }
 
-/// Get all packages with venvs in a state
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// Packages with venvs (empty under v2 schema)
 pub async fn get_packages_with_venvs(
-    tx: &mut Transaction<'_, Sqlite>,
-    state_id: &StateId,
+    _tx: &mut Transaction<'_, Sqlite>,
+    _state_id: &StateId,
 ) -> Result<Vec<(String, String, String)>, Error> {
-    let id_str = state_id.to_string();
-
-    let rows = query(
-        "SELECT name, version, venv_path
-         FROM packages
-         WHERE state_id = ?1 AND venv_path IS NOT NULL",
-    )
-    .bind(id_str)
-    .fetch_all(&mut **tx)
-    .await?;
-
-    Ok(rows
-        .into_iter()
-        .filter_map(|r| {
-            let name: String = r.get("name");
-            let version: String = r.get("version");
-            let venv_path: Option<String> = r.get("venv_path");
-            venv_path.map(|venv| (name, version, venv))
-        })
-        .collect())
+    Ok(Vec::new())
 }
 
-/// Update venv path for a package
-///
-/// # Errors
-///
-/// Returns an error if the database update fails.
+/// Update venv path (no-op)
 pub async fn update_package_venv_path(
-    tx: &mut Transaction<'_, Sqlite>,
-    state_id: &StateId,
-    package_name: &str,
-    package_version: &str,
-    venv_path: Option<&str>,
+    _tx: &mut Transaction<'_, Sqlite>,
+    _state_id: &StateId,
+    _package_name: &str,
+    _package_version: &str,
+    _venv_path: Option<&str>,
 ) -> Result<(), Error> {
-    let id_str = state_id.to_string();
-
-    query(
-        "UPDATE packages SET venv_path = ?1
-         WHERE state_id = ?2 AND name = ?3 AND version = ?4",
-    )
-    .bind(venv_path)
-    .bind(id_str)
-    .bind(package_name)
-    .bind(package_version)
-    .execute(&mut **tx)
-    .await?;
-
     Ok(())
 }
 
-/// Add a package to the package map
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails.
+/// Record package mapping (now writes to package_versions)
 pub async fn add_package_map(
     tx: &mut Transaction<'_, Sqlite>,
     name: &str,
@@ -1063,10 +801,15 @@ pub async fn add_package_map(
     store_hash: &str,
     package_hash: Option<&str>,
 ) -> Result<(), Error> {
-    let now = chrono::Utc::now().to_rfc3339();
-
+    let now = chrono::Utc::now().timestamp();
     query(
-        "INSERT OR REPLACE INTO package_map (name, version, hash, package_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+        r#"
+        INSERT INTO package_versions (name, version, store_hash, package_hash, size_bytes, created_at)
+        VALUES (?1, ?2, ?3, ?4, 0, ?5)
+        ON CONFLICT(name, version) DO UPDATE SET
+            store_hash = excluded.store_hash,
+            package_hash = excluded.package_hash
+        "#,
     )
     .bind(name)
     .bind(version)
@@ -1075,61 +818,45 @@ pub async fn add_package_map(
     .bind(now)
     .execute(&mut **tx)
     .await?;
-
     Ok(())
 }
 
-/// Get the hash for a package name and version
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// Lookup store hash by name+version
 pub async fn get_package_hash(
     tx: &mut Transaction<'_, Sqlite>,
     name: &str,
     version: &str,
 ) -> Result<Option<String>, Error> {
-    let row = query("SELECT hash FROM package_map WHERE name = ?1 AND version = ?2")
+    let row = query("SELECT store_hash FROM package_versions WHERE name = ?1 AND version = ?2")
         .bind(name)
         .bind(version)
         .fetch_optional(&mut **tx)
         .await?;
-
-    Ok(row.map(|r| r.get("hash")))
+    Ok(row.map(|r| r.get("store_hash")))
 }
 
-/// Look up the store hash for a given package archive hash
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// Lookup store hash by package archive hash
 pub async fn get_store_hash_for_package_hash(
     tx: &mut Transaction<'_, Sqlite>,
     package_hash: &str,
 ) -> Result<Option<String>, Error> {
-    let row = query("SELECT hash FROM package_map WHERE package_hash = ?1")
+    let row = query("SELECT store_hash FROM package_versions WHERE package_hash = ?1")
         .bind(package_hash)
         .fetch_optional(&mut **tx)
         .await?;
-
-    Ok(row.map(|r| r.get("hash")))
+    Ok(row.map(|r| r.get("store_hash")))
 }
 
-/// Remove a package from the package map
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails.
+/// Remove package mapping entry
 pub async fn remove_package_map(
     tx: &mut Transaction<'_, Sqlite>,
     name: &str,
     version: &str,
 ) -> Result<(), Error> {
-    query("DELETE FROM package_map WHERE name = ?1 AND version = ?2")
+    query("DELETE FROM package_versions WHERE name = ?1 AND version = ?2")
         .bind(name)
         .bind(version)
         .execute(&mut **tx)
         .await?;
-
     Ok(())
 }

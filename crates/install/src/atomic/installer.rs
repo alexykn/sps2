@@ -257,24 +257,11 @@ impl AtomicInstaller {
                 };
                 transition.package_refs.push(package_ref);
 
-                let stored_package = StoredPackage::load(&store_path).await?;
-                let file_hashes = stored_package.file_hashes().ok_or_else(|| {
-                    Error::from(InstallError::AtomicOperationFailed {
-                        message: format!(
-                            "legacy packages without file hashes are no longer supported: {}-{}",
-                            pkg.name, pkg.version
-                        ),
-                    })
-                })?;
-
-                match transition.staging_mode {
-                    StagingMode::Fresh => {
-                        self.link_package_to_staging(transition, &store_path, &package_id, true)
-                            .await?;
-                    }
-                    StagingMode::Cloned => {
-                        self.register_file_hashes(transition, &package_id, file_hashes);
-                    }
+                if matches!(transition.staging_mode, StagingMode::Fresh) {
+                    // Fresh staging needs actual files linked, but we skip recording hashes
+                    // because the package version already has file metadata.
+                    self.link_package_to_staging(transition, &store_path, &package_id, false)
+                        .await?;
                 }
             }
         }
@@ -531,17 +518,6 @@ impl AtomicInstaller {
         }
 
         Ok(had_file_hashes)
-    }
-
-    fn register_file_hashes(
-        &self,
-        transition: &mut StateTransition,
-        package_id: &PackageId,
-        file_hashes: &[sps2_hash::FileHashResult],
-    ) {
-        transition
-            .pending_file_hashes
-            .push((package_id.clone(), file_hashes.to_vec()));
     }
 
     // Removed install_python_package - Python packages are now handled like regular packages

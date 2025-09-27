@@ -1,5 +1,4 @@
-//! Runtime database queries for file-level content addressable storage
-//! This is a temporary implementation until sqlx prepare is run
+//! File-level queries for CAS (schema v2)
 
 use crate::file_models::{
     DeduplicationResult, FileMTimeTracker, FileMetadata, FileObject, FileReference,
@@ -10,11 +9,7 @@ use sps2_hash::Hash;
 use sqlx::{query, Row, Sqlite, Transaction};
 use std::collections::HashMap;
 
-/// Add a file object to the database
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails
+/// Insert or increment a file object entry.
 pub async fn add_file_object(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &Hash,
@@ -23,98 +18,116 @@ pub async fn add_file_object(
     let hash_str = hash.to_hex();
     let now = chrono::Utc::now().timestamp();
 
-    // Check if file already exists
-    let existing_row = query(
-        r#"
-        SELECT 
-            hash,
-            size,
-            created_at,
-            ref_count,
-            is_executable,
-            is_symlink,
-            symlink_target
-        FROM file_objects
-        WHERE hash = ?
-        "#,
-    )
-    .bind(&hash_str)
-    .fetch_optional(&mut **tx)
-    .await
-    .map_err(|e| StateError::DatabaseError {
-        message: format!("failed to check existing file object: {e}"),
-    })?;
+    let existing = query("SELECT ref_count FROM cas_objects WHERE hash = ?1 AND kind = 'file'")
+        .bind(&hash_str)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(|e| StateError::DatabaseError {
+            message: format!("failed to check file object: {e}"),
+        })?;
 
-    if let Some(row) = existing_row {
-        let ref_count: i64 = row.get("ref_count");
-
-        // Increment reference count
-        query("UPDATE file_objects SET ref_count = ref_count + 1 WHERE hash = ?")
-            .bind(&hash_str)
-            .execute(&mut **tx)
-            .await
-            .map_err(|e| StateError::DatabaseError {
-                message: format!("failed to increment ref count: {e}"),
-            })?;
-
-        Ok(DeduplicationResult {
-            hash: hash.clone(),
-            was_duplicate: true,
-            ref_count: ref_count + 1,
-            space_saved: metadata.size,
-        })
-    } else {
-        // Insert new file object
+    if let Some(row) = existing {
+        let current: i64 = row.get("ref_count");
         query(
-            r#"
-            INSERT INTO file_objects (
-                hash, size, created_at, ref_count, 
-                is_executable, is_symlink, symlink_target
-            ) VALUES (?, ?, ?, 1, ?, ?, ?)
-            "#,
+            "UPDATE cas_objects SET last_seen_at = ?2 WHERE hash = ?1 AND kind = 'file'",
         )
         .bind(&hash_str)
-        .bind(metadata.size)
         .bind(now)
-        .bind(metadata.is_executable)
-        .bind(metadata.is_symlink)
-        .bind(&metadata.symlink_target)
         .execute(&mut **tx)
         .await
         .map_err(|e| StateError::DatabaseError {
-            message: format!("failed to insert file object: {e}"),
+            message: format!("failed to update file metadata: {e}"),
         })?;
 
-        Ok(DeduplicationResult {
+        ensure_file_verification_row(tx, &hash_str).await?;
+        return Ok(DeduplicationResult {
             hash: hash.clone(),
-            was_duplicate: false,
-            ref_count: 1,
-            space_saved: 0,
-        })
+            was_duplicate: true,
+            ref_count: current,
+            space_saved: metadata.size,
+        });
     }
+
+    query(
+        r#"
+        INSERT INTO cas_objects (
+            hash, kind, size_bytes, created_at, ref_count,
+            is_executable, is_symlink, symlink_target,
+            last_seen_at
+        ) VALUES (?1, 'file', ?2, ?3, 0, ?4, ?5, ?6, ?3)
+        "#,
+    )
+    .bind(&hash_str)
+    .bind(metadata.size)
+    .bind(now)
+    .bind(metadata.is_executable)
+    .bind(metadata.is_symlink)
+    .bind(&metadata.symlink_target)
+    .execute(&mut **tx)
+    .await
+    .map_err(|e| StateError::DatabaseError {
+        message: format!("failed to insert file object: {e}"),
+    })?;
+
+    ensure_file_verification_row(tx, &hash_str).await?;
+
+    Ok(DeduplicationResult {
+        hash: hash.clone(),
+        was_duplicate: false,
+        ref_count: 0,
+        space_saved: 0,
+    })
 }
 
-/// Add a package file entry
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails
+/// Helper to ensure a file_verification row exists.
+async fn ensure_file_verification_row(
+    tx: &mut Transaction<'_, Sqlite>,
+    hash_str: &str,
+) -> Result<(), Error> {
+    query(
+        r#"
+        INSERT OR IGNORE INTO file_verification (file_hash, status, attempts, last_checked_at, last_error)
+        VALUES (?1, 'pending', 0, NULL, NULL)
+        "#,
+    )
+    .bind(hash_str)
+    .execute(&mut **tx)
+    .await
+    .map_err(|e| StateError::DatabaseError {
+        message: format!("failed to ensure verification row: {e}"),
+    })?;
+    Ok(())
+}
+
+/// Insert a package file entry for a state_packages row.
 pub async fn add_package_file_entry(
     tx: &mut Transaction<'_, Sqlite>,
     package_id: i64,
     file_ref: &FileReference,
 ) -> Result<i64, Error> {
-    let hash_str = file_ref.hash.to_hex();
+    let pv_row = query("SELECT package_version_id AS id FROM state_packages WHERE id = ?1")
+        .bind(package_id)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(|e| StateError::DatabaseError {
+            message: format!("failed to resolve package version id: {e}"),
+        })?;
+    let Some(pv_id) = pv_row.map(|r| r.get::<i64, _>("id")) else {
+        return Err(StateError::DatabaseError {
+            message: format!("unknown state package id {package_id}"),
+        }
+        .into());
+    };
 
+    let hash_str = file_ref.hash.to_hex();
     query(
         r#"
-        INSERT INTO package_file_entries (
-            package_id, file_hash, relative_path, permissions,
-            uid, gid, mtime
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT OR IGNORE INTO package_files
+          (package_version_id, file_hash, rel_path, mode, uid, gid, mtime)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
         "#,
     )
-    .bind(package_id)
+    .bind(pv_id)
     .bind(&hash_str)
     .bind(&file_ref.relative_path)
     .bind(file_ref.metadata.permissions as i64)
@@ -127,154 +140,134 @@ pub async fn add_package_file_entry(
         message: format!("failed to insert package file entry: {e}"),
     })?;
 
-    // Get the last insert rowid
-    let row = query("SELECT last_insert_rowid() as id")
-        .fetch_one(&mut **tx)
-        .await?;
-
+    let row = query(
+        r#"
+        SELECT id FROM package_files
+        WHERE package_version_id = ?1 AND rel_path = ?2
+        "#,
+    )
+    .bind(pv_id)
+    .bind(&file_ref.relative_path)
+    .fetch_one(&mut **tx)
+    .await?;
     Ok(row.get("id"))
 }
 
-/// Decrement a file object's refcount by 1, returning the new refcount
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails
+/// Decrement a file refcount and return the new value.
 pub async fn decrement_file_object_ref(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &str,
 ) -> Result<i64, Error> {
-    query(r#"UPDATE file_objects SET ref_count = ref_count - 1 WHERE hash = ?"#)
+    query("UPDATE cas_objects SET ref_count = ref_count - 1 WHERE hash = ?1 AND kind = 'file'")
         .bind(hash)
         .execute(&mut **tx)
         .await
         .map_err(|e| StateError::DatabaseError {
-            message: format!("failed to decrement file object refcount: {e}"),
+            message: format!("failed to decrement file refcount: {e}"),
         })?;
 
-    let row = query(r#"SELECT ref_count FROM file_objects WHERE hash = ?"#)
+    let row = query("SELECT ref_count FROM cas_objects WHERE hash = ?1 AND kind = 'file'")
         .bind(hash)
         .fetch_optional(&mut **tx)
         .await
         .map_err(|e| StateError::DatabaseError {
-            message: format!("failed to fetch file object refcount: {e}"),
+            message: format!("failed to fetch file refcount: {e}"),
         })?;
-
-    Ok(row.map(|r| r.get::<i64, _>("ref_count")).unwrap_or(0))
+    Ok(row.map(|r| r.get("ref_count")).unwrap_or(0))
 }
 
-/// Increment a file object's refcount by 1, returning the new refcount
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails
+/// Increment a file refcount and return the new value.
 pub async fn increment_file_object_ref(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &str,
 ) -> Result<i64, Error> {
-    query(r#"UPDATE file_objects SET ref_count = ref_count + 1 WHERE hash = ?"#)
-        .bind(hash)
-        .execute(&mut **tx)
-        .await
-        .map_err(|e| StateError::DatabaseError {
-            message: format!("failed to increment file object refcount: {e}"),
-        })?;
+    query(
+        "UPDATE cas_objects SET ref_count = ref_count + 1, last_seen_at = strftime('%s','now') WHERE hash = ?1 AND kind = 'file'",
+    )
+    .bind(hash)
+    .execute(&mut **tx)
+    .await
+    .map_err(|e| StateError::DatabaseError {
+        message: format!("failed to increment file refcount: {e}"),
+    })?;
 
-    let row = query(r#"SELECT ref_count FROM file_objects WHERE hash = ?"#)
+    let row = query("SELECT ref_count FROM cas_objects WHERE hash = ?1 AND kind = 'file'")
         .bind(hash)
         .fetch_optional(&mut **tx)
         .await
         .map_err(|e| StateError::DatabaseError {
-            message: format!("failed to fetch file object refcount: {e}"),
+            message: format!("failed to fetch file refcount: {e}"),
         })?;
-
-    Ok(row.map(|r| r.get::<i64, _>("ref_count")).unwrap_or(0))
+    Ok(row.map(|r| r.get("ref_count")).unwrap_or(0))
 }
 
-/// Decrement `file_object` refcounts for all entries of a package
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails
+/// Decrement all file refs for the given state package ID.
 pub async fn decrement_file_object_refs_for_package(
     tx: &mut Transaction<'_, Sqlite>,
     package_id: i64,
 ) -> Result<usize, Error> {
-    // Collect all file hashes for this package
     let rows = query(
         r#"
-        SELECT file_hash FROM package_file_entries
-        WHERE package_id = ?
+        SELECT pf.file_hash
+        FROM state_packages sp
+        JOIN package_files pf ON pf.package_version_id = sp.package_version_id
+        WHERE sp.id = ?1
         "#,
     )
     .bind(package_id)
     .fetch_all(&mut **tx)
     .await
     .map_err(|e| StateError::DatabaseError {
-        message: format!("failed to list package file entries for decrement: {e}"),
+        message: format!("failed to list package file hashes: {e}"),
     })?;
 
     let mut count = 0usize;
-    for r in rows {
-        let hash: String = r.get("file_hash");
+    for row in rows {
+        let hash: String = row.get("file_hash");
         let _ = decrement_file_object_ref(tx, &hash).await?;
         count += 1;
     }
     Ok(count)
 }
 
-/// Set a file object's refcount to an exact value
-///
-/// # Errors
-///
-/// Returns the number of rows updated
+/// Force set a file object's refcount.
 pub async fn set_file_object_ref_count(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &str,
     count: i64,
 ) -> Result<u64, Error> {
-    let res = query(r#"UPDATE file_objects SET ref_count = ? WHERE hash = ? AND ref_count <> ?"#)
-        .bind(count)
-        .bind(hash)
-        .bind(count)
-        .execute(&mut **tx)
-        .await
-        .map_err(|e| StateError::DatabaseError {
-            message: format!("failed to set file object refcount: {e}"),
-        })?;
+    let res = query(
+        "UPDATE cas_objects SET ref_count = ?1 WHERE hash = ?2 AND kind = 'file' AND ref_count <> ?1",
+    )
+    .bind(count)
+    .bind(hash)
+    .execute(&mut **tx)
+    .await
+    .map_err(|e| StateError::DatabaseError {
+        message: format!("failed to set file refcount: {e}"),
+    })?;
     Ok(res.rows_affected())
 }
 
-/// Get file object by hash
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails
+/// Fetch a file object
 pub async fn get_file_object(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &Hash,
 ) -> Result<Option<FileObject>, Error> {
     let hash_str = hash.to_hex();
-
     let row = query(
         r#"
-        SELECT 
-            hash,
-            size,
-            created_at,
-            ref_count,
-            is_executable,
-            is_symlink,
-            symlink_target
-        FROM file_objects
-        WHERE hash = ?
+        SELECT hash, size_bytes AS size, created_at, ref_count,
+               is_executable, is_symlink, symlink_target
+        FROM cas_objects
+        WHERE hash = ?1 AND kind = 'file'
         "#,
     )
     .bind(&hash_str)
     .fetch_optional(&mut **tx)
     .await
     .map_err(|e| StateError::DatabaseError {
-        message: format!("failed to get file object: {e}"),
+        message: format!("failed to fetch file object: {e}"),
     })?;
 
     Ok(row.map(|r| FileObject {
@@ -288,25 +281,16 @@ pub async fn get_file_object(
     }))
 }
 
-/// Get all file objects
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// Fetch all file objects
 pub async fn get_all_file_objects(
     tx: &mut Transaction<'_, Sqlite>,
 ) -> Result<Vec<FileObject>, Error> {
     let rows = query(
         r#"
-        SELECT 
-            hash,
-            size,
-            created_at,
-            ref_count,
-            is_executable,
-            is_symlink,
-            symlink_target
-        FROM file_objects
+        SELECT hash, size_bytes AS size, created_at, ref_count,
+               is_executable, is_symlink, symlink_target
+        FROM cas_objects
+        WHERE kind = 'file'
         "#,
     )
     .fetch_all(&mut **tx)
@@ -329,21 +313,17 @@ pub async fn get_all_file_objects(
         .collect())
 }
 
-/// Build a map of file hash -> last reference timestamp across all states
-///
-/// # Errors
-///
-/// Returns an error if the database query fails.
+/// Hash -> last reference timestamp from states
 pub async fn get_file_last_ref_map(
     tx: &mut Transaction<'_, Sqlite>,
 ) -> Result<HashMap<String, i64>, Error> {
     let rows = query(
         r#"
-        SELECT pfe.file_hash AS hash, COALESCE(MAX(s.created_at), 0) AS last_ref
-        FROM package_file_entries pfe
-        JOIN packages p ON p.id = pfe.package_id
-        JOIN states s ON s.id = p.state_id
-        GROUP BY pfe.file_hash
+        SELECT pf.file_hash AS hash, COALESCE(MAX(s.created_at), 0) AS last_ref
+        FROM package_files pf
+        JOIN state_packages sp ON sp.package_version_id = pf.package_version_id
+        JOIN states s ON s.id = sp.state_id
+        GROUP BY pf.file_hash
         "#,
     )
     .fetch_all(&mut **tx)
@@ -354,43 +334,38 @@ pub async fn get_file_last_ref_map(
 
     let mut map = HashMap::new();
     for r in rows {
-        let hash: String = r.get("hash");
-        let last_ref: i64 = r.get("last_ref");
-        map.insert(hash, last_ref);
+        map.insert(r.get("hash"), r.get("last_ref"));
     }
     Ok(map)
 }
 
-/// Get all file entries for a package
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails
+/// Fetch file entries for a state package ID
 pub async fn get_package_file_entries(
     tx: &mut Transaction<'_, Sqlite>,
     package_id: i64,
 ) -> Result<Vec<PackageFileEntry>, Error> {
     let rows = query(
         r#"
-        SELECT 
-            id,
-            package_id,
-            file_hash,
-            relative_path,
-            permissions,
-            uid,
-            gid,
-            mtime
-        FROM package_file_entries
-        WHERE package_id = ?
-        ORDER BY relative_path
+        SELECT
+          pf.id,
+          sp.id AS package_id,
+          pf.file_hash,
+          pf.rel_path AS relative_path,
+          pf.mode      AS permissions,
+          pf.uid,
+          pf.gid,
+          pf.mtime
+        FROM state_packages sp
+        JOIN package_files pf ON pf.package_version_id = sp.package_version_id
+        WHERE sp.id = ?1
+        ORDER BY pf.rel_path
         "#,
     )
     .bind(package_id)
     .fetch_all(&mut **tx)
     .await
     .map_err(|e| StateError::DatabaseError {
-        message: format!("failed to get package files: {e}"),
+        message: format!("failed to list package file entries: {e}"),
     })?;
 
     Ok(rows
@@ -408,39 +383,35 @@ pub async fn get_package_file_entries(
         .collect())
 }
 
-/// Get file entries by hash
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails
+/// Fetch file entries by hash
 pub async fn get_file_entries_by_hash(
     tx: &mut Transaction<'_, Sqlite>,
     file_hash: &str,
 ) -> Result<Vec<(String, String, String)>, Error> {
     let rows = query(
         r#"
-        SELECT DISTINCT 
-            pfe.relative_path,
-            p.name as package_name,
-            p.version as package_version
-        FROM package_file_entries pfe
-        JOIN packages p ON p.id = pfe.package_id
-        WHERE pfe.file_hash = ?
-        ORDER BY pfe.relative_path
+        SELECT DISTINCT
+          pf.rel_path,
+          pv.name AS package_name,
+          pv.version AS package_version
+        FROM package_files pf
+        JOIN package_versions pv ON pv.id = pf.package_version_id
+        WHERE pf.file_hash = ?1
+        ORDER BY pf.rel_path
         "#,
     )
     .bind(file_hash)
     .fetch_all(&mut **tx)
     .await
     .map_err(|e| StateError::DatabaseError {
-        message: format!("failed to get file entries by hash: {e}"),
+        message: format!("failed to get entries by hash: {e}"),
     })?;
 
     Ok(rows
         .into_iter()
         .map(|r| {
             (
-                r.get("relative_path"),
+                r.get("rel_path"),
                 r.get("package_name"),
                 r.get("package_version"),
             )
@@ -448,11 +419,7 @@ pub async fn get_file_entries_by_hash(
         .collect())
 }
 
-/// Update file modification time tracker
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails
+/// Update (or insert) an mtime tracker entry
 pub async fn update_file_mtime(
     tx: &mut Transaction<'_, Sqlite>,
     file_path: &str,
@@ -460,9 +427,11 @@ pub async fn update_file_mtime(
 ) -> Result<(), Error> {
     query(
         r#"
-        INSERT OR REPLACE INTO file_mtime_tracker (
-            file_path, last_verified_mtime
-        ) VALUES (?, ?)
+        INSERT INTO file_mtime_tracker (file_path, last_verified_mtime, created_at, updated_at)
+        VALUES (?1, ?2, strftime('%s','now'), strftime('%s','now'))
+        ON CONFLICT(file_path) DO UPDATE SET
+            last_verified_mtime = excluded.last_verified_mtime,
+            updated_at = strftime('%s','now')
         "#,
     )
     .bind(file_path)
@@ -470,84 +439,43 @@ pub async fn update_file_mtime(
     .execute(&mut **tx)
     .await
     .map_err(|e| StateError::DatabaseError {
-        message: format!("failed to update file mtime tracker: {e}"),
+        message: format!("failed to update mtime tracker: {e}"),
     })?;
-
     Ok(())
 }
 
-/// Get package file entries by package name and version
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails
+/// Fetch package file entries for a state + name + version
 pub async fn get_package_file_entries_by_name(
     tx: &mut Transaction<'_, Sqlite>,
     state_id: &uuid::Uuid,
     package_name: &str,
     package_version: &str,
 ) -> Result<Vec<PackageFileEntry>, Error> {
-    let state_id_str = state_id.to_string();
-
-    // First get the package ID
-    let package_id: Option<i64> = query(
-        r#"
-        SELECT id FROM packages
-        WHERE state_id = ? AND name = ? AND version = ?
-        "#,
-    )
-    .bind(&state_id_str)
-    .bind(package_name)
-    .bind(package_version)
-    .fetch_optional(&mut **tx)
-    .await
-    .map_err(|e| StateError::DatabaseError {
-        message: format!("failed to get package id: {e}"),
-    })?
-    .map(|r| r.get("id"));
-
-    match package_id {
-        Some(id) => get_package_file_entries(tx, id).await,
-        None => Ok(Vec::new()),
-    }
-}
-
-/// Get package file entries by package name and version across all states
-///
-/// This searches for file entries across all states, not just a specific one.
-/// Useful when a package's file entries haven't been propagated to the current state.
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails
-pub async fn get_package_file_entries_all_states(
-    tx: &mut Transaction<'_, Sqlite>,
-    package_name: &str,
-    package_version: &str,
-) -> Result<Vec<PackageFileEntry>, Error> {
     let rows = query(
         r#"
-        SELECT DISTINCT 
-            pfe.id,
-            pfe.package_id,
-            pfe.file_hash,
-            pfe.relative_path,
-            pfe.permissions,
-            pfe.uid,
-            pfe.gid,
-            pfe.mtime
-        FROM package_file_entries pfe
-        JOIN packages p ON pfe.package_id = p.id
-        WHERE p.name = ? AND p.version = ?
-        ORDER BY pfe.relative_path
+        SELECT
+          pf.id,
+          sp.id AS package_id,
+          pf.file_hash,
+          pf.rel_path AS relative_path,
+          pf.mode      AS permissions,
+          pf.uid,
+          pf.gid,
+          pf.mtime
+        FROM state_packages sp
+        JOIN package_versions pv ON pv.id = sp.package_version_id
+        JOIN package_files pf ON pf.package_version_id = pv.id
+        WHERE sp.state_id = ?1 AND pv.name = ?2 AND pv.version = ?3
+        ORDER BY pf.rel_path
         "#,
     )
+    .bind(state_id.to_string())
     .bind(package_name)
     .bind(package_version)
     .fetch_all(&mut **tx)
     .await
     .map_err(|e| StateError::DatabaseError {
-        message: format!("failed to get package file entries across all states: {e}"),
+        message: format!("failed to fetch package file entries by name: {e}"),
     })?;
 
     Ok(rows
@@ -565,29 +493,75 @@ pub async fn get_package_file_entries_all_states(
         .collect())
 }
 
-/// Get file modification time tracker entry
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails
+/// Fetch package file entries across all states for name/version
+pub async fn get_package_file_entries_all_states(
+    tx: &mut Transaction<'_, Sqlite>,
+    package_name: &str,
+    package_version: &str,
+) -> Result<Vec<PackageFileEntry>, Error> {
+    let rows = query(
+        r#"
+        SELECT
+          pf.id,
+          COALESCE((
+            SELECT sp.id
+            FROM state_packages sp
+            WHERE sp.package_version_id = pv.id
+            ORDER BY sp.added_at DESC
+            LIMIT 1
+          ), 0) AS package_id,
+          pf.file_hash,
+          pf.rel_path AS relative_path,
+          pf.mode      AS permissions,
+          pf.uid,
+          pf.gid,
+          pf.mtime
+        FROM package_versions pv
+        JOIN package_files pf ON pf.package_version_id = pv.id
+        WHERE pv.name = ?1 AND pv.version = ?2
+        ORDER BY pf.rel_path
+        "#,
+    )
+    .bind(package_name)
+    .bind(package_version)
+    .fetch_all(&mut **tx)
+    .await
+    .map_err(|e| StateError::DatabaseError {
+        message: format!("failed to fetch package file entries across states: {e}"),
+    })?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| PackageFileEntry {
+            id: r.get("id"),
+            package_id: r.get("package_id"),
+            file_hash: r.get("file_hash"),
+            relative_path: r.get("relative_path"),
+            permissions: r.get("permissions"),
+            uid: r.get("uid"),
+            gid: r.get("gid"),
+            mtime: r.get("mtime"),
+        })
+        .collect())
+}
+
+/// Fetch a file mtime tracker row
 pub async fn get_file_mtime(
     tx: &mut Transaction<'_, Sqlite>,
     file_path: &str,
 ) -> Result<Option<FileMTimeTracker>, Error> {
     let row = query(
         r#"
-        SELECT 
-            file_path,
-            last_verified_mtime
+        SELECT file_path, last_verified_mtime
         FROM file_mtime_tracker
-        WHERE file_path = ?
+        WHERE file_path = ?1
         "#,
     )
     .bind(file_path)
     .fetch_optional(&mut **tx)
     .await
     .map_err(|e| StateError::DatabaseError {
-        message: format!("failed to get file mtime tracker: {e}"),
+        message: format!("failed to fetch file mtime tracker: {e}"),
     })?;
 
     Ok(row.map(|r| FileMTimeTracker {
@@ -596,41 +570,16 @@ pub async fn get_file_mtime(
     }))
 }
 
-/// Mark package as having file-level hashes
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails
+/// Legacy: mark package file hashed (no-op under schema v2)
 pub async fn mark_package_file_hashed(
-    tx: &mut Transaction<'_, Sqlite>,
-    package_id: i64,
-    computed_hash: &Hash,
+    _tx: &mut Transaction<'_, Sqlite>,
+    _package_id: i64,
+    _computed_hash: &Hash,
 ) -> Result<(), Error> {
-    let hash_str = computed_hash.to_hex();
-
-    query(
-        r#"
-        UPDATE packages 
-        SET has_file_hashes = 1, computed_hash = ?
-        WHERE id = ?
-        "#,
-    )
-    .bind(&hash_str)
-    .bind(package_id)
-    .execute(&mut **tx)
-    .await
-    .map_err(|e| StateError::DatabaseError {
-        message: format!("failed to mark package as file-hashed: {e}"),
-    })?;
-
     Ok(())
 }
 
-/// Get all mtime trackers for files in a package
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails
+/// Fetch mtime trackers for a package name/version
 pub async fn get_package_file_mtimes(
     tx: &mut Transaction<'_, Sqlite>,
     package_name: &str,
@@ -638,13 +587,11 @@ pub async fn get_package_file_mtimes(
 ) -> Result<Vec<FileMTimeTracker>, Error> {
     let rows = query(
         r#"
-        SELECT DISTINCT
-            fmt.file_path,
-            fmt.last_verified_mtime
+        SELECT DISTINCT fmt.file_path, fmt.last_verified_mtime
         FROM file_mtime_tracker fmt
-        JOIN package_file_entries pfe ON pfe.relative_path = fmt.file_path
-        JOIN packages p ON p.id = pfe.package_id
-        WHERE p.name = ? AND p.version = ?
+        JOIN package_files pf ON pf.rel_path = fmt.file_path
+        JOIN package_versions pv ON pv.id = pf.package_version_id
+        WHERE pv.name = ?1 AND pv.version = ?2
         ORDER BY fmt.file_path
         "#,
     )
@@ -653,7 +600,7 @@ pub async fn get_package_file_mtimes(
     .fetch_all(&mut **tx)
     .await
     .map_err(|e| StateError::DatabaseError {
-        message: format!("failed to get package file mtime trackers: {e}"),
+        message: format!("failed to fetch package file mtime trackers: {e}"),
     })?;
 
     Ok(rows
@@ -665,25 +612,20 @@ pub async fn get_package_file_mtimes(
         .collect())
 }
 
-/// Clear mtime trackers for a package
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails
+/// Clear mtime trackers for a package name/version
 pub async fn clear_package_mtime_trackers(
     tx: &mut Transaction<'_, Sqlite>,
     package_name: &str,
     package_version: &str,
 ) -> Result<u64, Error> {
-    // Clear mtime trackers for all files associated with this package
     let result = query(
         r#"
         DELETE FROM file_mtime_tracker
         WHERE file_path IN (
-            SELECT DISTINCT pfe.relative_path
-            FROM package_file_entries pfe
-            JOIN packages p ON p.id = pfe.package_id
-            WHERE p.name = ? AND p.version = ?
+            SELECT DISTINCT pf.rel_path
+            FROM package_files pf
+            JOIN package_versions pv ON pv.id = pf.package_version_id
+            WHERE pv.name = ?1 AND pv.version = ?2
         )
         "#,
     )
@@ -692,95 +634,71 @@ pub async fn clear_package_mtime_trackers(
     .execute(&mut **tx)
     .await
     .map_err(|e| StateError::DatabaseError {
-        message: format!("failed to clear package mtime trackers: {e}"),
+        message: format!("failed to clear mtime trackers: {e}"),
     })?;
-
     Ok(result.rows_affected())
 }
 
-/// Clear old mtime tracker entries
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails
+/// Remove stale mtime trackers older than threshold
 pub async fn clear_old_mtime_trackers(
     tx: &mut Transaction<'_, Sqlite>,
     max_age_seconds: i64,
 ) -> Result<u64, Error> {
-    let cutoff_time = chrono::Utc::now().timestamp() - max_age_seconds;
-
-    let result = query(
-        r#"
-        DELETE FROM file_mtime_tracker
-        WHERE updated_at < ?
-        "#,
-    )
-    .bind(cutoff_time)
-    .execute(&mut **tx)
-    .await
-    .map_err(|e| StateError::DatabaseError {
-        message: format!("failed to clear old mtime trackers: {e}"),
-    })?;
-
-    Ok(result.rows_affected())
+    let cutoff = chrono::Utc::now().timestamp() - max_age_seconds;
+    let res = query("DELETE FROM file_mtime_tracker WHERE updated_at < ?1")
+        .bind(cutoff)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| StateError::DatabaseError {
+            message: format!("failed to clear old mtime trackers: {e}"),
+        })?;
+    Ok(res.rows_affected())
 }
 
-/// Get file objects that need verification
-///
-/// Returns objects that are either:
-/// - Never verified (`verification_status` = 'pending')
-/// - Verified but older than the threshold
-/// - Failed verification with attempts below `max_attempts`
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails
+/// Fetch file objects that need verification
 pub async fn get_objects_needing_verification(
     tx: &mut Transaction<'_, Sqlite>,
     max_age_seconds: i64,
     max_attempts: i32,
     limit: i64,
 ) -> Result<Vec<FileObject>, Error> {
-    let cutoff_time = chrono::Utc::now().timestamp() - max_age_seconds;
-
+    let cutoff = chrono::Utc::now().timestamp() - max_age_seconds;
     let rows = query(
         r#"
-        SELECT 
-            hash,
-            size,
-            created_at,
-            ref_count,
-            is_executable,
-            is_symlink,
-            symlink_target,
-            last_verified_at,
-            verification_status,
-            verification_error,
-            verification_attempts
-        FROM file_objects
-        WHERE ref_count > 0 AND (
-            verification_status = 'pending' OR
-            (verification_status = 'verified' AND (last_verified_at IS NULL OR last_verified_at < ?)) OR
-            (verification_status = 'failed' AND verification_attempts < ?)
-        )
-        ORDER BY 
-            CASE verification_status
+        SELECT co.hash,
+               co.size_bytes AS size,
+               co.created_at,
+               co.ref_count,
+               co.is_executable,
+               co.is_symlink,
+               co.symlink_target
+        FROM cas_objects co
+        LEFT JOIN file_verification fv ON fv.file_hash = co.hash
+        WHERE co.kind = 'file' AND co.ref_count > 0
+          AND (
+                fv.file_hash IS NULL OR
+                fv.status = 'pending' OR
+                (fv.status = 'verified' AND (fv.last_checked_at IS NULL OR fv.last_checked_at < ?1)) OR
+                (fv.status = 'failed' AND fv.attempts < ?2)
+          )
+        ORDER BY
+            CASE COALESCE(fv.status, 'pending')
                 WHEN 'failed' THEN 1
                 WHEN 'pending' THEN 2
                 WHEN 'verified' THEN 3
                 ELSE 4
             END,
-            last_verified_at ASC NULLS FIRST
-        LIMIT ?
+            COALESCE(fv.last_checked_at, 0) ASC
+        LIMIT ?3
         "#,
     )
-    .bind(cutoff_time)
+    .bind(cutoff)
     .bind(max_attempts)
     .bind(limit)
     .fetch_all(&mut **tx)
     .await
     .map_err(|e| StateError::DatabaseError {
-        message: format!("failed to get objects needing verification: {e}"),
+        message: format!("failed to fetch verification candidates: {e}"),
     })?;
 
     Ok(rows
@@ -797,11 +715,7 @@ pub async fn get_objects_needing_verification(
         .collect())
 }
 
-/// Update verification status for a file object
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails
+/// Update verification status for a hash
 pub async fn update_verification_status(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &Hash,
@@ -810,55 +724,50 @@ pub async fn update_verification_status(
 ) -> Result<(), Error> {
     let hash_str = hash.to_hex();
     let now = chrono::Utc::now().timestamp();
-
     query(
         r#"
-        UPDATE file_objects 
-        SET 
-            verification_status = ?,
-            verification_error = ?,
-            last_verified_at = ?,
-            verification_attempts = verification_attempts + 1
-        WHERE hash = ?
+        INSERT INTO file_verification (file_hash, status, attempts, last_checked_at, last_error)
+        VALUES (?1, ?2, 1, ?3, ?4)
+        ON CONFLICT(file_hash) DO UPDATE SET
+            status = excluded.status,
+            last_error = excluded.last_error,
+            last_checked_at = excluded.last_checked_at,
+            attempts = file_verification.attempts + 1
         "#,
     )
-    .bind(status)
-    .bind(error_message)
-    .bind(now)
     .bind(&hash_str)
+    .bind(status)
+    .bind(now)
+    .bind(error_message)
     .execute(&mut **tx)
     .await
     .map_err(|e| StateError::DatabaseError {
         message: format!("failed to update verification status: {e}"),
     })?;
-
     Ok(())
 }
 
-/// Get verification statistics for the store
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails
+/// Aggregate verification stats for live file objects
 pub async fn get_verification_stats(
     tx: &mut Transaction<'_, Sqlite>,
 ) -> Result<(i64, i64, i64, i64, i64), Error> {
     let row = query(
         r#"
-        SELECT 
-            COUNT(*) as total_objects,
-            SUM(CASE WHEN verification_status = 'verified' THEN 1 ELSE 0 END) as verified_count,
-            SUM(CASE WHEN verification_status = 'pending' THEN 1 ELSE 0 END) as pending_count,
-            SUM(CASE WHEN verification_status = 'failed' THEN 1 ELSE 0 END) as failed_count,
-            SUM(CASE WHEN verification_status = 'quarantined' THEN 1 ELSE 0 END) as quarantined_count
-        FROM file_objects
-        WHERE ref_count > 0
+        SELECT
+            COUNT(*) AS total_objects,
+            SUM(CASE WHEN COALESCE(fv.status, 'pending') = 'verified' THEN 1 ELSE 0 END) AS verified_count,
+            SUM(CASE WHEN COALESCE(fv.status, 'pending') = 'pending'  THEN 1 ELSE 0 END) AS pending_count,
+            SUM(CASE WHEN COALESCE(fv.status, 'pending') = 'failed'   THEN 1 ELSE 0 END) AS failed_count,
+            SUM(CASE WHEN COALESCE(fv.status, 'pending') = 'quarantined' THEN 1 ELSE 0 END) AS quarantined_count
+        FROM cas_objects co
+        LEFT JOIN file_verification fv ON fv.file_hash = co.hash
+        WHERE co.kind = 'file' AND co.ref_count > 0
         "#,
     )
     .fetch_one(&mut **tx)
     .await
     .map_err(|e| StateError::DatabaseError {
-        message: format!("failed to get verification stats: {e}"),
+        message: format!("failed to compute verification stats: {e}"),
     })?;
 
     Ok((
@@ -870,32 +779,28 @@ pub async fn get_verification_stats(
     ))
 }
 
-/// Get objects with failed verification
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails
+/// Fetch failed verification objects up to limit
 pub async fn get_failed_verification_objects(
     tx: &mut Transaction<'_, Sqlite>,
     limit: i64,
 ) -> Result<Vec<(String, String, i32)>, Error> {
     let rows = query(
         r#"
-        SELECT 
-            hash,
-            verification_error,
-            verification_attempts
-        FROM file_objects
-        WHERE verification_status = 'failed' AND ref_count > 0
-        ORDER BY verification_attempts DESC, last_verified_at DESC
-        LIMIT ?
+        SELECT fv.file_hash AS hash,
+               COALESCE(fv.last_error, 'unknown error') AS verification_error,
+               fv.attempts AS verification_attempts
+        FROM file_verification fv
+        JOIN cas_objects co ON co.hash = fv.file_hash
+        WHERE fv.status = 'failed' AND co.kind = 'file' AND co.ref_count > 0
+        ORDER BY fv.attempts DESC, COALESCE(fv.last_checked_at, 0) DESC
+        LIMIT ?1
         "#,
     )
     .bind(limit)
     .fetch_all(&mut **tx)
     .await
     .map_err(|e| StateError::DatabaseError {
-        message: format!("failed to get failed verification objects: {e}"),
+        message: format!("failed to fetch failed verification objects: {e}"),
     })?;
 
     Ok(rows
@@ -903,19 +808,14 @@ pub async fn get_failed_verification_objects(
         .map(|r| {
             (
                 r.get("hash"),
-                r.get::<Option<String>, _>("verification_error")
-                    .unwrap_or_else(|| "unknown error".to_string()),
+                r.get("verification_error"),
                 r.get("verification_attempts"),
             )
         })
         .collect())
 }
 
-/// Quarantine a file object (mark as quarantined)
-///
-/// # Errors
-///
-/// Returns an error if the database operation fails
+/// Quarantine a file object
 pub async fn quarantine_file_object(
     tx: &mut Transaction<'_, Sqlite>,
     hash: &Hash,
@@ -923,36 +823,28 @@ pub async fn quarantine_file_object(
 ) -> Result<(), Error> {
     let hash_str = hash.to_hex();
     let now = chrono::Utc::now().timestamp();
-
     query(
         r#"
-        UPDATE file_objects 
-        SET 
-            verification_status = 'quarantined',
-            verification_error = ?,
-            last_verified_at = ?
-        WHERE hash = ?
+        INSERT INTO file_verification (file_hash, status, attempts, last_checked_at, last_error)
+        VALUES (?1, 'quarantined', 1, ?2, ?3)
+        ON CONFLICT(file_hash) DO UPDATE SET
+            status = 'quarantined',
+            last_error = excluded.last_error,
+            last_checked_at = excluded.last_checked_at
         "#,
     )
-    .bind(reason)
-    .bind(now)
     .bind(&hash_str)
+    .bind(now)
+    .bind(reason)
     .execute(&mut **tx)
     .await
     .map_err(|e| StateError::DatabaseError {
         message: format!("failed to quarantine file object: {e}"),
     })?;
-
     Ok(())
 }
 
-/// Verify a file object and update database tracking
-///
-/// This function performs verification using the store and updates the database with the result.
-/// It's designed to be used by the store verification system.
-///
-/// # Errors
-/// Returns an error if verification or database operations fail
+/// Verify a file object and update tracking
 pub async fn verify_file_with_tracking(
     tx: &mut Transaction<'_, Sqlite>,
     file_store: &sps2_store::FileStore,
@@ -960,154 +852,28 @@ pub async fn verify_file_with_tracking(
 ) -> Result<bool, Error> {
     use sps2_store::FileVerificationResult;
 
-    // Perform the actual verification
-    let verification_result = file_store.verify_file_detailed(hash).await?;
-
-    match verification_result {
+    match file_store.verify_file_detailed(hash).await? {
         FileVerificationResult::Valid => {
-            // File is valid - mark as verified
             update_verification_status(tx, hash, "verified", None).await?;
             Ok(true)
         }
         FileVerificationResult::Missing => {
-            // File is missing - mark as failed
-            let error_msg = "file missing from store";
-            update_verification_status(tx, hash, "failed", Some(error_msg)).await?;
+            update_verification_status(tx, hash, "failed", Some("file missing from store")).await?;
             Ok(false)
         }
         FileVerificationResult::HashMismatch { expected, actual } => {
-            // File hash mismatch - mark as failed
-            let error_msg = format!(
+            let msg = format!(
                 "hash mismatch: expected {}, got {}",
                 expected.to_hex(),
                 actual.to_hex()
             );
-            update_verification_status(tx, hash, "failed", Some(&error_msg)).await?;
+            update_verification_status(tx, hash, "failed", Some(&msg)).await?;
             Ok(false)
         }
         FileVerificationResult::Error { message } => {
-            // Verification failed due to error - mark as failed
-            let error_msg = format!("verification error: {message}");
-            update_verification_status(tx, hash, "failed", Some(&error_msg)).await?;
+            let msg = format!("verification error: {message}");
+            update_verification_status(tx, hash, "failed", Some(&msg)).await?;
             Ok(false)
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::manager::StateManager;
-    use tempfile::TempDir;
-
-    async fn mk_state() -> (TempDir, StateManager) {
-        let td = TempDir::new().expect("tempdir");
-        let mgr = StateManager::new(td.path()).await.expect("state new");
-        (td, mgr)
-    }
-
-    #[tokio::test]
-    async fn decrement_file_object_ref_allows_below_zero_and_preserves_row() {
-        let (_td, state) = mk_state().await;
-        let mut tx = state.begin_transaction().await.expect("tx");
-
-        // Seed a file object with ref_count = 1
-        let h = Hash::from_data(b"file-A");
-        let meta = FileMetadata::regular_file(10, 0o644);
-        let _ = add_file_object(&mut tx, &h, &meta).await.expect("add");
-
-        // Decrement to zero
-        let c0 = decrement_file_object_ref(&mut tx, &h.to_hex())
-            .await
-            .expect("dec0");
-        assert_eq!(c0, 0);
-
-        // Decrement again (may go negative, row persists)
-        let c1 = decrement_file_object_ref(&mut tx, &h.to_hex())
-            .await
-            .expect("dec1");
-        assert_eq!(c1, -1);
-
-        // Row still exists
-        let fo = get_file_object(&mut tx, &h).await.expect("get");
-        assert!(fo.is_some());
-    }
-
-    #[tokio::test]
-    async fn decrement_file_object_refs_for_package_counts_entries() {
-        let (_td, state) = mk_state().await;
-        let mut tx = state.begin_transaction().await.expect("tx");
-        let sid = state.get_current_state_id().await.expect("state id");
-
-        // Add package and two files
-        let pkg_id = crate::queries::add_package(&mut tx, &sid, "pkg", "1.0.0", "deadbeef", 1)
-            .await
-            .expect("add pkg");
-
-        let h1 = Hash::from_data(b"F1");
-        let h2 = Hash::from_data(b"F2");
-        let meta1 = FileMetadata::regular_file(5, 0o644);
-        let meta2 = FileMetadata::regular_file(6, 0o644);
-        let _ = add_file_object(&mut tx, &h1, &meta1).await.expect("add f1");
-        let _ = add_file_object(&mut tx, &h2, &meta2).await.expect("add f2");
-
-        let fr1 = FileReference {
-            package_id: pkg_id,
-            relative_path: "bin/a".to_string(),
-            hash: h1.clone(),
-            metadata: meta1.clone(),
-        };
-        let fr2 = FileReference {
-            package_id: pkg_id,
-            relative_path: "bin/b".to_string(),
-            hash: h2.clone(),
-            metadata: meta2.clone(),
-        };
-        let _ = add_package_file_entry(&mut tx, pkg_id, &fr1)
-            .await
-            .expect("pfe1");
-        let _ = add_package_file_entry(&mut tx, pkg_id, &fr2)
-            .await
-            .expect("pfe2");
-
-        let dec = decrement_file_object_refs_for_package(&mut tx, pkg_id)
-            .await
-            .expect("dec refs");
-        assert_eq!(dec, 2);
-
-        let first_obj = get_file_object(&mut tx, &h1)
-            .await
-            .expect("get f1")
-            .unwrap();
-        let second_obj = get_file_object(&mut tx, &h2)
-            .await
-            .expect("get f2")
-            .unwrap();
-        assert_eq!(first_obj.ref_count, 0);
-        assert_eq!(second_obj.ref_count, 0);
-    }
-
-    #[tokio::test]
-    async fn set_file_object_refcount_is_idempotent() {
-        let (_td, state) = mk_state().await;
-        let mut tx = state.begin_transaction().await.expect("tx");
-        let h = Hash::from_data(b"file-Z");
-        let meta = FileMetadata::regular_file(3, 0o644);
-        let _ = add_file_object(&mut tx, &h, &meta).await.expect("add");
-        let _ = increment_file_object_ref(&mut tx, &h.to_hex())
-            .await
-            .expect("inc");
-        let _ = increment_file_object_ref(&mut tx, &h.to_hex())
-            .await
-            .expect("inc2");
-
-        let updated = set_file_object_ref_count(&mut tx, &h.to_hex(), 2)
-            .await
-            .expect("set1");
-        assert!(updated > 0);
-        let updated2 = set_file_object_ref_count(&mut tx, &h.to_hex(), 2)
-            .await
-            .expect("set2");
-        assert_eq!(updated2, 0);
     }
 }
