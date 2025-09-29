@@ -29,6 +29,10 @@ pub(crate) struct ProcessPackageArgs {
 }
 
 /// Process a single package (download/local)
+///
+/// Handles both download and local package processing with comprehensive error handling.
+/// Function length is due to two distinct workflows (download vs local) with event emission.
+#[allow(clippy::too_many_lines)]
 pub(crate) async fn process_package(args: ProcessPackageArgs) -> Result<PackageId, Error> {
     let ProcessPackageArgs {
         package_id,
@@ -214,7 +218,11 @@ pub(crate) async fn process_package(args: ProcessPackageArgs) -> Result<PackageI
     Ok(package_id)
 }
 
-/// Download a package and add to store (no validation - AtomicInstaller handles that)
+/// Download a package and add to store (no validation - `AtomicInstaller` handles that)
+///
+/// Complex download workflow including store caching, signature verification, and deduplication.
+/// Function length reflects the comprehensive error handling and security checks required.
+#[allow(clippy::too_many_lines)]
 pub(crate) async fn download_package_only(
     url: &str,
     package_id: &PackageId,

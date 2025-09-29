@@ -19,21 +19,21 @@ use std::convert::TryFrom;
 use std::time::Instant;
 use uuid::Uuid;
 
-/// Implement EventEmitter for InstallContext
+/// Implement `EventEmitter` for `InstallContext`
 impl EventEmitter for InstallContext {
     fn event_sender(&self) -> Option<&EventSender> {
         self.event_sender.as_ref()
     }
 }
 
-/// Implement EventEmitter for UninstallContext
+/// Implement `EventEmitter` for `UninstallContext`
 impl EventEmitter for crate::UninstallContext {
     fn event_sender(&self) -> Option<&EventSender> {
         self.event_sender.as_ref()
     }
 }
 
-/// Implement EventEmitter for UpdateContext
+/// Implement `EventEmitter` for `UpdateContext`
 impl EventEmitter for crate::UpdateContext {
     fn event_sender(&self) -> Option<&EventSender> {
         self.event_sender.as_ref()
@@ -129,8 +129,6 @@ impl AtomicInstaller {
         Ok(())
     }
 
-
-
     /// Setup state transition and staging directory
     async fn setup_state_transition<T: EventEmitter>(
         &self,
@@ -158,6 +156,7 @@ impl AtomicInstaller {
     /// # Errors
     ///
     /// Returns an error if initialization fails
+    #[must_use]
     pub fn new(state_manager: StateManager, store: PackageStore) -> Self {
         Self {
             state_manager,
@@ -209,7 +208,7 @@ impl AtomicInstaller {
             .keys()
             .map(|pkg| pkg.name.clone())
             .collect();
-        package::carry_forward_packages(&mut transition, &parent_packages, &exclude_names)?;
+        package::carry_forward_packages(&mut transition, &parent_packages, &exclude_names);
 
         // Apply package changes to staging
         let mut result = InstallResult::new(transition.staging_id);
@@ -233,7 +232,6 @@ impl AtomicInstaller {
 
         Ok(result)
     }
-
 
     // Removed install_python_package - Python packages are now handled like regular packages
 
@@ -297,7 +295,7 @@ impl AtomicInstaller {
             .iter()
             .map(|pkg| pkg.name.clone())
             .collect();
-        package::carry_forward_packages(&mut transition, &parent_packages, &exclude_names)?;
+        package::carry_forward_packages(&mut transition, &parent_packages, &exclude_names);
 
         // Execute two-phase commit
         self.execute_two_phase_commit(&transition, context).await?;
@@ -338,8 +336,13 @@ impl AtomicInstaller {
             })?;
             let store_path = self.store.package_path(&hash);
             let pkg_id = PackageId::new(pkg.name.clone(), pkg.version());
-            crate::atomic::fs::link_package_to_staging(&mut transition, &store_path, &pkg_id, false)
-                .await?;
+            crate::atomic::fs::link_package_to_staging(
+                &mut transition,
+                &store_path,
+                &pkg_id,
+                false,
+            )
+            .await?;
         }
 
         self.state_manager
@@ -478,6 +481,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::too_many_lines)] // Integration test with comprehensive setup
     async fn cloned_staging_carries_forward_package_files() {
         let (_td, state, store) = mk_env().await;
         let (hash_a, path_a, size_a, _file_hashes_a) = make_sp_and_add_to_store(
@@ -592,6 +596,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::too_many_lines)] // Integration test with comprehensive setup
     async fn install_then_update_replaces_old_version() {
         let (_td, state, store) = mk_env().await;
         let (hash_v1, path_v1, size_v1, _file_hashes_v1) = make_sp_and_add_to_store(

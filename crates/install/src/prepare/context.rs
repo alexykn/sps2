@@ -47,6 +47,7 @@ impl ExecutionContext {
     }
 
     /// Should downstream logic bypass store reuse
+    #[must_use]
     pub fn force_redownload(&self) -> bool {
         self.force_redownload
     }

@@ -10,7 +10,7 @@ use std::path::Path;
 
 /// Link package from store to staging directory
 ///
-/// Returns (had_file_hashes, file_hashes) where file_hashes is Some only if record_hashes is true
+/// Returns (`had_file_hashes`, `file_hashes`) where `file_hashes` is Some only if `record_hashes` is true
 pub(super) async fn link_package_to_staging(
     transition: &mut StateTransition,
     store_path: &Path,
@@ -157,7 +157,7 @@ pub(super) fn detect_python_package_directory(file_paths: &[String]) -> Option<S
                 return Some(package_dir);
             } else if !stripped.is_empty() {
                 // Handle case where the path is just "python/package_name"
-                let package_dir = format!("python/{}", stripped);
+                let package_dir = format!("python/{stripped}");
                 return Some(package_dir);
             }
         }

@@ -26,9 +26,9 @@ pub(super) fn carry_forward_packages(
     transition: &mut StateTransition,
     parent_packages: &[sps2_state::models::Package],
     exclude_names: &HashSet<String>,
-) -> Result<(), Error> {
+) {
     if transition.parent_id.is_none() {
-        return Ok(());
+        return;
     }
 
     for pkg in parent_packages {
@@ -44,7 +44,6 @@ pub(super) fn carry_forward_packages(
         };
         transition.package_refs.push(package_ref);
     }
-    Ok(())
 }
 
 /// Sync staging slot with parent state
@@ -187,8 +186,16 @@ pub(super) async fn install_package_to_staging(
     let _stored_package = sps2_store::StoredPackage::load(store_path).await?;
 
     // Ensure store_refs entry exists before adding to package_map
+    let size_i64 = i64::try_from(size).map_err(|_| {
+        Error::from(InstallError::AtomicOperationFailed {
+            message: format!(
+                "Package size {} exceeds maximum supported size for {}-{}",
+                size, package_id.name, package_id.version
+            ),
+        })
+    })?;
     state_manager
-        .ensure_store_ref(&store_hash_hex, size as i64)
+        .ensure_store_ref(&store_hash_hex, size_i64)
         .await?;
 
     // Ensure package is in package_map for future lookups
@@ -217,7 +224,7 @@ pub(super) async fn install_package_to_staging(
         state_id: transition.staging_id,
         package_id: package_id.clone(),
         hash: store_hash_hex.clone(),
-        size: size as i64,
+        size: size_i64,
     };
     transition.package_refs.push(package_ref);
 
@@ -231,7 +238,7 @@ pub(super) async fn install_package_to_staging(
 
 /// Link package from store to staging directory
 ///
-/// This is a wrapper around the fs::link_package_to_staging function that
+/// This is a wrapper around the `fs::link_package_to_staging` function that
 /// maintains backward compatibility with the existing installer code.
 ///
 /// # Errors
@@ -347,7 +354,7 @@ mod tests {
         let mut exclude_names = HashSet::new();
         exclude_names.insert("pkg-a".to_string());
 
-        carry_forward_packages(&mut transition, &parent_packages, &exclude_names).unwrap();
+        carry_forward_packages(&mut transition, &parent_packages, &exclude_names);
 
         // Should only carry forward pkg-b
         assert_eq!(transition.package_refs.len(), 1);
@@ -386,7 +393,7 @@ mod tests {
 
         let exclude_names = HashSet::new();
 
-        carry_forward_packages(&mut transition, &parent_packages, &exclude_names).unwrap();
+        carry_forward_packages(&mut transition, &parent_packages, &exclude_names);
 
         // Should carry forward both packages
         assert_eq!(transition.package_refs.len(), 2);

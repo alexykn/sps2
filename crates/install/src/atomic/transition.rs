@@ -11,7 +11,7 @@ use uuid::Uuid;
 ///
 /// This is now a simple data container that holds information about
 /// a pending state transition. The actual commit logic is handled
-/// by the StateManager using two-phase commit.
+/// by the `StateManager` using two-phase commit.
 pub struct StateTransition {
     /// Staging state ID
     pub staging_id: Uuid,

@@ -57,7 +57,7 @@ impl InstallOperation {
     /// Returns an error if dependency resolution fails, package download fails, or installation fails.
     pub async fn execute(&mut self, context: InstallContext) -> Result<InstallResult, Error> {
         // Check local .sp files exist (validation moved to AtomicInstaller)
-        self.check_local_packages_exist(&context)?;
+        Self::check_local_packages_exist(&context)?;
 
         // Check for already installed packages (handled during atomic install)
 
@@ -65,7 +65,7 @@ impl InstallOperation {
         let resolution = self.resolve_dependencies(&context).await?;
 
         // Check for already installed packages after resolution
-        self.check_already_installed_resolved(&resolution)?;
+        Self::check_already_installed_resolved(&resolution);
 
         // Execute parallel downloads
         let exec_context = ExecutionContext::new()
@@ -156,8 +156,8 @@ impl InstallOperation {
         Ok(resolution)
     }
 
-    /// Check local .sp package files exist (validation moved to AtomicInstaller)
-    fn check_local_packages_exist(&self, context: &InstallContext) -> Result<(), Error> {
+    /// Check local .sp package files exist (validation moved to `AtomicInstaller`)
+    fn check_local_packages_exist(context: &InstallContext) -> Result<(), Error> {
         for local_file in &context.local_files {
             // Check if file exists
             if !local_file.exists() {
@@ -183,7 +183,7 @@ impl InstallOperation {
     }
 
     /// Check for already installed packages after resolution
-    fn check_already_installed_resolved(&self, resolution: &ResolutionResult) -> Result<(), Error> {
+    fn check_already_installed_resolved(resolution: &ResolutionResult) {
         // Check if any resolved nodes are local (already installed)
         for node in resolution.packages_in_order() {
             if let NodeAction::Local = node.action {
@@ -192,7 +192,6 @@ impl InstallOperation {
                 // Package is already installed, the resolver has handled this correctly
             }
         }
-        Ok(())
     }
 }
 
@@ -304,8 +303,6 @@ impl UpdateOperation {
     ///
     /// Returns an error if package resolution fails, update conflicts occur, or installation fails.
     pub async fn execute(&mut self, context: UpdateContext) -> Result<InstallResult, Error> {
-        use std::collections::HashMap;
-
         // Get currently installed packages
         let current_packages = self.state_manager.get_installed_packages().await?;
 
@@ -330,10 +327,38 @@ impl UpdateOperation {
         }
 
         // For each package, check if an update is available before proceeding
+        let (packages_needing_update, _packages_up_to_date) = self
+            .check_packages_for_updates(&packages_to_update, &context)
+            .await?;
+
+        // If no packages need updating, return early
+        if packages_needing_update.is_empty() {
+            let result = InstallResult::new(uuid::Uuid::nil());
+
+            return Ok(result);
+        }
+
+        // Convert to package specs for installation
+        self.build_and_execute_install(&packages_needing_update, &context)
+            .await
+    }
+
+    /// Check which packages have available updates
+    ///
+    /// Complex workflow function that checks each package for updates and emits detailed events.
+    /// Function length is necessary for comprehensive error handling and event emission.
+    #[allow(clippy::too_many_lines)]
+    async fn check_packages_for_updates(
+        &self,
+        packages_to_update: &[sps2_state::models::Package],
+        context: &UpdateContext,
+    ) -> Result<(Vec<sps2_state::models::Package>, Vec<String>), Error> {
+        use std::collections::HashMap;
+
         let mut packages_needing_update = Vec::new();
         let mut packages_up_to_date = Vec::new();
 
-        for package_id in &packages_to_update {
+        for package_id in packages_to_update {
             let spec = if context.upgrade {
                 // Upgrade mode: ignore upper bounds
                 PackageSpec::parse(&format!("{}>=0.0.0", package_id.name))?
@@ -503,17 +528,18 @@ impl UpdateOperation {
             }
         }
 
-        // If no packages need updating, return early
-        if packages_needing_update.is_empty() {
-            let result = InstallResult::new(uuid::Uuid::nil());
+        Ok((packages_needing_update, packages_up_to_date))
+    }
 
-            return Ok(result);
-        }
-
-        // Convert to package specs for installation
+    /// Build install context and execute installation for packages needing update
+    async fn build_and_execute_install(
+        &mut self,
+        packages_needing_update: &[sps2_state::models::Package],
+        context: &UpdateContext,
+    ) -> Result<InstallResult, Error> {
         let mut install_context = InstallContext::new();
 
-        for package_id in &packages_needing_update {
+        for package_id in packages_needing_update {
             let spec = if context.upgrade {
                 // Upgrade mode: ignore upper bounds
                 PackageSpec::parse(&format!("{}>=0.0.0", package_id.name))?
@@ -525,17 +551,13 @@ impl UpdateOperation {
             install_context = install_context.add_package(spec);
         }
 
-        install_context = install_context
-            .with_force(true) // Force reinstallation for updates
-;
+        install_context = install_context.with_force(true); // Force reinstallation for updates
 
         if let Some(sender) = &context.event_sender {
             install_context = install_context.with_event_sender(sender.clone());
         }
 
         // Execute installation (which handles updates)
-        let result = self.install_operation.execute(install_context).await?;
-
-        Ok(result)
+        self.install_operation.execute(install_context).await
     }
 }

@@ -22,7 +22,7 @@ use super::worker::{process_package, ProcessPackageArgs};
 pub struct ParallelExecutor {
     /// Package store
     store: PackageStore,
-    /// State manager for package_map updates
+    /// State manager for `package_map` updates
     state_manager: StateManager,
     /// Resource manager for concurrency control
     resources: Arc<ResourceManager>,
@@ -61,6 +61,10 @@ impl ParallelExecutor {
     /// # Errors
     ///
     /// Returns an error if package processing fails, download fails, or concurrency limits are exceeded.
+    ///
+    /// Core orchestration loop managing parallel package processing with dependency tracking.
+    /// Function length is necessary to maintain state consistency across the execution lifecycle.
+    #[allow(clippy::too_many_lines)]
     pub async fn execute_parallel(
         &self,
         execution_plan: &ExecutionPlan,
@@ -78,17 +82,15 @@ impl ParallelExecutor {
                 "DEBUG: Execution plan has {} ready packages",
                 execution_plan.ready_packages().len()
             ),
-            context: std::collections::HashMap::from([
-                (
-                    "ready_packages".to_string(),
-                    execution_plan
-                        .ready_packages()
-                        .iter()
-                        .map(|id| format!("{}-{}", id.name, id.version))
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                ),
-            ]),
+            context: std::collections::HashMap::from([(
+                "ready_packages".to_string(),
+                execution_plan
+                    .ready_packages()
+                    .iter()
+                    .map(|id| format!("{}-{}", id.name, id.version))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            )]),
         }));
 
         for package_id in execution_plan.ready_packages() {
@@ -532,7 +534,10 @@ mod tests {
             .expect("package hash");
 
         state
-            .ensure_store_ref(&store_hash.to_hex(), expected_size as i64)
+            .ensure_store_ref(
+                &store_hash.to_hex(),
+                i64::try_from(expected_size).unwrap_or(i64::MAX),
+            )
             .await
             .expect("store ref");
 
@@ -559,17 +564,11 @@ mod tests {
         let (tx, mut rx) = sps2_events::channel();
         let context = ExecutionContext::new().with_event_sender(tx);
 
-        let size = try_prepare_from_store(
-            &pkg_id,
-            &node,
-            &store,
-            &state,
-            &context,
-            &prepared_packages,
-        )
-        .await
-        .expect("reuse succeeds")
-        .expect("should reuse store package");
+        let size =
+            try_prepare_from_store(&pkg_id, &node, &store, &state, &context, &prepared_packages)
+                .await
+                .expect("reuse succeeds")
+                .expect("should reuse store package");
 
         assert_eq!(size, expected_size);
 
@@ -613,7 +612,7 @@ mod tests {
         state
             .ensure_store_ref(
                 &store_hash.to_hex(),
-                stored_package.size().await.expect("size") as i64,
+                i64::try_from(stored_package.size().await.expect("size")).unwrap_or(i64::MAX),
             )
             .await
             .expect("store ref");
@@ -643,16 +642,10 @@ mod tests {
             .with_event_sender(tx)
             .with_force_redownload(true);
 
-        let result = try_prepare_from_store(
-            &pkg_id,
-            &node,
-            &store,
-            &state,
-            &context,
-            &prepared_packages,
-        )
-        .await
-        .expect("call succeeds");
+        let result =
+            try_prepare_from_store(&pkg_id, &node, &store, &state, &context, &prepared_packages)
+                .await
+                .expect("call succeeds");
 
         assert!(result.is_none(), "expected force download to skip reuse");
         assert!(prepared_packages.is_empty());

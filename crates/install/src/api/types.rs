@@ -1,10 +1,10 @@
 use sps2_hash::Hash;
 use std::path::PathBuf;
 
-/// Prepared package data passed from ParallelExecutor to AtomicInstaller
+/// Prepared package data passed from `ParallelExecutor` to `AtomicInstaller`
 ///
-/// This structure contains all the information needed by AtomicInstaller
-/// to install a package without having to look up package_map or perform
+/// This structure contains all the information needed by `AtomicInstaller`
+/// to install a package without having to look up `package_map` or perform
 /// additional database queries.
 #[derive(Clone, Debug)]
 pub struct PreparedPackage {
