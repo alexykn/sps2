@@ -1,69 +1,14 @@
 //! Main installer implementation
 
 use crate::{
-    InstallContext, InstallOperation, InstallResult, UninstallContext, UninstallOperation,
-    UpdateContext, UpdateOperation,
+    InstallConfig, InstallContext, InstallOperation, InstallResult, StateInfo, UninstallContext,
+    UninstallOperation, UpdateContext, UpdateOperation,
 };
 use sps2_errors::{Error, InstallError};
 // EventSender not used directly in this module but imported for potential future use
 use sps2_resolver::Resolver;
 use sps2_state::StateManager;
 use sps2_store::PackageStore;
-use uuid::Uuid;
-
-/// Installer configuration
-#[derive(Clone, Debug)]
-pub struct InstallConfig {
-    /// Maximum concurrent downloads
-    pub max_concurrency: usize,
-    /// Download timeout in seconds
-    pub download_timeout: u64,
-    /// Enable APFS optimizations
-    pub enable_apfs: bool,
-    /// State retention policy (number of states to keep)
-    pub state_retention: usize,
-}
-
-impl Default for InstallConfig {
-    fn default() -> Self {
-        Self {
-            max_concurrency: 4,
-            download_timeout: 300, // 5 minutes
-            enable_apfs: cfg!(target_os = "macos"),
-            state_retention: 10,
-        }
-    }
-}
-
-impl InstallConfig {
-    /// Create config with custom concurrency
-    #[must_use]
-    pub fn with_concurrency(mut self, max_concurrency: usize) -> Self {
-        self.max_concurrency = max_concurrency;
-        self
-    }
-
-    /// Set download timeout
-    #[must_use]
-    pub fn with_timeout(mut self, timeout_seconds: u64) -> Self {
-        self.download_timeout = timeout_seconds;
-        self
-    }
-
-    /// Enable/disable APFS optimizations
-    #[must_use]
-    pub fn with_apfs(mut self, enable: bool) -> Self {
-        self.enable_apfs = enable;
-        self
-    }
-
-    /// Set state retention policy
-    #[must_use]
-    pub fn with_retention(mut self, count: usize) -> Self {
-        self.state_retention = count;
-        self
-    }
-}
 
 /// Main installer for sps2 packages
 #[derive(Clone)]
@@ -279,61 +224,6 @@ impl Installer {
     /// Validate update context
     fn validate_update_context(_context: &UpdateContext) {
         // Update context is always valid (empty packages means update all)
-    }
-}
-
-/// State information for listing
-#[derive(Debug, Clone)]
-pub struct StateInfo {
-    /// State ID
-    pub id: Uuid,
-    /// Creation timestamp
-    pub timestamp: chrono::DateTime<chrono::Utc>,
-    /// Parent state ID
-    pub parent_id: Option<Uuid>,
-    /// Number of packages in this state
-    pub package_count: usize,
-    /// Sample of packages (for display)
-    pub packages: Vec<sps2_types::PackageId>,
-}
-
-impl StateInfo {
-    /// Check if this is the root state
-    #[must_use]
-    pub fn is_root(&self) -> bool {
-        self.parent_id.is_none()
-    }
-
-    /// Get age of this state
-    #[must_use]
-    pub fn age(&self) -> chrono::Duration {
-        chrono::Utc::now() - self.timestamp
-    }
-
-    /// Format package list for display
-    #[must_use]
-    pub fn package_summary(&self) -> String {
-        if self.packages.is_empty() {
-            "No packages".to_string()
-        } else if self.packages.len() <= 3 {
-            self.packages
-                .iter()
-                .map(|pkg| format!("{}-{}", pkg.name, pkg.version))
-                .collect::<Vec<_>>()
-                .join(", ")
-        } else {
-            let first_three: Vec<String> = self
-                .packages
-                .iter()
-                .take(3)
-                .map(|pkg| format!("{}-{}", pkg.name, pkg.version))
-                .collect();
-            format!(
-                "{} and {} more",
-                first_three.join(", "),
-                self.package_count - 3
-            )
-        }
     }
 }
 

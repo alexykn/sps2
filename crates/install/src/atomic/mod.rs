@@ -6,7 +6,9 @@
 //! - State transitions with rollback support
 //! - Platform-specific filesystem optimizations
 
+pub mod fs;
 pub mod installer;
+pub mod package;
 pub mod transition;
 
 // Re-export main public API

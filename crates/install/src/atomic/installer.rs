@@ -1,22 +1,21 @@
 //! Atomic installer implementation using slot-based staging.
 
-use crate::atomic::transition::StateTransition;
+use crate::atomic::{package, transition::StateTransition};
 // Removed Python venv handling - Python packages are now handled like regular packages
 use crate::{InstallContext, InstallResult, PreparedPackage};
 use sps2_errors::{Error, InstallError};
 use sps2_events::events::{StateTransitionContext, TransitionSummary};
 use sps2_events::{
-    AppEvent, EventEmitter, EventSender, FailureContext, GeneralEvent, StateEvent, UninstallEvent,
+    AppEvent, EventEmitter, EventSender, FailureContext, StateEvent, UninstallEvent,
 };
 use sps2_hash::Hash;
 use sps2_platform::filesystem_helpers as fs_helpers;
 
 use sps2_resolver::{PackageId, ResolvedNode};
-use sps2_state::{file_queries_runtime, PackageRef, StateManager};
-use sps2_store::{PackageStore, StoredPackage};
+use sps2_state::StateManager;
+use sps2_store::PackageStore;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
-use std::path::Path;
 use std::time::Instant;
 use uuid::Uuid;
 
@@ -130,105 +129,7 @@ impl AtomicInstaller {
         Ok(())
     }
 
-    /// Carry forward packages from parent state, excluding specified packages
-    fn carry_forward_packages(
-        &self,
-        transition: &mut StateTransition,
-        parent_packages: &[sps2_state::models::Package],
-        exclude_names: &HashSet<String>,
-    ) -> Result<(), Error> {
-        if transition.parent_id.is_none() {
-            return Ok(());
-        }
 
-        for pkg in parent_packages {
-            if exclude_names.contains(&pkg.name) {
-                continue;
-            }
-
-            let package_ref = PackageRef {
-                state_id: transition.staging_id,
-                package_id: PackageId::new(pkg.name.clone(), pkg.version()),
-                hash: pkg.hash.clone(),
-                size: pkg.size,
-            };
-            transition.package_refs.push(package_ref);
-        }
-        Ok(())
-    }
-
-    async fn sync_slot_with_parent(
-        &self,
-        transition: &mut StateTransition,
-        parent_packages: &[sps2_state::models::Package],
-    ) -> Result<(), Error> {
-        let Some(parent_state) = transition.parent_id else {
-            // No prior state to mirror; ensure slot metadata is cleared.
-            self.state_manager
-                .set_slot_state(transition.staging_slot, None)
-                .await?;
-            return Ok(());
-        };
-
-        let slot_state = self.state_manager.slot_state(transition.staging_slot).await;
-
-        if slot_state == Some(parent_state) {
-            return Ok(());
-        }
-
-        let slot_packages = if let Some(slot_state_id) = slot_state {
-            self.state_manager
-                .get_installed_packages_in_state(&slot_state_id)
-                .await?
-        } else {
-            Vec::new()
-        };
-
-        let parent_keys: HashSet<String> = parent_packages
-            .iter()
-            .map(|pkg| format!("{}::{}", pkg.name, pkg.version))
-            .collect();
-
-        let slot_map: HashMap<String, sps2_state::models::Package> = slot_packages
-            .into_iter()
-            .map(|pkg| (format!("{}::{}", pkg.name, pkg.version), pkg))
-            .collect();
-
-        // Remove packages that should no longer be present in the slot
-        for (key, pkg) in &slot_map {
-            if !parent_keys.contains(key) {
-                self.remove_package_from_staging(transition, pkg).await?;
-            }
-        }
-
-        // Link packages that are present in the parent state but missing from the slot
-        for pkg in parent_packages {
-            let key = format!("{}::{}", pkg.name, pkg.version);
-            if slot_map.contains_key(&key) {
-                continue;
-            }
-
-            let hash = Hash::from_hex(&pkg.hash).map_err(|e| {
-                Error::from(InstallError::AtomicOperationFailed {
-                    message: format!(
-                        "invalid package hash for {}-{} during slot sync: {e}",
-                        pkg.name, pkg.version
-                    ),
-                })
-            })?;
-
-            let store_path = self.store.package_path(&hash);
-            let package_id = PackageId::new(pkg.name.clone(), pkg.version());
-            self.link_package_to_staging(transition, &store_path, &package_id, false)
-                .await?;
-        }
-
-        self.state_manager
-            .set_slot_state(transition.staging_slot, Some(parent_state))
-            .await?;
-
-        Ok(())
-    }
 
     /// Setup state transition and staging directory
     async fn setup_state_transition<T: EventEmitter>(
@@ -294,8 +195,13 @@ impl AtomicInstaller {
             .map(|pkg| (pkg.name.clone(), pkg))
             .collect();
 
-        self.sync_slot_with_parent(&mut transition, &parent_packages)
-            .await?;
+        package::sync_slot_with_parent(
+            &self.state_manager,
+            &self.store,
+            &mut transition,
+            &parent_packages,
+        )
+        .await?;
 
         // The staging slot now mirrors the parent state, so carry-forward only needs to
         // register package references for unchanged packages.
@@ -303,14 +209,15 @@ impl AtomicInstaller {
             .keys()
             .map(|pkg| pkg.name.clone())
             .collect();
-        self.carry_forward_packages(&mut transition, &parent_packages, &exclude_names)?;
+        package::carry_forward_packages(&mut transition, &parent_packages, &exclude_names)?;
 
         // Apply package changes to staging
         let mut result = InstallResult::new(transition.staging_id);
 
         for (package_id, node) in resolved_packages {
             let prepared_package = prepared_packages.and_then(|packages| packages.get(package_id));
-            self.install_package_to_staging(
+            package::install_package_to_staging(
+                &self.state_manager,
                 &mut transition,
                 package_id,
                 node,
@@ -327,139 +234,6 @@ impl AtomicInstaller {
         Ok(result)
     }
 
-    /// Install a single package to staging directory
-    async fn install_package_to_staging(
-        &self,
-        transition: &mut StateTransition,
-        package_id: &PackageId,
-        node: &ResolvedNode,
-        prepared_package: Option<&PreparedPackage>,
-        prior_package: Option<&sps2_state::models::Package>,
-        result: &mut InstallResult,
-    ) -> Result<(), Error> {
-        // Install the package files (both Download and Local actions are handled identically)
-        let action_name = match &node.action {
-            sps2_resolver::NodeAction::Download => "downloaded",
-            sps2_resolver::NodeAction::Local => "local",
-        };
-
-        let prepared = prepared_package.ok_or_else(|| {
-            InstallError::AtomicOperationFailed {
-                message: format!(
-                    "Missing prepared package data for {} package {}-{}. This indicates a bug in ParallelExecutor.",
-                    action_name, package_id.name, package_id.version
-                ),
-            }
-        })?;
-
-        let hash = &prepared.hash;
-        let store_path = &prepared.store_path;
-        let size = prepared.size;
-        let store_hash_hex = hash.to_hex();
-        let package_hash_hex = prepared.package_hash.as_ref().map(sps2_hash::Hash::to_hex);
-
-        let mut was_present = false;
-        let mut version_changed = false;
-        if let Some(existing) = prior_package {
-            was_present = true;
-            let existing_version = existing.version();
-            if existing_version != package_id.version {
-                version_changed = true;
-                self.remove_package_from_staging(transition, existing)
-                    .await?;
-            }
-        }
-
-        // Load package from the prepared store path
-        let _stored_package = StoredPackage::load(store_path).await?;
-
-        // Ensure store_refs entry exists before adding to package_map
-        self.state_manager
-            .ensure_store_ref(&store_hash_hex, size as i64)
-            .await?;
-
-        // Ensure package is in package_map for future lookups
-        self.state_manager
-            .add_package_map(
-                &package_id.name,
-                &package_id.version.to_string(),
-                &store_hash_hex,
-                package_hash_hex.as_deref(),
-            )
-            .await?;
-
-        // Link package files to staging
-        let _ = self
-            .link_package_to_staging(transition, store_path, package_id, true)
-            .await?;
-
-        // Add the package reference
-        let package_ref = PackageRef {
-            state_id: transition.staging_id,
-            package_id: package_id.clone(),
-            hash: store_hash_hex.clone(),
-            size: size as i64,
-        };
-        transition.package_refs.push(package_ref);
-
-        if was_present && version_changed {
-            result.add_updated(package_id.clone());
-        } else {
-            result.add_installed(package_id.clone());
-        }
-        Ok(())
-    }
-
-    /// Link package from store to staging directory
-    async fn link_package_to_staging(
-        &self,
-        transition: &mut StateTransition,
-        store_path: &Path,
-        package_id: &PackageId,
-        record_hashes: bool,
-    ) -> Result<bool, Error> {
-        let staging_prefix = &transition.slot_path;
-
-        // Load the stored package
-        let stored_package = StoredPackage::load(store_path).await?;
-
-        // Link files from store to staging
-        if let Some(sender) = &transition.event_sender {
-            sender.emit(AppEvent::General(GeneralEvent::DebugLog {
-                message: format!("Linking package {} to staging", package_id.name),
-                context: std::collections::HashMap::new(),
-            }));
-        }
-
-        stored_package.link_to(staging_prefix).await?;
-
-        let mut had_file_hashes = false;
-        let mut linked_entry_count = 0usize;
-        // Collect file paths for database tracking AND store file hash info
-        if let Some(file_hashes) = stored_package.file_hashes() {
-            had_file_hashes = true;
-            linked_entry_count = file_hashes.len();
-            // Store the file hash information for later use when we have package IDs
-            if record_hashes {
-                transition
-                    .pending_file_hashes
-                    .push((package_id.clone(), file_hashes.to_vec()));
-            }
-        }
-
-        // Debug what was linked
-        if let Some(sender) = &transition.event_sender {
-            sender.emit(AppEvent::General(GeneralEvent::DebugLog {
-                message: format!(
-                    "Linked {} files/directories for package {}",
-                    linked_entry_count, package_id.name
-                ),
-                context: std::collections::HashMap::new(),
-            }));
-        }
-
-        Ok(had_file_hashes)
-    }
 
     // Removed install_python_package - Python packages are now handled like regular packages
 
@@ -496,8 +270,13 @@ impl AtomicInstaller {
             Vec::new()
         };
 
-        self.sync_slot_with_parent(&mut transition, &parent_packages)
-            .await?;
+        package::sync_slot_with_parent(
+            &self.state_manager,
+            &self.store,
+            &mut transition,
+            &parent_packages,
+        )
+        .await?;
 
         for pkg in &parent_packages {
             // Check if this package should be removed
@@ -507,7 +286,7 @@ impl AtomicInstaller {
 
             if should_remove {
                 result.add_removed(PackageId::new(pkg.name.clone(), pkg.version()));
-                self.remove_package_from_staging(&mut transition, pkg)
+                package::remove_package_from_staging(&self.state_manager, &mut transition, pkg)
                     .await?;
                 context.emit_debug(format!("Removed package {} from staging", pkg.name));
             }
@@ -518,7 +297,7 @@ impl AtomicInstaller {
             .iter()
             .map(|pkg| pkg.name.clone())
             .collect();
-        self.carry_forward_packages(&mut transition, &parent_packages, &exclude_names)?;
+        package::carry_forward_packages(&mut transition, &parent_packages, &exclude_names)?;
 
         // Execute two-phase commit
         self.execute_two_phase_commit(&transition, context).await?;
@@ -532,159 +311,6 @@ impl AtomicInstaller {
         }
 
         Ok(result)
-    }
-
-    /// Remove package files from staging directory
-    async fn remove_package_from_staging(
-        &self,
-        transition: &mut StateTransition,
-        package: &sps2_state::models::Package,
-    ) -> Result<(), Error> {
-        // Get all files belonging to this package from the database
-        let state_id = Uuid::parse_str(&package.state_id).map_err(|e| {
-            InstallError::AtomicOperationFailed {
-                message: format!(
-                    "failed to parse associated state ID for package {}: {e}",
-                    package.name
-                ),
-            }
-        })?;
-
-        let mut tx = self.state_manager.begin_transaction().await?;
-        let entries = file_queries_runtime::get_package_file_entries_by_name(
-            &mut tx,
-            &state_id,
-            &package.name,
-            &package.version,
-        )
-        .await?;
-        tx.commit().await?;
-
-        let file_paths: Vec<String> = entries
-            .into_iter()
-            .map(|entry| entry.relative_path)
-            .collect();
-
-        // Detect if this is a Python package for later cleanup
-        let python_package_dir = self.detect_python_package_directory(&file_paths);
-
-        // Always do file-by-file removal first to remove all tracked files (including wrapper scripts)
-        // Group files by type for proper removal order
-        let mut symlinks = Vec::new();
-        let mut regular_files = Vec::new();
-        let mut directories = Vec::new();
-
-        for file_path in file_paths {
-            let staging_file = transition.slot_path.join(&file_path);
-
-            if staging_file.exists() {
-                // Check if it's a symlink
-                let metadata = tokio::fs::symlink_metadata(&staging_file).await?;
-                if metadata.is_symlink() {
-                    symlinks.push(file_path);
-                } else if staging_file.is_dir() {
-                    directories.push(file_path);
-                } else {
-                    regular_files.push(file_path);
-                }
-            }
-        }
-
-        // Remove in order: symlinks first, then files, then directories
-        // This ensures we don't try to remove non-empty directories
-
-        // 1. Remove symlinks
-        for file_path in symlinks {
-            let staging_file = transition.slot_path.join(&file_path);
-            if staging_file.exists() {
-                tokio::fs::remove_file(&staging_file).await.map_err(|e| {
-                    InstallError::FilesystemError {
-                        operation: "remove_symlink".to_string(),
-                        path: staging_file.display().to_string(),
-                        message: e.to_string(),
-                    }
-                })?;
-            }
-        }
-
-        // 2. Remove regular files
-        for file_path in regular_files {
-            let staging_file = transition.slot_path.join(&file_path);
-            if staging_file.exists() {
-                tokio::fs::remove_file(&staging_file).await.map_err(|e| {
-                    InstallError::FilesystemError {
-                        operation: "remove_file".to_string(),
-                        path: staging_file.display().to_string(),
-                        message: e.to_string(),
-                    }
-                })?;
-            }
-        }
-
-        // 3. Remove directories in reverse order (deepest first)
-        directories.sort_by(|a, b| b.cmp(a)); // Reverse lexicographic order
-        for file_path in directories {
-            let staging_file = transition.slot_path.join(&file_path);
-            if staging_file.exists() {
-                // Try to remove directory if it's empty
-                if let Ok(mut entries) = tokio::fs::read_dir(&staging_file).await {
-                    if entries.next_entry().await?.is_none() {
-                        tokio::fs::remove_dir(&staging_file).await.map_err(|e| {
-                            InstallError::FilesystemError {
-                                operation: "remove_dir".to_string(),
-                                path: staging_file.display().to_string(),
-                                message: e.to_string(),
-                            }
-                        })?;
-                    }
-                }
-            }
-        }
-
-        // After removing all tracked files, clean up any remaining Python runtime artifacts
-        if let Some(python_dir) = python_package_dir {
-            let python_staging_dir = transition.slot_path.join(&python_dir);
-
-            if python_staging_dir.exists() {
-                // Check if directory still has content (runtime artifacts)
-                if let Ok(mut entries) = tokio::fs::read_dir(&python_staging_dir).await {
-                    if entries.next_entry().await?.is_some() {
-                        // Directory is not empty, remove remaining runtime artifacts
-                        tokio::fs::remove_dir_all(&python_staging_dir)
-                            .await
-                            .map_err(|e| InstallError::FilesystemError {
-                                operation: "cleanup_python_runtime_artifacts".to_string(),
-                                path: python_staging_dir.display().to_string(),
-                                message: e.to_string(),
-                            })?;
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Detect if this is a Python package and return the directory to remove
-    ///
-    /// Python packages are isolated in `/opt/pm/live/python/<package_name>/` directories.
-    /// This method examines file paths to find the Python package directory.
-    fn detect_python_package_directory(&self, file_paths: &[String]) -> Option<String> {
-        for file_path in file_paths {
-            // Look for files under python/ directory structure
-            if let Some(stripped) = file_path.strip_prefix("python/") {
-                // Extract the package directory (e.g., "ansible/" from "python/ansible/lib/...")
-                if let Some(slash_pos) = stripped.find('/') {
-                    let package_dir = format!("python/{}", &stripped[..slash_pos]);
-                    return Some(package_dir);
-                } else if !stripped.is_empty() {
-                    // Handle case where the path is just "python/package_name"
-                    let package_dir = format!("python/{}", stripped);
-                    return Some(package_dir);
-                }
-            }
-        }
-        None
     }
 
     // Removed remove_package_venv - Python packages are now handled like regular packages
@@ -712,7 +338,7 @@ impl AtomicInstaller {
             })?;
             let store_path = self.store.package_path(&hash);
             let pkg_id = PackageId::new(pkg.name.clone(), pkg.version());
-            self.link_package_to_staging(&mut transition, &store_path, &pkg_id, false)
+            crate::atomic::fs::link_package_to_staging(&mut transition, &store_path, &pkg_id, false)
                 .await?;
         }
 

@@ -1,17 +1,10 @@
-//! Parallel package execution with dependency ordering
+//! Parallel executor for package operations
 
-// InstallContext import removed as it's not used in this module
-// validate_sp_file import removed - validation now handled by AtomicInstaller
 use crate::PreparedPackage;
 use crossbeam::queue::SegQueue;
 use dashmap::DashMap;
 use sps2_errors::{Error, InstallError};
-use sps2_events::events::AcquisitionSource;
-use sps2_events::{
-    AcquisitionEvent, AppEvent, EventEmitter, EventSender, FailureContext, GeneralEvent,
-    InstallEvent,
-};
-use sps2_net::{PackageDownloadConfig, PackageDownloader};
+use sps2_events::{AppEvent, EventEmitter, GeneralEvent};
 use sps2_resolver::{ExecutionPlan, NodeAction, PackageId, ResolvedNode};
 use sps2_resources::ResourceManager;
 use sps2_state::StateManager;
@@ -19,20 +12,11 @@ use sps2_store::PackageStore;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
-use tokio::sync::OwnedSemaphorePermit;
 use tokio::task::JoinHandle;
-use tokio::time::{timeout, Duration, Instant};
+use tokio::time::{Duration, Instant};
 
-struct ProcessPackageArgs {
-    package_id: PackageId,
-    node: ResolvedNode,
-    context: ExecutionContext,
-    store: PackageStore,
-    state_manager: StateManager,
-    timeout_duration: Duration,
-    prepared_packages: Arc<DashMap<PackageId, PreparedPackage>>,
-    permit: OwnedSemaphorePermit,
-}
+use super::context::ExecutionContext;
+use super::worker::{process_package, ProcessPackageArgs};
 
 /// Parallel executor for package operations
 pub struct ParallelExecutor {
@@ -94,15 +78,17 @@ impl ParallelExecutor {
                 "DEBUG: Execution plan has {} ready packages",
                 execution_plan.ready_packages().len()
             ),
-            context: std::collections::HashMap::from([(
-                "ready_packages".to_string(),
-                execution_plan
-                    .ready_packages()
-                    .iter()
-                    .map(|id| format!("{}-{}", id.name, id.version))
-                    .collect::<Vec<_>>()
-                    .join(", "),
-            )]),
+            context: std::collections::HashMap::from([
+                (
+                    "ready_packages".to_string(),
+                    execution_plan
+                        .ready_packages()
+                        .iter()
+                        .map(|id| format!("{}-{}", id.name, id.version))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                ),
+            ]),
         }));
 
         for package_id in execution_plan.ready_packages() {
@@ -306,7 +292,7 @@ impl ParallelExecutor {
         package_id: PackageId,
         node: ResolvedNode,
         context: ExecutionContext,
-        permit: OwnedSemaphorePermit,
+        permit: tokio::sync::OwnedSemaphorePermit,
         prepared_packages: Arc<DashMap<PackageId, PreparedPackage>>,
     ) -> JoinHandle<Result<PackageId, Error>> {
         let store = self.store.clone();
@@ -314,7 +300,7 @@ impl ParallelExecutor {
         let timeout_duration = self.download_timeout;
 
         tokio::spawn(async move {
-            Self::process_package(ProcessPackageArgs {
+            process_package(ProcessPackageArgs {
                 package_id,
                 node,
                 context,
@@ -326,423 +312,6 @@ impl ParallelExecutor {
             })
             .await
         })
-    }
-
-    /// Process a single package (download/local)
-    async fn process_package(args: ProcessPackageArgs) -> Result<PackageId, Error> {
-        let ProcessPackageArgs {
-            package_id,
-            node,
-            context,
-            store,
-            state_manager,
-            timeout_duration,
-            prepared_packages,
-            permit: _permit,
-        } = args;
-        context.emit(AppEvent::General(GeneralEvent::DebugLog {
-            message: format!(
-                "DEBUG: Processing package {}-{} with action {:?}",
-                package_id.name, package_id.version, node.action
-            ),
-            context: std::collections::HashMap::new(),
-        }));
-
-        context.emit(AppEvent::Install(InstallEvent::Started {
-            package: package_id.name.clone(),
-            version: package_id.version.clone(),
-        }));
-
-        match node.action {
-            NodeAction::Download => {
-                if let Some(url) = &node.url {
-                    // Download package with timeout and add to store (no validation)
-                    let download_result = timeout(
-                        timeout_duration,
-                        Self::download_package_only(
-                            url,
-                            &package_id,
-                            &node,
-                            &store,
-                            &state_manager,
-                            &context,
-                            &prepared_packages,
-                        ),
-                    )
-                    .await;
-
-                    match download_result {
-                        Ok(Ok(size)) => {
-                            context.emit(AppEvent::Acquisition(AcquisitionEvent::Completed {
-                                package: package_id.name.clone(),
-                                version: package_id.version.clone(),
-                                source: AcquisitionSource::Remote {
-                                    url: url.clone(),
-                                    mirror_priority: 0,
-                                },
-                                size,
-                            }));
-                        }
-                        Ok(Err(e)) => {
-                            let failure = FailureContext::from_error(&e);
-                            context.emit(AppEvent::Acquisition(AcquisitionEvent::Failed {
-                                package: package_id.name.clone(),
-                                version: package_id.version.clone(),
-                                source: AcquisitionSource::Remote {
-                                    url: url.clone(),
-                                    mirror_priority: 0,
-                                },
-                                failure,
-                            }));
-                            return Err(e);
-                        }
-                        Err(_) => {
-                            let err: Error = InstallError::DownloadTimeout {
-                                package: package_id.name.clone(),
-                                url: url.to_string(),
-                                timeout_seconds: timeout_duration.as_secs(),
-                            }
-                            .into();
-                            let failure = FailureContext::from_error(&err);
-                            context.emit(AppEvent::Acquisition(AcquisitionEvent::Failed {
-                                package: package_id.name.clone(),
-                                version: package_id.version.clone(),
-                                source: AcquisitionSource::Remote {
-                                    url: url.clone(),
-                                    mirror_priority: 0,
-                                },
-                                failure,
-                            }));
-                            return Err(err);
-                        }
-                    }
-                } else {
-                    return Err(InstallError::MissingDownloadUrl {
-                        package: package_id.name.clone(),
-                    }
-                    .into());
-                }
-            }
-            NodeAction::Local => {
-                context.emit(AppEvent::General(GeneralEvent::DebugLog {
-                    message: format!(
-                        "DEBUG: Processing local package {}-{}, path: {:?}",
-                        package_id.name, package_id.version, node.path
-                    ),
-                    context: std::collections::HashMap::new(),
-                }));
-
-                if let Some(path) = &node.path {
-                    // Check if this is an already installed package (empty path)
-                    if path.as_os_str().is_empty() {
-                        context.emit(AppEvent::General(GeneralEvent::DebugLog {
-                            message: format!(
-                                "DEBUG: Package {}-{} is already installed, skipping",
-                                package_id.name, package_id.version
-                            ),
-                            context: std::collections::HashMap::new(),
-                        }));
-
-                        // For already installed packages, just mark as completed
-                        context.emit(AppEvent::Install(InstallEvent::Completed {
-                            package: package_id.name.clone(),
-                            version: package_id.version.clone(),
-                            files_installed: 0,
-                        }));
-
-                        return Ok(package_id);
-                    }
-                    context.emit(AppEvent::General(GeneralEvent::DebugLog {
-                        message: format!(
-                            "DEBUG: Adding local package to store: {}",
-                            path.display()
-                        ),
-                        context: std::collections::HashMap::new(),
-                    }));
-
-                    // For local packages, add to store and prepare data
-                    let stored_package = store.add_package(path).await?;
-
-                    if let Some(hash) = stored_package.hash() {
-                        let size = stored_package.size().await?;
-                        let store_path = stored_package.path().to_path_buf();
-
-                        context.emit(AppEvent::General(GeneralEvent::DebugLog {
-                            message: format!(
-                                "DEBUG: Local package stored with hash {} at {}",
-                                hash.to_hex(),
-                                store_path.display()
-                            ),
-                            context: std::collections::HashMap::new(),
-                        }));
-
-                        let prepared_package = PreparedPackage {
-                            hash: hash.clone(),
-                            size,
-                            store_path,
-                            is_local: true,
-                            package_hash: None,
-                        };
-
-                        prepared_packages.insert(package_id.clone(), prepared_package);
-
-                        context.emit(AppEvent::General(GeneralEvent::DebugLog {
-                            message: format!(
-                                "DEBUG: Added prepared package for {}-{}",
-                                package_id.name, package_id.version
-                            ),
-                            context: std::collections::HashMap::new(),
-                        }));
-
-                        context.emit(AppEvent::Install(InstallEvent::Completed {
-                            package: package_id.name.clone(),
-                            version: package_id.version.clone(),
-                            files_installed: 0, // TODO: Count actual files
-                        }));
-                    } else {
-                        return Err(InstallError::AtomicOperationFailed {
-                            message: "failed to get hash from local package".to_string(),
-                        }
-                        .into());
-                    }
-                } else {
-                    return Err(InstallError::MissingLocalPath {
-                        package: package_id.name.clone(),
-                    }
-                    .into());
-                }
-            }
-        }
-
-        Ok(package_id)
-    }
-
-    /// Download a package and add to store (no validation - AtomicInstaller handles that)
-    async fn download_package_only(
-        url: &str,
-        package_id: &PackageId,
-        node: &ResolvedNode,
-        store: &PackageStore,
-        state_manager: &StateManager,
-        context: &ExecutionContext,
-        prepared_packages: &Arc<DashMap<PackageId, PreparedPackage>>,
-    ) -> Result<u64, Error> {
-        if let Some(size) = Self::try_prepare_from_store(
-            package_id,
-            node,
-            store,
-            state_manager,
-            context,
-            prepared_packages,
-        )
-        .await?
-        {
-            return Ok(size);
-        }
-
-        context.emit(AppEvent::Acquisition(AcquisitionEvent::Started {
-            package: package_id.name.clone(),
-            version: package_id.version.clone(),
-            source: AcquisitionSource::Remote {
-                url: url.to_string(),
-                mirror_priority: 0,
-            },
-        }));
-
-        // Create a temporary directory for the download
-        let temp_dir = tempfile::tempdir().map_err(|e| InstallError::TempFileError {
-            message: e.to_string(),
-        })?;
-
-        // Use high-level PackageDownloader to benefit from hash/signature handling
-        let downloader = PackageDownloader::new(
-            PackageDownloadConfig::default(),
-            sps2_events::ProgressManager::new(),
-        )?;
-
-        let tx = context
-            .event_sender()
-            .cloned()
-            .unwrap_or_else(|| sps2_events::channel().0);
-
-        let download_result = downloader
-            .download_package(
-                &package_id.name,
-                &package_id.version,
-                url,
-                node.signature_url.as_deref(),
-                temp_dir.path(),
-                node.expected_hash.as_ref(),
-                String::new(), // internal tracker
-                None,
-                &tx,
-            )
-            .await?;
-
-        // Enforce signature policy if configured
-        if let Some(policy) = context.security_policy {
-            if policy.verify_signatures && !policy.allow_unsigned {
-                // If a signature was expected (URL provided), require verification
-                if node.signature_url.is_some() {
-                    if !download_result.signature_verified {
-                        return Err(sps2_errors::Error::Signing(
-                            sps2_errors::SigningError::VerificationFailed {
-                                reason: "package signature could not be verified".to_string(),
-                            },
-                        ));
-                    }
-                } else {
-                    return Err(sps2_errors::Error::Signing(
-                        sps2_errors::SigningError::InvalidSignatureFormat(
-                            "missing signature for package".to_string(),
-                        ),
-                    ));
-                }
-            }
-        }
-
-        let previous_store_hash = if context.force_redownload() {
-            if let Some(expected_hash) = node.expected_hash.as_ref() {
-                state_manager
-                    .get_store_hash_for_package_hash(&expected_hash.to_hex())
-                    .await?
-                    .map(|store_hash_hex| sps2_hash::Hash::from_hex(&store_hash_hex))
-                    .transpose()?
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        // Add to store and prepare package data
-        let mut stored_package = store
-            .add_package_from_file(
-                &download_result.package_path,
-                &package_id.name,
-                &package_id.version,
-            )
-            .await?;
-
-        if let Some(prev_hash) = previous_store_hash {
-            if let Some(current_hash) = stored_package.hash() {
-                if current_hash == prev_hash {
-                    store.remove_package(&prev_hash).await?;
-                    stored_package = store
-                        .add_package_from_file(
-                            &download_result.package_path,
-                            &package_id.name,
-                            &package_id.version,
-                        )
-                        .await?;
-                } else {
-                    store.remove_package(&prev_hash).await?;
-                }
-            }
-        }
-
-        if let Some(hash) = stored_package.hash() {
-            let size = stored_package.size().await?;
-            let store_path = stored_package.path().to_path_buf();
-
-            let prepared_package = PreparedPackage {
-                hash: hash.clone(),
-                size,
-                store_path,
-                is_local: false,
-                package_hash: node.expected_hash.clone(),
-            };
-
-            prepared_packages.insert(package_id.clone(), prepared_package);
-
-            context.emit(AppEvent::General(GeneralEvent::DebugLog {
-                message: format!(
-                    "Package {}-{} downloaded and stored with hash {} (prepared for installation)",
-                    package_id.name,
-                    package_id.version,
-                    hash.to_hex()
-                ),
-                context: std::collections::HashMap::new(),
-            }));
-            Ok(size)
-        } else {
-            Err(InstallError::AtomicOperationFailed {
-                message: "failed to get hash from downloaded package".to_string(),
-            }
-            .into())
-        }
-    }
-
-    async fn try_prepare_from_store(
-        package_id: &PackageId,
-        node: &ResolvedNode,
-        store: &PackageStore,
-        state_manager: &StateManager,
-        context: &ExecutionContext,
-        prepared_packages: &Arc<DashMap<PackageId, PreparedPackage>>,
-    ) -> Result<Option<u64>, Error> {
-        if context.force_redownload() {
-            return Ok(None);
-        }
-
-        let Some(expected_hash) = node.expected_hash.as_ref() else {
-            return Ok(None);
-        };
-
-        let Some(store_hash_hex) = state_manager
-            .get_store_hash_for_package_hash(&expected_hash.to_hex())
-            .await?
-        else {
-            return Ok(None);
-        };
-
-        let store_hash = sps2_hash::Hash::from_hex(&store_hash_hex)?;
-
-        let Some(stored_package) = store.load_package_if_exists(&store_hash).await? else {
-            return Ok(None);
-        };
-
-        context.emit(AppEvent::Acquisition(AcquisitionEvent::Started {
-            package: package_id.name.clone(),
-            version: package_id.version.clone(),
-            source: AcquisitionSource::StoreCache {
-                hash: expected_hash.to_hex(),
-            },
-        }));
-
-        let size = stored_package.size().await?;
-        let store_path = stored_package.path().to_path_buf();
-
-        let prepared_package = PreparedPackage {
-            hash: store_hash,
-            size,
-            store_path,
-            is_local: false,
-            package_hash: Some(expected_hash.clone()),
-        };
-
-        prepared_packages.insert(package_id.clone(), prepared_package);
-
-        context.emit(AppEvent::General(GeneralEvent::DebugLog {
-            message: format!(
-                "Reusing stored package {}-{} with hash {}",
-                package_id.name,
-                package_id.version,
-                expected_hash.to_hex()
-            ),
-            context: std::collections::HashMap::new(),
-        }));
-
-        context.emit(AppEvent::Acquisition(AcquisitionEvent::Completed {
-            package: package_id.name.clone(),
-            version: package_id.version.clone(),
-            source: AcquisitionSource::StoreCache {
-                hash: expected_hash.to_hex(),
-            },
-            size,
-        }));
-
-        Ok(Some(size))
     }
 
     /// Wait for at least one task to complete
@@ -796,67 +365,6 @@ impl ParallelExecutor {
     }
 }
 
-/// Execution context for parallel operations
-#[derive(Clone)]
-pub struct ExecutionContext {
-    /// Event sender for progress reporting
-    event_sender: Option<EventSender>,
-    /// Optional security policy for signature enforcement
-    security_policy: Option<SecurityPolicy>,
-    /// Whether downloads should bypass cache reuse
-    force_redownload: bool,
-}
-
-impl ExecutionContext {
-    /// Create new execution context
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            event_sender: None,
-            security_policy: None,
-            force_redownload: false,
-        }
-    }
-
-    /// Set event sender
-    #[must_use]
-    pub fn with_event_sender(mut self, event_sender: EventSender) -> Self {
-        self.event_sender = Some(event_sender);
-        self
-    }
-
-    /// Set security policy for downloads
-    #[must_use]
-    pub fn with_security_policy(mut self, policy: SecurityPolicy) -> Self {
-        self.security_policy = Some(policy);
-        self
-    }
-
-    /// Set whether downloads must ignore cached packages
-    #[must_use]
-    pub fn with_force_redownload(mut self, force: bool) -> Self {
-        self.force_redownload = force;
-        self
-    }
-
-    /// Should downstream logic bypass store reuse
-    pub fn force_redownload(&self) -> bool {
-        self.force_redownload
-    }
-}
-
-impl EventEmitter for ExecutionContext {
-    fn event_sender(&self) -> Option<&EventSender> {
-        self.event_sender.as_ref()
-    }
-}
-
-impl Default for ExecutionContext {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// Execution node for tracking dependencies
 struct ExecutionNode {
     /// Action to perform (stored for future use in execution graph)
@@ -867,13 +375,6 @@ struct ExecutionNode {
     /// Parent packages (for future dependency tracking, rollback, and error reporting)
     #[allow(dead_code)]
     parents: Vec<PackageId>,
-}
-
-/// Security policy for signature enforcement
-#[derive(Clone, Copy, Debug)]
-pub struct SecurityPolicy {
-    pub verify_signatures: bool,
-    pub allow_unsigned: bool,
 }
 
 #[cfg(test)]
@@ -888,6 +389,9 @@ mod tests {
     use std::sync::Arc;
     use tempfile::TempDir;
     use tokio::fs as afs;
+
+    use crate::prepare::context::ExecutionContext;
+    use crate::prepare::worker::try_prepare_from_store;
 
     async fn mk_env() -> (TempDir, StateManager, PackageStore) {
         let td = TempDir::new().expect("tempdir");
@@ -1055,7 +559,7 @@ mod tests {
         let (tx, mut rx) = sps2_events::channel();
         let context = ExecutionContext::new().with_event_sender(tx);
 
-        let size = ParallelExecutor::try_prepare_from_store(
+        let size = try_prepare_from_store(
             &pkg_id,
             &node,
             &store,
@@ -1139,7 +643,7 @@ mod tests {
             .with_event_sender(tx)
             .with_force_redownload(true);
 
-        let result = ParallelExecutor::try_prepare_from_store(
+        let result = try_prepare_from_store(
             &pkg_id,
             &node,
             &store,

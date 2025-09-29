@@ -1,6 +1,6 @@
 //! High-level installation operations
 
-use crate::parallel::SecurityPolicy;
+use crate::SecurityPolicy;
 use crate::{
     AtomicInstaller, ExecutionContext, InstallContext, InstallResult, ParallelExecutor,
     UninstallContext, UpdateContext,

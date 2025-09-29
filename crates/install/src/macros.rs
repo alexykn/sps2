@@ -1,7 +1,4 @@
-//! Common utilities for the install crate
-//!
-//! This module contains shared utilities and helper functions that are used
-//! across multiple modules in the install crate.
+//! Macros for context builder helpers
 
 #[macro_export]
 macro_rules! context_add_package_method {
@@ -38,7 +35,7 @@ macro_rules! context_builder {
 
                 /// Set the event sender for progress reporting
                 #[must_use]
-                pub fn with_event_sender(mut self, sender: EventSender) -> Self {
+                pub fn with_event_sender(mut self, sender: sps2_events::EventSender) -> Self {
                     self.event_sender = Some(sender);
                     self
                 }
