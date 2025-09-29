@@ -50,12 +50,12 @@ sqlx = { version = "0.8.6", features = [
 reqwest = { version = "0.12.23", features = ["json", "stream"] }
 
 # Serialization
-serde = { version = "1.0.226", features = ["derive"] }
+serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 toml = "0.9.7"
 
 # Error handl2.0.12
-thiserror = "2.0.16"
+thiserror = "2.0.17"
 
 # Utilities
 uuid = { version = "1.18.1", features = ["v4", "serde"] }
