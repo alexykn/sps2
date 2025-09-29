@@ -13,7 +13,7 @@ regex = "1.11.2"
 
 # Parsing metadata files
 toml = "0.9.7"
-serde = { version = "1.0.226", features = ["derive"] }
+serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 
 # Archive extraction
@@ -30,7 +30,7 @@ tempfile = "3.22.0"
 tokio = { version = "1.47.1", features = ["full"] }
 
 # Error handling
-thiserror = "2.0.16"
+thiserror = "2.0.17"
 
 # Internal workspace dependencies
 sps2-net = { path = "../net" }
