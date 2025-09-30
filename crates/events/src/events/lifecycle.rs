@@ -227,7 +227,7 @@ pub enum LifecycleEvent {
 impl LifecycleEvent {
     // Acquisition helpers
     /// Create an acquisition started event
-    #[must_use] 
+    #[must_use]
     pub fn acquisition_started(
         package: String,
         version: Version,
@@ -246,7 +246,7 @@ impl LifecycleEvent {
     }
 
     /// Create an acquisition completed event
-    #[must_use] 
+    #[must_use]
     pub fn acquisition_completed(
         package: String,
         version: Version,
@@ -266,7 +266,7 @@ impl LifecycleEvent {
     }
 
     /// Create an acquisition failed event
-    #[must_use] 
+    #[must_use]
     pub fn acquisition_failed(
         package: String,
         version: Version,
@@ -287,7 +287,7 @@ impl LifecycleEvent {
 
     // Download helpers
     /// Create a download started event
-    #[must_use] 
+    #[must_use]
     pub fn download_started(
         url: String,
         package: Option<String>,
@@ -306,7 +306,7 @@ impl LifecycleEvent {
     }
 
     /// Create a download completed event
-    #[must_use] 
+    #[must_use]
     pub fn download_completed(url: String, package: Option<String>, bytes_downloaded: u64) -> Self {
         Self::Download {
             stage: LifecycleStage::Completed,
@@ -321,7 +321,7 @@ impl LifecycleEvent {
     }
 
     /// Create a download failed event
-    #[must_use] 
+    #[must_use]
     pub fn download_failed(url: String, package: Option<String>, failure: FailureContext) -> Self {
         Self::Download {
             stage: LifecycleStage::Failed,
@@ -337,7 +337,7 @@ impl LifecycleEvent {
 
     // Install helpers
     /// Create an install started event
-    #[must_use] 
+    #[must_use]
     pub fn install_started(package: String, version: Version) -> Self {
         Self::Install {
             stage: LifecycleStage::Started,
@@ -351,7 +351,7 @@ impl LifecycleEvent {
     }
 
     /// Create an install completed event
-    #[must_use] 
+    #[must_use]
     pub fn install_completed(package: String, version: Version, files_installed: usize) -> Self {
         Self::Install {
             stage: LifecycleStage::Completed,
@@ -365,7 +365,7 @@ impl LifecycleEvent {
     }
 
     /// Create an install failed event
-    #[must_use] 
+    #[must_use]
     pub fn install_failed(package: String, version: Version, failure: FailureContext) -> Self {
         Self::Install {
             stage: LifecycleStage::Failed,
@@ -381,7 +381,7 @@ impl LifecycleEvent {
     // Resolver helpers
     // Resolver helpers
     /// Create a resolver started event
-    #[must_use] 
+    #[must_use]
     pub fn resolver_started(
         runtime_targets: usize,
         build_targets: usize,
@@ -404,7 +404,7 @@ impl LifecycleEvent {
     }
 
     /// Create a resolver completed event
-    #[must_use] 
+    #[must_use]
     pub fn resolver_completed(
         total_packages: usize,
         downloaded_packages: usize,
@@ -428,7 +428,7 @@ impl LifecycleEvent {
     }
 
     /// Create a resolver failed event
-    #[must_use] 
+    #[must_use]
     pub fn resolver_failed(failure: FailureContext, conflicting_packages: Vec<String>) -> Self {
         Self::Resolver {
             stage: LifecycleStage::Failed,
@@ -448,7 +448,7 @@ impl LifecycleEvent {
 
     // Repo helpers
     /// Create a repo sync started event
-    #[must_use] 
+    #[must_use]
     pub fn repo_sync_started(url: Option<String>) -> Self {
         Self::Repo {
             stage: LifecycleStage::Started,
@@ -463,7 +463,7 @@ impl LifecycleEvent {
     }
 
     /// Create a repo sync completed event
-    #[must_use] 
+    #[must_use]
     pub fn repo_sync_completed(
         packages_updated: usize,
         duration_ms: u64,
@@ -482,7 +482,7 @@ impl LifecycleEvent {
     }
 
     /// Create a repo sync failed event
-    #[must_use] 
+    #[must_use]
     pub fn repo_sync_failed(url: Option<String>, failure: FailureContext) -> Self {
         Self::Repo {
             stage: LifecycleStage::Failed,
@@ -498,7 +498,7 @@ impl LifecycleEvent {
 
     // Uninstall helpers
     /// Create an uninstall started event
-    #[must_use] 
+    #[must_use]
     pub fn uninstall_started(package: String, version: Version) -> Self {
         Self::Uninstall {
             stage: LifecycleStage::Started,
@@ -512,7 +512,7 @@ impl LifecycleEvent {
     }
 
     /// Create an uninstall completed event
-    #[must_use] 
+    #[must_use]
     pub fn uninstall_completed(package: String, version: Version, files_removed: usize) -> Self {
         Self::Uninstall {
             stage: LifecycleStage::Completed,
@@ -526,7 +526,7 @@ impl LifecycleEvent {
     }
 
     /// Create an uninstall failed event
-    #[must_use] 
+    #[must_use]
     pub fn uninstall_failed(
         package: Option<String>,
         version: Option<Version>,
@@ -545,7 +545,7 @@ impl LifecycleEvent {
 
     // Update helpers
     /// Create an update started event
-    #[must_use] 
+    #[must_use]
     pub fn update_started(
         operation: LifecycleUpdateOperation,
         requested: Vec<String>,
@@ -568,7 +568,7 @@ impl LifecycleEvent {
     }
 
     /// Create an update completed event
-    #[must_use] 
+    #[must_use]
     pub fn update_completed(
         operation: LifecycleUpdateOperation,
         updated: Vec<LifecycleUpdateResult>,
@@ -593,7 +593,7 @@ impl LifecycleEvent {
     }
 
     /// Create an update failed event
-    #[must_use] 
+    #[must_use]
     pub fn update_failed(
         operation: LifecycleUpdateOperation,
         updated: Vec<LifecycleUpdateResult>,
@@ -617,7 +617,7 @@ impl LifecycleEvent {
     }
 
     /// Get the domain for this lifecycle event
-    #[must_use] 
+    #[must_use]
     pub fn domain(&self) -> LifecycleDomain {
         match self {
             Self::Acquisition { .. } => LifecycleDomain::Acquisition,
@@ -631,7 +631,7 @@ impl LifecycleEvent {
     }
 
     /// Get the stage for this lifecycle event
-    #[must_use] 
+    #[must_use]
     pub fn stage(&self) -> &LifecycleStage {
         match self {
             Self::Acquisition { stage, .. }
@@ -645,7 +645,7 @@ impl LifecycleEvent {
     }
 
     /// Get the failure context if this is a failed event
-    #[must_use] 
+    #[must_use]
     pub fn failure(&self) -> Option<&FailureContext> {
         match self {
             Self::Acquisition { failure, .. }

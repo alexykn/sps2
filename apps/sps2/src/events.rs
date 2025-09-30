@@ -859,9 +859,7 @@ impl EventHandler {
                         LifecycleUpdateOperation::Downgrade => "downgrade",
                         LifecycleUpdateOperation::Reinstall => "reinstall",
                     };
-                    let requested = context
-                        .requested.as_deref()
-                        .unwrap_or(&[]);
+                    let requested = context.requested.as_deref().unwrap_or(&[]);
                     let total_targets = context.total_targets.unwrap_or(0);
 
                     let target_text = if requested.is_empty() {
@@ -885,9 +883,7 @@ impl EventHandler {
                         LifecycleUpdateOperation::Downgrade => "downgrade",
                         LifecycleUpdateOperation::Reinstall => "reinstall",
                     };
-                    let updated = context
-                        .updated.as_deref()
-                        .unwrap_or(&[]);
+                    let updated = context.updated.as_deref().unwrap_or(&[]);
                     let skipped = context.skipped.unwrap_or(0);
                     let size_difference = context.size_difference.unwrap_or(0);
                     let duration = context
@@ -930,9 +926,7 @@ impl EventHandler {
                             format!("{op_label} failed: {code_prefix}{}", failure_ctx.message);
 
                         let failed = context.failed.as_deref().unwrap_or(&[]);
-                        let updated = context
-                            .updated.as_deref()
-                            .unwrap_or(&[]);
+                        let updated = context.updated.as_deref().unwrap_or(&[]);
 
                         if !failed.is_empty() {
                             let sample = failed.iter().take(3).cloned().collect::<Vec<_>>();
