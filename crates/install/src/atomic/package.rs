@@ -46,32 +46,28 @@ pub(super) fn carry_forward_packages(
     }
 }
 
-/// Sync staging slot with parent state
+/// Sync staging slot to a specific target state
 ///
-/// This ensures the staging slot mirrors the parent state by:
-/// - Removing packages that are no longer present
-/// - Linking packages that are missing from the slot
+/// This ensures the staging slot mirrors an arbitrary target state by:
+/// - Fast-path: if slot already has the target state, return immediately (O(1))
+/// - Otherwise: diff-based sync removing/linking only deltas (O(changes))
+///
+/// This is the core optimization that makes rollback as fast as install/uninstall.
 ///
 /// # Errors
 ///
 /// Returns an error if filesystem operations or state manager operations fail.
-pub(super) async fn sync_slot_with_parent(
+pub(super) async fn sync_slot_to_state(
     state_manager: &StateManager,
     store: &PackageStore,
     transition: &mut StateTransition,
-    parent_packages: &[sps2_state::models::Package],
+    target_state_id: Uuid,
+    target_packages: &[sps2_state::models::Package],
 ) -> Result<(), Error> {
-    let Some(parent_state) = transition.parent_id else {
-        // No prior state to mirror; ensure slot metadata is cleared.
-        state_manager
-            .set_slot_state(transition.staging_slot, None)
-            .await?;
-        return Ok(());
-    };
-
     let slot_state = state_manager.slot_state(transition.staging_slot).await;
 
-    if slot_state == Some(parent_state) {
+    // Fast path: slot already contains the exact target state
+    if slot_state == Some(target_state_id) {
         return Ok(());
     }
 
@@ -83,7 +79,7 @@ pub(super) async fn sync_slot_with_parent(
         Vec::new()
     };
 
-    let parent_keys: HashSet<String> = parent_packages
+    let target_keys: HashSet<String> = target_packages
         .iter()
         .map(|pkg| format!("{}::{}", pkg.name, pkg.version))
         .collect();
@@ -93,15 +89,15 @@ pub(super) async fn sync_slot_with_parent(
         .map(|pkg| (format!("{}::{}", pkg.name, pkg.version), pkg))
         .collect();
 
-    // Remove packages that should no longer be present in the slot
+    // Remove packages that are no longer present in target state
     for (key, pkg) in &slot_map {
-        if !parent_keys.contains(key) {
+        if !target_keys.contains(key) {
             remove_package_from_staging(state_manager, transition, pkg).await?;
         }
     }
 
-    // Link packages that are present in the parent state but missing from the slot
-    for pkg in parent_packages {
+    // Link packages that are present in target state but missing from slot
+    for pkg in target_packages {
         let key = format!("{}::{}", pkg.name, pkg.version);
         if slot_map.contains_key(&key) {
             continue;
@@ -122,10 +118,42 @@ pub(super) async fn sync_slot_with_parent(
     }
 
     state_manager
-        .set_slot_state(transition.staging_slot, Some(parent_state))
+        .set_slot_state(transition.staging_slot, Some(target_state_id))
         .await?;
 
     Ok(())
+}
+
+/// Sync staging slot with parent state
+///
+/// Convenience wrapper around `sync_slot_to_state` for the common case
+/// where we want to sync to the transition's parent state.
+///
+/// # Errors
+///
+/// Returns an error if filesystem operations or state manager operations fail.
+pub(super) async fn sync_slot_with_parent(
+    state_manager: &StateManager,
+    store: &PackageStore,
+    transition: &mut StateTransition,
+    parent_packages: &[sps2_state::models::Package],
+) -> Result<(), Error> {
+    let Some(parent_state) = transition.parent_id else {
+        // No prior state to mirror; ensure slot metadata is cleared.
+        state_manager
+            .set_slot_state(transition.staging_slot, None)
+            .await?;
+        return Ok(());
+    };
+
+    sync_slot_to_state(
+        state_manager,
+        store,
+        transition,
+        parent_state,
+        parent_packages,
+    )
+    .await
 }
 
 /// Install a single package to staging directory

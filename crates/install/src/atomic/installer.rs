@@ -6,9 +6,6 @@ use crate::{InstallContext, InstallResult, PreparedPackage};
 use sps2_errors::{Error, InstallError};
 use sps2_events::events::{LifecycleEvent, StateTransitionContext, TransitionSummary};
 use sps2_events::{AppEvent, EventEmitter, EventSender, FailureContext, StateEvent};
-use sps2_hash::Hash;
-use sps2_platform::filesystem_helpers as fs_helpers;
-
 use sps2_resolver::{PackageId, ResolvedNode};
 use sps2_state::StateManager;
 use sps2_store::PackageStore;
@@ -326,26 +323,17 @@ impl AtomicInstaller {
             .get_installed_packages_in_state(&target_state_id)
             .await?;
 
-        fs_helpers::ensure_empty_dir(&transition.slot_path).await?;
-
-        for pkg in &target_packages {
-            let hash = Hash::from_hex(&pkg.hash).map_err(|e| {
-                sps2_errors::Error::internal(format!("invalid hash {}: {e}", pkg.hash))
-            })?;
-            let store_path = self.store.package_path(&hash);
-            let pkg_id = PackageId::new(pkg.name.clone(), pkg.version());
-            crate::atomic::fs::link_package_to_staging(
-                &mut transition,
-                &store_path,
-                &pkg_id,
-                false,
-            )
-            .await?;
-        }
-
-        self.state_manager
-            .set_slot_state(transition.staging_slot, Some(target_state_id))
-            .await?;
+        // Use slot sync mechanism for fast rollback
+        // Fast path: if inactive slot already has target state (common for recent rollback),
+        // this returns instantly without any filesystem operations
+        package::sync_slot_to_state(
+            &self.state_manager,
+            &self.store,
+            &mut transition,
+            target_state_id,
+            &target_packages,
+        )
+        .await?;
 
         let journal = sps2_types::state::TransactionJournal {
             new_state_id: target_state_id,
