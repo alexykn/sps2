@@ -9,7 +9,7 @@
 
 use semver::Version;
 use sps2_errors::{Error, PackageError};
-use sps2_events::{AppEvent, EventEmitter, EventSender, FailureContext, ResolverEvent};
+use sps2_events::{AppEvent, EventEmitter, EventSender, FailureContext, LifecycleEvent};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -270,14 +270,14 @@ pub async fn solve_dependencies(
         };
 
         if let Some(sender) = event_sender {
-            sender.emit(AppEvent::Resolver(ResolverEvent::Failed {
-                failure: FailureContext::from_error(&error),
-                conflicting_packages: conflict
+            sender.emit(AppEvent::Lifecycle(LifecycleEvent::resolver_failed(
+                FailureContext::from_error(&error),
+                conflict
                     .conflicting_packages
                     .iter()
                     .map(|(name, version)| format!("{name}@{version}"))
                     .collect(),
-            }));
+            )));
         }
 
         Err(error.into())

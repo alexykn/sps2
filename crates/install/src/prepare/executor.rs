@@ -382,8 +382,8 @@ struct ExecutionNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sps2_events::events::{AcquisitionEvent, AcquisitionSource};
-    use sps2_events::{AppEvent, InstallEvent};
+    use sps2_events::events::{LifecycleAcquisitionSource, LifecycleEvent, LifecycleStage};
+    use sps2_events::AppEvent;
     use sps2_hash::{Hash as PackageHash, HashAlgorithm};
     use sps2_resolver::{DependencyGraph, ResolvedNode};
     use sps2_store::{create_package, PackageStore};
@@ -485,15 +485,23 @@ mod tests {
 
         let mut sequence = Vec::new();
         while let Ok(message) = rx.try_recv() {
-            if let AppEvent::Install(install_event) = message.event {
-                match install_event {
-                    InstallEvent::Started { package, .. } => {
-                        sequence.push(("start", package));
+            if let AppEvent::Lifecycle(lifecycle_event) = message.event {
+                match lifecycle_event {
+                    LifecycleEvent::Install {
+                        stage: LifecycleStage::Started,
+                        context,
+                        ..
+                    } => {
+                        sequence.push(("start", context.package));
                     }
-                    InstallEvent::Completed { package, .. } => {
-                        sequence.push(("complete", package));
+                    LifecycleEvent::Install {
+                        stage: LifecycleStage::Completed,
+                        context,
+                        ..
+                    } => {
+                        sequence.push(("complete", context.package));
                     }
-                    InstallEvent::Failed { .. } => {}
+                    _ => {}
                 }
             }
         }
@@ -583,11 +591,14 @@ mod tests {
 
         let mut saw_store_acquisition = false;
         while let Ok(message) = rx.try_recv() {
-            if let AppEvent::Acquisition(acq) = message.event {
+            if let AppEvent::Lifecycle(acq) = message.event {
                 if matches!(
                     acq,
-                    AcquisitionEvent::Completed {
-                        source: AcquisitionSource::StoreCache { .. },
+                    LifecycleEvent::Acquisition {
+                        context: sps2_events::events::AcquisitionContext {
+                            source: LifecycleAcquisitionSource::StoreCache { .. },
+                            ..
+                        },
                         ..
                     }
                 ) {

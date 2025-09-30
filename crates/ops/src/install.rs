@@ -6,7 +6,7 @@
 use crate::{InstallReport, InstallRequest, OpsCtx};
 use sps2_errors::{Error, OpsError};
 use sps2_events::{
-    AppEvent, EventEmitter, FailureContext, GeneralEvent, ProgressEvent, ResolverEvent,
+    AppEvent, EventEmitter, FailureContext, GeneralEvent, LifecycleEvent, ProgressEvent,
 };
 use sps2_install::{InstallConfig, InstallContext, Installer};
 use sps2_types::{PackageSpec, Version};
@@ -373,11 +373,11 @@ async fn install_remote_packages_parallel(
 
     // Phase 1: Dependency resolution
     let resolve_start = Instant::now();
-    ctx.emit(AppEvent::Resolver(ResolverEvent::Started {
-        runtime_targets: specs.len(),
-        build_targets: 0,
-        local_targets: 0,
-    }));
+    ctx.emit(AppEvent::Lifecycle(LifecycleEvent::resolver_started(
+        specs.len(),
+        0,
+        0,
+    )));
 
     let mut resolution_context = sps2_resolver::ResolutionContext::new();
     for spec in specs {
@@ -391,10 +391,10 @@ async fn install_remote_packages_parallel(
 
             ctx.emit_operation_failed("install", failure.clone());
 
-            ctx.emit(AppEvent::Resolver(ResolverEvent::Failed {
-                failure: failure.clone(),
-                conflicting_packages: Vec::new(),
-            }));
+            ctx.emit(AppEvent::Lifecycle(LifecycleEvent::resolver_failed(
+                failure.clone(),
+                Vec::new(),
+            )));
 
             ctx.emit(AppEvent::Progress(ProgressEvent::Failed {
                 id: progress_id.clone(),
@@ -418,12 +418,12 @@ async fn install_remote_packages_parallel(
             sps2_resolver::NodeAction::Local => reused_packages += 1,
         }
     }
-    ctx.emit(AppEvent::Resolver(ResolverEvent::Completed {
-        total_packages: resolved_packages.len(),
+    ctx.emit(AppEvent::Lifecycle(LifecycleEvent::resolver_completed(
+        resolved_packages.len(),
         downloaded_packages,
         reused_packages,
         duration_ms,
-    }));
+    )));
 
     progress_manager.update_phase_to_done(&progress_id, "Resolve", ctx);
 

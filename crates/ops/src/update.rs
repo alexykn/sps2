@@ -6,10 +6,10 @@
 use crate::{InstallReport, OpsCtx};
 use sps2_errors::Error;
 use sps2_events::{
-    events::{UpdateOperationType, UpdateResult},
+    events::{LifecyclePackageUpdateType, LifecycleUpdateOperation, LifecycleUpdateResult},
     patterns::UpdateProgressConfig,
-    AppEvent, EventEmitter, FailureContext, GeneralEvent, ProgressEvent, ProgressManager,
-    UpdateEvent,
+    AppEvent, EventEmitter, FailureContext, GeneralEvent, LifecycleEvent, ProgressEvent,
+    ProgressManager,
 };
 use sps2_install::{InstallConfig, Installer, UpdateContext};
 use sps2_types::{PackageSpec, Version};
@@ -80,11 +80,11 @@ pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRep
     let correlation = ctx.current_correlation();
     progress_manager.emit_started(&progress_id, ctx, correlation.as_deref());
 
-    ctx.emit(AppEvent::Update(UpdateEvent::Started {
-        operation: UpdateOperationType::Update,
-        requested: requested_packages.clone(),
+    ctx.emit(AppEvent::Lifecycle(LifecycleEvent::update_started(
+        LifecycleUpdateOperation::Update,
+        requested_packages.clone(),
         total_targets,
-    }));
+    )));
 
     // Execute update
     let result = installer.update(update_context).await.inspect_err(|e| {
@@ -98,16 +98,16 @@ pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRep
             partial_duration: start.elapsed(),
         }));
 
-        ctx.emit(AppEvent::Update(UpdateEvent::Failed {
-            operation: UpdateOperationType::Update,
-            failure,
-            updated: Vec::new(),
-            failed: if requested_packages.is_empty() {
+        ctx.emit(AppEvent::Lifecycle(LifecycleEvent::update_failed(
+            LifecycleUpdateOperation::Update,
+            Vec::new(),
+            if requested_packages.is_empty() {
                 Vec::new()
             } else {
                 requested_packages.clone()
             },
-        }));
+            failure,
+        )));
     })?;
 
     let report = create_update_report(
@@ -119,7 +119,7 @@ pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRep
             progress_id: &progress_id,
             progress_manager: &progress_manager,
             total_targets,
-            operation: UpdateOperationType::Update,
+            operation: LifecycleUpdateOperation::Update,
         },
     );
     Ok(report)
@@ -129,7 +129,7 @@ struct UpdateReportContext<'a> {
     progress_id: &'a str,
     progress_manager: &'a ProgressManager,
     total_targets: usize,
-    operation: UpdateOperationType,
+    operation: LifecycleUpdateOperation,
 }
 
 fn create_update_report(
@@ -179,17 +179,17 @@ fn create_update_report(
         .progress_manager
         .complete_operation(context.progress_id, ctx);
 
-    let updated_results: Vec<UpdateResult> = result
+    let updated_results: Vec<LifecycleUpdateResult> = result
         .updated_packages
         .iter()
-        .map(|pkg| UpdateResult {
+        .map(|pkg| LifecycleUpdateResult {
             package: pkg.name.clone(),
             from_version: installed_map
                 .get(&pkg.name)
                 .cloned()
                 .unwrap_or_else(|| pkg.version.clone()),
             to_version: pkg.version.clone(),
-            update_type: sps2_events::events::PackageUpdateType::Minor, // TODO: Determine actual update type
+            update_type: LifecyclePackageUpdateType::Minor, // TODO: Determine actual update type
             duration: std::time::Duration::from_secs(30), // TODO: Track actual duration per package
             size_change: 0,                               // TODO: Calculate actual size change
         })
@@ -200,13 +200,13 @@ fn create_update_report(
         .saturating_sub(updated_results.len())
         .saturating_sub(result.installed_packages.len());
 
-    ctx.emit(AppEvent::Update(UpdateEvent::Completed {
-        operation: context.operation,
-        updated: updated_results,
+    ctx.emit(AppEvent::Lifecycle(LifecycleEvent::update_completed(
+        context.operation,
+        updated_results,
         skipped,
-        duration: start.elapsed(),
-        size_difference: 0, // TODO: Calculate actual space difference
-    }));
+        start.elapsed(),
+        0, // TODO: Calculate actual space difference
+    )));
 
     report
 }

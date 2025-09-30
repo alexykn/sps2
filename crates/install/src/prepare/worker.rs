@@ -3,10 +3,8 @@
 use crate::PreparedPackage;
 use dashmap::DashMap;
 use sps2_errors::{Error, InstallError};
-use sps2_events::events::AcquisitionSource;
-use sps2_events::{
-    AcquisitionEvent, AppEvent, EventEmitter, FailureContext, GeneralEvent, InstallEvent,
-};
+use sps2_events::events::{LifecycleAcquisitionSource, LifecycleEvent};
+use sps2_events::{AppEvent, EventEmitter, FailureContext, GeneralEvent};
 use sps2_net::{PackageDownloadConfig, PackageDownloader};
 use sps2_resolver::{NodeAction, PackageId, ResolvedNode};
 use sps2_state::StateManager;
@@ -52,10 +50,10 @@ pub(crate) async fn process_package(args: ProcessPackageArgs) -> Result<PackageI
         context: std::collections::HashMap::new(),
     }));
 
-    context.emit(AppEvent::Install(InstallEvent::Started {
-        package: package_id.name.clone(),
-        version: package_id.version.clone(),
-    }));
+    context.emit(AppEvent::Lifecycle(LifecycleEvent::install_started(
+        package_id.name.clone(),
+        package_id.version.clone(),
+    )));
 
     match node.action {
         NodeAction::Download => {
@@ -77,27 +75,27 @@ pub(crate) async fn process_package(args: ProcessPackageArgs) -> Result<PackageI
 
                 match download_result {
                     Ok(Ok(size)) => {
-                        context.emit(AppEvent::Acquisition(AcquisitionEvent::Completed {
-                            package: package_id.name.clone(),
-                            version: package_id.version.clone(),
-                            source: AcquisitionSource::Remote {
+                        context.emit(AppEvent::Lifecycle(LifecycleEvent::acquisition_completed(
+                            package_id.name.clone(),
+                            package_id.version.clone(),
+                            LifecycleAcquisitionSource::Remote {
                                 url: url.clone(),
                                 mirror_priority: 0,
                             },
                             size,
-                        }));
+                        )));
                     }
                     Ok(Err(e)) => {
                         let failure = FailureContext::from_error(&e);
-                        context.emit(AppEvent::Acquisition(AcquisitionEvent::Failed {
-                            package: package_id.name.clone(),
-                            version: package_id.version.clone(),
-                            source: AcquisitionSource::Remote {
+                        context.emit(AppEvent::Lifecycle(LifecycleEvent::acquisition_failed(
+                            package_id.name.clone(),
+                            package_id.version.clone(),
+                            LifecycleAcquisitionSource::Remote {
                                 url: url.clone(),
                                 mirror_priority: 0,
                             },
                             failure,
-                        }));
+                        )));
                         return Err(e);
                     }
                     Err(_) => {
@@ -108,15 +106,15 @@ pub(crate) async fn process_package(args: ProcessPackageArgs) -> Result<PackageI
                         }
                         .into();
                         let failure = FailureContext::from_error(&err);
-                        context.emit(AppEvent::Acquisition(AcquisitionEvent::Failed {
-                            package: package_id.name.clone(),
-                            version: package_id.version.clone(),
-                            source: AcquisitionSource::Remote {
+                        context.emit(AppEvent::Lifecycle(LifecycleEvent::acquisition_failed(
+                            package_id.name.clone(),
+                            package_id.version.clone(),
+                            LifecycleAcquisitionSource::Remote {
                                 url: url.clone(),
                                 mirror_priority: 0,
                             },
                             failure,
-                        }));
+                        )));
                         return Err(err);
                     }
                 }
@@ -148,11 +146,11 @@ pub(crate) async fn process_package(args: ProcessPackageArgs) -> Result<PackageI
                     }));
 
                     // For already installed packages, just mark as completed
-                    context.emit(AppEvent::Install(InstallEvent::Completed {
-                        package: package_id.name.clone(),
-                        version: package_id.version.clone(),
-                        files_installed: 0,
-                    }));
+                    context.emit(AppEvent::Lifecycle(LifecycleEvent::install_completed(
+                        package_id.name.clone(),
+                        package_id.version.clone(),
+                        0,
+                    )));
 
                     return Ok(package_id);
                 }
@@ -195,11 +193,11 @@ pub(crate) async fn process_package(args: ProcessPackageArgs) -> Result<PackageI
                         context: std::collections::HashMap::new(),
                     }));
 
-                    context.emit(AppEvent::Install(InstallEvent::Completed {
-                        package: package_id.name.clone(),
-                        version: package_id.version.clone(),
-                        files_installed: 0, // TODO: Count actual files
-                    }));
+                    context.emit(AppEvent::Lifecycle(LifecycleEvent::install_completed(
+                        package_id.name.clone(),
+                        package_id.version.clone(),
+                        0, // TODO: Count actual files
+                    )));
                 } else {
                     return Err(InstallError::AtomicOperationFailed {
                         message: "failed to get hash from local package".to_string(),
@@ -245,14 +243,14 @@ pub(crate) async fn download_package_only(
         return Ok(size);
     }
 
-    context.emit(AppEvent::Acquisition(AcquisitionEvent::Started {
-        package: package_id.name.clone(),
-        version: package_id.version.clone(),
-        source: AcquisitionSource::Remote {
+    context.emit(AppEvent::Lifecycle(LifecycleEvent::acquisition_started(
+        package_id.name.clone(),
+        package_id.version.clone(),
+        LifecycleAcquisitionSource::Remote {
             url: url.to_string(),
             mirror_priority: 0,
         },
-    }));
+    )));
 
     // Create a temporary directory for the download
     let temp_dir = tempfile::tempdir().map_err(|e| InstallError::TempFileError {
@@ -407,13 +405,13 @@ pub(crate) async fn try_prepare_from_store(
         return Ok(None);
     };
 
-    context.emit(AppEvent::Acquisition(AcquisitionEvent::Started {
-        package: package_id.name.clone(),
-        version: package_id.version.clone(),
-        source: AcquisitionSource::StoreCache {
+    context.emit(AppEvent::Lifecycle(LifecycleEvent::acquisition_started(
+        package_id.name.clone(),
+        package_id.version.clone(),
+        LifecycleAcquisitionSource::StoreCache {
             hash: expected_hash.to_hex(),
         },
-    }));
+    )));
 
     let size = stored_package.size().await?;
     let store_path = stored_package.path().to_path_buf();
@@ -438,14 +436,14 @@ pub(crate) async fn try_prepare_from_store(
         context: std::collections::HashMap::new(),
     }));
 
-    context.emit(AppEvent::Acquisition(AcquisitionEvent::Completed {
-        package: package_id.name.clone(),
-        version: package_id.version.clone(),
-        source: AcquisitionSource::StoreCache {
+    context.emit(AppEvent::Lifecycle(LifecycleEvent::acquisition_completed(
+        package_id.name.clone(),
+        package_id.version.clone(),
+        LifecycleAcquisitionSource::StoreCache {
             hash: expected_hash.to_hex(),
         },
         size,
-    }));
+    )));
 
     Ok(Some(size))
 }

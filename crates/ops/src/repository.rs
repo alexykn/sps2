@@ -5,7 +5,7 @@ use crate::{keys::KeyManager, OpsCtx};
 use dialoguer::{theme::ColorfulTheme, Confirm};
 use sps2_config::{Config, RepositoryConfig};
 use sps2_errors::{ConfigError, Error, OpsError, SigningError};
-use sps2_events::{AppEvent, EventEmitter, FailureContext, GeneralEvent, RepoEvent};
+use sps2_events::{AppEvent, EventEmitter, FailureContext, GeneralEvent, LifecycleEvent};
 use std::path::PathBuf;
 use std::time::Instant;
 /// Sync repository index
@@ -25,26 +25,26 @@ pub async fn reposync(ctx: &OpsCtx, yes: bool) -> Result<String, Error> {
         let err = Error::Config(ConfigError::MissingField {
             field: "repositories".to_string(),
         });
-        ctx.emit(AppEvent::Repo(RepoEvent::SyncFailed {
-            url: None,
-            failure: FailureContext::from_error(&err),
-        }));
+        ctx.emit(AppEvent::Lifecycle(LifecycleEvent::repo_sync_failed(
+            None,
+            FailureContext::from_error(&err),
+        )));
         return Err(err);
     };
 
-    ctx.emit(AppEvent::Repo(RepoEvent::SyncStarted {
-        url: Some(base_url.to_string()),
-    }));
+    ctx.emit(AppEvent::Lifecycle(LifecycleEvent::repo_sync_started(
+        Some(base_url.to_string()),
+    )));
 
     let index_result = sync_and_verify_index(ctx, &base_url, start, yes).await;
     let index_json = match index_result {
         Ok(json) => json,
         Err(e) => {
             let failure = FailureContext::from_error(&e);
-            ctx.emit(AppEvent::Repo(RepoEvent::SyncFailed {
-                url: Some(base_url.to_string()),
+            ctx.emit(AppEvent::Lifecycle(LifecycleEvent::repo_sync_failed(
+                Some(base_url.to_string()),
                 failure,
-            }));
+            )));
             return Err(e);
         }
     };
@@ -63,10 +63,10 @@ pub async fn reposync(ctx: &OpsCtx, yes: bool) -> Result<String, Error> {
                 ),
             }
             .into();
-            ctx.emit(AppEvent::Repo(RepoEvent::SyncFailed {
-                url: Some(base_url.to_string()),
-                failure: FailureContext::from_error(&err),
-            }));
+            ctx.emit(AppEvent::Lifecycle(LifecycleEvent::repo_sync_failed(
+                Some(base_url.to_string()),
+                FailureContext::from_error(&err),
+            )));
             return Err(err);
         }
     }
@@ -306,11 +306,12 @@ async fn download_index_conditional(
         }
         Ok(content)
     } else {
-        ctx.tx.emit(AppEvent::Repo(RepoEvent::SyncCompleted {
-            packages_updated: 0,
-            duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
-            bytes_transferred: 0,
-        }));
+        ctx.tx
+            .emit(AppEvent::Lifecycle(LifecycleEvent::repo_sync_completed(
+                0,
+                u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+                0,
+            )));
         Ok("Repository index is unchanged (304 Not Modified)".to_string())
     }
 }
@@ -339,11 +340,11 @@ async fn finalize_index_update(
         "Repository index updated (no new packages)".to_string()
     };
 
-    ctx.emit(AppEvent::Repo(RepoEvent::SyncCompleted {
+    ctx.emit(AppEvent::Lifecycle(LifecycleEvent::repo_sync_completed(
         packages_updated,
-        duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
-        bytes_transferred: 0, // TODO: Track actual bytes transferred
-    }));
+        u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+        0, // TODO: Track actual bytes transferred
+    )));
 
     Ok(message)
 }

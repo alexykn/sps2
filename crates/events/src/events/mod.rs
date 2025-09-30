@@ -48,40 +48,28 @@ impl FailureContext {
 }
 
 // Declare all domain modules
-pub mod acquisition;
 pub mod audit;
 pub mod build;
-pub mod download;
 pub mod general;
 pub mod guard;
-pub mod install;
+pub mod lifecycle; // Generic lifecycle events (replaces acquisition, download, install, resolver, repo, uninstall, update)
 pub mod package;
 pub mod platform;
 pub mod progress;
 pub mod qa;
-pub mod repo;
-pub mod resolver;
 pub mod state;
-pub mod uninstall;
-pub mod update;
 
 // Re-export all domain events
-pub use acquisition::*;
 pub use audit::*;
 pub use build::*;
-pub use download::*;
 pub use general::*;
 pub use guard::*;
-pub use install::*;
+pub use lifecycle::*; // Generic lifecycle events (replaces old event types)
 pub use package::*;
 pub use platform::*;
 pub use progress::*;
 pub use qa::*;
-pub use repo::*;
-pub use resolver::*;
 pub use state::*;
-pub use uninstall::*;
-pub use update::*;
 
 /// Top-level application event enum that aggregates all domain-specific events
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,35 +78,14 @@ pub enum AppEvent {
     /// General utility events (warnings, errors, operations)
     General(GeneralEvent),
 
-    /// Download-specific events (HTTP downloads, progress, retries)
-    Download(DownloadEvent),
-
     /// Build system events (compilation, caching, sessions)
     Build(BuildEvent),
 
     /// State management events (transactions, rollbacks)
     State(StateEvent),
 
-    /// Package installation events (staging, installation, validation)
-    Install(InstallEvent),
-
-    /// Package uninstallation events (removal, dependency checking)
-    Uninstall(UninstallEvent),
-
-    /// Package update/upgrade events (update planning, batch updates)
-    Update(UpdateEvent),
-
-    /// Package acquisition events (download, cache, verification)
-    Acquisition(AcquisitionEvent),
-
     /// Progress tracking events (sophisticated progress algorithms)
     Progress(ProgressEvent),
-
-    /// Repository and index events (sync, mirroring)
-    Repo(RepoEvent),
-
-    /// Resolver events (dependency resolution, SAT solving)
-    Resolver(ResolverEvent),
 
     /// Guard events (filesystem integrity, healing)
     Guard(GuardEvent),
@@ -134,6 +101,9 @@ pub enum AppEvent {
 
     /// Platform-specific operation events (binary, filesystem, process operations)
     Platform(PlatformEvent),
+
+    /// Generic lifecycle events (acquisition, download, install, resolver, repo, uninstall, update)
+    Lifecycle(LifecycleEvent),
 }
 
 impl AppEvent {
@@ -142,21 +112,23 @@ impl AppEvent {
     pub fn event_source(&self) -> EventSource {
         match self {
             AppEvent::General(_) => EventSource::GENERAL,
-            AppEvent::Download(_) => EventSource::DOWNLOAD,
             AppEvent::Build(_) => EventSource::BUILD,
             AppEvent::State(_) => EventSource::STATE,
-            AppEvent::Install(_) => EventSource::INSTALL,
-            AppEvent::Uninstall(_) => EventSource::UNINSTALL,
-            AppEvent::Update(_) => EventSource::UPDATE,
-            AppEvent::Acquisition(_) => EventSource::ACQUISITION,
             AppEvent::Progress(_) => EventSource::PROGRESS,
-            AppEvent::Repo(_) => EventSource::REPO,
-            AppEvent::Resolver(_) => EventSource::RESOLVER,
             AppEvent::Guard(_) => EventSource::GUARD,
             AppEvent::Qa(_) => EventSource::QA,
             AppEvent::Audit(_) => EventSource::AUDIT,
             AppEvent::Package(_) => EventSource::PACKAGE,
             AppEvent::Platform(_) => EventSource::PLATFORM,
+            AppEvent::Lifecycle(event) => match event.domain() {
+                LifecycleDomain::Acquisition => EventSource::ACQUISITION,
+                LifecycleDomain::Download => EventSource::DOWNLOAD,
+                LifecycleDomain::Install => EventSource::INSTALL,
+                LifecycleDomain::Resolver => EventSource::RESOLVER,
+                LifecycleDomain::Repo => EventSource::REPO,
+                LifecycleDomain::Uninstall => EventSource::UNINSTALL,
+                LifecycleDomain::Update => EventSource::UPDATE,
+            },
         }
     }
 
@@ -168,12 +140,7 @@ impl AppEvent {
         match self {
             // Error-level events
             AppEvent::General(GeneralEvent::Error { .. })
-            | AppEvent::Download(DownloadEvent::Failed { .. })
             | AppEvent::Build(BuildEvent::Failed { .. })
-            | AppEvent::Install(InstallEvent::Failed { .. })
-            | AppEvent::Uninstall(UninstallEvent::Failed { .. })
-            | AppEvent::Update(UpdateEvent::Failed { .. })
-            | AppEvent::Acquisition(AcquisitionEvent::Failed { .. })
             | AppEvent::Progress(ProgressEvent::Failed { .. })
             | AppEvent::Qa(QaEvent::PipelineFailed { .. })
             | AppEvent::Package(PackageEvent::OperationFailed { .. })
@@ -186,6 +153,9 @@ impl AppEvent {
                 | StateEvent::RollbackFailed { .. }
                 | StateEvent::CleanupFailed { .. },
             ) => Level::ERROR,
+
+            // Lifecycle events - check stage
+            AppEvent::Lifecycle(event) if event.stage() == &LifecycleStage::Failed => Level::ERROR,
 
             // Warning-level events
             AppEvent::General(GeneralEvent::Warning { .. })
@@ -216,21 +186,23 @@ impl AppEvent {
     pub fn log_target(&self) -> &'static str {
         match self {
             AppEvent::General(_) => "sps2::events::general",
-            AppEvent::Download(_) => "sps2::events::download",
             AppEvent::Build(_) => "sps2::events::build",
             AppEvent::State(_) => "sps2::events::state",
-            AppEvent::Install(_) => "sps2::events::install",
-            AppEvent::Uninstall(_) => "sps2::events::uninstall",
-            AppEvent::Update(_) => "sps2::events::update",
-            AppEvent::Acquisition(_) => "sps2::events::acquisition",
             AppEvent::Progress(_) => "sps2::events::progress",
-            AppEvent::Repo(_) => "sps2::events::repo",
-            AppEvent::Resolver(_) => "sps2::events::resolver",
             AppEvent::Guard(_) => "sps2::events::guard",
             AppEvent::Qa(_) => "sps2::events::qa",
             AppEvent::Audit(_) => "sps2::events::audit",
             AppEvent::Package(_) => "sps2::events::package",
             AppEvent::Platform(_) => "sps2::events::platform",
+            AppEvent::Lifecycle(event) => match event.domain() {
+                LifecycleDomain::Acquisition => "sps2::events::acquisition",
+                LifecycleDomain::Download => "sps2::events::download",
+                LifecycleDomain::Install => "sps2::events::install",
+                LifecycleDomain::Resolver => "sps2::events::resolver",
+                LifecycleDomain::Repo => "sps2::events::repo",
+                LifecycleDomain::Uninstall => "sps2::events::uninstall",
+                LifecycleDomain::Update => "sps2::events::update",
+            },
         }
     }
 

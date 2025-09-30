@@ -11,7 +11,7 @@ use super::validation::{validate_response, validate_url};
 use crate::client::{NetClient, NetConfig};
 use sps2_errors::{Error, NetworkError};
 use sps2_events::{
-    AppEvent, DownloadEvent, EventEmitter, EventSender, FailureContext, GeneralEvent,
+    AppEvent, EventEmitter, EventSender, FailureContext, GeneralEvent, LifecycleEvent,
 };
 use sps2_hash::Hash;
 use sps2_types::Version;
@@ -392,11 +392,11 @@ impl PackageDownloader {
 
         let failure = FailureContext::from_error(&final_error);
 
-        tx.emit(AppEvent::Download(DownloadEvent::Failed {
-            url: url.to_string(),
-            package: package.clone(),
+        tx.emit(AppEvent::Lifecycle(LifecycleEvent::download_failed(
+            url.to_string(),
+            package.clone(),
             failure,
-        }));
+        )));
 
         Err(final_error)
     }
@@ -459,11 +459,11 @@ impl PackageDownloader {
             .into());
         }
 
-        tx.emit(AppEvent::Download(DownloadEvent::Started {
-            url: url.to_string(),
-            package: package.map(str::to_string),
-            total_bytes: Some(total_size),
-        }));
+        tx.emit(AppEvent::Lifecycle(LifecycleEvent::download_started(
+            url.to_string(),
+            package.map(str::to_string),
+            Some(total_size),
+        )));
 
         // Download with streaming and progress
         let params = StreamParams {
@@ -478,11 +478,11 @@ impl PackageDownloader {
         let result =
             stream_download(&self.config, response, dest_path, resume_offset, &params).await?;
 
-        tx.emit(AppEvent::Download(DownloadEvent::Completed {
-            url: url.to_string(),
-            package: package.map(str::to_string),
-            bytes_downloaded: result.size,
-        }));
+        tx.emit(AppEvent::Lifecycle(LifecycleEvent::download_completed(
+            url.to_string(),
+            package.map(str::to_string),
+            result.size,
+        )));
 
         Ok(result)
     }
