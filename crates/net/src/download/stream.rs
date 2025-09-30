@@ -10,18 +10,56 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::fs::{self as tokio_fs, OpenOptions};
+use tokio::fs::{self as tokio_fs, File, OpenOptions};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt, SeekFrom};
 
-/// Stream download with progress reporting and hash calculation
-pub(super) async fn stream_download(
+/// RAII guard for download lock file - ensures cleanup on drop
+struct LockGuard {
+    path: std::path::PathBuf,
+    _file: File,
+}
+
+impl LockGuard {
+    async fn new(lock_path: std::path::PathBuf) -> Result<Self, Error> {
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true) // Atomic - fails if file already exists
+            .open(&lock_path)
+            .await
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::AlreadyExists {
+                    NetworkError::DownloadFailed(format!(
+                        "File {} is already being downloaded by another process",
+                        lock_path.display()
+                    ))
+                } else {
+                    NetworkError::DownloadFailed(format!(
+                        "Failed to create lock file {}: {e}",
+                        lock_path.display()
+                    ))
+                }
+            })?;
+
+        Ok(Self {
+            path: lock_path,
+            _file: file,
+        })
+    }
+}
+
+impl Drop for LockGuard {
+    fn drop(&mut self) {
+        // Best-effort cleanup - ignore errors
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+/// Prepare file and hasher for download
+async fn prepare_download(
     config: &super::config::PackageDownloadConfig,
-    response: reqwest::Response,
     dest_path: &Path,
     resume_offset: u64,
-    params: &StreamParams<'_>,
-) -> Result<DownloadResult, Error> {
-    // Open file for writing (append if resuming)
+) -> Result<(File, blake3::Hasher), Error> {
     let mut file = if resume_offset > 0 {
         OpenOptions::new()
             .create(true)
@@ -37,77 +75,41 @@ pub(super) async fn stream_download(
         file.seek(SeekFrom::End(0)).await?;
     }
 
-    // Initialize progress tracking
-    let downloaded = Arc::new(AtomicU64::new(resume_offset));
-    let _start_time = Instant::now();
-    let mut last_progress_update = Instant::now();
-    let mut first_chunk = true;
+    let hasher = if resume_offset > 0 {
+        calculate_existing_file_hash(config, dest_path, resume_offset).await?
+    } else {
+        blake3::Hasher::new()
+    };
 
-    // Initialize hash calculation
-    let mut hasher = blake3::Hasher::new();
+    Ok((file, hasher))
+}
 
-    // If resuming, we need to rehash the existing file content
-    if resume_offset > 0 {
-        let existing_hash = calculate_existing_file_hash(config, dest_path, resume_offset).await?;
-        hasher = existing_hash;
-    }
+/// Handle progress reporting during download
+fn should_report_progress(first_chunk: bool, last_update: &Instant) -> bool {
+    first_chunk || last_update.elapsed() >= Duration::from_millis(50)
+}
 
-    // Stream the response
-    let mut stream = response.bytes_stream();
-
-    while let Some(chunk_result) = stream.next().await {
-        let chunk = chunk_result.map_err(|e| NetworkError::DownloadFailed(e.to_string()))?;
-
-        // Update hash
-        hasher.update(&chunk);
-
-        // Write to file
-        file.write_all(&chunk).await?;
-
-        // Update progress
-        let current_downloaded =
-            downloaded.fetch_add(chunk.len() as u64, Ordering::Relaxed) + chunk.len() as u64;
-
-        // Emit progress events (throttled to avoid spam, but always emit first chunk)
-        if first_chunk || last_progress_update.elapsed() >= Duration::from_millis(50) {
-            if let Some(progress_manager) = params.progress_manager {
-                // Use unified progress tracking system
-                progress_manager.update_progress(
-                    &params.progress_tracker_id,
-                    current_downloaded,
-                    Some(params.total_size),
-                    params.event_sender,
-                );
-            }
-            last_progress_update = Instant::now();
-            first_chunk = false;
-        }
-    }
-
-    // Ensure all data is written
-    file.flush().await?;
-    drop(file);
-
-    let final_downloaded = downloaded.load(Ordering::Relaxed);
-
-    // Emit final progress event to ensure 100% completion is reported
+/// Report progress update
+fn report_progress(params: &StreamParams<'_>, current_downloaded: u64) {
     if let Some(progress_manager) = params.progress_manager {
-        // Use unified progress tracking system for final update
         progress_manager.update_progress(
             &params.progress_tracker_id,
-            final_downloaded,
+            current_downloaded,
             Some(params.total_size),
             params.event_sender,
         );
     }
+}
 
-    let final_hash = Hash::from_blake3_bytes(*hasher.finalize().as_bytes());
-
-    // Verify hash if expected
-    if let Some(expected) = params.expected_hash {
-        if final_hash != *expected {
-            // Clean up file on hash mismatch
-            let _ = tokio_fs::remove_file(dest_path).await;
+/// Verify download hash matches expected
+fn verify_hash(
+    final_hash: &Hash,
+    expected_hash: Option<&Hash>,
+    dest_path: &Path,
+) -> Result<(), Error> {
+    if let Some(expected) = expected_hash {
+        if final_hash != expected {
+            let _ = std::fs::remove_file(dest_path);
             return Err(NetworkError::ChecksumMismatch {
                 expected: expected.to_hex(),
                 actual: final_hash.to_hex(),
@@ -115,7 +117,74 @@ pub(super) async fn stream_download(
             .into());
         }
     }
+    Ok(())
+}
 
+/// Stream download with progress reporting and hash calculation
+pub(super) async fn stream_download(
+    config: &super::config::PackageDownloadConfig,
+    response: reqwest::Response,
+    dest_path: &Path,
+    resume_offset: u64,
+    params: &StreamParams<'_>,
+) -> Result<DownloadResult, Error> {
+    // Create lock file atomically to prevent concurrent downloads
+    // Lock guard will automatically clean up on drop (including panics/errors)
+    let lock_path = dest_path.with_extension("lock");
+    let _lock_guard = LockGuard::new(lock_path).await?;
+
+    let (mut file, mut hasher) = prepare_download(config, dest_path, resume_offset).await?;
+
+    // Initialize progress tracking
+    let downloaded = Arc::new(AtomicU64::new(resume_offset));
+    let mut last_progress_update = Instant::now();
+    let mut first_chunk = true;
+
+    // Stream the response
+    let mut stream = response.bytes_stream();
+    let chunk_timeout = config.chunk_timeout;
+
+    loop {
+        let chunk_result = tokio::time::timeout(chunk_timeout, stream.next()).await;
+
+        match chunk_result {
+            Ok(Some(chunk_result)) => {
+                let chunk =
+                    chunk_result.map_err(|e| NetworkError::DownloadFailed(e.to_string()))?;
+
+                hasher.update(&chunk);
+                file.write_all(&chunk).await?;
+
+                let current_downloaded = downloaded
+                    .fetch_add(chunk.len() as u64, Ordering::Relaxed)
+                    + chunk.len() as u64;
+
+                if should_report_progress(first_chunk, &last_progress_update) {
+                    report_progress(params, current_downloaded);
+                    last_progress_update = Instant::now();
+                    first_chunk = false;
+                }
+            }
+            Ok(None) => break,
+            Err(_) => {
+                return Err(NetworkError::Timeout {
+                    url: params.url.to_string(),
+                }
+                .into());
+            }
+        }
+    }
+
+    file.flush().await?;
+    drop(file);
+
+    let final_downloaded = downloaded.load(Ordering::Relaxed);
+    report_progress(params, final_downloaded);
+
+    let final_hash = Hash::from_blake3_bytes(*hasher.finalize().as_bytes());
+    verify_hash(&final_hash, params.expected_hash, dest_path)?;
+
+    // Lock guard automatically cleaned up on drop
     Ok(DownloadResult {
         hash: final_hash,
         size: final_downloaded,

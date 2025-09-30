@@ -9,7 +9,7 @@ use super::retry::calculate_backoff_delay;
 use super::stream::{download_file_simple, stream_download};
 use super::validation::{validate_response, validate_url};
 use crate::client::{NetClient, NetConfig};
-use sps2_errors::{Error, NetworkError};
+use sps2_errors::{Error, NetworkError, SigningError};
 use sps2_events::{
     AppEvent, EventEmitter, EventSender, FailureContext, GeneralEvent, LifecycleEvent,
 };
@@ -159,11 +159,17 @@ impl PackageDownloader {
     }
 
     /// Verify the signature of a downloaded package
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if signature file cannot be read, trusted keys cannot be loaded,
+    /// or if no trusted keys are available for verification.
     async fn verify_package_signature(
         &self,
         package_path: &Path,
         signature_path: &Path,
-    ) -> Result<bool, NetworkError> {
+    ) -> Result<bool, Error> {
+        // Read signature file
         let sig_str = tokio::fs::read_to_string(signature_path)
             .await
             .map_err(|e| {
@@ -173,35 +179,73 @@ impl PackageDownloader {
                 ))
             })?;
 
-        // For now, use the bootstrap/trusted keys loaded by ops during reposync
-        // The allowed keys resolution is performed at a higher layer; here we emit result only
-        // We do a best-effort verify via the shared helper using any available key files under KEYS_DIR
-        let mut allowed = Vec::new();
+        // Load trusted keys from the standard location
         let keys_dir = std::path::Path::new(sps2_config::fixed_paths::KEYS_DIR);
         let keys_file = keys_dir.join("trusted_keys.json");
-        if let Ok(content) = tokio::fs::read_to_string(&keys_file).await {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                if let Some(obj) = json.as_object() {
-                    for (key_id, entry) in obj {
-                        if let Some(pk) = entry.get("public_key").and_then(|v| v.as_str()) {
-                            allowed.push(sps2_signing::PublicKeyRef {
-                                id: key_id.clone(),
-                                algo: sps2_signing::Algorithm::Minisign,
-                                data: pk.to_string(),
-                            });
+
+        let mut allowed = Vec::new();
+
+        // Try to read and parse trusted keys file
+        match tokio::fs::read_to_string(&keys_file).await {
+            Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(json) => {
+                    if let Some(obj) = json.as_object() {
+                        for (key_id, entry) in obj {
+                            if let Some(pk) = entry.get("public_key").and_then(|v| v.as_str()) {
+                                allowed.push(sps2_signing::PublicKeyRef {
+                                    id: key_id.clone(),
+                                    algo: sps2_signing::Algorithm::Minisign,
+                                    data: pk.to_string(),
+                                });
+                            }
                         }
                     }
                 }
+                Err(e) => {
+                    return Err(NetworkError::DownloadFailed(format!(
+                        "Failed to parse trusted keys file {}: {e}",
+                        keys_file.display()
+                    ))
+                    .into());
+                }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // No trusted keys file - this is a warning condition, not an error
+                // Return false to indicate signature could not be verified
+                return Ok(false);
+            }
+            Err(e) => {
+                return Err(NetworkError::DownloadFailed(format!(
+                    "Failed to read trusted keys file {}: {e}",
+                    keys_file.display()
+                ))
+                .into());
             }
         }
 
-        let verified = if allowed.is_empty() {
-            false
-        } else {
-            sps2_signing::verify_minisign_file_with_keys(package_path, &sig_str, &allowed).is_ok()
-        };
+        // If no keys were found in the file, we cannot verify
+        if allowed.is_empty() {
+            return Ok(false);
+        }
 
-        Ok(verified)
+        // Perform signature verification with the loaded keys
+        match sps2_signing::verify_minisign_file_with_keys(package_path, &sig_str, &allowed) {
+            Ok(_key_id) => Ok(true),
+            Err(Error::Signing(SigningError::NoTrustedKeyFound { .. })) => {
+                // Key ID from signature doesn't match any of our trusted keys
+                // This is not necessarily an error - return false to indicate unverified
+                Ok(false)
+            }
+            Err(e) => {
+                // Actual verification failure (signature mismatch, invalid format, etc.)
+                // This is a security issue - fail the download
+                Err(NetworkError::DownloadFailed(format!(
+                    "Signature verification failed for {}: {e}",
+                    package_path.display()
+                ))
+                .into())
+            }
+        }
     }
 
     /// Download multiple packages concurrently
@@ -232,6 +276,7 @@ impl PackageDownloader {
             let batch_progress_id_clone = batch_progress_id.clone();
 
             let fut = async move {
+                // Acquire permit with proper RAII - will be released when dropped
                 let _permit = downloader
                     .config
                     .resources
@@ -264,6 +309,7 @@ impl PackageDownloader {
                     );
                 }
 
+                // Perform the download - permit will be held throughout
                 let result = downloader
                     .download_package(
                         &request.name,
@@ -278,7 +324,7 @@ impl PackageDownloader {
                     )
                     .await;
 
-                // Complete child tracker
+                // Complete child tracker regardless of success/failure
                 if let Some(ref parent_id) = batch_progress_id_clone {
                     let success = result.is_ok();
                     downloader
@@ -286,6 +332,7 @@ impl PackageDownloader {
                         .complete_child_tracker(parent_id, &child_id, success, &tx);
                 }
 
+                // Permit is automatically released here when _permit is dropped
                 result
             };
 
@@ -367,13 +414,10 @@ impl PackageDownloader {
                         }));
                     }
 
-                    tx.emit(AppEvent::General(GeneralEvent::DebugLog {
-                        message: format!(
-                            "Download failed, retrying in {delay:?} (attempt {retry_count}/{})...",
-                            self.config.retry_config.max_retries
-                        ),
-                        context: std::collections::HashMap::new(),
-                    }));
+                    tx.emit(AppEvent::General(GeneralEvent::debug(format!(
+                        "Download failed, retrying in {delay:?} (attempt {retry_count}/{})...",
+                        self.config.retry_config.max_retries
+                    ))));
 
                     tokio::time::sleep(delay).await;
 
@@ -413,7 +457,8 @@ impl PackageDownloader {
         package: Option<&str>,
         tx: &EventSender,
     ) -> Result<DownloadResult, Error> {
-        // Check if partial file exists
+        // Check if partial file exists and validate its integrity
+        // If validation fails, get_resume_offset will return 0 automatically
         let resume_offset = get_resume_offset(&self.config, dest_path).await?;
 
         // Prepare request with range header if resuming

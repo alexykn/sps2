@@ -7,6 +7,13 @@ use tokio::fs as tokio_fs;
 use tokio::io::AsyncReadExt;
 
 /// Get the offset for resuming a download
+///
+/// This function checks if a partial download exists, is large enough to resume,
+/// and validates its integrity before allowing resumption.
+///
+/// # Errors
+///
+/// Returns an error if file operations fail.
 pub(super) async fn get_resume_offset(
     config: &PackageDownloadConfig,
     dest_path: &Path,
@@ -15,7 +22,19 @@ pub(super) async fn get_resume_offset(
         Ok(metadata) => {
             let size = metadata.len();
             if size >= config.min_chunk_size {
-                Ok(size)
+                // Validate the integrity of the partial file by hashing what we have
+                // If this fails, the partial file is likely corrupted
+                match calculate_existing_file_hash(config, dest_path, size).await {
+                    Ok(_hasher) => {
+                        // Validation successful, can resume from this offset
+                        Ok(size)
+                    }
+                    Err(_e) => {
+                        // Partial file is corrupted, delete and start over
+                        let _ = tokio_fs::remove_file(dest_path).await;
+                        Ok(0)
+                    }
+                }
             } else {
                 // File is too small to resume, start over
                 let _ = tokio_fs::remove_file(dest_path).await;

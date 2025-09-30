@@ -94,10 +94,11 @@ pub(super) struct StreamParams<'a> {
     pub total_size: u64,
     pub expected_hash: Option<&'a Hash>,
     pub event_sender: &'a sps2_events::EventSender,
-    #[allow(dead_code)] // Used for error reporting and debugging
+    /// URL being downloaded - used for timeout error reporting
     pub url: &'a str,
     pub progress_tracker_id: String,
-    #[allow(dead_code)] // Reserved for future parent-child coordination features
+    /// Optional parent progress ID - reserved for future parent-child coordination features
+    #[allow(dead_code)]
     pub parent_progress_id: Option<String>,
     pub progress_manager: Option<&'a sps2_events::ProgressManager>,
 }
