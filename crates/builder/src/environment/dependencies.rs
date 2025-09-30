@@ -2,9 +2,7 @@
 
 use super::core::BuildEnvironment;
 use sps2_errors::{BuildError, Error};
-use sps2_events::{
-    AppEvent, DownloadEvent, FailureContext, GeneralEvent, InstallEvent, ResolverEvent,
-};
+use sps2_events::{AppEvent, FailureContext, GeneralEvent, LifecycleEvent};
 use sps2_resolver::{InstalledPackage, ResolutionContext};
 use sps2_state::StateManager;
 use sps2_types::package::PackageSpec;
@@ -47,19 +45,19 @@ impl BuildEnvironment {
         resolution_context = resolution_context.with_installed_packages(installed_packages.clone());
 
         let resolve_start = Instant::now();
-        self.send_event(AppEvent::Resolver(ResolverEvent::Started {
-            runtime_targets: 0,
-            build_targets: build_target_count,
-            local_targets: local_target_count,
-        }));
+        self.send_event(AppEvent::Lifecycle(LifecycleEvent::resolver_started(
+            0,
+            build_target_count,
+            local_target_count,
+        )));
 
         let resolution = match resolver.resolve_with_sat(resolution_context).await {
             Ok(resolution) => resolution,
             Err(error) => {
-                self.send_event(AppEvent::Resolver(ResolverEvent::Failed {
-                    failure: FailureContext::from_error(&error),
-                    conflicting_packages: Vec::new(),
-                }));
+                self.send_event(AppEvent::Lifecycle(LifecycleEvent::resolver_failed(
+                    FailureContext::from_error(&error),
+                    Vec::new(),
+                )));
                 return Err(error);
             }
         };
@@ -74,12 +72,12 @@ impl BuildEnvironment {
                 sps2_resolver::NodeAction::Local => reused_packages += 1,
             }
         }
-        self.send_event(AppEvent::Resolver(ResolverEvent::Completed {
-            total_packages: resolution.nodes.len(),
+        self.send_event(AppEvent::Lifecycle(LifecycleEvent::resolver_completed(
+            resolution.nodes.len(),
             downloaded_packages,
             reused_packages,
             duration_ms,
-        }));
+        )));
 
         // Install build dependencies to deps prefix
         for node in resolution.packages_in_order() {
@@ -149,21 +147,21 @@ impl BuildEnvironment {
             .into());
         };
 
-        self.send_event(AppEvent::Install(InstallEvent::Started {
-            package: node.name.clone(),
-            version: node.version.clone(),
-        }));
+        self.send_event(AppEvent::Lifecycle(LifecycleEvent::install_started(
+            node.name.clone(),
+            node.version.clone(),
+        )));
 
         // Install the build dependency to the isolated deps prefix
         // This extracts the package contents to the build environment
         match &node.action {
             sps2_resolver::NodeAction::Download => {
                 if let Some(url) = &node.url {
-                    self.send_event(AppEvent::Download(DownloadEvent::Started {
-                        url: url.clone(),
-                        package: Some(format!("{}:{}", node.name, node.version)),
-                        total_bytes: None,
-                    }));
+                    self.send_event(AppEvent::Lifecycle(LifecycleEvent::download_started(
+                        url.clone(),
+                        Some(format!("{}:{}", node.name, node.version)),
+                        None,
+                    )));
 
                     // Download the .sp file to a temporary location
                     let temp_dir = std::env::temp_dir();

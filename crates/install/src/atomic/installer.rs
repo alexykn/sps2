@@ -4,10 +4,8 @@ use crate::atomic::{package, transition::StateTransition};
 // Removed Python venv handling - Python packages are now handled like regular packages
 use crate::{InstallContext, InstallResult, PreparedPackage};
 use sps2_errors::{Error, InstallError};
-use sps2_events::events::{StateTransitionContext, TransitionSummary};
-use sps2_events::{
-    AppEvent, EventEmitter, EventSender, FailureContext, StateEvent, UninstallEvent,
-};
+use sps2_events::events::{LifecycleEvent, StateTransitionContext, TransitionSummary};
+use sps2_events::{AppEvent, EventEmitter, EventSender, FailureContext, StateEvent};
 use sps2_hash::Hash;
 use sps2_platform::filesystem_helpers as fs_helpers;
 
@@ -253,10 +251,10 @@ impl AtomicInstaller {
         let mut result = InstallResult::new(transition.staging_id);
 
         for pkg in packages_to_remove {
-            context.emit(AppEvent::Uninstall(UninstallEvent::Started {
-                package: pkg.name.clone(),
-                version: pkg.version.clone(),
-            }));
+            context.emit(AppEvent::Lifecycle(LifecycleEvent::uninstall_started(
+                pkg.name.clone(),
+                pkg.version.clone(),
+            )));
         }
 
         // Remove packages from staging and track them in result
@@ -301,11 +299,11 @@ impl AtomicInstaller {
         self.execute_two_phase_commit(&transition, context).await?;
 
         for pkg in &result.removed_packages {
-            context.emit(AppEvent::Uninstall(UninstallEvent::Completed {
-                package: pkg.name.clone(),
-                version: pkg.version.clone(),
-                files_removed: 0,
-            }));
+            context.emit(AppEvent::Lifecycle(LifecycleEvent::uninstall_completed(
+                pkg.name.clone(),
+                pkg.version.clone(),
+                0,
+            )));
         }
 
         Ok(result)

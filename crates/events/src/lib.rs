@@ -28,8 +28,8 @@ pub use progress::*;
 // Import the new domain-driven event system
 pub mod events;
 pub use events::{
+    AcquisitionContext,
     // Domain event types
-    AcquisitionEvent,
     AppEvent,
     AuditEvent,
     BuildDiagnostic,
@@ -39,7 +39,7 @@ pub use events::{
     BuildTarget,
     CleanupSummary,
     CommandDescriptor,
-    DownloadEvent,
+    DownloadContext,
     FailureContext,
     GeneralEvent,
     GuardDiscrepancy,
@@ -51,21 +51,28 @@ pub use events::{
     GuardTargetSummary,
     GuardVerificationMetrics,
     HealthStatus,
-    // Support types that don't conflict
-    InstallEvent,
+    InstallContext,
+    LifecycleAcquisitionSource,
+    LifecycleDomain,
+    // Lifecycle event types (consolidated from 7 old events)
+    LifecycleEvent,
+    LifecyclePackageUpdateType,
+    LifecycleStage,
+    LifecycleUpdateOperation,
+    LifecycleUpdateResult,
     LogStream,
     PackageEvent,
     PhaseStatus,
     ProcessCommandDescriptor,
     ProgressEvent,
     QaEvent,
-    RepoEvent,
-    ResolverEvent,
+    RepoContext,
+    ResolverContext,
     RollbackContext,
     RollbackSummary,
     StateEvent,
-    UninstallEvent,
-    UpdateEvent,
+    UninstallContext,
+    UpdateContext,
 };
 
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
@@ -197,11 +204,11 @@ pub trait EventEmitter {
         package: Option<String>,
         total_bytes: Option<u64>,
     ) {
-        self.emit(AppEvent::Download(DownloadEvent::Started {
-            url: url.into(),
+        self.emit(AppEvent::Lifecycle(LifecycleEvent::download_started(
+            url.into(),
             package,
             total_bytes,
-        }));
+        )));
     }
 
     /// Emit a download completed event
@@ -211,11 +218,11 @@ pub trait EventEmitter {
         package: Option<String>,
         bytes_downloaded: u64,
     ) {
-        self.emit(AppEvent::Download(DownloadEvent::Completed {
-            url: url.into(),
+        self.emit(AppEvent::Lifecycle(LifecycleEvent::download_completed(
+            url.into(),
             package,
             bytes_downloaded,
-        }));
+        )));
     }
 
     /// Emit a progress started event

@@ -18,56 +18,50 @@ pub fn log_event_with_tracing(message: &EventMessage) {
     // Extract structured fields based on event type
     match event {
         // Download domain events
-        AppEvent::Download(download_event) => {
-            use sps2_events::DownloadEvent;
-            match download_event {
-                DownloadEvent::Started {
-                    url,
-                    package,
-                    total_bytes,
-                } => {
+        AppEvent::Lifecycle(sps2_events::events::LifecycleEvent::Download {
+            stage,
+            context,
+            failure,
+        }) => {
+            use sps2_events::events::LifecycleStage;
+            match stage {
+                LifecycleStage::Started => {
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
-                        url = %url,
-                        package = ?package,
-                        total_bytes = ?total_bytes,
+                        url = %context.url,
+                        package = ?context.package,
+                        total_bytes = ?context.total_bytes,
                         "Download started"
                     );
                 }
-                DownloadEvent::Completed {
-                    url,
-                    package,
-                    bytes_downloaded,
-                } => {
+                LifecycleStage::Completed => {
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
-                        url = %url,
-                        package = ?package,
-                        bytes_downloaded = bytes_downloaded,
+                        url = %context.url,
+                        package = ?context.package,
+                        bytes_downloaded = ?context.bytes_downloaded,
                         "Download completed"
                     );
                 }
-                DownloadEvent::Failed {
-                    url,
-                    package,
-                    failure,
-                } => {
-                    error!(
-                        source = meta.source.as_str(),
-                        event_id = %meta.event_id,
-                        correlation = ?meta.correlation_id,
-                        url = %url,
-                        package = ?package,
-                        retryable = failure.retryable,
-                        code = ?failure.code,
-                        message = %failure.message,
-                        hint = ?failure.hint,
-                        "Download failed"
-                    );
+                LifecycleStage::Failed => {
+                    if let Some(failure_ctx) = failure {
+                        error!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            url = %context.url,
+                            package = ?context.package,
+                            retryable = failure_ctx.retryable,
+                            code = ?failure_ctx.code,
+                            message = %failure_ctx.message,
+                            hint = ?failure_ctx.hint,
+                            "Download failed"
+                        );
+                    }
                 }
             }
         }
@@ -404,185 +398,174 @@ pub fn log_event_with_tracing(message: &EventMessage) {
             }
         }
 
-        AppEvent::Resolver(resolver_event) => {
-            use sps2_events::ResolverEvent;
-            match resolver_event {
-                ResolverEvent::Started {
-                    runtime_targets,
-                    build_targets,
-                    local_targets,
-                } => {
+        AppEvent::Lifecycle(sps2_events::events::LifecycleEvent::Resolver {
+            stage,
+            context,
+            failure,
+        }) => {
+            use sps2_events::events::LifecycleStage;
+            match stage {
+                LifecycleStage::Started => {
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
-                        runtime_targets,
-                        build_targets,
-                        local_targets,
+                        runtime_targets = ?context.runtime_targets,
+                        build_targets = ?context.build_targets,
+                        local_targets = ?context.local_targets,
                         "Dependency resolution started"
                     );
                 }
-                ResolverEvent::Completed {
-                    total_packages,
-                    downloaded_packages,
-                    reused_packages,
-                    duration_ms,
-                } => {
+                LifecycleStage::Completed => {
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
-                        total_packages,
-                        downloaded_packages,
-                        reused_packages,
-                        duration_ms,
+                        total_packages = ?context.total_packages,
+                        downloaded_packages = ?context.downloaded_packages,
+                        reused_packages = ?context.reused_packages,
+                        duration_ms = ?context.duration_ms,
                         "Dependency resolution completed"
                     );
                 }
-                ResolverEvent::Failed {
-                    failure,
-                    conflicting_packages,
-                } => {
-                    if failure.retryable {
-                        warn!(
-                            source = meta.source.as_str(),
-                            event_id = %meta.event_id,
-                            correlation = ?meta.correlation_id,
-                            retryable = failure.retryable,
-                            code = ?failure.code,
-                            message = %failure.message,
-                            hint = ?failure.hint,
-                            conflicts = ?conflicting_packages,
-                            "Dependency resolution failed"
-                        );
-                    } else {
-                        error!(
-                            source = meta.source.as_str(),
-                            event_id = %meta.event_id,
-                            correlation = ?meta.correlation_id,
-                            retryable = failure.retryable,
-                            code = ?failure.code,
-                            message = %failure.message,
-                            hint = ?failure.hint,
-                            conflicts = ?conflicting_packages,
-                            "Dependency resolution failed"
-                        );
+                LifecycleStage::Failed => {
+                    if let Some(failure_ctx) = failure {
+                        if failure_ctx.retryable {
+                            warn!(
+                                source = meta.source.as_str(),
+                                event_id = %meta.event_id,
+                                correlation = ?meta.correlation_id,
+                                retryable = failure_ctx.retryable,
+                                code = ?failure_ctx.code,
+                                message = %failure_ctx.message,
+                                hint = ?failure_ctx.hint,
+                                conflicts = ?context.conflicting_packages,
+                                "Dependency resolution failed"
+                            );
+                        } else {
+                            error!(
+                                source = meta.source.as_str(),
+                                event_id = %meta.event_id,
+                                correlation = ?meta.correlation_id,
+                                retryable = failure_ctx.retryable,
+                                code = ?failure_ctx.code,
+                                message = %failure_ctx.message,
+                                hint = ?failure_ctx.hint,
+                                conflicts = ?context.conflicting_packages,
+                                "Dependency resolution failed"
+                            );
+                        }
                     }
                 }
             }
         }
 
         // Install domain events
-        AppEvent::Install(install_event) => {
-            use sps2_events::InstallEvent;
-            match install_event {
-                InstallEvent::Started { package, version } => {
+        AppEvent::Lifecycle(sps2_events::events::LifecycleEvent::Install {
+            stage,
+            context,
+            failure,
+        }) => {
+            use sps2_events::events::LifecycleStage;
+            match stage {
+                LifecycleStage::Started => {
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
-                        package = %package,
-                        version = %version,
+                        package = ?context.package,
+                        version = ?context.version,
                         "Package installation started"
                     );
                 }
-                InstallEvent::Completed {
-                    package,
-                    version,
-                    files_installed,
-                } => {
+                LifecycleStage::Completed => {
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
-                        package = %package,
-                        version = %version,
-                        files_installed = files_installed,
+                        package = ?context.package,
+                        version = ?context.version,
+                        files_installed = ?context.files_installed,
                         "Package installation completed"
                     );
                 }
-                InstallEvent::Failed {
-                    package,
-                    version,
-                    failure,
-                } => {
-                    error!(
-                        source = meta.source.as_str(),
-                        event_id = %meta.event_id,
-                        correlation = ?meta.correlation_id,
-                        package = %package,
-                        version = %version,
-                        retryable = failure.retryable,
-                        code = ?failure.code,
-                        message = %failure.message,
-                        hint = ?failure.hint,
-                        "Package installation failed"
-                    );
+                LifecycleStage::Failed => {
+                    if let Some(failure_ctx) = failure {
+                        error!(
+                            source = meta.source.as_str(),
+                            event_id = %meta.event_id,
+                            correlation = ?meta.correlation_id,
+                            package = ?context.package,
+                            version = ?context.version,
+                            retryable = failure_ctx.retryable,
+                            code = ?failure_ctx.code,
+                            message = %failure_ctx.message,
+                            hint = ?failure_ctx.hint,
+                            "Package installation failed"
+                        );
+                    }
                 }
             }
         }
 
         // Uninstall domain events
-        AppEvent::Uninstall(uninstall_event) => {
-            use sps2_events::UninstallEvent;
-            match uninstall_event {
-                UninstallEvent::Started { package, version } => {
+        AppEvent::Lifecycle(sps2_events::events::LifecycleEvent::Uninstall {
+            stage,
+            context,
+            failure,
+        }) => {
+            use sps2_events::events::LifecycleStage;
+            match stage {
+                LifecycleStage::Started => {
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
-                        package = %package,
-                        version = %version,
+                        package = ?context.package,
+                        version = ?context.version,
                         "Package uninstallation started"
                     );
                 }
-                UninstallEvent::Completed {
-                    package,
-                    version,
-                    files_removed,
-                } => {
+                LifecycleStage::Completed => {
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
-                        package = %package,
-                        version = %version,
-                        files_removed = files_removed,
+                        package = ?context.package,
+                        version = ?context.version,
+                        files_removed = ?context.files_removed,
                         "Package uninstallation completed"
                     );
                 }
-                UninstallEvent::Failed {
-                    package,
-                    version,
-                    failure,
-                } => {
-                    let package_ref = package.as_deref();
-                    if failure.retryable {
-                        warn!(
-                            source = meta.source.as_str(),
-                            event_id = %meta.event_id,
-                            correlation = ?meta.correlation_id,
-                            package = ?package_ref,
-                            version = ?version,
-                            retryable = failure.retryable,
-                            code = ?failure.code,
-                            message = %failure.message,
-                            hint = ?failure.hint,
-                            "Package uninstallation failed"
-                        );
-                    } else {
-                        error!(
-                            source = meta.source.as_str(),
-                            event_id = %meta.event_id,
-                            correlation = ?meta.correlation_id,
-                            package = ?package_ref,
-                            version = ?version,
-                            retryable = failure.retryable,
-                            code = ?failure.code,
-                            message = %failure.message,
-                            hint = ?failure.hint,
-                            "Package uninstallation failed"
-                        );
+                LifecycleStage::Failed => {
+                    if let Some(failure_ctx) = failure {
+                        if failure_ctx.retryable {
+                            warn!(
+                                source = meta.source.as_str(),
+                                event_id = %meta.event_id,
+                                correlation = ?meta.correlation_id,
+                                package = ?context.package,
+                                version = ?context.version,
+                                retryable = failure_ctx.retryable,
+                                code = ?failure_ctx.code,
+                                message = %failure_ctx.message,
+                                hint = ?failure_ctx.hint,
+                                "Package uninstallation failed"
+                            );
+                        } else {
+                            error!(
+                                source = meta.source.as_str(),
+                                event_id = %meta.event_id,
+                                correlation = ?meta.correlation_id,
+                                package = ?context.package,
+                                version = ?context.version,
+                                retryable = failure_ctx.retryable,
+                                code = ?failure_ctx.code,
+                                message = %failure_ctx.message,
+                                hint = ?failure_ctx.hint,
+                                "Package uninstallation failed"
+                            );
+                        }
                     }
                 }
             }
@@ -837,75 +820,70 @@ pub fn log_event_with_tracing(message: &EventMessage) {
         }
 
         // Update/upgrade events
-        AppEvent::Update(update_event) => {
-            use sps2_events::UpdateEvent;
-            match update_event {
-                UpdateEvent::Started {
-                    operation,
-                    requested,
-                    total_targets,
-                } => {
+        AppEvent::Lifecycle(sps2_events::events::LifecycleEvent::Update {
+            stage,
+            context,
+            failure,
+        }) => {
+            use sps2_events::events::LifecycleStage;
+            match stage {
+                LifecycleStage::Started => {
+                    let total_targets = context.requested.as_ref().map(|v| v.len()).unwrap_or(0);
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
-                        operation = ?operation,
-                        requested = ?requested,
+                        operation = ?context.operation,
+                        requested = ?context.requested,
                         total_targets,
                         "Update operation started"
                     );
                 }
-                UpdateEvent::Completed {
-                    operation,
-                    updated,
-                    skipped,
-                    duration,
-                    size_difference,
-                } => {
+                LifecycleStage::Completed => {
+                    let updated_len = context.updated.as_ref().map(|v| v.len()).unwrap_or(0);
                     info!(
                         source = meta.source.as_str(),
                         event_id = %meta.event_id,
                         correlation = ?meta.correlation_id,
-                        operation = ?operation,
-                        updated = updated.len(),
-                        skipped,
-                        duration_ms = duration.as_millis(),
-                        size_difference,
+                        operation = ?context.operation,
+                        updated = updated_len,
+                        skipped = ?context.skipped,
+                        duration_ms = ?context.duration.map(|d| d.as_millis()),
+                        size_difference = ?context.size_difference,
                         "Update operation completed"
                     );
                 }
-                UpdateEvent::Failed {
-                    operation,
-                    failure,
-                    updated,
-                    failed,
-                } => {
-                    if failure.retryable {
-                        warn!(
-                            source = meta.source.as_str(),
-                            event_id = %meta.event_id,
-                            correlation = ?meta.correlation_id,
-                            operation = ?operation,
-                            completed = updated.len(),
-                            failed = failed.len(),
-                            code = ?failure.code,
-                            message = %failure.message,
-                            hint = ?failure.hint,
-                            "Update operation failed"
-                        );
-                    } else {
-                        error!(
-                            source = meta.source.as_str(),
-                            event_id = %meta.event_id,
-                            correlation = ?meta.correlation_id,
-                            operation = ?operation,
-                            completed = updated.len(),
-                            failed = failed.len(),
-                            code = ?failure.code,
-                            message = %failure.message,
-                            hint = ?failure.hint,
-                            "Update operation failed"
-                        );
+                LifecycleStage::Failed => {
+                    if let Some(failure_ctx) = failure {
+                        let updated_len = context.updated.as_ref().map(|v| v.len()).unwrap_or(0);
+                        let failed_len = context.failed.as_ref().map(|v| v.len()).unwrap_or(0);
+                        if failure_ctx.retryable {
+                            warn!(
+                                source = meta.source.as_str(),
+                                event_id = %meta.event_id,
+                                correlation = ?meta.correlation_id,
+                                operation = ?context.operation,
+                                completed = updated_len,
+                                failed = failed_len,
+                                code = ?failure_ctx.code,
+                                message = %failure_ctx.message,
+                                hint = ?failure_ctx.hint,
+                                "Update operation failed"
+                            );
+                        } else {
+                            error!(
+                                source = meta.source.as_str(),
+                                event_id = %meta.event_id,
+                                correlation = ?meta.correlation_id,
+                                operation = ?context.operation,
+                                completed = updated_len,
+                                failed = failed_len,
+                                code = ?failure_ctx.code,
+                                message = %failure_ctx.message,
+                                hint = ?failure_ctx.hint,
+                                "Update operation failed"
+                            );
+                        }
                     }
                 }
             }

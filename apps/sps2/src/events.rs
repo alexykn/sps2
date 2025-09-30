@@ -2,7 +2,10 @@
 
 use crate::logging::log_event_with_tracing;
 use console::{style, Term};
-use sps2_events::{events::UpdateOperationType, AppEvent, EventMessage, EventMeta, ProgressEvent};
+use sps2_events::{
+    events::{LifecycleEvent, LifecycleStage, LifecycleUpdateOperation},
+    AppEvent, EventMessage, EventMeta, ProgressEvent,
+};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -185,152 +188,157 @@ impl EventHandler {
 
         match event {
             // Download events
-            AppEvent::Download(download_event) => {
-                use sps2_events::DownloadEvent;
-                match download_event {
-                    DownloadEvent::Started {
-                        url,
-                        package,
-                        total_bytes,
-                    } => {
-                        self.handle_download_started(&meta, &url, package.as_deref(), total_bytes);
-                    }
-                    DownloadEvent::Completed {
-                        url,
-                        package,
-                        bytes_downloaded,
-                    } => {
-                        self.handle_download_completed(
+            AppEvent::Lifecycle(LifecycleEvent::Download {
+                stage,
+                context,
+                failure,
+            }) => match stage {
+                LifecycleStage::Started => {
+                    self.handle_download_started(
+                        &meta,
+                        &context.url,
+                        context.package.as_deref(),
+                        context.total_bytes,
+                    );
+                }
+                LifecycleStage::Completed => {
+                    self.handle_download_completed(
+                        &meta,
+                        &context.url,
+                        context.package.as_deref(),
+                        context.bytes_downloaded.unwrap_or(0),
+                    );
+                }
+                LifecycleStage::Failed => {
+                    if let Some(failure_ctx) = failure {
+                        self.handle_download_failed(
                             &meta,
-                            &url,
-                            package.as_deref(),
-                            bytes_downloaded,
+                            &context.url,
+                            context.package.as_deref(),
+                            &failure_ctx,
                         );
                     }
-                    DownloadEvent::Failed {
-                        url,
-                        package,
-                        failure,
-                    } => {
-                        self.handle_download_failed(&meta, &url, package.as_deref(), &failure);
-                    }
                 }
-            }
+            },
 
-            AppEvent::Acquisition(acq_event) => {
-                use sps2_events::events::{AcquisitionEvent, AcquisitionSource};
-                match acq_event {
-                    AcquisitionEvent::Started {
-                        package,
-                        version,
-                        source,
-                    } => {
-                        if let AcquisitionSource::StoreCache { hash } = source {
+            AppEvent::Lifecycle(LifecycleEvent::Acquisition {
+                stage,
+                context,
+                failure,
+            }) => {
+                use sps2_events::events::LifecycleAcquisitionSource;
+                match stage {
+                    LifecycleStage::Started => {
+                        if let LifecycleAcquisitionSource::StoreCache { hash } = &context.source {
                             self.show_operation(
                                 &meta,
-                                format!("Reusing stored package {package} {version} (hash {hash})"),
+                                format!(
+                                    "Reusing stored package {} {} (hash {})",
+                                    context.package, context.version, hash
+                                ),
                                 "acquire",
                                 EventSeverity::Info,
                             );
                         } else if self.debug_enabled {
                             self.show_meta_message(
                                 &meta,
-                                format!("Acquisition started for {package} {version}"),
+                                format!(
+                                    "Acquisition started for {} {}",
+                                    context.package, context.version
+                                ),
                                 EventSeverity::Debug,
                             );
                         }
                     }
-                    AcquisitionEvent::Completed {
-                        package,
-                        version,
-                        source,
-                        size,
-                    } => {
-                        if let AcquisitionSource::StoreCache { hash } = source {
+                    LifecycleStage::Completed => {
+                        if let LifecycleAcquisitionSource::StoreCache { hash } = &context.source {
+                            let size = context.size.unwrap_or(0);
                             self.show_operation(
                                 &meta,
                                 format!(
-                                    "Prepared stored package {package} {version} ({}, hash {hash})",
-                                    self.format_bytes(size)
+                                    "Prepared stored package {} {} ({}, hash {})",
+                                    context.package,
+                                    context.version,
+                                    self.format_bytes(size),
+                                    hash
                                 ),
                                 "acquire",
                                 EventSeverity::Success,
                             );
                         } else if self.debug_enabled {
+                            let size = context.size.unwrap_or(0);
                             self.show_meta_message(
                                 &meta,
                                 format!(
-                                    "Acquisition completed for {package} {version} ({size} bytes)"
+                                    "Acquisition completed for {} {} ({} bytes)",
+                                    context.package, context.version, size
                                 ),
                                 EventSeverity::Debug,
                             );
                         }
                     }
-                    AcquisitionEvent::Failed {
-                        package,
-                        version,
-                        source,
-                        failure,
-                    } => {
-                        let message = match source {
-                            AcquisitionSource::StoreCache { hash } => format!(
-                                "Failed to prepare stored package {package} {version} (hash {hash}): {}",
-                                failure.message
-                            ),
-                            AcquisitionSource::Remote { .. } => format!(
-                                "Acquisition failed for {package} {version}: {}",
-                                failure.message
-                            ),
-                        };
-                        let severity = if failure.retryable {
-                            EventSeverity::Warning
-                        } else {
-                            EventSeverity::Error
-                        };
-                        self.show_operation(&meta, message, "acquire", severity);
+                    LifecycleStage::Failed => {
+                        if let Some(failure_ctx) = failure {
+                            let message = match &context.source {
+                                LifecycleAcquisitionSource::StoreCache { hash } => format!(
+                                    "Failed to prepare stored package {} {} (hash {}): {}",
+                                    context.package, context.version, hash, failure_ctx.message
+                                ),
+                                LifecycleAcquisitionSource::Remote { .. } => format!(
+                                    "Acquisition failed for {} {}: {}",
+                                    context.package, context.version, failure_ctx.message
+                                ),
+                            };
+                            let severity = if failure_ctx.retryable {
+                                EventSeverity::Warning
+                            } else {
+                                EventSeverity::Error
+                            };
+                            self.show_operation(&meta, message, "acquire", severity);
+                        }
                     }
                 }
             }
 
             // Install events (replaces package events)
-            AppEvent::Install(install_event) => {
-                use sps2_events::InstallEvent;
-                match install_event {
-                    InstallEvent::Started { package, version } => {
-                        self.show_operation(
-                            &meta,
-                            format!("Installing {package} {version}"),
-                            "install",
-                            EventSeverity::Info,
-                        );
-                    }
-                    InstallEvent::Completed {
-                        package,
-                        version,
-                        files_installed,
-                    } => {
-                        self.show_operation(
-                            &meta,
-                            format!("Installed {package} {version} ({files_installed} files)"),
-                            "install",
-                            EventSeverity::Success,
-                        );
-                    }
-                    InstallEvent::Failed {
-                        package,
-                        version,
-                        failure,
-                    } => {
+            AppEvent::Lifecycle(LifecycleEvent::Install {
+                stage,
+                context,
+                failure,
+            }) => match stage {
+                LifecycleStage::Started => {
+                    self.show_operation(
+                        &meta,
+                        format!("Installing {} {}", context.package, context.version),
+                        "install",
+                        EventSeverity::Info,
+                    );
+                }
+                LifecycleStage::Completed => {
+                    let files = context.files_installed.unwrap_or(0);
+                    self.show_operation(
+                        &meta,
+                        format!(
+                            "Installed {} {} ({} files)",
+                            context.package, context.version, files
+                        ),
+                        "install",
+                        EventSeverity::Success,
+                    );
+                }
+                LifecycleStage::Failed => {
+                    if let Some(failure_ctx) = failure {
                         let sps2_events::FailureContext {
                             code: _,
                             message: failure_message,
                             hint,
                             retryable,
-                        } = failure;
+                        } = failure_ctx;
 
                         let retry_text = if retryable { " (retryable)" } else { "" };
                         let mut message = format!(
-                            "Failed to install {package} {version}{retry_text}: {failure_message}"
+                            "Failed to install {} {}{}: {}",
+                            context.package, context.version, retry_text, failure_message
                         );
                         if let Some(hint) = hint.as_ref() {
                             message.push_str(&format!(" (hint: {hint})"));
@@ -338,7 +346,7 @@ impl EventHandler {
                         self.show_operation(&meta, message, "install", EventSeverity::Error);
                     }
                 }
-            }
+            },
 
             AppEvent::Package(package_event) => {
                 use sps2_events::{events::PackageOutcome, PackageEvent};
@@ -685,79 +693,80 @@ impl EventHandler {
             }
 
             // Resolver events
-            AppEvent::Resolver(resolver_event) => {
-                use sps2_events::ResolverEvent;
-                match resolver_event {
-                    ResolverEvent::Started {
-                        runtime_targets,
-                        build_targets,
-                        local_targets,
-                    } => {
-                        let mut parts = Vec::new();
-                        if runtime_targets > 0 {
-                            parts.push(format!("{runtime_targets} runtime"));
-                        }
-                        if build_targets > 0 {
-                            parts.push(format!("{build_targets} build"));
-                        }
-                        if local_targets > 0 {
-                            parts.push(format!("{local_targets} local"));
-                        }
-                        if parts.is_empty() {
-                            parts.push("no targets".to_string());
-                        }
-                        self.show_operation(
-                            &meta,
-                            format!("Resolving dependencies ({})", parts.join(", ")),
-                            "resolve",
-                            EventSeverity::Info,
-                        );
+            AppEvent::Lifecycle(LifecycleEvent::Resolver {
+                stage,
+                context,
+                failure,
+            }) => match stage {
+                LifecycleStage::Started => {
+                    let mut parts = Vec::new();
+                    let runtime_targets = context.runtime_targets.unwrap_or(0);
+                    let build_targets = context.build_targets.unwrap_or(0);
+                    let local_targets = context.local_targets.unwrap_or(0);
+
+                    if runtime_targets > 0 {
+                        parts.push(format!("{} runtime", runtime_targets));
                     }
-                    ResolverEvent::Completed {
-                        total_packages,
-                        downloaded_packages,
-                        reused_packages,
-                        duration_ms,
-                    } => {
-                        let mut message =
-                            format!("Resolved {total_packages} packages in {duration_ms}ms");
-                        if downloaded_packages > 0 {
-                            message.push_str(&format!(" • downloads: {downloaded_packages}"));
-                        }
-                        if reused_packages > 0 {
-                            message.push_str(&format!(" • reused: {reused_packages}"));
-                        }
-                        self.show_operation(&meta, message, "resolve", EventSeverity::Success);
+                    if build_targets > 0 {
+                        parts.push(format!("{} build", build_targets));
                     }
-                    ResolverEvent::Failed {
-                        failure,
-                        conflicting_packages,
-                    } => {
-                        let code_prefix = failure
+                    if local_targets > 0 {
+                        parts.push(format!("{} local", local_targets));
+                    }
+                    if parts.is_empty() {
+                        parts.push("no targets".to_string());
+                    }
+                    self.show_operation(
+                        &meta,
+                        format!("Resolving dependencies ({})", parts.join(", ")),
+                        "resolve",
+                        EventSeverity::Info,
+                    );
+                }
+                LifecycleStage::Completed => {
+                    let total_packages = context.total_packages.unwrap_or(0);
+                    let downloaded_packages = context.downloaded_packages.unwrap_or(0);
+                    let reused_packages = context.reused_packages.unwrap_or(0);
+                    let duration_ms = context.duration_ms.unwrap_or(0);
+
+                    let mut message =
+                        format!("Resolved {} packages in {}ms", total_packages, duration_ms);
+                    if downloaded_packages > 0 {
+                        message.push_str(&format!(" • downloads: {}", downloaded_packages));
+                    }
+                    if reused_packages > 0 {
+                        message.push_str(&format!(" • reused: {}", reused_packages));
+                    }
+                    self.show_operation(&meta, message, "resolve", EventSeverity::Success);
+                }
+                LifecycleStage::Failed => {
+                    if let Some(failure_ctx) = failure {
+                        let code_prefix = failure_ctx
                             .code
                             .as_deref()
                             .map(|code| format!("[{code}] "))
                             .unwrap_or_default();
                         let mut message =
-                            format!("Resolution failed: {code_prefix}{}", failure.message);
-                        if !conflicting_packages.is_empty() {
-                            let sample = conflicting_packages
+                            format!("Resolution failed: {code_prefix}{}", failure_ctx.message);
+                        if !context.conflicting_packages.is_empty() {
+                            let sample = context
+                                .conflicting_packages
                                 .iter()
                                 .take(3)
                                 .cloned()
                                 .collect::<Vec<_>>();
                             message.push_str(&format!(" • conflicts: {}", sample.join(", ")));
-                            if conflicting_packages.len() > 3 {
+                            if context.conflicting_packages.len() > 3 {
                                 message.push_str(&format!(
                                     " (+{} more)",
-                                    conflicting_packages.len() - 3
+                                    context.conflicting_packages.len() - 3
                                 ));
                             }
                         }
-                        if let Some(hint) = &failure.hint {
+                        if let Some(hint) = &failure_ctx.hint {
                             message.push_str(&format!(" (hint: {hint})"));
                         }
-                        let severity = if failure.retryable {
+                        let severity = if failure_ctx.retryable {
                             EventSeverity::Warning
                         } else {
                             EventSeverity::Error
@@ -765,60 +774,69 @@ impl EventHandler {
                         self.show_operation(&meta, message, "resolve", severity);
                     }
                 }
-            }
+            },
 
             // Uninstall events
-            AppEvent::Uninstall(uninstall_event) => {
-                use sps2_events::UninstallEvent;
-                match uninstall_event {
-                    UninstallEvent::Started { package, version } => {
-                        self.show_operation(
-                            &meta,
-                            format!("Uninstalling {package} {version}"),
-                            "uninstall",
-                            EventSeverity::Info,
-                        );
-                    }
-                    UninstallEvent::Completed {
-                        package,
-                        version,
-                        files_removed,
-                    } => {
-                        self.show_operation(
-                            &meta,
-                            format!("Uninstalled {package} {version} ({files_removed} files)"),
-                            "uninstall",
-                            EventSeverity::Success,
-                        );
-                    }
-                    UninstallEvent::Failed {
-                        package,
-                        version,
-                        failure,
-                    } => {
-                        let name = package.as_deref().unwrap_or("<unknown>");
-                        let version_text = version
+            AppEvent::Lifecycle(LifecycleEvent::Uninstall {
+                stage,
+                context,
+                failure,
+            }) => match stage {
+                LifecycleStage::Started => {
+                    let package = context.package.as_deref().unwrap_or("<unknown>");
+                    let version = context
+                        .version
+                        .as_ref()
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "<unknown>".to_string());
+                    self.show_operation(
+                        &meta,
+                        format!("Uninstalling {} {}", package, version),
+                        "uninstall",
+                        EventSeverity::Info,
+                    );
+                }
+                LifecycleStage::Completed => {
+                    let package = context.package.as_deref().unwrap_or("<unknown>");
+                    let version = context
+                        .version
+                        .as_ref()
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "<unknown>".to_string());
+                    let files = context.files_removed.unwrap_or(0);
+                    self.show_operation(
+                        &meta,
+                        format!("Uninstalled {} {} ({} files)", package, version, files),
+                        "uninstall",
+                        EventSeverity::Success,
+                    );
+                }
+                LifecycleStage::Failed => {
+                    if let Some(failure_ctx) = failure {
+                        let package = context.package.as_deref().unwrap_or("<unknown>");
+                        let version = context
+                            .version
                             .as_ref()
-                            .map(ToString::to_string)
+                            .map(|v| v.to_string())
                             .unwrap_or_else(|| "<unknown>".to_string());
-                        let retry_suffix = if failure.retryable {
+                        let retry_suffix = if failure_ctx.retryable {
                             " (retryable)"
                         } else {
                             ""
                         };
-                        let code_prefix = failure
+                        let code_prefix = failure_ctx
                             .code
                             .as_deref()
                             .map(|c| format!("[{c}] "))
                             .unwrap_or_default();
                         let mut message = format!(
-                            "Failed to uninstall {name} {version_text}{retry_suffix}: {code_prefix}{}",
-                            failure.message
+                            "Failed to uninstall {} {}{}: {code_prefix}{}",
+                            package, version, retry_suffix, failure_ctx.message
                         );
-                        if let Some(hint) = &failure.hint {
+                        if let Some(hint) = &failure_ctx.hint {
                             message.push_str(&format!(" (hint: {hint})"));
                         }
-                        let severity = if failure.retryable {
+                        let severity = if failure_ctx.retryable {
                             EventSeverity::Warning
                         } else {
                             EventSeverity::Error
@@ -826,88 +844,96 @@ impl EventHandler {
                         self.show_operation(&meta, message, "uninstall", severity);
                     }
                 }
-            }
+            },
 
             // Update events
-            AppEvent::Update(update_event) => {
-                use sps2_events::UpdateEvent;
-                match update_event {
-                    UpdateEvent::Started {
-                        operation,
-                        requested,
-                        total_targets,
-                    } => {
-                        let op_label = match operation {
-                            UpdateOperationType::Update => "update",
-                            UpdateOperationType::Upgrade => "upgrade",
-                            UpdateOperationType::Downgrade => "downgrade",
-                            UpdateOperationType::Reinstall => "reinstall",
-                        };
-                        let target_text = if requested.is_empty() {
-                            format!("all ({total_targets})")
-                        } else if requested.len() == 1 {
-                            requested[0].clone()
-                        } else {
-                            format!("{} packages", requested.len())
-                        };
-                        self.show_operation(
-                            &meta,
-                            format!("Starting {op_label} for {target_text}"),
-                            "update",
-                            EventSeverity::Info,
-                        );
+            AppEvent::Lifecycle(LifecycleEvent::Update {
+                stage,
+                context,
+                failure,
+            }) => match stage {
+                LifecycleStage::Started => {
+                    let op_label = match context.operation {
+                        LifecycleUpdateOperation::Update => "update",
+                        LifecycleUpdateOperation::Upgrade => "upgrade",
+                        LifecycleUpdateOperation::Downgrade => "downgrade",
+                        LifecycleUpdateOperation::Reinstall => "reinstall",
+                    };
+                    let requested = context
+                        .requested.as_deref()
+                        .unwrap_or(&[]);
+                    let total_targets = context.total_targets.unwrap_or(0);
+
+                    let target_text = if requested.is_empty() {
+                        format!("all ({total_targets})")
+                    } else if requested.len() == 1 {
+                        requested[0].clone()
+                    } else {
+                        format!("{} packages", requested.len())
+                    };
+                    self.show_operation(
+                        &meta,
+                        format!("Starting {op_label} for {target_text}"),
+                        "update",
+                        EventSeverity::Info,
+                    );
+                }
+                LifecycleStage::Completed => {
+                    let op_label = match context.operation {
+                        LifecycleUpdateOperation::Update => "update",
+                        LifecycleUpdateOperation::Upgrade => "upgrade",
+                        LifecycleUpdateOperation::Downgrade => "downgrade",
+                        LifecycleUpdateOperation::Reinstall => "reinstall",
+                    };
+                    let updated = context
+                        .updated.as_deref()
+                        .unwrap_or(&[]);
+                    let skipped = context.skipped.unwrap_or(0);
+                    let size_difference = context.size_difference.unwrap_or(0);
+                    let duration = context
+                        .duration
+                        .unwrap_or_else(|| std::time::Duration::from_secs(0));
+
+                    let mut message = if updated.is_empty() {
+                        format!("No packages required {op_label}")
+                    } else if updated.len() == 1 {
+                        format!(
+                            "{op_label}d {} to {}",
+                            updated[0].package, updated[0].to_version
+                        )
+                    } else {
+                        format!("{op_label}d {} packages", updated.len())
+                    };
+                    if skipped > 0 {
+                        message.push_str(&format!(" • skipped {skipped}"));
                     }
-                    UpdateEvent::Completed {
-                        operation,
-                        updated,
-                        skipped,
-                        duration,
-                        size_difference,
-                    } => {
-                        let op_label = match operation {
-                            UpdateOperationType::Update => "update",
-                            UpdateOperationType::Upgrade => "upgrade",
-                            UpdateOperationType::Downgrade => "downgrade",
-                            UpdateOperationType::Reinstall => "reinstall",
-                        };
-                        let mut message = if updated.is_empty() {
-                            format!("No packages required {op_label}")
-                        } else if updated.len() == 1 {
-                            format!(
-                                "{op_label}d {} to {}",
-                                updated[0].package, updated[0].to_version
-                            )
-                        } else {
-                            format!("{op_label}d {} packages", updated.len())
-                        };
-                        if skipped > 0 {
-                            message.push_str(&format!(" • skipped {skipped}"));
-                        }
-                        if size_difference != 0 {
-                            message.push_str(&format!(" • size Δ {size_difference} bytes"));
-                        }
-                        message.push_str(&format!(" ({:.1}s)", duration.as_secs_f32()));
-                        self.show_operation(&meta, message, "update", EventSeverity::Success);
+                    if size_difference != 0 {
+                        message.push_str(&format!(" • size Δ {size_difference} bytes"));
                     }
-                    UpdateEvent::Failed {
-                        operation,
-                        failure,
-                        updated,
-                        failed,
-                    } => {
-                        let op_label = match operation {
-                            UpdateOperationType::Update => "update",
-                            UpdateOperationType::Upgrade => "upgrade",
-                            UpdateOperationType::Downgrade => "downgrade",
-                            UpdateOperationType::Reinstall => "reinstall",
+                    message.push_str(&format!(" ({:.1}s)", duration.as_secs_f32()));
+                    self.show_operation(&meta, message, "update", EventSeverity::Success);
+                }
+                LifecycleStage::Failed => {
+                    if let Some(failure_ctx) = failure {
+                        let op_label = match context.operation {
+                            LifecycleUpdateOperation::Update => "update",
+                            LifecycleUpdateOperation::Upgrade => "upgrade",
+                            LifecycleUpdateOperation::Downgrade => "downgrade",
+                            LifecycleUpdateOperation::Reinstall => "reinstall",
                         };
-                        let code_prefix = failure
+                        let code_prefix = failure_ctx
                             .code
                             .as_deref()
                             .map(|c| format!("[{c}] "))
                             .unwrap_or_default();
                         let mut message =
-                            format!("{op_label} failed: {code_prefix}{}", failure.message);
+                            format!("{op_label} failed: {code_prefix}{}", failure_ctx.message);
+
+                        let failed = context.failed.as_deref().unwrap_or(&[]);
+                        let updated = context
+                            .updated.as_deref()
+                            .unwrap_or(&[]);
+
                         if !failed.is_empty() {
                             let sample = failed.iter().take(3).cloned().collect::<Vec<_>>();
                             message.push_str(&format!(" • failed: {}", sample.join(", ")));
@@ -921,10 +947,10 @@ impl EventHandler {
                                 updated.len()
                             ));
                         }
-                        if let Some(hint) = &failure.hint {
+                        if let Some(hint) = &failure_ctx.hint {
                             message.push_str(&format!(" (hint: {hint})"));
                         }
-                        let severity = if failure.retryable {
+                        let severity = if failure_ctx.retryable {
                             EventSeverity::Warning
                         } else {
                             EventSeverity::Error
@@ -932,7 +958,7 @@ impl EventHandler {
                         self.show_operation(&meta, message, "update", severity);
                     }
                 }
-            }
+            },
 
             // General operation events (handles repository, search, list, cleanup, rollback, health)
             AppEvent::General(general_event) => {
@@ -1576,21 +1602,23 @@ impl EventHandler {
     fn show_unhandled_event(&mut self, meta: &EventMeta, event: &AppEvent) {
         if self.debug_enabled {
             let event_name = match event {
-                AppEvent::Acquisition(_) => "Acquisition",
+                AppEvent::Lifecycle(lifecycle_event) => match lifecycle_event {
+                    LifecycleEvent::Acquisition { .. } => "Acquisition",
+                    LifecycleEvent::Download { .. } => "Download",
+                    LifecycleEvent::Install { .. } => "Install",
+                    LifecycleEvent::Resolver { .. } => "Resolver",
+                    LifecycleEvent::Repo { .. } => "Repo",
+                    LifecycleEvent::Uninstall { .. } => "Uninstall",
+                    LifecycleEvent::Update { .. } => "Update",
+                },
                 AppEvent::Audit(_) => "Audit",
                 AppEvent::Build(_) => "Build",
-                AppEvent::Download(_) => "Download",
                 AppEvent::General(_) => "General",
                 AppEvent::Guard(_) => "Guard",
-                AppEvent::Install(_) => "Install",
                 AppEvent::Package(_) => "Package",
                 AppEvent::Progress(_) => "Progress",
                 AppEvent::Qa(_) => "Qa",
-                AppEvent::Repo(_) => "Repo",
-                AppEvent::Resolver(_) => "Resolver",
                 AppEvent::State(_) => "State",
-                AppEvent::Uninstall(_) => "Uninstall",
-                AppEvent::Update(_) => "Update",
                 AppEvent::Platform(_) => "Platform",
             };
             self.show_meta_message(
