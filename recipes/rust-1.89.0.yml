@@ -1,0 +1,87 @@
+metadata:
+  name: rust
+  version: "1.89.0"
+  description: "Rust programming language with Cargo package manager and standard toolchain"
+  homepage: "https://www.rust-lang.org"
+  license: "MIT OR Apache-2.0"
+  dependencies:
+    runtime:
+      - zlib
+      - libxml2
+    build:
+      - llvm
+      - cmake
+      - ninja
+      - python3
+      - zlib
+      - libxml2
+
+facts:
+  target_triple: "aarch64-apple-darwin"
+
+environment:
+  defaults: true
+  variables:
+    RUST_BACKTRACE: "1"
+
+source:
+  sources:
+    - fetch:
+        url: "https://static.rust-lang.org/dist/rustc-1.89.0-src.tar.gz"
+        extract_to: "src"
+
+build:
+  steps:
+    - shell: |
+        echo "Current directory: $(pwd)"
+
+        echo '[build]' > config.toml
+        echo 'rustc = "/opt/pm/live/bin/rustc"' >> config.toml
+        echo 'cargo = "/opt/pm/live/bin/cargo"' >> config.toml
+        echo 'target = ["aarch64-apple-darwin"]' >> config.toml
+        echo 'host = ["aarch64-apple-darwin"]' >> config.toml
+        echo 'docs = false' >> config.toml
+        echo 'submodules = false' >> config.toml
+        echo 'extended = true' >> config.toml
+        echo '' >> config.toml
+        echo '[install]' >> config.toml
+        echo 'prefix = "/opt/pm/live"' >> config.toml
+        echo 'bindir = "bin"' >> config.toml
+        echo 'libdir = "lib"' >> config.toml
+        echo 'docdir = "share/doc/rust"' >> config.toml
+        echo 'mandir = "share/man"' >> config.toml
+        echo 'sysconfdir = "etc"' >> config.toml
+        echo '' >> config.toml
+
+        # --- Use Pre-Built LLVM from Rust CI ---
+        echo '[llvm]' >> config.toml
+        echo 'download-ci-llvm = true' >> config.toml
+        echo 'ninja = true' >> config.toml
+        echo '' >> config.toml
+        # ----------------------------------------
+
+        echo '[rust]' >> config.toml
+        echo 'channel = "stable"' >> config.toml
+        echo 'optimize = true' >> config.toml
+        echo 'codegen-units = 1' >> config.toml
+        echo 'debuginfo-level = 0' >> config.toml
+        echo 'debug-assertions = false' >> config.toml
+        echo 'lld = true' >> config.toml
+        echo 'llvm-libunwind = "in-tree"' >> config.toml
+        echo '' >> config.toml
+        echo '[target.aarch64-apple-darwin]' >> config.toml
+        echo 'cc = "/opt/pm/live/bin/clang"' >> config.toml
+        echo 'cxx = "/opt/pm/live/bin/clang++"' >> config.toml
+        echo 'linker = "/opt/pm/live/bin/clang"' >> config.toml
+
+        echo "Building Rust 1.89.0..."
+        python3 x.py build --config config.toml
+
+        echo "Installing Rust 1.89.0..."
+        python3 x.py install --config config.toml
+
+post:
+  fix_permissions: true
+  patch_rpaths: skip
+  qa_pipeline: rust
+  

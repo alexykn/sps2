@@ -1,0 +1,20 @@
+metadata:
+  name: whi
+  version: "0.6.2"
+  description: |
+    Stupid simple PATH management
+  license: "MIT"
+  homepage: "https://github.com/alexykn/whi"
+
+environment:
+  defaults: true
+  network: true  # Allow network access for dependency downloads
+
+source:
+  local:
+    path: "."
+
+build:
+  system: cargo
+  args:
+    - "--release"
