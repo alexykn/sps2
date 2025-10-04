@@ -1,0 +1,15 @@
+!path.replace
+$HOME/.rustup/toolchains/stable-aarch64-apple-darwin/bin
+$(pwd)/target/aarch64-apple-darwin/release
+/opt/pm/live/bin
+/opt/homebrew/bin
+/opt/homebrew/sbin
+/usr/local/bin
+/usr/local/sbin/
+/usr/bin
+/usr/sbin
+/bin
+/sbin
+
+!env.set
+SPS2_ALLOW_HTTP 1
