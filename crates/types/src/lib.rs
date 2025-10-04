@@ -96,7 +96,7 @@ pub enum BuildSystemProfile {
 }
 
 /// QA pipeline override for manual recipe control
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum QaPipelineOverride {
     /// Use automatic detection based on build systems used
@@ -111,6 +111,50 @@ pub enum QaPipelineOverride {
     Python,
     /// Skip artifact QA entirely (dangerous, use only for special cases)
     Skip,
+}
+
+impl<'de> serde::Deserialize<'de> for QaPipelineOverride {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct QaPipelineOverrideVisitor;
+
+        impl serde::de::Visitor<'_> for QaPipelineOverrideVisitor {
+            type Value = QaPipelineOverride;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a qa pipeline override (auto, rust, c, go, python, or skip)")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                match value.trim().to_ascii_lowercase().as_str() {
+                    "auto" => Ok(QaPipelineOverride::Auto),
+                    "rust" => Ok(QaPipelineOverride::Rust),
+                    "c" => Ok(QaPipelineOverride::C),
+                    "go" => Ok(QaPipelineOverride::Go),
+                    "python" => Ok(QaPipelineOverride::Python),
+                    "skip" => Ok(QaPipelineOverride::Skip),
+                    other => Err(serde::de::Error::unknown_variant(
+                        other,
+                        &["auto", "rust", "c", "go", "python", "skip"],
+                    )),
+                }
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_str(&value)
+            }
+        }
+
+        deserializer.deserialize_any(QaPipelineOverrideVisitor)
+    }
 }
 
 impl Default for QaPipelineOverride {

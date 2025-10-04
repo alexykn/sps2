@@ -264,7 +264,7 @@ impl Default for PostOption {
 }
 
 /// Rpath patching strategy
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RpathPatchOption {
     /// Modern style: Keep @rpath references (relocatable binaries)
@@ -274,6 +274,47 @@ pub enum RpathPatchOption {
     Absolute,
     /// Skip rpath patching entirely
     Skip,
+}
+
+impl<'de> serde::Deserialize<'de> for RpathPatchOption {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct RpathPatchOptionVisitor;
+
+        impl serde::de::Visitor<'_> for RpathPatchOptionVisitor {
+            type Value = RpathPatchOption;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("an rpath patch option (default, absolute, or skip)")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                match value.trim().to_ascii_lowercase().as_str() {
+                    "default" => Ok(RpathPatchOption::Default),
+                    "absolute" => Ok(RpathPatchOption::Absolute),
+                    "skip" => Ok(RpathPatchOption::Skip),
+                    other => Err(serde::de::Error::unknown_variant(
+                        other,
+                        &["default", "absolute", "skip"],
+                    )),
+                }
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                self.visit_str(&value)
+            }
+        }
+
+        deserializer.deserialize_any(RpathPatchOptionVisitor)
+    }
 }
 
 /// Installation behavior
