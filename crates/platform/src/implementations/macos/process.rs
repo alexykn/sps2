@@ -112,10 +112,12 @@ impl ProcessOperations for MacOSProcessOperations {
         // Emit operation started event
         emit_process_started(ctx, &descriptor).await;
 
-        // Use the proven tokio Command execution pattern from the codebase
+        // Use inherit to pass through stdout/stderr directly to terminal
         let result: Result<CommandOutput, PlatformError> = async {
             let mut command = Command::new(cmd.program());
             command.args(cmd.get_args());
+            command.stdout(std::process::Stdio::inherit());
+            command.stderr(std::process::Stdio::inherit());
 
             if let Some(dir) = cmd.get_current_dir() {
                 command.current_dir(dir);
@@ -126,19 +128,26 @@ impl ProcessOperations for MacOSProcessOperations {
                 command.env(key, value);
             }
 
-            let output =
-                command
-                    .output()
-                    .await
-                    .map_err(|e| PlatformError::ProcessExecutionFailed {
-                        command: cmd.program().to_string(),
-                        message: e.to_string(),
-                    })?;
+            // Spawn the process and wait for it to complete
+            let mut child = command
+                .spawn()
+                .map_err(|e| PlatformError::ProcessExecutionFailed {
+                    command: cmd.program().to_string(),
+                    message: e.to_string(),
+                })?;
+
+            let status = child
+                .wait()
+                .await
+                .map_err(|e| PlatformError::ProcessExecutionFailed {
+                    command: cmd.program().to_string(),
+                    message: e.to_string(),
+                })?;
 
             Ok(CommandOutput {
-                status: output.status,
-                stdout: output.stdout,
-                stderr: output.stderr,
+                status,
+                stdout: Vec::new(), // stdout was inherited
+                stderr: Vec::new(), // stderr was inherited
             })
         }
         .await;
