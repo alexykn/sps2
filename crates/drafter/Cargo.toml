@@ -18,7 +18,7 @@ serde_json = "1.0.145"
 
 # Archive extraction
 tar = "0.4.44"
-flate2 = "1.1.2"
+flate2 = "1.1.4"
 zip = "5.1.1"
 async-compression = { version = "0.4.30", features = ["tokio", "gzip", "bzip2", "xz"] }
 
