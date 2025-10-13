@@ -88,7 +88,6 @@ impl Builder {
     /// - The recipe file cannot be read or parsed
     /// - Build dependencies cannot be resolved or installed
     /// - The build process fails or times out
-
     /// - Package creation or signing fails
     /// - Environment setup or cleanup fails
     pub async fn build(&self, context: BuildContext) -> Result<BuildResult, Error> {

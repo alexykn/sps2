@@ -7,66 +7,7 @@ use crate::{BuildContext, BuildEnvironment};
 // use sps2_errors::Error;
 use sps2_types::Manifest;
 
-/// Generate SBOM and create package manifest
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - SBOM directory creation fails
-/// - SBOM generation fails
-/// - File system operations fail during SBOM creation
-// pub async fn generate_sbom_and_manifest(
-//     config: &crate::BuildConfig,
-//     context: &BuildContext,
-//     environment: &BuildEnvironment,
-//     runtime_deps: Vec<String>,
-//     recipe_metadata: &RecipeMetadata,
-// ) -> Result<(SbomFiles, Manifest), Error> {
-//     // Generate SBOM
-//     send_event(
-//         context,
-//         AppEvent::General(GeneralEvent::OperationStarted {
-//             operation: "Generating SBOM".to_string(),
-//         }),
-//     );
-//     let sbom_files = generate_sbom(config, environment).await?;
-//     send_event(
-//         context,
-//         AppEvent::General(GeneralEvent::OperationCompleted {
-//             operation: "SBOM generation completed".to_string(),
-//             success: true,
-//         }),
-//     );
-
-//     // Create manifest
-//     send_event(
-//         context,
-//         AppEvent::General(GeneralEvent::OperationStarted {
-//             operation: "Creating package manifest".to_string(),
-//         }),
-//     );
-//     let manifest = create_manifest(
-//         context,
-//         runtime_deps,
-//         &sbom_files,
-//         recipe_metadata,
-//         environment,
-//     );
-//     send_event(
-//         context,
-//         AppEvent::General(GeneralEvent::OperationCompleted {
-//             operation: "Package manifest created".to_string(),
-//             success: true,
-//         }),
-//     );
-
-//     Ok((sbom_files, manifest))
-// }
-
-// }
-
 // Create package manifest
-
 #[must_use]
 pub fn create_manifest(
     context: &BuildContext,
