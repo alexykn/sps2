@@ -47,7 +47,7 @@ which = "8.0.0"
 sysinfo = "0.37.2"
 uuid = { version = "1.18.1", features = ["v4"] }
 bitflags = "2.9.4"
-zip = "5.1.1"
+zip = "6.0.0"
 rayon = "1.11.0"
 ignore = { version = "0.4.23", features = [
     "simd-accel",
@@ -55,7 +55,7 @@ ignore = { version = "0.4.23", features = [
 globset = "0.4.16"
 bstr = "1.12.0" # binary‑safe search helpers
 object = { version = "0.37.3", features = ["read_core", "write_core", "macho"] }
-regex = "1.11.2"
+regex = "1.12.1"
 thiserror = "2.0.17"
 md-5 = "0.10.6"
 sha2 = "0.10.9"

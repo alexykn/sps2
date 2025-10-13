@@ -16,7 +16,7 @@ tokio = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 futures = { workspace = true }
-libc = "0.2.175"
+libc = "0.2.177"
 serde_json = { workspace = true }
 dirs = "6.0.0"
 chrono = { workspace = true }
