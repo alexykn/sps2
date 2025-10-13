@@ -1,14 +1,15 @@
-//! Packaging module for archive, compression, manifest, SBOM, and signing
+//! Packaging module for archive, compression, manifest, and signing
+//! SBOM support removed from packaging.
 
 pub mod archive;
 pub mod compression;
 pub mod manifest;
-pub mod sbom;
+
 pub mod signing;
 
 use self::archive::create_deterministic_tar_archive;
 use self::compression::compress_with_zstd;
-use self::sbom::{SbomFiles, SbomGenerator};
+
 use self::signing::PackageSigner;
 use crate::utils::events::send_event;
 use crate::utils::fileops::copy_directory_strip_live_prefix;
@@ -34,9 +35,6 @@ pub async fn create_and_sign_package(
     environment: &BuildEnvironment,
     manifest: Manifest,
 ) -> Result<PathBuf, Error> {
-    // Generate SBOM files first
-    let sbom_files = generate_sbom_files(config, context, environment, &manifest).await?;
-
     // Package the result
     send_event(
         context,
@@ -44,7 +42,7 @@ pub async fn create_and_sign_package(
             operation: "Creating package archive".to_string(),
         }),
     );
-    let package_path = create_package(config, context, environment, manifest, sbom_files).await?;
+    let package_path = create_package(config, context, environment, manifest).await?;
     send_event(
         context,
         AppEvent::General(GeneralEvent::OperationCompleted {
@@ -57,48 +55,6 @@ pub async fn create_and_sign_package(
     sign_package(config, context, &package_path).await?;
 
     Ok(package_path)
-}
-
-/// Generate SBOM files if enabled in the configuration.
-async fn generate_sbom_files(
-    config: &BuildConfig,
-    context: &BuildContext,
-    environment: &BuildEnvironment,
-    manifest: &Manifest,
-) -> Result<SbomFiles, Error> {
-    if !config.packaging_settings().sbom.enabled {
-        return Ok(SbomFiles::default());
-    }
-
-    send_event(
-        context,
-        AppEvent::General(GeneralEvent::OperationStarted {
-            operation: "Generating SBOM".to_string(),
-        }),
-    );
-
-    let sbom_generator = SbomGenerator::new(
-        config.packaging_settings().sbom.clone(),
-        manifest.package.name.clone(),
-        manifest.version().unwrap().to_string(),
-    );
-
-    let sbom_files = sbom_generator
-        .generate_sbom(
-            environment.staging_dir(),
-            &config.build_settings().build_root,
-        )
-        .await?;
-
-    send_event(
-        context,
-        AppEvent::General(GeneralEvent::OperationCompleted {
-            operation: "SBOM generation completed".to_string(),
-            success: true,
-        }),
-    );
-
-    Ok(sbom_files)
 }
 
 /// Create the final package
@@ -114,7 +70,6 @@ pub async fn create_package(
     context: &BuildContext,
     environment: &BuildEnvironment,
     mut manifest: Manifest,
-    sbom_files: SbomFiles,
 ) -> Result<PathBuf, Error> {
     let package_path = context.output_path();
 
@@ -129,21 +84,20 @@ pub async fn create_package(
         message: format!("failed to serialize manifest: {e}"),
     })?;
 
-    // Create proper .sp archive with manifest and SBOM files
+    // Create proper .sp archive with manifest
     create_sp_package(
         config,
         context,
         environment.staging_dir(),
         &package_path,
         &manifest_string,
-        &sbom_files,
     )
     .await?;
 
     Ok(package_path)
 }
 
-/// Create a .sp package archive with manifest, SBOM files, and tar+zstd compression
+/// Create a .sp package archive with manifest and tar+zstd compression
 ///
 /// # Errors
 ///
@@ -159,7 +113,6 @@ pub async fn create_sp_package(
     staging_dir: &Path,
     output_path: &Path,
     manifest_content: &str,
-    sbom_files: &SbomFiles,
 ) -> Result<(), Error> {
     // Create the directory structure for .sp package
     let package_dir = staging_dir.parent().ok_or_else(|| BuildError::Failed {
@@ -173,16 +126,7 @@ pub async fn create_sp_package(
     let manifest_path = package_temp_dir.join("manifest.toml");
     fs::write(&manifest_path, manifest_content).await?;
 
-    // Step 2: Copy SBOM files
-    if let Some(spdx_path) = &sbom_files.spdx_path {
-        let dst_path = package_temp_dir.join("sbom.spdx.json");
-        fs::copy(spdx_path, &dst_path).await?;
-    }
-
-    if let Some(cdx_path) = &sbom_files.cyclonedx_path {
-        let dst_path = package_temp_dir.join("sbom.cdx.json");
-        fs::copy(cdx_path, &dst_path).await?;
-    }
+    // SBOM files removed: no SBOM files are copied into the package
 
     // Step 3: Copy staging directory contents as package files
     send_event(

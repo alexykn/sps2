@@ -23,7 +23,7 @@ pub struct BuildCommandResult {
 pub struct BuildResult {
     /// Path to the generated package file
     pub package_path: PathBuf,
-    /// SBOM files generated
+    /// SBOM files generated (SBOM disabled)
     pub sbom_files: Vec<PathBuf>,
     /// Build log
     pub build_log: String,

@@ -17,8 +17,7 @@ pub struct Manifest {
     pub format_version: PackageFormatVersion,
     pub package: PackageInfo,
     pub dependencies: Dependencies,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sbom: Option<SbomInfo>,
+
     /// Optional Python-specific metadata for Python packages
     #[serde(skip_serializing_if = "Option::is_none")]
     pub python: Option<PythonPackageMetadata>,
@@ -51,14 +50,6 @@ pub struct Dependencies {
     pub build: Vec<String>,
 }
 
-/// SBOM information section
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SbomInfo {
-    pub spdx: String, // BLAKE3 hash (hex)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cyclonedx: Option<String>, // BLAKE3 hash (hex)
-}
-
 impl Manifest {
     /// Create a new manifest
     #[must_use]
@@ -76,7 +67,7 @@ impl Manifest {
                 legacy_compression: None,
             },
             dependencies: Dependencies::default(),
-            sbom: None,
+
             python: None,
         }
     }

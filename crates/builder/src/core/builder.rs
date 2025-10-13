@@ -4,7 +4,7 @@ use super::context::BuildContext;
 use crate::artifact_qa::run_quality_pipeline;
 use crate::config::BuildConfig;
 use crate::packaging::create_and_sign_package;
-use crate::packaging::manifest::generate_sbom_and_manifest;
+use crate::packaging::manifest::create_manifest;
 use crate::recipe::execute_recipe;
 use crate::utils::events::send_event;
 use crate::{BuildEnvironment, BuildResult};
@@ -88,7 +88,6 @@ impl Builder {
     /// - The recipe file cannot be read or parsed
     /// - Build dependencies cannot be resolved or installed
     /// - The build process fails or times out
-    /// - SBOM generation fails
     /// - Package creation or signing fails
     /// - Environment setup or cleanup fails
     pub async fn build(&self, context: BuildContext) -> Result<BuildResult, Error> {
@@ -143,15 +142,8 @@ impl Builder {
             }
         }
 
-        // Generate SBOM and create manifest
-        let (_sbom_files, manifest) = generate_sbom_and_manifest(
-            &self.config,
-            &context,
-            &environment,
-            runtime_deps,
-            &recipe_metadata,
-        )
-        .await?;
+        // Create manifest (SBOM soft-disabled here)
+        let manifest = create_manifest(&context, runtime_deps, &recipe_metadata, &environment);
 
         // Create and sign package
         let package_path =

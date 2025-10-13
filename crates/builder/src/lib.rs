@@ -1,9 +1,9 @@
 #![warn(mismatched_lifetime_syntaxes)]
 #![deny(clippy::pedantic, unsafe_code)]
-//! Package building with SBOM generation for sps2
+//! Package building for sps2
 //!
 //! This crate handles building packages from YAML recipes with
-//! isolated environments, dependency management, and SBOM generation.
+//! isolated environments, dependency management, and packaging.
 
 pub mod artifact_qa;
 mod build_plan;
@@ -38,8 +38,9 @@ pub use utils::format::{detect_compression_format, CompressionFormatInfo};
 // Re-export packaging types
 pub use packaging::archive::{create_deterministic_tar_archive, get_deterministic_timestamp};
 pub use packaging::compression::compress_with_zstd;
-pub use packaging::manifest::generate_sbom_and_manifest;
-pub use packaging::sbom::{SbomFiles, SbomGenerator};
+// SBOM-related re-exports removed
+// SBOM types removed from re-exports
+pub use packaging::manifest::create_manifest;
 pub use packaging::signing::PackageSigner;
 pub use packaging::{create_and_sign_package, create_package};
 
