@@ -1,4 +1,5 @@
 //! Packaging module for archive, compression, manifest, SBOM, and signing
+//! NOTE: SBOM generation is currently soft-disabled by callers.
 
 pub mod archive;
 pub mod compression;

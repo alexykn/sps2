@@ -274,7 +274,7 @@ async fn execute_command(
             recipe,
             directory,
             manifest,
-            sbom,
+            // SBOM field removed (soft-disabled)
             no_post,
             output_dir,
         } => {
@@ -286,14 +286,7 @@ async fn execute_command(
                         "--manifest is required with --directory".to_string(),
                     ));
                 };
-                sps2_ops::pack_from_directory(
-                    &ctx,
-                    &dir,
-                    &manifest_path,
-                    sbom.as_deref(),
-                    output_path,
-                )
-                .await?
+                sps2_ops::pack_from_directory(&ctx, &dir, &manifest_path, output_path).await?
             } else if let Some(rec) = recipe {
                 if no_post {
                     sps2_ops::pack_from_recipe_no_post(&ctx, &rec, output_path).await?
@@ -320,35 +313,17 @@ async fn execute_command(
             }
         },
 
-        Commands::Audit {
+        /* Commands::Audit {
             all: _,
-            package,
-            fail_on_critical,
-            severity,
+            package: _,
+            fail_on_critical: _,
+            severity: _,
         } => {
-            // Parse severity threshold
-            let severity_threshold = match severity.as_deref() {
-                Some("critical") => sps2_ops::Severity::Critical,
-                Some("high") => sps2_ops::Severity::High,
-                Some("medium") => sps2_ops::Severity::Medium,
-                Some("low") | None => sps2_ops::Severity::Low,
-                Some(s) => {
-                    return Err(CliError::InvalidArguments(format!(
-                        "Invalid severity '{s}': must be one of: low, medium, high, critical"
-                    )))
-                }
-            };
-
-            let report = sps2_ops::audit(
-                &ctx,
-                package.as_deref(),
-                fail_on_critical,
-                severity_threshold,
-            )
-            .await?;
-            Ok(OperationResult::AuditReport(report))
-        }
-
+            // Audit soft-disabled (command commented out)
+            return Err(CliError::InvalidArguments(
+                "Audit is temporarily disabled".to_string(),
+            ));
+        } */
         Commands::SelfUpdate { skip_verify, force } => {
             let result = sps2_ops::self_update(&ctx, skip_verify, force).await?;
             Ok(OperationResult::Success(result))

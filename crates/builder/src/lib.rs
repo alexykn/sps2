@@ -38,7 +38,7 @@ pub use utils::format::{detect_compression_format, CompressionFormatInfo};
 // Re-export packaging types
 pub use packaging::archive::{create_deterministic_tar_archive, get_deterministic_timestamp};
 pub use packaging::compression::compress_with_zstd;
-pub use packaging::manifest::generate_sbom_and_manifest;
+// SBOM generation re-export removed (soft-disabled): generate_sbom_and_manifest
 pub use packaging::sbom::{SbomFiles, SbomGenerator};
 pub use packaging::signing::PackageSigner;
 pub use packaging::{create_and_sign_package, create_package};

@@ -1,12 +1,12 @@
 //! Package manifest and SBOM coordination
+//! NOTE: SBOM generation is currently disabled by callers (soft-disabled).
 
-use crate::utils::events::send_event;
+// use crate::utils::events::send_event;
 use crate::yaml::RecipeMetadata;
-use crate::{BuildContext, BuildEnvironment, SbomFiles, SbomGenerator};
-use sps2_errors::Error;
-use sps2_events::{AppEvent, GeneralEvent};
+use crate::{BuildContext, BuildEnvironment, SbomFiles};
+// use sps2_errors::Error;
 use sps2_types::Manifest;
-use tokio::fs;
+// use tokio::fs;
 
 /// Generate SBOM and create package manifest
 ///
@@ -16,53 +16,53 @@ use tokio::fs;
 /// - SBOM directory creation fails
 /// - SBOM generation fails
 /// - File system operations fail during SBOM creation
-pub async fn generate_sbom_and_manifest(
-    config: &crate::BuildConfig,
-    context: &BuildContext,
-    environment: &BuildEnvironment,
-    runtime_deps: Vec<String>,
-    recipe_metadata: &RecipeMetadata,
-) -> Result<(SbomFiles, Manifest), Error> {
-    // Generate SBOM
-    send_event(
-        context,
-        AppEvent::General(GeneralEvent::OperationStarted {
-            operation: "Generating SBOM".to_string(),
-        }),
-    );
-    let sbom_files = generate_sbom(config, environment).await?;
-    send_event(
-        context,
-        AppEvent::General(GeneralEvent::OperationCompleted {
-            operation: "SBOM generation completed".to_string(),
-            success: true,
-        }),
-    );
+// pub async fn generate_sbom_and_manifest(
+//     config: &crate::BuildConfig,
+//     context: &BuildContext,
+//     environment: &BuildEnvironment,
+//     runtime_deps: Vec<String>,
+//     recipe_metadata: &RecipeMetadata,
+// ) -> Result<(SbomFiles, Manifest), Error> {
+//     // Generate SBOM
+//     send_event(
+//         context,
+//         AppEvent::General(GeneralEvent::OperationStarted {
+//             operation: "Generating SBOM".to_string(),
+//         }),
+//     );
+//     let sbom_files = generate_sbom(config, environment).await?;
+//     send_event(
+//         context,
+//         AppEvent::General(GeneralEvent::OperationCompleted {
+//             operation: "SBOM generation completed".to_string(),
+//             success: true,
+//         }),
+//     );
 
-    // Create manifest
-    send_event(
-        context,
-        AppEvent::General(GeneralEvent::OperationStarted {
-            operation: "Creating package manifest".to_string(),
-        }),
-    );
-    let manifest = create_manifest(
-        context,
-        runtime_deps,
-        &sbom_files,
-        recipe_metadata,
-        environment,
-    );
-    send_event(
-        context,
-        AppEvent::General(GeneralEvent::OperationCompleted {
-            operation: "Package manifest created".to_string(),
-            success: true,
-        }),
-    );
+//     // Create manifest
+//     send_event(
+//         context,
+//         AppEvent::General(GeneralEvent::OperationStarted {
+//             operation: "Creating package manifest".to_string(),
+//         }),
+//     );
+//     let manifest = create_manifest(
+//         context,
+//         runtime_deps,
+//         &sbom_files,
+//         recipe_metadata,
+//         environment,
+//     );
+//     send_event(
+//         context,
+//         AppEvent::General(GeneralEvent::OperationCompleted {
+//             operation: "Package manifest created".to_string(),
+//             success: true,
+//         }),
+//     );
 
-    Ok((sbom_files, manifest))
-}
+//     Ok((sbom_files, manifest))
+// }
 
 /// Generate SBOM files
 ///
@@ -72,28 +72,28 @@ pub async fn generate_sbom_and_manifest(
 /// - SBOM directory creation fails
 /// - SBOM generator fails to scan staging directory
 /// - File I/O operations fail during SBOM generation
-pub async fn generate_sbom(
-    config: &crate::BuildConfig,
-    environment: &BuildEnvironment,
-) -> Result<SbomFiles, Error> {
-    let sbom_config = config.sbom_config().clone();
+// pub async fn generate_sbom(
+//     config: &crate::BuildConfig,
+//     environment: &BuildEnvironment,
+// ) -> Result<SbomFiles, Error> {
+//     let sbom_config = config.sbom_config().clone();
 
-    // Set package name and version from build context
+//     // Set package name and version from build context
 
-    let generator = SbomGenerator::new(
-        sbom_config,
-        environment.package_name().to_string(),
-        environment.context.version.to_string(),
-    );
+//     let generator = SbomGenerator::new(
+//         sbom_config,
+//         environment.package_name().to_string(),
+//         environment.context.version.to_string(),
+//     );
 
-    let staging_dir = environment.staging_dir();
-    let sbom_dir = environment.build_prefix().join("sbom");
-    fs::create_dir_all(&sbom_dir).await?;
+//     let staging_dir = environment.staging_dir();
+//     let sbom_dir = environment.build_prefix().join("sbom");
+//     fs::create_dir_all(&sbom_dir).await?;
 
-    generator.generate_sbom(staging_dir, &sbom_dir).await
-}
+//     generator.generate_sbom(staging_dir, &sbom_dir).await
+// }
 
-/// Create package manifest
+// Create package manifest
 pub fn create_manifest(
     context: &BuildContext,
     runtime_deps: Vec<String>,

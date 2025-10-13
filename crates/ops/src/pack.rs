@@ -6,8 +6,8 @@
 use crate::OpsCtx;
 use sps2_builder::{
     artifact_qa::run_quality_pipeline, create_and_sign_package, execute_post_step_with_security,
-    generate_sbom_and_manifest, parse_yaml_recipe, BuildCommand, BuildConfig, BuildContext,
-    BuildEnvironment, BuildPlan, BuilderApi, RecipeMetadata, SecurityContext, YamlRecipe,
+    parse_yaml_recipe, BuildCommand, BuildConfig, BuildContext, BuildEnvironment, BuildPlan,
+    BuilderApi, RecipeMetadata, SecurityContext, YamlRecipe,
 };
 use sps2_errors::{Error, OpsError};
 use sps2_events::{events::BuildPhase, AppEvent, BuildEvent, EventEmitter, PhaseStatus};
@@ -26,7 +26,7 @@ use uuid::Uuid;
 /// # Errors
 ///
 /// Returns an error if:
-/// - Recipe file doesn't exist or has invalid extension  
+/// - Recipe file doesn't exist or has invalid extension
 /// - Staging directory doesn't exist or is empty
 /// - Post-step execution fails
 /// - QA pipeline fails
@@ -61,20 +61,20 @@ pub async fn pack_from_recipe_no_post(
 /// Pack a directory directly, skipping all post-processing
 ///
 /// This is a power-user feature that packages a directory as-is.
-/// It requires a manifest file and optionally accepts an SBOM.
+/// It requires a manifest file. // SBOM soft-disabled: any provided path is ignored
 ///
 /// # Errors
 ///
 /// Returns an error if:
 /// - Directory to package does not exist or is empty
 /// - Manifest file does not exist or is invalid
-/// - SBOM file (if provided) does not exist
+///
 /// - Packaging process fails
 pub async fn pack_from_directory(
     ctx: &OpsCtx,
     directory: &Path,
     manifest_path: &Path,
-    sbom_path: Option<&Path>,
+    // SBOM soft-disabled: removed sbom_path parameter
     output_dir: Option<&Path>,
 ) -> Result<BuildReport, Error> {
     let start = Instant::now();
@@ -111,16 +111,7 @@ pub async fn pack_from_directory(
     // Create a minimal build config
     let build_config = BuildConfig::default();
 
-    // Prepare SBOM files if provided
-    let _sbom_files = if let Some(path) = sbom_path {
-        sps2_builder::SbomFiles {
-            spdx_path: Some(path.to_path_buf()),
-            cyclonedx_path: None,
-            ..Default::default()
-        }
-    } else {
-        sps2_builder::SbomFiles::default()
-    };
+    // SBOM soft-disabled: ignore sbom_path and do not prepare SBOM files
 
     // Create and sign the package
     let package_path =
@@ -138,7 +129,8 @@ pub async fn pack_from_directory(
         version: package_version,
         output_path: package_path,
         duration_ms: u64::try_from(duration.as_millis()).unwrap_or(u64::MAX),
-        sbom_generated: sbom_path.is_some(),
+        // SBOM soft-disabled: always false
+        sbom_generated: false,
     })
 }
 
@@ -228,15 +220,26 @@ async fn pack_from_recipe_impl(
         build_deps: yaml_recipe.metadata.dependencies.build.clone(),
     };
 
-    // Generate SBOM and create manifest (EXACT same as build command)
-    let (_sbom_files, manifest) = generate_sbom_and_manifest(
-        &build_config,
-        &build_context,
-        &environment,
-        recipe_metadata.runtime_deps.clone(),
-        &recipe_metadata,
-    )
-    .await?;
+    // Create manifest (SBOM soft-disabled; construct here to avoid private module access)
+    let manifest = sps2_types::Manifest {
+        format_version: sps2_types::PackageFormatVersion::CURRENT,
+        package: sps2_types::ManifestPackageInfo {
+            name: build_context.name.clone(),
+            version: build_context.version.to_string(),
+            revision: build_context.revision,
+            arch: build_context.arch.clone(),
+            description: recipe_metadata.description.clone(),
+            homepage: recipe_metadata.homepage.clone(),
+            license: recipe_metadata.license.clone(),
+            legacy_compression: None,
+        },
+        dependencies: sps2_types::ManifestDependencies {
+            runtime: recipe_metadata.runtime_deps.clone(),
+            build: Vec::new(),
+        },
+        sbom: None,
+        python: None,
+    };
 
     // Create and sign package (EXACT same as build command)
     let package_path =
@@ -255,7 +258,8 @@ async fn pack_from_recipe_impl(
         version: package_version,
         output_path: package_path,
         duration_ms: u64::try_from(duration.as_millis()).unwrap_or(u64::MAX),
-        sbom_generated: true,
+        // SBOM soft-disabled: always false
+        sbom_generated: false,
     })
 }
 

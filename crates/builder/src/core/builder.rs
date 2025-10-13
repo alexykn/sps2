@@ -4,7 +4,7 @@ use super::context::BuildContext;
 use crate::artifact_qa::run_quality_pipeline;
 use crate::config::BuildConfig;
 use crate::packaging::create_and_sign_package;
-use crate::packaging::manifest::generate_sbom_and_manifest;
+use crate::packaging::manifest::create_manifest;
 use crate::recipe::execute_recipe;
 use crate::utils::events::send_event;
 use crate::{BuildEnvironment, BuildResult};
@@ -143,15 +143,14 @@ impl Builder {
             }
         }
 
-        // Generate SBOM and create manifest
-        let (_sbom_files, manifest) = generate_sbom_and_manifest(
-            &self.config,
+        // Create manifest (SBOM soft-disabled here)
+        let manifest = create_manifest(
             &context,
-            &environment,
             runtime_deps,
+            &crate::packaging::sbom::SbomFiles::default(),
             &recipe_metadata,
-        )
-        .await?;
+            &environment,
+        );
 
         // Create and sign package
         let package_path =

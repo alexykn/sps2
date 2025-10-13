@@ -288,10 +288,7 @@ impl OutputRenderer {
         println!("Package:  {} {}", report.package, report.version);
         println!("Output:   {}", report.output_path.display());
         println!("Duration: {}ms", report.duration_ms);
-        println!(
-            "SBOM:     {}",
-            if report.sbom_generated { "Yes" } else { "No" }
-        );
+        // SBOM output removed (soft disable): previously displayed report.sbom_generated
 
         Ok(())
     }

@@ -133,11 +133,6 @@ pub enum Commands {
             .required(true)
             .args(&["recipe", "directory"]),
     ))]
-    #[command(group(
-        clap::ArgGroup::new("dir_requires_manifest")
-            .args(&["directory", "manifest"]) 
-            .requires_all(&["directory", "manifest"]),
-    ))]
     Pack {
         /// Path to recipe file (.yaml or .yml)
         #[arg(short = 'r', long = "recipe")]
@@ -147,14 +142,12 @@ pub enum Commands {
         #[arg(short = 'd', long = "directory")]
         directory: Option<PathBuf>,
 
-        /// Path to a manifest.toml file (required with --directory)
+        /// Path to a manifest.toml file (requires --directory)
         #[arg(short = 'm', long, requires = "directory")]
+        // require directory when manifest is used
         manifest: Option<PathBuf>,
 
-        /// Path to an SBOM file (optional, requires --directory)
-        #[arg(short = 's', long, requires = "directory")]
-        sbom: Option<PathBuf>,
-
+        // SBOM flag removed (soft disable): previously --sbom/-s (optional when using --directory)
         /// Skip post-processing steps and QA pipeline (only with --recipe)
         #[arg(short = 'n', long = "no-post", requires = "recipe")]
         no_post: bool,
@@ -234,7 +227,10 @@ pub enum Commands {
         output: Option<PathBuf>,
     },
 
-    /// Audit installed packages for vulnerabilities
+    // Audit command soft-disabled (entire variant commented out)
+    /*
+    /// Audit temporarily disabled
+    #[command(hide = true, about = "Audit temporarily disabled")]
     Audit {
         /// Scan all packages (default: all)
         #[arg(long)]
@@ -252,7 +248,7 @@ pub enum Commands {
         #[arg(long, value_name = "SEVERITY")]
         severity: Option<String>,
     },
-
+    */
     /// Update sps2 to the latest version
     #[command(name = "self-update")]
     SelfUpdate {

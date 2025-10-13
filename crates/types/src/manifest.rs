@@ -17,6 +17,7 @@ pub struct Manifest {
     pub format_version: PackageFormatVersion,
     pub package: PackageInfo,
     pub dependencies: Dependencies,
+    /// SBOM may be absent while SBOM is soft-disabled
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sbom: Option<SbomInfo>,
     /// Optional Python-specific metadata for Python packages
