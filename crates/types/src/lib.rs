@@ -22,7 +22,7 @@ pub use format::{
 };
 pub use manifest::{
     Dependencies as ManifestDependencies, Manifest, ManifestBuilder,
-    PackageInfo as ManifestPackageInfo, SbomInfo,
+    PackageInfo as ManifestPackageInfo,
 };
 pub use package::{
     DepEdge, DepKind, PackageId, PackageInfo, PackageSpec, PackageStatus, PythonPackageMetadata,

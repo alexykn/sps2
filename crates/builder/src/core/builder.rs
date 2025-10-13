@@ -88,7 +88,7 @@ impl Builder {
     /// - The recipe file cannot be read or parsed
     /// - Build dependencies cannot be resolved or installed
     /// - The build process fails or times out
-    /// - SBOM generation fails
+
     /// - Package creation or signing fails
     /// - Environment setup or cleanup fails
     pub async fn build(&self, context: BuildContext) -> Result<BuildResult, Error> {
@@ -144,13 +144,7 @@ impl Builder {
         }
 
         // Create manifest (SBOM soft-disabled here)
-        let manifest = create_manifest(
-            &context,
-            runtime_deps,
-            &crate::packaging::sbom::SbomFiles::default(),
-            &recipe_metadata,
-            &environment,
-        );
+        let manifest = create_manifest(&context, runtime_deps, &recipe_metadata, &environment);
 
         // Create and sign package
         let package_path =

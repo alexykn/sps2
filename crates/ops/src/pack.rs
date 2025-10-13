@@ -220,26 +220,13 @@ async fn pack_from_recipe_impl(
         build_deps: yaml_recipe.metadata.dependencies.build.clone(),
     };
 
-    // Create manifest (SBOM soft-disabled; construct here to avoid private module access)
-    let manifest = sps2_types::Manifest {
-        format_version: sps2_types::PackageFormatVersion::CURRENT,
-        package: sps2_types::ManifestPackageInfo {
-            name: build_context.name.clone(),
-            version: build_context.version.to_string(),
-            revision: build_context.revision,
-            arch: build_context.arch.clone(),
-            description: recipe_metadata.description.clone(),
-            homepage: recipe_metadata.homepage.clone(),
-            license: recipe_metadata.license.clone(),
-            legacy_compression: None,
-        },
-        dependencies: sps2_types::ManifestDependencies {
-            runtime: recipe_metadata.runtime_deps.clone(),
-            build: Vec::new(),
-        },
-        sbom: None,
-        python: None,
-    };
+    // Create manifest (SBOM removed)
+    let manifest = sps2_builder::create_manifest(
+        &build_context,
+        recipe_metadata.runtime_deps.clone(),
+        &recipe_metadata,
+        &environment,
+    );
 
     // Create and sign package (EXACT same as build command)
     let package_path =
