@@ -15,7 +15,7 @@ sps2-signing = { path = "../signing" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["fs"] }
-regex = "1.11.2"
+regex = "1.12.1"
 thiserror = { workspace = true }
 async-trait = "0.1.89"
 chrono = { workspace = true }
