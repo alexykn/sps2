@@ -66,7 +66,8 @@ use sps2_types::Manifest;
 // }
 
 // Create package manifest
-#[must_use] 
+
+#[must_use]
 pub fn create_manifest(
     context: &BuildContext,
     runtime_deps: Vec<String>,
