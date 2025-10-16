@@ -192,9 +192,9 @@ impl PackageDownloader {
                     if let Some(obj) = json.as_object() {
                         for (key_id, entry) in obj {
                             if let Some(pk) = entry.get("public_key").and_then(|v| v.as_str()) {
-                                allowed.push(sps2_signing::PublicKeyRef {
+                                allowed.push(crate::signing::PublicKeyRef {
                                     id: key_id.clone(),
-                                    algo: sps2_signing::Algorithm::Minisign,
+                                    algo: crate::signing::Algorithm::Minisign,
                                     data: pk.to_string(),
                                 });
                             }
@@ -229,7 +229,7 @@ impl PackageDownloader {
         }
 
         // Perform signature verification with the loaded keys
-        match sps2_signing::verify_minisign_file_with_keys(package_path, &sig_str, &allowed) {
+        match crate::signing::verify_minisign_file_with_keys(package_path, &sig_str, &allowed) {
             Ok(_key_id) => Ok(true),
             Err(Error::Signing(SigningError::NoTrustedKeyFound { .. })) => {
                 // Key ID from signature doesn't match any of our trusted keys

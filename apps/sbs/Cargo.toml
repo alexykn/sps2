@@ -15,7 +15,7 @@ path = "src/main.rs"
 clap = { workspace = true, features = ["derive"] }
 sps2-errors = { path = "../../crates/errors" }
 sps2-repository = { path = "../../crates/repository" }
-sps2-signing = { path = "../../crates/signing" }
+sps2-net = { path = "../../crates/net" }
 tokio = { workspace = true, features = ["fs", "rt-multi-thread", "macros"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }

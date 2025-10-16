@@ -3,10 +3,10 @@
 use crate::PreparedPackage;
 use crossbeam::queue::SegQueue;
 use dashmap::DashMap;
+use sps2_config::ResourceManager;
 use sps2_errors::{Error, InstallError};
 use sps2_events::{AppEvent, EventEmitter, GeneralEvent};
 use sps2_resolver::{ExecutionPlan, NodeAction, PackageId, ResolvedNode};
-use sps2_resources::ResourceManager;
 use sps2_state::StateManager;
 use sps2_store::PackageStore;
 use std::collections::HashMap;
@@ -466,13 +466,13 @@ mod tests {
         let sorted = vec![pkg1_id.clone(), pkg2_id.clone()];
         let execution_plan = ExecutionPlan::from_sorted_packages(&sorted, &graph);
 
-        let limits = sps2_resources::limits::ResourceLimits {
+        let limits = sps2_config::ResourceLimits {
             concurrent_downloads: 1,
             concurrent_decompressions: 1,
             concurrent_installations: 1,
             memory_usage: None,
         };
-        let resources = Arc::new(sps2_resources::ResourceManager::new(limits));
+        let resources = Arc::new(sps2_config::ResourceManager::new(limits));
         let executor = ParallelExecutor::new(store, state, resources).expect("parallel executor");
 
         let (tx, mut rx) = sps2_events::channel();

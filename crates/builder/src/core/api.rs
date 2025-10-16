@@ -13,8 +13,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
+use sps2_config::ResourceManager;
 use sps2_events::{AppEvent, EventEmitter, GeneralEvent};
-use sps2_resources::ResourceManager;
 use std::sync::Arc;
 
 /// Builder API exposed to Starlark recipes

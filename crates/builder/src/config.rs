@@ -10,7 +10,7 @@ use sps2_config::builder::{
     PerformanceSettings, SbomSettings, SecuritySettings, ShellExpansionPolicy, SigningSettings,
     ValidationConfig, ValidationMode,
 };
-use sps2_resources::ResourceManager;
+use sps2_config::ResourceManager;
 use std::sync::Arc;
 
 /// Builder context configuration

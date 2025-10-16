@@ -164,7 +164,7 @@ impl KeyManager {
         net_client: &sps2_net::NetClient,
         keys_url: &str,
         tx: &sps2_events::EventSender,
-    ) -> Result<Vec<sps2_signing::PublicKeyRef>, Error> {
+    ) -> Result<Vec<sps2_net::PublicKeyRef>, Error> {
         let keys_content = sps2_net::fetch_text(net_client, keys_url, tx).await?;
 
         let repo_keys: RepositoryKeys = serde_json::from_str(&keys_content)?;
@@ -184,9 +184,9 @@ impl KeyManager {
         Ok(self
             .trusted_keys
             .values()
-            .map(|k| sps2_signing::PublicKeyRef {
+            .map(|k| sps2_net::PublicKeyRef {
                 id: k.key_id.clone(),
-                algo: sps2_signing::Algorithm::Minisign,
+                algo: sps2_net::Algorithm::Minisign,
                 data: k.public_key.clone(),
             })
             .collect())
@@ -290,12 +290,12 @@ impl KeyManager {
 
     /// Get all trusted keys
     #[must_use]
-    pub fn get_trusted_keys(&self) -> Vec<sps2_signing::PublicKeyRef> {
+    pub fn get_trusted_keys(&self) -> Vec<sps2_net::PublicKeyRef> {
         self.trusted_keys
             .values()
-            .map(|k| sps2_signing::PublicKeyRef {
+            .map(|k| sps2_net::PublicKeyRef {
                 id: k.key_id.clone(),
-                algo: sps2_signing::Algorithm::Minisign,
+                algo: sps2_net::Algorithm::Minisign,
                 data: k.public_key.clone(),
             })
             .collect()
@@ -363,7 +363,7 @@ pub async fn keys_list(_ctx: &OpsCtx) -> Result<String, Error> {
             "{} ({})",
             k.id,
             match k.algo {
-                sps2_signing::Algorithm::Minisign => "minisign",
+                sps2_net::Algorithm::Minisign => "minisign",
             }
         ));
     }

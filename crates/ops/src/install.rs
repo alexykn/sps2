@@ -438,7 +438,7 @@ async fn install_remote_packages_parallel(
         .with_force_redownload(force_download);
 
     // Create parallel executor
-    let resources = std::sync::Arc::new(sps2_resources::ResourceManager::default());
+    let resources = std::sync::Arc::new(sps2_config::ResourceManager::default());
     let executor =
         sps2_install::ParallelExecutor::new(ctx.store.clone(), ctx.state.clone(), resources)?;
 

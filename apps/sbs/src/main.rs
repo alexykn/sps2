@@ -150,7 +150,7 @@ async fn publish_one(
             pass_final = maybe_prompt_pass(None, "Enter key passphrase (press Enter for none): ")?;
         }
         let data = tokio::fs::read(&dest).await?;
-        let sig = sps2_signing::minisign_sign_bytes(
+        let sig = sps2_net::signing::minisign_sign_bytes(
             &data,
             &key,
             pass_final.as_deref(),

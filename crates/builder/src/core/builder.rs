@@ -15,7 +15,7 @@ use sps2_resolver::Resolver;
 use sps2_store::PackageStore;
 use std::path::Path;
 
-use sps2_resources::ResourceManager;
+use sps2_config::ResourceManager;
 use std::sync::Arc;
 
 /// Package builder

@@ -16,10 +16,8 @@ members = [
     "crates/net",
     "crates/ops",
     "crates/platform",
-    "crates/signing",
     "crates/repository",
     "crates/resolver",
-    "crates/resources",
 
     "crates/state",
     "crates/store",

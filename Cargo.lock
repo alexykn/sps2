@@ -2510,8 +2510,8 @@ dependencies = [
  "minisign",
  "rpassword",
  "sps2-errors",
+ "sps2-net",
  "sps2-repository",
- "sps2-signing",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -2856,7 +2856,6 @@ dependencies = [
  "sps2-net",
  "sps2-platform",
  "sps2-resolver",
- "sps2-resources",
  "sps2-state",
  "sps2-store",
  "sps2-types",
@@ -2980,7 +2979,6 @@ dependencies = [
  "sps2-net",
  "sps2-platform",
  "sps2-resolver",
- "sps2-resources",
  "sps2-state",
  "sps2-store",
  "sps2-types",
@@ -2996,10 +2994,14 @@ dependencies = [
 name = "sps2-net"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "blake3",
  "bytes",
  "futures",
+ "hex",
  "httpmock",
+ "minisign",
+ "minisign-verify",
  "rand 0.9.2",
  "reqwest",
  "serde",
@@ -3008,8 +3010,6 @@ dependencies = [
  "sps2-errors",
  "sps2-events",
  "sps2-hash",
- "sps2-resources",
- "sps2-signing",
  "sps2-types",
  "tempfile",
  "tokio",
@@ -3037,8 +3037,6 @@ dependencies = [
  "sps2-install",
  "sps2-net",
  "sps2-resolver",
- "sps2-resources",
- "sps2-signing",
  "sps2-state",
  "sps2-store",
  "sps2-types",
@@ -3081,7 +3079,7 @@ dependencies = [
  "sps2-errors",
  "sps2-hash",
  "sps2-index",
- "sps2-signing",
+ "sps2-net",
  "thiserror 2.0.17",
  "tokio",
 ]
@@ -3104,28 +3102,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "uuid",
-]
-
-[[package]]
-name = "sps2-resources"
-version = "0.1.0"
-dependencies = [
- "serde",
- "sps2-errors",
- "tokio",
-]
-
-[[package]]
-name = "sps2-signing"
-version = "0.1.0"
-dependencies = [
- "base64",
- "hex",
- "minisign",
- "minisign-verify",
- "serde",
- "serde_json",
- "sps2-errors",
 ]
 
 [[package]]

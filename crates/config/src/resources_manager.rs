@@ -3,8 +3,10 @@
 //! This module provides the main `ResourceManager` struct that coordinates
 //! semaphores and resource limits for concurrent operations.
 
-use crate::limits::{ResourceAvailability, ResourceLimits};
-use crate::semaphore::{acquire_semaphore_permit, create_semaphore, try_acquire_semaphore_permit};
+use crate::resources_limits::{ResourceAvailability, ResourceLimits};
+use crate::resources_semaphore::{
+    acquire_semaphore_permit, create_semaphore, try_acquire_semaphore_permit,
+};
 use sps2_errors::Error;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;

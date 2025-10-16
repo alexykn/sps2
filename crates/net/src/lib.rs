@@ -9,11 +9,15 @@
 
 mod client;
 mod download;
+pub mod signing;
 
 pub use client::{NetClient, NetConfig};
 pub use download::{
     DownloadResult, PackageDownloadConfig, PackageDownloadRequest, PackageDownloadResult,
     PackageDownloader, RetryConfig,
+};
+pub use signing::{
+    verify_minisign_bytes_with_keys, verify_minisign_file_with_keys, Algorithm, PublicKeyRef,
 };
 
 use sps2_errors::{Error, NetworkError};

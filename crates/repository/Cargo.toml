@@ -11,7 +11,7 @@ repository.workspace = true
 sps2-errors = { path = "../errors" }
 sps2-index = { path = "../index" }
 sps2-hash = { path = "../hash" }
-sps2-signing = { path = "../signing" }
+sps2-net = { path = "../net" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["fs"] }

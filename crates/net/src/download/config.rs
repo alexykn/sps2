@@ -5,7 +5,7 @@ use sps2_types::Version;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use sps2_resources::ResourceManager;
+use sps2_config::ResourceManager;
 use std::sync::Arc;
 
 /// Configuration for package downloads

@@ -96,7 +96,7 @@ async fn sync_and_verify_index(
     let index_signature = sps2_net::fetch_text(&ctx.net, &index_sig_url, &ctx.tx).await?;
     let mut trusted_keys = fetch_and_verify_keys(ctx, &ctx.net, &keys_url, &ctx.tx).await?;
 
-    if let Err(e) = sps2_signing::verify_minisign_bytes_with_keys(
+    if let Err(e) = sps2_net::verify_minisign_bytes_with_keys(
         index_json.as_bytes(),
         &index_signature,
         &trusted_keys,
@@ -123,7 +123,7 @@ async fn handle_signature_verification_error(
     index_json: &str,
     index_signature: &str,
     yes: bool,
-    trusted_keys: &mut Vec<sps2_signing::PublicKeyRef>,
+    trusted_keys: &mut Vec<sps2_net::PublicKeyRef>,
 ) -> Result<(), Error> {
     match e {
         SigningError::NoTrustedKeyFound { key_id } => {
@@ -149,7 +149,7 @@ async fn handle_signature_verification_error(
                     key_manager.import_key(key).await?;
                     *trusted_keys = key_manager.get_trusted_keys();
                     // Re-verify
-                    sps2_signing::verify_minisign_bytes_with_keys(
+                    sps2_net::verify_minisign_bytes_with_keys(
                         index_json.as_bytes(),
                         index_signature,
                         trusted_keys,
@@ -355,7 +355,7 @@ async fn fetch_and_verify_keys(
     net_client: &sps2_net::NetClient,
     keys_url: &str,
     tx: &sps2_events::EventSender,
-) -> Result<Vec<sps2_signing::PublicKeyRef>, Error> {
+) -> Result<Vec<sps2_net::PublicKeyRef>, Error> {
     let mut key_manager = KeyManager::new(PathBuf::from(sps2_config::fixed_paths::KEYS_DIR));
 
     key_manager.load_trusted_keys().await?;

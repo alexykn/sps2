@@ -186,7 +186,7 @@ impl<S: ObjectStore> Publisher<S> {
         passphrase_or_keychain: Option<&str>,
     ) -> Result<(), Error> {
         let json = index.to_json()?;
-        let sig = sps2_signing::minisign_sign_bytes(
+        let sig = sps2_net::signing::minisign_sign_bytes(
             json.as_bytes(),
             secret_key_path,
             passphrase_or_keychain,

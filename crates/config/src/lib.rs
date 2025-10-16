@@ -16,6 +16,9 @@ pub mod constants;
 pub mod core;
 pub mod guard;
 pub mod repository;
+pub mod resources_limits;
+pub mod resources_manager;
+pub mod resources_semaphore;
 
 // Re-export main types for convenience
 pub use builder::BuilderConfig;
@@ -27,6 +30,11 @@ pub use guard::{
     VerificationConfig,
 };
 pub use repository::{Repositories, RepositoryConfig};
+pub use resources_limits::{IntoResourceLimits, ResourceAvailability, ResourceLimits};
+pub use resources_manager::ResourceManager;
+pub use resources_semaphore::{
+    acquire_semaphore_permit, create_semaphore, try_acquire_semaphore_permit,
+};
 
 use serde::{Deserialize, Serialize};
 use sps2_errors::{ConfigError, Error};

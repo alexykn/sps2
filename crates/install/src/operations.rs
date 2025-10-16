@@ -39,7 +39,7 @@ impl InstallOperation {
         store: PackageStore,
     ) -> Result<Self, Error> {
         // Create a default ResourceManager for the ParallelExecutor
-        let resources = Arc::new(sps2_resources::ResourceManager::default());
+        let resources = Arc::new(sps2_config::ResourceManager::default());
         let executor = ParallelExecutor::new(store.clone(), state_manager.clone(), resources)?;
 
         Ok(Self {
