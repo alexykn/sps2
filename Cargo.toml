@@ -6,7 +6,6 @@ members = [
     "apps/sbs",
     "crates/builder",
     "crates/config",
-    "crates/drafter",
     "crates/errors",
     "crates/events",
     "crates/guard",

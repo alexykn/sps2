@@ -23,7 +23,6 @@ mod types;
 
 // Import command modules
 mod build;
-mod draft;
 mod install;
 mod pack;
 mod uninstall;
@@ -49,7 +48,6 @@ pub use types::{
 
 // Re-export operation functions
 pub use build::build;
-pub use draft::draft_recipe;
 pub use install::install;
 pub use pack::{pack_from_directory, pack_from_recipe, pack_from_recipe_no_post};
 pub use small_ops::{

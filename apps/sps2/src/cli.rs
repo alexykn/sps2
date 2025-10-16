@@ -47,31 +47,6 @@ pub struct GlobalArgs {
     pub check: bool,
 }
 
-/// Draft command source arguments
-#[derive(Debug, Parser)]
-#[clap(group(
-    clap::ArgGroup::new("source")
-        .required(true)
-        .args(&["path", "git", "url", "archive"]),
-))]
-pub struct DraftSource {
-    /// Local source code directory
-    #[clap(long, short = 'p', value_name = "PATH")]
-    pub path: Option<PathBuf>,
-
-    /// Git repository URL
-    #[clap(long, short = 'g', value_name = "URL")]
-    pub git: Option<String>,
-
-    /// Direct URL to source archive
-    #[clap(long, short = 'u', value_name = "URL")]
-    pub url: Option<String>,
-
-    /// Local archive file
-    #[clap(long, short = 'a', value_name = "PATH")]
-    pub archive: Option<PathBuf>,
-}
-
 /// Available commands
 #[derive(Subcommand)]
 pub enum Commands {
@@ -209,16 +184,6 @@ pub enum Commands {
     /// Check system health
     #[command(name = "check-health")]
     CheckHealth,
-
-    /// Draft a new build recipe from a source
-    Draft {
-        #[command(flatten)]
-        source: DraftSource,
-
-        /// Path to save the generated recipe (defaults to './<name>-<version>.star')
-        #[clap(short, long)]
-        output: Option<PathBuf>,
-    },
 
     // Audit command soft-disabled (entire variant commented out)
     /*

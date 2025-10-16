@@ -307,21 +307,6 @@ async fn execute_command(
             Ok(OperationResult::Success(result))
         }
 
-        Commands::Draft { source, output } => {
-            sps2_ops::draft_recipe(
-                &ctx,
-                source.path,
-                source.git,
-                source.url,
-                source.archive,
-                output,
-            )
-            .await?;
-            Ok(OperationResult::Success(
-                "Recipe draft generated successfully".to_string(),
-            ))
-        }
-
         Commands::Verify {
             heal,
             level,
