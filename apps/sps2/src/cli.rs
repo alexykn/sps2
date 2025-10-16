@@ -210,13 +210,6 @@ pub enum Commands {
     #[command(name = "check-health")]
     CheckHealth,
 
-    /// Vulnerability database management
-    #[command(name = "vulndb")]
-    VulnDb {
-        #[command(subcommand)]
-        command: VulnDbCommands,
-    },
-
     /// Draft a new build recipe from a source
     Draft {
         #[command(flatten)]
@@ -333,16 +326,6 @@ pub enum KeysCommands {
         /// Minisign key ID (hex)
         key_id: String,
     },
-}
-
-/// Vulnerability database subcommands
-#[derive(Subcommand)]
-pub enum VulnDbCommands {
-    /// Update vulnerability database from sources
-    Update,
-
-    /// Show vulnerability database statistics
-    Stats,
 }
 
 impl Commands {}

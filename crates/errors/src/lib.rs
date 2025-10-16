@@ -11,7 +11,6 @@ use std::borrow::Cow;
 
 use thiserror::Error;
 
-pub mod audit;
 pub mod build;
 pub mod config;
 pub mod guard;
@@ -26,7 +25,6 @@ pub mod storage;
 pub mod version;
 
 // Re-export all error types at the root
-pub use audit::AuditError;
 pub use build::BuildError;
 pub use config::ConfigError;
 pub use guard::{DiscrepancySeverity, GuardError};
@@ -64,9 +62,6 @@ pub enum Error {
 
     #[error("build error: {0}")]
     Build(#[from] BuildError),
-
-    #[error("audit error: {0}")]
-    Audit(#[from] AuditError),
 
     #[error("install error: {0}")]
     Install(#[from] InstallError),
@@ -220,7 +215,6 @@ impl UserFacingError for Error {
             Error::Version(err) => err.user_code(),
             Error::Config(err) => err.user_code(),
             Error::Build(err) => err.user_code(),
-            Error::Audit(err) => err.user_code(),
             Error::Install(err) => err.user_code(),
             Error::Ops(err) => err.user_code(),
             Error::Guard(err) => err.user_code(),

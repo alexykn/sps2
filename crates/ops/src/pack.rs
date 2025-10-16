@@ -129,8 +129,6 @@ pub async fn pack_from_directory(
         version: package_version,
         output_path: package_path,
         duration_ms: u64::try_from(duration.as_millis()).unwrap_or(u64::MAX),
-        // SBOM soft-disabled: always false
-        sbom_generated: false,
     })
 }
 
@@ -245,8 +243,6 @@ async fn pack_from_recipe_impl(
         version: package_version,
         output_path: package_path,
         duration_ms: u64::try_from(duration.as_millis()).unwrap_or(u64::MAX),
-        // SBOM soft-disabled: always false
-        sbom_generated: false,
     })
 }
 

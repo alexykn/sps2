@@ -2877,30 +2877,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sps2-audit"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "dashmap",
- "futures",
- "reqwest",
- "semver",
- "serde",
- "serde_json",
- "sps2-errors",
- "sps2-events",
- "sps2-hash",
- "sps2-state",
- "sps2-store",
- "sps2-types",
- "sqlx",
- "tempfile",
- "tokio",
- "uuid",
- "zip 5.1.1",
-]
-
-[[package]]
 name = "sps2-builder"
 version = "0.1.0"
 dependencies = [
@@ -2947,7 +2923,7 @@ dependencies = [
  "toml",
  "uuid",
  "which",
- "zip 6.0.0",
+ "zip",
  "zstd",
 ]
 
@@ -2989,7 +2965,7 @@ dependencies = [
  "tokio",
  "toml",
  "walkdir",
- "zip 6.0.0",
+ "zip",
 ]
 
 [[package]]
@@ -3077,7 +3053,6 @@ dependencies = [
  "libc",
  "paste",
  "serde",
- "sps2-audit",
  "sps2-config",
  "sps2-errors",
  "sps2-events",
@@ -3133,7 +3108,6 @@ dependencies = [
  "minisign-verify",
  "serde",
  "serde_json",
- "sps2-audit",
  "sps2-builder",
  "sps2-config",
  "sps2-drafter",
@@ -4827,33 +4801,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "zip"
-version = "5.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f852905151ac8d4d06fdca66520a661c09730a74c6d4e2b0f27b436b382e532"
-dependencies = [
- "aes",
- "arbitrary",
- "bzip2",
- "constant_time_eq",
- "crc32fast",
- "deflate64",
- "flate2",
- "getrandom 0.3.3",
- "hmac",
- "indexmap",
- "lzma-rust2",
- "memchr",
- "pbkdf2",
- "ppmd-rust",
- "sha1",
- "time",
- "zeroize",
- "zopfli",
- "zstd",
 ]
 
 [[package]]

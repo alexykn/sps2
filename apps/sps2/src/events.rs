@@ -1605,7 +1605,6 @@ impl EventHandler {
                     LifecycleEvent::Uninstall { .. } => "Uninstall",
                     LifecycleEvent::Update { .. } => "Update",
                 },
-                AppEvent::Audit(_) => "Audit",
                 AppEvent::Build(_) => "Build",
                 AppEvent::General(_) => "General",
                 AppEvent::Guard(_) => "Guard",

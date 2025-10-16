@@ -138,16 +138,3 @@ pub enum InstallRequest {
 // PackageChange is now imported from sps2_types
 
 // BuildReport is now imported from sps2_types
-
-/// Vulnerability database statistics
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct VulnDbStats {
-    /// Total number of vulnerabilities
-    pub vulnerability_count: usize,
-    /// Last update timestamp
-    pub last_updated: Option<chrono::DateTime<chrono::Utc>>,
-    /// Database size in bytes
-    pub database_size: u64,
-    /// Breakdown by severity
-    pub severity_breakdown: HashMap<String, usize>,
-}

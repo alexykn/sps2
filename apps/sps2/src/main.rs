@@ -11,7 +11,7 @@ mod events;
 mod logging;
 mod setup;
 
-use crate::cli::{Cli, Commands, KeysCommands, VulnDbCommands};
+use crate::cli::{Cli, Commands, KeysCommands};
 use crate::display::OutputRenderer;
 use crate::error::CliError;
 use crate::events::EventHandler;
@@ -302,28 +302,6 @@ async fn execute_command(
             Ok(OperationResult::BuildReport(report))
         }
 
-        Commands::VulnDb { command } => match command {
-            VulnDbCommands::Update => {
-                let result = sps2_ops::update_vulndb(&ctx).await?;
-                Ok(OperationResult::Success(result))
-            }
-            VulnDbCommands::Stats => {
-                let stats = sps2_ops::vulndb_stats(&ctx).await?;
-                Ok(OperationResult::VulnDbStats(stats))
-            }
-        },
-
-        /* Commands::Audit {
-            all: _,
-            package: _,
-            fail_on_critical: _,
-            severity: _,
-        } => {
-            // Audit soft-disabled (command commented out)
-            return Err(CliError::InvalidArguments(
-                "Audit is temporarily disabled".to_string(),
-            ));
-        } */
         Commands::SelfUpdate { skip_verify, force } => {
             let result = sps2_ops::self_update(&ctx, skip_verify, force).await?;
             Ok(OperationResult::Success(result))

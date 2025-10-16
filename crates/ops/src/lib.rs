@@ -18,7 +18,6 @@ mod health;
 mod maintenance;
 mod query;
 mod repository;
-mod security;
 mod self_update;
 mod types;
 
@@ -45,7 +44,7 @@ pub use sps2_types::{
 pub use sps2_events::HealthStatus;
 // Re-export ops-specific types from local types module
 pub use types::{
-    ComponentHealth, HealthCheck, HealthIssue, InstallRequest, IssueSeverity, OpReport, VulnDbStats,
+    ComponentHealth, HealthCheck, HealthIssue, InstallRequest, IssueSeverity, OpReport,
 };
 
 // Re-export operation functions
@@ -54,15 +53,12 @@ pub use draft::draft_recipe;
 pub use install::install;
 pub use pack::{pack_from_directory, pack_from_recipe, pack_from_recipe_no_post};
 pub use small_ops::{
-    audit, check_health, cleanup, history, list_packages, package_info, reposync, rollback,
-    search_packages, self_update, update_vulndb, vulndb_stats,
+    check_health, cleanup, history, list_packages, package_info, reposync, rollback,
+    search_packages, self_update,
 };
 pub use uninstall::uninstall;
 pub use update::update;
 pub use upgrade::upgrade;
-
-// Re-export audit types needed by the audit function
-pub use sps2_audit::{AuditReport, Severity};
 
 use sps2_errors::Error;
 use std::sync::Arc;
@@ -170,10 +166,6 @@ pub enum OperationResult {
     Success(String),
     /// Generic report
     Report(OpReport),
-    /// Vulnerability database statistics
-    VulnDbStats(VulnDbStats),
-    /// Audit report
-    AuditReport(sps2_audit::AuditReport),
     /// Verification result
     VerificationResult(VerificationResult),
 }
@@ -205,9 +197,7 @@ impl OperationResult {
             | OperationResult::BuildReport(_)
             | OperationResult::StateInfo(_)
             | OperationResult::StateHistory(_)
-            | OperationResult::Report(_)
-            | OperationResult::VulnDbStats(_)
-            | OperationResult::AuditReport(_) => true,
+            | OperationResult::Report(_) => true,
             OperationResult::HealthCheck(health) => health.is_healthy(),
             OperationResult::VerificationResult(result) => result.is_valid,
         }

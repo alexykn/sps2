@@ -9,7 +9,6 @@ use crate::health;
 use crate::maintenance;
 use crate::query;
 use crate::repository;
-use crate::security;
 use crate::self_update as self_update_module;
 
 // Re-export all public functions to maintain API compatibility
@@ -17,5 +16,4 @@ pub use health::check_health;
 pub use maintenance::{cleanup, history, rollback};
 pub use query::{list_packages, package_info, search_packages};
 pub use repository::{add_repo, list_repos, remove_repo, reposync};
-pub use security::{audit, update_vulndb, vulndb_stats};
 pub use self_update_module::self_update;

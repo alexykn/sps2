@@ -48,7 +48,6 @@ impl FailureContext {
 }
 
 // Declare all domain modules
-pub mod audit;
 pub mod build;
 pub mod general;
 pub mod guard;
@@ -60,7 +59,6 @@ pub mod qa;
 pub mod state;
 
 // Re-export all domain events
-pub use audit::*;
 pub use build::*;
 pub use general::*;
 pub use guard::*;
@@ -93,9 +91,6 @@ pub enum AppEvent {
     /// Quality assurance events (artifact validation)
     Qa(QaEvent),
 
-    /// Audit and vulnerability scanning events
-    Audit(AuditEvent),
-
     /// Package operation events (high-level package operations)
     Package(PackageEvent),
 
@@ -117,7 +112,6 @@ impl AppEvent {
             AppEvent::Progress(_) => EventSource::PROGRESS,
             AppEvent::Guard(_) => EventSource::GUARD,
             AppEvent::Qa(_) => EventSource::QA,
-            AppEvent::Audit(_) => EventSource::AUDIT,
             AppEvent::Package(_) => EventSource::PACKAGE,
             AppEvent::Platform(_) => EventSource::PLATFORM,
             AppEvent::Lifecycle(event) => match event.domain() {
@@ -191,7 +185,6 @@ impl AppEvent {
             AppEvent::Progress(_) => "sps2::events::progress",
             AppEvent::Guard(_) => "sps2::events::guard",
             AppEvent::Qa(_) => "sps2::events::qa",
-            AppEvent::Audit(_) => "sps2::events::audit",
             AppEvent::Package(_) => "sps2::events::package",
             AppEvent::Platform(_) => "sps2::events::platform",
             AppEvent::Lifecycle(event) => match event.domain() {

@@ -109,7 +109,6 @@ impl PackageFormatVersion {
                 version: self.clone(),
                 minimum_reader_version: Self::new(1, 0, 0),
                 maximum_reader_version: Self::new(1, u32::MAX, u32::MAX),
-                supports_sbom: true,
                 supports_signatures: true,
                 deprecation_warning: None,
             },
@@ -118,7 +117,6 @@ impl PackageFormatVersion {
                 version: self.clone(),
                 minimum_reader_version: self.clone(),
                 maximum_reader_version: self.clone(),
-                supports_sbom: true,
                 supports_signatures: true,
                 deprecation_warning: Some(format!(
                     "Format version {self} is not officially supported"
@@ -205,8 +203,6 @@ pub struct PackageFormatCompatibility {
     pub minimum_reader_version: PackageFormatVersion,
     /// Maximum version of sps2 that can read this format
     pub maximum_reader_version: PackageFormatVersion,
-    /// Whether this version supports SBOM integration
-    pub supports_sbom: bool,
     /// Whether this version supports package signatures
     pub supports_signatures: bool,
     /// Optional deprecation warning message

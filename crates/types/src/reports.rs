@@ -31,8 +31,6 @@ pub struct BuildReport {
     pub output_path: PathBuf,
     /// Build duration
     pub duration_ms: u64,
-    /// Whether SBOM was generated (currently unused - SBOM soft-disabled)
-    pub sbom_generated: bool,
 }
 
 /// Package change for reports

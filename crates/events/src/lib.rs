@@ -31,7 +31,6 @@ pub use events::{
     AcquisitionContext,
     // Domain event types
     AppEvent,
-    AuditEvent,
     BuildDiagnostic,
     BuildEvent,
     BuildSession,

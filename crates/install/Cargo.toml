@@ -18,7 +18,6 @@ sps2-resolver = { path = "../resolver" }
 sps2-platform = { path = "../platform" }
 sps2-state = { path = "../state" }
 sps2-store = { path = "../store" }
-sps2-audit = { path = "../audit" }
 sps2-resources = { path = "../resources" }
 sps2-config = { path = "../config" }
 serde = { workspace = true }

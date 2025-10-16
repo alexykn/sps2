@@ -204,7 +204,6 @@ impl PackageFormatDetector {
         let compat_info = version.compatibility_info();
 
         match feature {
-            "sbom" => compat_info.supports_sbom,
             "signatures" => compat_info.supports_signatures,
             "seekable_compression" => true,
             _ => false,

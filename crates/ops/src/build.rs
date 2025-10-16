@@ -88,8 +88,6 @@ pub async fn build(
         version: package_version,
         output_path: result.package_path,
         duration_ms: elapsed_millis(start),
-        // SBOM soft-disabled: this will now be false
-        sbom_generated: !result.sbom_files.is_empty(),
     };
 
     ctx.emit(AppEvent::Build(BuildEvent::Completed {
