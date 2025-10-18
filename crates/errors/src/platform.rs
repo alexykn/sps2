@@ -64,26 +64,26 @@ pub enum PlatformError {
 impl From<PlatformError> for BuildError {
     fn from(err: PlatformError) -> Self {
         match err {
-            PlatformError::SigningFailed { message, .. } => BuildError::SigningError { message },
+            PlatformError::SigningFailed { message, .. } => Self::SigningError { message },
             PlatformError::BinaryOperationFailed {
                 operation, message, ..
-            } if operation.contains("sign") => BuildError::SigningError { message },
+            } if operation.contains("sign") => Self::SigningError { message },
             PlatformError::ProcessExecutionFailed { command, message }
                 if command.contains("git") =>
             {
-                BuildError::Failed {
+                Self::Failed {
                     message: format!("git operation failed: {message}"),
                 }
             }
             PlatformError::ProcessExecutionFailed { command, message }
                 if command.contains("tar") || command.contains("zstd") =>
             {
-                BuildError::ExtractionFailed { message }
+                Self::ExtractionFailed { message }
             }
-            PlatformError::FilesystemOperationFailed { message, .. } => BuildError::Failed {
+            PlatformError::FilesystemOperationFailed { message, .. } => Self::Failed {
                 message: format!("filesystem operation failed: {message}"),
             },
-            _ => BuildError::Failed {
+            _ => Self::Failed {
                 message: err.to_string(),
             },
         }
@@ -150,17 +150,17 @@ impl From<PlatformError> for StorageError {
         match err {
             PlatformError::FilesystemOperationFailed { operation, message } => {
                 if operation.contains("clone") || operation.contains("apfs") {
-                    StorageError::ApfsCloneFailed { message }
+                    Self::ApfsCloneFailed { message }
                 } else if operation.contains("rename") || operation.contains("atomic") {
-                    StorageError::AtomicRenameFailed { message }
+                    Self::AtomicRenameFailed { message }
                 } else {
-                    StorageError::IoError { message }
+                    Self::IoError { message }
                 }
             }
             PlatformError::PermissionDenied { message, .. } => {
-                StorageError::PermissionDenied { path: message }
+                Self::PermissionDenied { path: message }
             }
-            _ => StorageError::IoError {
+            _ => Self::IoError {
                 message: err.to_string(),
             },
         }

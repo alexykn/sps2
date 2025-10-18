@@ -178,51 +178,51 @@ pub trait UserFacingError {
 impl UserFacingError for Error {
     fn user_message(&self) -> Cow<'_, str> {
         match self {
-            Error::Network(err) => err.user_message(),
-            Error::Install(err) => err.user_message(),
-            Error::Ops(err) => err.user_message(),
-            Error::Io { message, .. } => Cow::Owned(message.clone()),
+            Self::Network(err) => err.user_message(),
+            Self::Install(err) => err.user_message(),
+            Self::Ops(err) => err.user_message(),
+            Self::Io { message, .. } => Cow::Owned(message.clone()),
             _ => Cow::Owned(self.to_string()),
         }
     }
 
     fn user_hint(&self) -> Option<&'static str> {
         match self {
-            Error::Network(err) => err.user_hint(),
-            Error::Install(err) => err.user_hint(),
-            Error::Ops(err) => err.user_hint(),
-            Error::Config(_) => Some("Check your sps2 configuration file."),
+            Self::Network(err) => err.user_hint(),
+            Self::Install(err) => err.user_hint(),
+            Self::Ops(err) => err.user_hint(),
+            Self::Config(_) => Some("Check your sps2 configuration file."),
             _ => None,
         }
     }
 
     fn is_retryable(&self) -> bool {
         match self {
-            Error::Network(err) => err.is_retryable(),
-            Error::Install(err) => err.is_retryable(),
-            Error::Ops(err) => err.is_retryable(),
-            Error::Io { .. } => true,
+            Self::Network(err) => err.is_retryable(),
+            Self::Install(err) => err.is_retryable(),
+            Self::Ops(err) => err.is_retryable(),
+            Self::Io { .. } => true,
             _ => false,
         }
     }
 
     fn user_code(&self) -> Option<&'static str> {
         match self {
-            Error::Network(err) => err.user_code(),
-            Error::Storage(err) => err.user_code(),
-            Error::State(err) => err.user_code(),
-            Error::Package(err) => err.user_code(),
-            Error::Version(err) => err.user_code(),
-            Error::Config(err) => err.user_code(),
-            Error::Build(err) => err.user_code(),
-            Error::Install(err) => err.user_code(),
-            Error::Ops(err) => err.user_code(),
-            Error::Guard(err) => err.user_code(),
-            Error::Platform(err) => err.user_code(),
-            Error::Signing(err) => err.user_code(),
-            Error::Internal(_) => Some("error.internal"),
-            Error::Cancelled => Some("error.cancelled"),
-            Error::Io { .. } => Some("error.io"),
+            Self::Network(err) => err.user_code(),
+            Self::Storage(err) => err.user_code(),
+            Self::State(err) => err.user_code(),
+            Self::Package(err) => err.user_code(),
+            Self::Version(err) => err.user_code(),
+            Self::Config(err) => err.user_code(),
+            Self::Build(err) => err.user_code(),
+            Self::Install(err) => err.user_code(),
+            Self::Ops(err) => err.user_code(),
+            Self::Guard(err) => err.user_code(),
+            Self::Platform(err) => err.user_code(),
+            Self::Signing(err) => err.user_code(),
+            Self::Internal(_) => Some("error.internal"),
+            Self::Cancelled => Some("error.cancelled"),
+            Self::Io { .. } => Some("error.io"),
         }
     }
 }
