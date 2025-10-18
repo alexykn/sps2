@@ -29,7 +29,7 @@ impl Report {
     }
 
     /// Add another report’s data into `self`.
-    pub fn absorb(&mut self, other: Report) {
+    pub fn absorb(&mut self, other: Self) {
         self.changed_files.extend(other.changed_files);
         self.warnings.extend(other.warnings);
         self.errors.extend(other.errors);

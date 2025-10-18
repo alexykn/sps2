@@ -335,7 +335,7 @@ impl RPathPatcher {
 
     /// Handle headerpad errors by updating references in dependent binaries
     async fn handle_headerpad_errors(
-        patcher: &RPathPatcher,
+        patcher: &Self,
         platform_ctx: &PlatformContext,
         headerpad_errors: &[PathBuf],
         lib_path: &str,

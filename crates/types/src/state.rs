@@ -81,23 +81,23 @@ pub enum SlotId {
 
 impl SlotId {
     /// All available slots.
-    pub const ALL: [SlotId; 2] = [SlotId::A, SlotId::B];
+    pub const ALL: [Self; 2] = [Self::A, Self::B];
 
     /// Directory name associated with the slot.
     #[must_use]
     pub fn dir_name(self) -> &'static str {
         match self {
-            SlotId::A => "live-A",
-            SlotId::B => "live-B",
+            Self::A => "live-A",
+            Self::B => "live-B",
         }
     }
 
     /// Return the opposite slot.
     #[must_use]
-    pub fn other(self) -> SlotId {
+    pub fn other(self) -> Self {
         match self {
-            SlotId::A => SlotId::B,
-            SlotId::B => SlotId::A,
+            Self::A => Self::B,
+            Self::B => Self::A,
         }
     }
 }
@@ -124,8 +124,8 @@ impl<'de> Deserialize<'de> for SlotId {
     {
         let raw = String::deserialize(deserializer)?;
         match raw.as_str() {
-            "live-A" | "A" | "a" => Ok(SlotId::A),
-            "live-B" | "B" | "b" => Ok(SlotId::B),
+            "live-A" | "A" | "a" => Ok(Self::A),
+            "live-B" | "B" | "b" => Ok(Self::B),
             other => Err(serde::de::Error::custom(format!(
                 "unknown slot identifier: {other}"
             ))),

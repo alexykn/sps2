@@ -187,17 +187,17 @@ impl OperationResult {
     #[must_use]
     pub fn is_success(&self) -> bool {
         match self {
-            OperationResult::Success(_)
-            | OperationResult::PackageList(_)
-            | OperationResult::PackageInfo(_)
-            | OperationResult::SearchResults(_)
-            | OperationResult::InstallReport(_)
-            | OperationResult::BuildReport(_)
-            | OperationResult::StateInfo(_)
-            | OperationResult::StateHistory(_)
-            | OperationResult::Report(_) => true,
-            OperationResult::HealthCheck(health) => health.is_healthy(),
-            OperationResult::VerificationResult(result) => result.is_valid,
+            Self::Success(_)
+            | Self::PackageList(_)
+            | Self::PackageInfo(_)
+            | Self::SearchResults(_)
+            | Self::InstallReport(_)
+            | Self::BuildReport(_)
+            | Self::StateInfo(_)
+            | Self::StateHistory(_)
+            | Self::Report(_) => true,
+            Self::HealthCheck(health) => health.is_healthy(),
+            Self::VerificationResult(result) => result.is_valid,
         }
     }
 }

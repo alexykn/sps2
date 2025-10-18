@@ -88,11 +88,11 @@ pub enum EventLevel {
 impl From<EventLevel> for Level {
     fn from(level: EventLevel) -> Self {
         match level {
-            EventLevel::Trace => Level::TRACE,
-            EventLevel::Debug => Level::DEBUG,
-            EventLevel::Info => Level::INFO,
-            EventLevel::Warn => Level::WARN,
-            EventLevel::Error => Level::ERROR,
+            EventLevel::Trace => Self::TRACE,
+            EventLevel::Debug => Self::DEBUG,
+            EventLevel::Info => Self::INFO,
+            EventLevel::Warn => Self::WARN,
+            EventLevel::Error => Self::ERROR,
         }
     }
 }
@@ -100,11 +100,11 @@ impl From<EventLevel> for Level {
 impl From<Level> for EventLevel {
     fn from(level: Level) -> Self {
         match level {
-            Level::TRACE => EventLevel::Trace,
-            Level::DEBUG => EventLevel::Debug,
-            Level::INFO => EventLevel::Info,
-            Level::WARN => EventLevel::Warn,
-            Level::ERROR => EventLevel::Error,
+            Level::TRACE => Self::Trace,
+            Level::DEBUG => Self::Debug,
+            Level::INFO => Self::Info,
+            Level::WARN => Self::Warn,
+            Level::ERROR => Self::Error,
         }
     }
 }
