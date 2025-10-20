@@ -29,5 +29,5 @@ base64 = "0.22.1"
 
 [dev-dependencies]
 tempfile = { workspace = true }
-httpmock = "0.8.1"
+httpmock = "0.8.2"
 tokio = { workspace = true, features = ["test-util", "macros"] }
