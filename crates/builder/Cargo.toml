@@ -45,16 +45,16 @@ chrono = { workspace = true }
 which = "8.0.0"
 sysinfo = "0.37.2"
 uuid = { version = "1.18.1", features = ["v4"] }
-bitflags = "2.9.4"
+bitflags = "2.10.0"
 zip = "6.0.0"
 rayon = "1.11.0"
-ignore = { version = "0.4.23", features = [
+ignore = { version = "0.4.24", features = [
     "simd-accel",
 ] } # ripgrep's fast walker
 globset = "0.4.16"
-bstr = "1.12.0" # binary‑safe search helpers
+bstr = "1.12.1" # binary‑safe search helpers
 object = { version = "0.37.3", features = ["read_core", "write_core", "macho"] }
-regex = "1.12.1"
+regex = "1.12.2"
 thiserror = "2.0.17"
 md-5 = "0.10.6"
 sha2 = "0.10.9"
