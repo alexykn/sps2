@@ -1,7 +1,9 @@
-//! Update command implementation
+//! Update and upgrade command implementations
 //!
-//! Handles package updates, respecting version constraints.
-//! Delegates to `sps2_install` crate for the actual update logic.
+//! - `update`: Respects version constraints (e.g., `~=1.2.0`)
+//! - `upgrade`: Ignores upper bounds to get latest versions
+//!
+//! Both delegate to `sps2_install` crate for the actual update logic.
 
 use crate::{InstallReport, OpsCtx};
 use sps2_errors::Error;
@@ -16,6 +18,54 @@ use sps2_types::{PackageSpec, Version};
 use std::time::Instant;
 use uuid::Uuid;
 
+/// Update mode determines how version constraints are handled
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpdateMode {
+    /// Update mode: respects version constraints (compatible releases)
+    Update,
+    /// Upgrade mode: ignores upper bounds to get latest versions
+    Upgrade,
+}
+
+impl UpdateMode {
+    /// Returns true if this is upgrade mode
+    const fn is_upgrade(self) -> bool {
+        matches!(self, Self::Upgrade)
+    }
+
+    /// Returns the operation name as a string
+    const fn operation_name(self) -> &'static str {
+        match self {
+            Self::Update => "update",
+            Self::Upgrade => "upgrade",
+        }
+    }
+
+    /// Returns the lifecycle operation enum
+    const fn lifecycle_operation(self) -> LifecycleUpdateOperation {
+        match self {
+            Self::Update => LifecycleUpdateOperation::Update,
+            Self::Upgrade => LifecycleUpdateOperation::Upgrade,
+        }
+    }
+
+    /// Returns the progress message
+    fn progress_message(self) -> String {
+        match self {
+            Self::Update => "Updating packages".to_string(),
+            Self::Upgrade => "Upgrading packages".to_string(),
+        }
+    }
+
+    /// Returns the default update type for report generation
+    const fn default_update_type(self) -> LifecyclePackageUpdateType {
+        match self {
+            Self::Update => LifecyclePackageUpdateType::Minor,
+            Self::Upgrade => LifecyclePackageUpdateType::Major,
+        }
+    }
+}
+
 /// Update packages (delegates to install crate)
 ///
 /// # Errors
@@ -25,13 +75,34 @@ use uuid::Uuid;
 /// - Update resolution fails
 /// - Installation of updates fails
 pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallReport, Error> {
+    update_or_upgrade(ctx, package_names, UpdateMode::Update).await
+}
+
+/// Upgrade packages (delegates to install crate)
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - No packages are installed or specified
+/// - Upgrade resolution fails
+/// - Installation of upgrades fails
+pub async fn upgrade(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallReport, Error> {
+    update_or_upgrade(ctx, package_names, UpdateMode::Upgrade).await
+}
+
+/// Internal implementation for both update and upgrade
+async fn update_or_upgrade(
+    ctx: &OpsCtx,
+    package_names: &[String],
+    mode: UpdateMode,
+) -> Result<InstallReport, Error> {
     let start = Instant::now();
 
-    let _correlation = ctx.push_correlation_for_packages("update", package_names);
+    let _correlation = ctx.push_correlation_for_packages(mode.operation_name(), package_names);
 
-    // Check mode: preview what would be updated
+    // Check mode: preview what would be updated/upgraded
     if ctx.check_mode {
-        return preview_update(ctx, package_names).await;
+        return preview_update_or_upgrade(ctx, package_names, mode).await;
     }
 
     // Create installer
@@ -43,9 +114,9 @@ pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRep
         ctx.store.clone(),
     );
 
-    // Build update context
+    // Build update context with appropriate mode
     let mut update_context = UpdateContext::new()
-        .with_upgrade(false) // Update mode (respect upper bounds)
+        .with_upgrade(mode.is_upgrade())
         .with_event_sender(ctx.tx.clone());
 
     for package_name in package_names {
@@ -72,24 +143,24 @@ pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRep
 
     let progress_manager = ProgressManager::new();
     let update_config = UpdateProgressConfig {
-        operation_name: "Updating packages".to_string(),
+        operation_name: mode.progress_message(),
         package_count: total_targets as u64,
-        is_upgrade: false,
+        is_upgrade: mode.is_upgrade(),
     };
     let progress_id = progress_manager.create_update_tracker(update_config);
     let correlation = ctx.current_correlation();
     progress_manager.emit_started(&progress_id, ctx, correlation.as_deref());
 
     ctx.emit(AppEvent::Lifecycle(LifecycleEvent::update_started(
-        LifecycleUpdateOperation::Update,
+        mode.lifecycle_operation(),
         requested_packages.clone(),
         total_targets,
     )));
 
-    // Execute update
+    // Execute update/upgrade
     let result = installer.update(update_context).await.inspect_err(|e| {
         let failure = FailureContext::from_error(e);
-        ctx.emit_operation_failed("update", failure.clone());
+        ctx.emit_operation_failed(mode.operation_name(), failure.clone());
 
         ctx.emit(AppEvent::Progress(ProgressEvent::Failed {
             id: progress_id.clone(),
@@ -99,7 +170,7 @@ pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRep
         }));
 
         ctx.emit(AppEvent::Lifecycle(LifecycleEvent::update_failed(
-            LifecycleUpdateOperation::Update,
+            mode.lifecycle_operation(),
             Vec::new(),
             if requested_packages.is_empty() {
                 Vec::new()
@@ -119,7 +190,8 @@ pub async fn update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallRep
             progress_id: &progress_id,
             progress_manager: &progress_manager,
             total_targets,
-            operation: LifecycleUpdateOperation::Update,
+            operation: mode.lifecycle_operation(),
+            mode,
         },
     );
     Ok(report)
@@ -130,6 +202,7 @@ struct UpdateReportContext<'a> {
     progress_manager: &'a ProgressManager,
     total_targets: usize,
     operation: LifecycleUpdateOperation,
+    mode: UpdateMode,
 }
 
 fn create_update_report(
@@ -189,7 +262,7 @@ fn create_update_report(
                 .cloned()
                 .unwrap_or_else(|| pkg.version.clone()),
             to_version: pkg.version.clone(),
-            update_type: LifecyclePackageUpdateType::Minor, // TODO: Determine actual update type
+            update_type: context.mode.default_update_type(), // TODO: Determine actual update type
             duration: std::time::Duration::from_secs(30), // TODO: Track actual duration per package
             size_change: 0,                               // TODO: Calculate actual size change
         })
@@ -211,10 +284,16 @@ fn create_update_report(
     report
 }
 
-/// Preview what would be updated without executing
+/// Preview what would be updated/upgraded without executing
 #[allow(clippy::too_many_lines)]
-async fn preview_update(ctx: &OpsCtx, package_names: &[String]) -> Result<InstallReport, Error> {
+async fn preview_update_or_upgrade(
+    ctx: &OpsCtx,
+    package_names: &[String],
+    mode: UpdateMode,
+) -> Result<InstallReport, Error> {
     use std::collections::HashMap;
+
+    let operation = mode.operation_name();
 
     // Get currently installed packages
     let current_packages = ctx.state.get_installed_packages().await?;
@@ -248,7 +327,7 @@ async fn preview_update(ctx: &OpsCtx, package_names: &[String]) -> Result<Instal
     // Report packages that are not installed
     for package_name in &packages_not_found {
         ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {
-            operation: "update".to_string(),
+            operation: operation.to_string(),
             action: format!("Package {package_name} is not installed"),
             details: HashMap::from([
                 ("status".to_string(), "not_installed".to_string()),
@@ -259,13 +338,21 @@ async fn preview_update(ctx: &OpsCtx, package_names: &[String]) -> Result<Instal
 
     // Check each installed package for available updates
     for package_id in &packages_to_check {
-        // Create a compatible release spec for update mode (respects upper bounds)
-        let spec = match PackageSpec::parse(&format!("{}~={}", package_id.name, package_id.version))
-        {
-            Ok(spec) => spec,
-            Err(_) => {
-                // Fallback to any version if parsing fails
+        // Create appropriate spec based on mode
+        let spec = match mode {
+            UpdateMode::Upgrade => {
+                // Upgrade mode: allow any version >= 0.0.0
                 PackageSpec::parse(&format!("{}>=0.0.0", package_id.name))?
+            }
+            UpdateMode::Update => {
+                // Update mode: try compatible release spec, fallback to any version
+                match PackageSpec::parse(&format!("{}~={}", package_id.name, package_id.version)) {
+                    Ok(spec) => spec,
+                    Err(_) => {
+                        // Fallback to any version if parsing fails
+                        PackageSpec::parse(&format!("{}>=0.0.0", package_id.name))?
+                    }
+                }
             }
         };
 
@@ -283,17 +370,20 @@ async fn preview_update(ctx: &OpsCtx, package_names: &[String]) -> Result<Instal
                     if resolved_id.name == package_id.name {
                         match resolved_id.version.cmp(&package_id.version()) {
                             std::cmp::Ordering::Greater => {
-                                // Update available
-                                let change_type = determine_update_type(
+                                // Update/upgrade available
+                                let change_type = determine_version_change_type(
                                     &package_id.version(),
                                     &resolved_id.version,
                                 );
 
                                 ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {
-                                    operation: "update".to_string(),
+                                    operation: operation.to_string(),
                                     action: format!(
-                                        "Would update {} {} → {}",
-                                        package_id.name, package_id.version, resolved_id.version
+                                        "Would {} {} {} → {}",
+                                        operation,
+                                        package_id.name,
+                                        package_id.version,
+                                        resolved_id.version
                                     ),
                                     details: HashMap::from([
                                         (
@@ -350,8 +440,8 @@ async fn preview_update(ctx: &OpsCtx, package_names: &[String]) -> Result<Instal
             Err(_) => {
                 // Resolution failed - package might not be available in repository
                 ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {
-                    operation: "update".to_string(),
-                    action: format!("Cannot check updates for {}", package_id.name),
+                    operation: operation.to_string(),
+                    action: format!("Cannot check {}s for {}", operation, package_id.name),
                     details: HashMap::from([
                         (
                             "current_version".to_string(),
@@ -375,12 +465,14 @@ async fn preview_update(ctx: &OpsCtx, package_names: &[String]) -> Result<Instal
                 .iter()
                 .find(|pkg| &pkg.name == package_name)
             {
+                let status_msg = match mode {
+                    UpdateMode::Update => "is already up to date",
+                    UpdateMode::Upgrade => "is already at latest version",
+                };
+
                 ctx.emit(AppEvent::General(GeneralEvent::CheckModePreview {
-                    operation: "update".to_string(),
-                    action: format!(
-                        "{}:{} is already up to date",
-                        package_id.name, package_id.version
-                    ),
+                    operation: operation.to_string(),
+                    action: format!("{}:{} {}", package_id.name, package_id.version, status_msg),
                     details: HashMap::from([
                         ("version".to_string(), package_id.version.to_string()),
                         ("status".to_string(), "up_to_date".to_string()),
@@ -393,14 +485,15 @@ async fn preview_update(ctx: &OpsCtx, package_names: &[String]) -> Result<Instal
     // Emit summary
     let total_changes = preview_updated.len();
     let mut categories = HashMap::new();
-    categories.insert("packages_updated".to_string(), preview_updated.len());
+    let category_key = format!("packages_{operation}d"); // "packages_updated" or "packages_upgraded"
+    categories.insert(category_key, preview_updated.len());
     categories.insert("packages_up_to_date".to_string(), packages_up_to_date.len());
     if !packages_not_found.is_empty() {
         categories.insert("packages_not_found".to_string(), packages_not_found.len());
     }
 
     ctx.emit(AppEvent::General(GeneralEvent::CheckModeSummary {
-        operation: "update".to_string(),
+        operation: operation.to_string(),
         total_changes,
         categories,
     }));
@@ -415,8 +508,8 @@ async fn preview_update(ctx: &OpsCtx, package_names: &[String]) -> Result<Instal
     })
 }
 
-/// Determine the type of update based on version changes
-fn determine_update_type(from: &Version, to: &Version) -> String {
+/// Determine the type of version change (major/minor/patch/prerelease)
+fn determine_version_change_type(from: &Version, to: &Version) -> String {
     if from.major != to.major {
         "major".to_string()
     } else if from.minor != to.minor {
@@ -425,5 +518,48 @@ fn determine_update_type(from: &Version, to: &Version) -> String {
         "patch".to_string()
     } else {
         "prerelease".to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classify_version_changes() {
+        let mut v1 = Version::new(1, 0, 0);
+        let mut v2 = Version::new(2, 0, 0);
+        assert_eq!(determine_version_change_type(&v1, &v2), "major");
+
+        v1 = Version::new(1, 1, 0);
+        v2 = Version::new(1, 2, 0);
+        assert_eq!(determine_version_change_type(&v1, &v2), "minor");
+
+        v1 = Version::new(1, 1, 1);
+        v2 = Version::new(1, 1, 2);
+        assert_eq!(determine_version_change_type(&v1, &v2), "patch");
+
+        v1 = Version::new(1, 1, 1);
+        v2 = Version::new(1, 1, 1);
+        assert_eq!(determine_version_change_type(&v1, &v2), "prerelease");
+    }
+
+    #[test]
+    fn update_mode_properties() {
+        assert!(UpdateMode::Upgrade.is_upgrade());
+        assert!(!UpdateMode::Update.is_upgrade());
+
+        assert_eq!(UpdateMode::Update.operation_name(), "update");
+        assert_eq!(UpdateMode::Upgrade.operation_name(), "upgrade");
+
+        // Verify lifecycle operations are set correctly (can't use assert_eq as it doesn't impl PartialEq)
+        assert!(matches!(
+            UpdateMode::Update.lifecycle_operation(),
+            LifecycleUpdateOperation::Update
+        ));
+        assert!(matches!(
+            UpdateMode::Upgrade.lifecycle_operation(),
+            LifecycleUpdateOperation::Upgrade
+        ));
     }
 }

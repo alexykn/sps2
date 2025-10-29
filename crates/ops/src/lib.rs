@@ -27,7 +27,6 @@ mod install;
 mod pack;
 mod uninstall;
 mod update;
-mod upgrade;
 
 pub use context::{OpsContextBuilder, OpsCtx};
 pub use sps2_guard::{
@@ -55,8 +54,7 @@ pub use small_ops::{
     search_packages, self_update,
 };
 pub use uninstall::uninstall;
-pub use update::update;
-pub use upgrade::upgrade;
+pub use update::{update, upgrade};
 
 use sps2_errors::Error;
 use std::sync::Arc;
