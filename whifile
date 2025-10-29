@@ -4,6 +4,7 @@ $(pwd)/target/aarch64-apple-darwin/release
 /opt/pm/live/bin
 /opt/homebrew/bin
 /opt/homebrew/sbin
+/Users/alxknt/.local/bin
 /usr/local/bin
 /usr/local/sbin/
 /usr/bin
