@@ -43,9 +43,9 @@ impl From<&str> for VerificationLevel {
 impl VerificationLevel {
     fn as_guard_level(self) -> GuardLevel {
         match self {
-            VerificationLevel::Quick => GuardLevel::Quick,
-            VerificationLevel::Standard => GuardLevel::Standard,
-            VerificationLevel::Full => GuardLevel::Full,
+            Self::Quick => GuardLevel::Quick,
+            Self::Standard => GuardLevel::Standard,
+            Self::Full => GuardLevel::Full,
         }
     }
 }
@@ -75,7 +75,7 @@ pub enum Discrepancy {
 impl Discrepancy {
     fn to_event(&self) -> GuardDiscrepancy {
         match self {
-            Discrepancy::MissingFile {
+            Self::MissingFile {
                 package,
                 version,
                 path,
@@ -89,7 +89,7 @@ impl Discrepancy {
                 auto_heal_available: true,
                 requires_confirmation: false,
             },
-            Discrepancy::CorruptedFile {
+            Self::CorruptedFile {
                 package,
                 version,
                 path,
@@ -103,7 +103,7 @@ impl Discrepancy {
                 auto_heal_available: true,
                 requires_confirmation: false,
             },
-            Discrepancy::MissingPackageContent { package, version } => GuardDiscrepancy {
+            Self::MissingPackageContent { package, version } => GuardDiscrepancy {
                 kind: "missing_package_content".to_string(),
                 severity: GuardSeverity::Critical,
                 location: None,
@@ -113,7 +113,7 @@ impl Discrepancy {
                 auto_heal_available: false,
                 requires_confirmation: true,
             },
-            Discrepancy::UnexpectedFile { path } => GuardDiscrepancy {
+            Self::UnexpectedFile { path } => GuardDiscrepancy {
                 kind: "unexpected_file".to_string(),
                 severity: GuardSeverity::Medium,
                 location: Some(path.clone()),

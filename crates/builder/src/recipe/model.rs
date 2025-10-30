@@ -259,7 +259,7 @@ pub enum PostOption {
 
 impl Default for PostOption {
     fn default() -> Self {
-        PostOption::Enabled(false)
+        Self::Enabled(false)
     }
 }
 

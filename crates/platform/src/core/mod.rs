@@ -822,14 +822,14 @@ pub struct PlatformManager {
 
 impl PlatformManager {
     /// Get the singleton instance of the platform manager
-    pub fn instance() -> &'static PlatformManager {
+    pub fn instance() -> &'static Self {
         static INSTANCE: OnceLock<PlatformManager> = OnceLock::new();
         INSTANCE.get_or_init(|| {
             let platform = Arc::new(Platform::new_internal());
             let capabilities = Arc::new(PlatformCapabilities::default());
             let tool_registry = Arc::new(ToolRegistry::new());
 
-            PlatformManager {
+            Self {
                 platform,
                 capabilities,
                 tool_registry,

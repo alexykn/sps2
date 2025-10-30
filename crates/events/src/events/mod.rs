@@ -106,15 +106,15 @@ impl AppEvent {
     #[must_use]
     pub fn event_source(&self) -> EventSource {
         match self {
-            AppEvent::General(_) => EventSource::GENERAL,
-            AppEvent::Build(_) => EventSource::BUILD,
-            AppEvent::State(_) => EventSource::STATE,
-            AppEvent::Progress(_) => EventSource::PROGRESS,
-            AppEvent::Guard(_) => EventSource::GUARD,
-            AppEvent::Qa(_) => EventSource::QA,
-            AppEvent::Package(_) => EventSource::PACKAGE,
-            AppEvent::Platform(_) => EventSource::PLATFORM,
-            AppEvent::Lifecycle(event) => match event.domain() {
+            Self::General(_) => EventSource::GENERAL,
+            Self::Build(_) => EventSource::BUILD,
+            Self::State(_) => EventSource::STATE,
+            Self::Progress(_) => EventSource::PROGRESS,
+            Self::Guard(_) => EventSource::GUARD,
+            Self::Qa(_) => EventSource::QA,
+            Self::Package(_) => EventSource::PACKAGE,
+            Self::Platform(_) => EventSource::PLATFORM,
+            Self::Lifecycle(event) => match event.domain() {
                 LifecycleDomain::Acquisition => EventSource::ACQUISITION,
                 LifecycleDomain::Download => EventSource::DOWNLOAD,
                 LifecycleDomain::Install => EventSource::INSTALL,
@@ -133,40 +133,40 @@ impl AppEvent {
 
         match self {
             // Error-level events
-            AppEvent::General(GeneralEvent::Error { .. })
-            | AppEvent::Build(BuildEvent::Failed { .. })
-            | AppEvent::Progress(ProgressEvent::Failed { .. })
-            | AppEvent::Qa(QaEvent::PipelineFailed { .. })
-            | AppEvent::Package(PackageEvent::OperationFailed { .. })
-            | AppEvent::Platform(PlatformEvent::OperationFailed { .. })
-            | AppEvent::Guard(
+            Self::General(GeneralEvent::Error { .. })
+            | Self::Build(BuildEvent::Failed { .. })
+            | Self::Progress(ProgressEvent::Failed { .. })
+            | Self::Qa(QaEvent::PipelineFailed { .. })
+            | Self::Package(PackageEvent::OperationFailed { .. })
+            | Self::Platform(PlatformEvent::OperationFailed { .. })
+            | Self::Guard(
                 GuardEvent::VerificationFailed { .. } | GuardEvent::HealingFailed { .. },
             )
-            | AppEvent::State(
+            | Self::State(
                 StateEvent::TransitionFailed { .. }
                 | StateEvent::RollbackFailed { .. }
                 | StateEvent::CleanupFailed { .. },
             ) => Level::ERROR,
 
             // Lifecycle events - check stage
-            AppEvent::Lifecycle(event) if event.stage() == &LifecycleStage::Failed => Level::ERROR,
+            Self::Lifecycle(event) if event.stage() == &LifecycleStage::Failed => Level::ERROR,
 
             // Warning-level events
-            AppEvent::General(GeneralEvent::Warning { .. })
-            | AppEvent::Build(BuildEvent::Diagnostic(build::BuildDiagnostic::Warning { .. })) => {
+            Self::General(GeneralEvent::Warning { .. })
+            | Self::Build(BuildEvent::Diagnostic(build::BuildDiagnostic::Warning { .. })) => {
                 Level::WARN
             }
 
             // Debug-level events (progress updates, internal state)
-            AppEvent::General(GeneralEvent::DebugLog { .. })
-            | AppEvent::Build(BuildEvent::Diagnostic(build::BuildDiagnostic::LogChunk {
+            Self::General(GeneralEvent::DebugLog { .. })
+            | Self::Build(BuildEvent::Diagnostic(build::BuildDiagnostic::LogChunk {
                 ..
             }))
-            | AppEvent::Progress(ProgressEvent::Updated { .. })
-            | AppEvent::Qa(QaEvent::CheckEvaluated { .. }) => Level::DEBUG,
+            | Self::Progress(ProgressEvent::Updated { .. })
+            | Self::Qa(QaEvent::CheckEvaluated { .. }) => Level::DEBUG,
 
             // Trace-level events (very detailed internal operations)
-            AppEvent::Build(BuildEvent::Diagnostic(build::BuildDiagnostic::CachePruned {
+            Self::Build(BuildEvent::Diagnostic(build::BuildDiagnostic::CachePruned {
                 ..
             })) => Level::TRACE,
 
@@ -179,15 +179,15 @@ impl AppEvent {
     #[must_use]
     pub fn log_target(&self) -> &'static str {
         match self {
-            AppEvent::General(_) => "sps2::events::general",
-            AppEvent::Build(_) => "sps2::events::build",
-            AppEvent::State(_) => "sps2::events::state",
-            AppEvent::Progress(_) => "sps2::events::progress",
-            AppEvent::Guard(_) => "sps2::events::guard",
-            AppEvent::Qa(_) => "sps2::events::qa",
-            AppEvent::Package(_) => "sps2::events::package",
-            AppEvent::Platform(_) => "sps2::events::platform",
-            AppEvent::Lifecycle(event) => match event.domain() {
+            Self::General(_) => "sps2::events::general",
+            Self::Build(_) => "sps2::events::build",
+            Self::State(_) => "sps2::events::state",
+            Self::Progress(_) => "sps2::events::progress",
+            Self::Guard(_) => "sps2::events::guard",
+            Self::Qa(_) => "sps2::events::qa",
+            Self::Package(_) => "sps2::events::package",
+            Self::Platform(_) => "sps2::events::platform",
+            Self::Lifecycle(event) => match event.domain() {
                 LifecycleDomain::Acquisition => "sps2::events::acquisition",
                 LifecycleDomain::Download => "sps2::events::download",
                 LifecycleDomain::Install => "sps2::events::install",
