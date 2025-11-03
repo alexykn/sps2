@@ -48,7 +48,7 @@ uuid = { version = "1.18.1", features = ["v4"] }
 bitflags = "2.10.0"
 zip = "6.0.0"
 rayon = "1.11.0"
-ignore = { version = "0.4.24", features = [
+ignore = { version = "0.4.25", features = [
     "simd-accel",
 ] } # ripgrep's fast walker
 globset = "0.4.16"
