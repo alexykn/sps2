@@ -19,6 +19,6 @@ sps2-net = { path = "../../crates/net" }
 tokio = { workspace = true, features = ["fs", "rt-multi-thread", "macros"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
-minisign = "0.7.9"
+minisign = "0.8.0"
 base64 = "0.22.1"
 rpassword = "7.4.0"
